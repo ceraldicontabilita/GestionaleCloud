@@ -1,0 +1,2351 @@
+"""
+Gestione Estratto Conto
+Salva e visualizza tutti i movimenti bancari importati con campi strutturati.
+"""
+from fastapi import APIRouter, HTTPException, Query, UploadFile, File, Depends
+from app.utils.dependencies import get_current_admin_user
+from typing import Dict, Any, List, Optional
+from datetime import datetime, date, timezone
+import logging
+import io
+import re
+import csv
+import hashlib
+from collections import Counter, defaultdict
+from contextlib import asynccontextmanager
+
+from app.database import Database
+from app.utils.error_handler import handle_errors
+from app.routers.prima_nota_module.common import (
+    aggrega_saldo_prima_nota,
+    entra_in_prima_nota,
+)
+from app.services.scritture_contabili import scrivi_movimento
+from app.services.bank_evidence import EVIDENZA_UFFICIALE, campi_evidenza
+from app.services.categorizzazione_movimenti import categorizza_movimento_bancario
+from app.services.conti_pos import CONTI_SENZA_PROIEZIONE_PRIMA_NOTA
+from app.services.estratto_conto_bnl_parser import (
+    EstrattoBNLNonValido,
+    e_estratto_bnl_pdf,
+    leggi_estratto_bnl,
+    movimenti_per_archivio as movimenti_per_archivio_bnl,
+)
+from app.services.regole_riconoscimento_banca import carica_regole as _carica_regole_riconoscimento
+
+logger = logging.getLogger(__name__)
+router = APIRouter()
+
+@asynccontextmanager
+async def _write_batch(db):
+    """Accorpa le scritture remote quando il runtime in memoria lo supporta."""
+    factory = getattr(db, "batch_writes", None)
+    if callable(factory):
+        async with factory():
+            yield
+    else:
+        yield
+
+
+def _occorrenza_gia_importata(
+    existing_counts: Counter, incoming_occurrences: Counter, key: Any,
+) -> bool:
+    """Deduplica un reimport preservando due righe bancarie identiche reali."""
+    incoming_occurrences[key] += 1
+    return existing_counts[key] >= incoming_occurrences[key]
+
+
+def _categoria_import_con_fallback(
+    categoria_csv: Optional[str], descrizione: Optional[str], importo: float,
+    regole: Optional[List[Dict[str, Any]]] = None,
+) -> Dict[str, Any]:
+    """Categoria da scrivere sul movimento in import: quella del CSV bancario
+    se presente (non si sovrascrive mai una fonte piu' autorevole), altrimenti
+    il motore unico di categorizzazione (`app.services.categorizzazione_movimenti`)
+    quando il riconoscimento e' certo. Nessuna associazione per solo importo.
+
+    `regole`: le regole di riconoscimento imparate dal titolare
+    (`app.services.regole_riconoscimento_banca`, prefetchate una sola volta
+    dal chiamante), controllate dal motore PRIMA delle parole chiave
+    generiche: una regola specifica vince sempre.
+
+    Ritorna i campi extra da aggiungere al record (vuoto se non si e'
+    categorizzato nulla in automatico).
+    """
+    categoria_pulita = (categoria_csv or "").strip()
+    if categoria_pulita:
+        return {"categoria": categoria_pulita}
+    esito = categorizza_movimento_bancario(descrizione, importo, regole=regole)
+    if not esito.categoria and not esito.fornitore_id:
+        return {"categoria": ""}
+    campi: Dict[str, Any] = {"categoria_auto": True, "categoria_auto_motivo": esito.motivo}
+    if esito.categoria:
+        campi["categoria"] = esito.categoria
+    else:
+        campi["categoria"] = ""
+    if esito.codice_tributo:
+        campi["categoria_codice_tributo"] = esito.codice_tributo
+    if esito.fornitore_id:
+        campi["fornitore_id"] = esito.fornitore_id
+        campi["fornitore"] = esito.fornitore_nome
+        campi["regola_riconoscimento_id"] = esito.regola_id
+    return campi
+
+
+def estrai_numero_fattura(descrizione: str) -> Optional[str]:
+    """Estrae il numero/i fattura dalla descrizione dopo NOTPROVIDE."""
+    if not descrizione:
+        return None
+    
+    # Pattern: dopo "NOTPROVIDE - " c'è il riferimento fatture
+    match = re.search(r'NOTPROVIDE\s*-?\s*(.+)$', descrizione, re.IGNORECASE)
+    if match:
+        riferimento = match.group(1).strip()
+        # Pulisci e restituisci
+        # Rimuovi prefissi comuni
+        riferimento = re.sub(r'^(saldo|pagamento)\s+(fattur[ae]|ft)\s*', '', riferimento, flags=re.IGNORECASE)
+        return riferimento.strip()[:200] if riferimento.strip() else None
+    
+    # Pattern alternativo: "fattura/e" seguito da numeri
+    match = re.search(r'fattur[ae]\s+(.+?)(?:\s*$|\s+-)', descrizione, re.IGNORECASE)
+    if match:
+        return match.group(1).strip()[:200]
+    
+    return None
+
+
+def is_versamento_contanti(descrizione: str) -> bool:
+    """Riconosce la causale di un versamento di contanti in banca.
+
+    Bug segnalato dall'utente 15/07/2026: l'export reale della banca (Banco
+    BPM) usa l'abbreviazione "VERS." (es. "VERS. CONTANTI - VVVVV"), MAI la
+    parola intera "VERSAMENTO" — verificato su un export reale di 4287
+    movimenti: 96 causali "VERS. CONTANTI", zero contenenti "VERSAMENTO".
+    Riconosce entrambe le forme.
+    """
+    desc_upper = (descrizione or "").upper()
+    # Uno storno non e' un nuovo versamento: e' una rettifica bancaria che
+    # deve restare visibile e da verificare, senza creare movimenti di cassa.
+    if "STORNO" in desc_upper:
+        return False
+    if "CONTANT" not in desc_upper:
+        return False
+    return "VERSAMENTO" in desc_upper or bool(re.search(r"VERS\.?\s*CONTANT", desc_upper))
+
+
+def is_storno_versamento(descrizione: str) -> bool:
+    """Riconosce la rettifica/storno di un versamento contanti.
+
+    Lo storno non prova che il contante sia rientrato in cassa e non deve
+    essere trattato come un secondo deposito. Resta nell'estratto conto in
+    attesa di verifica/associazione esplicita.
+    """
+    desc_upper = (descrizione or "").upper()
+    if "STORNO" not in desc_upper or "CONTANT" not in desc_upper:
+        return False
+    return "VERSAMENTO" in desc_upper or bool(re.search(r"VERS\.?\s*CONTANT", desc_upper))
+
+
+# REGOLA (utente 17/07/2026): in Prima Nota Banca la categoria dice
+# L'OPERAZIONE, sintetica al massimo — mai la classificazione della banca.
+# Il dettaglio (chi, cosa, riferimento) sta nella DESCRIZIONE. Il
+# riconoscimento parte dalla causale (PayPal, versamento, prelievo,
+# utenza), poi ricade sulla tassonomia del CSV bancario. NON tocca i dati
+# salvati: l'estratto conto resta immutabile, il nome operativo viene
+# calcolato al volo nella risposta (campo `categoria_canonica`).
+_CATEGORIE_EC_ESATTE = {
+    # il deposito di contanti È il versamento (doppia scrittura cassa/banca)
+    "Ricavi - Deposito contanti": "Versamento Banca",
+    # il leasing viaggia con fatture periodiche del concedente
+    "Altre passività - Leasing": "Fatture",
+    "Ricavi - Rimborsi diversi": "Rimborso",
+}
+_CATEGORIE_EC_PREFISSI = {
+    "Fornitori": "Fatture",
+    "Utenze": "Utenze",
+    "Servizi": "Fatture",
+    "Assicurazione": "Fatture",
+    "Operazioni Finanziarie": "Commissioni bancarie",
+    "Tasse": "F24",
+    "Risorse Umane": "Stipendi",
+    "Ricavi": "Rimborso",
+    "Altre passività": "Altro",
+    "Altre spese": "Altro",
+    "Intercompany in entrata": "Altro",
+    "Intercompany in uscita": "Altro",
+    "Intercompany": "Altro",
+}
+
+
+# La STESSA operazione bancaria arriva con causali diverse a seconda del
+# file: l'export sintetico scrive "SDD CORE: M-...", quello analitico
+# "ADDEBITO DIRETTO SDD - SDD CORE: M-...". Con la descrizione grezza nella
+# chiave di deduplica le due forme risultavano operazioni diverse, e lo
+# stesso addebito WORLDPAY entrava due volte (segnalazione utente 07/08/2026,
+# tre coppie da 1,79 nello stesso giorno).
+#
+# Si normalizzano SOLO i prefissi di canale, mai il contenuto: il mandato,
+# il beneficiario e i riferimenti restano parte della chiave. Se la banca ha
+# davvero addebitato 3 volte 1,79 nello stesso giorno, ogni file porta 3
+# righe e il conteggio per occorrenza le conserva tutte e tre.
+_PREFISSI_CANALE_EC = re.compile(
+    r"^(ADDEBITO DIRETTO SDD\s*-\s*|ADDEBITO SDD\s*-\s*|PAGAMENTO\s*-\s*)",
+    re.IGNORECASE,
+)
+
+
+def normalizza_descrizione_ec(desc: str) -> str:
+    """Descrizione canonica di una riga EC ai fini della deduplica."""
+    compatta = re.sub(r"\s+", " ", (desc or "").strip()).upper()
+    return _PREFISSI_CANALE_EC.sub("", compatta)[:80]
+
+
+def bank_operation_identity(
+    data_iso: str, tipo: str, importo: float, descrizione: str, occurrence: int,
+) -> tuple[str, str]:
+    """Identita stabile della singola riga bancaria.
+
+    Il file sorgente non partecipa alla chiave: export mensili o analitici
+    sovrapposti devono riconoscere la stessa operazione. L'occorrenza conserva
+    invece due addebiti realmente identici presenti nello stesso estratto.
+    """
+    cents = int(round(abs(float(importo)) * 100))
+    base = "|".join((
+        "bank:v2", str(data_iso)[:10], str(tipo or "").lower(), str(cents),
+        normalizza_descrizione_ec(descrizione),
+    ))
+    operation_key = hashlib.sha256(
+        f"{base}|occurrence:{int(occurrence)}".encode("utf-8")
+    ).hexdigest()
+    return operation_key, f"bank:{operation_key}"
+
+
+def _date_from_spreadsheet(value: Any) -> Optional[date]:
+    """Data robusta per gli export XLSX bancari e delle carte."""
+    if isinstance(value, datetime):
+        return value.date()
+    if isinstance(value, date):
+        return value
+    raw = str(value or "").strip()
+    for fmt in ("%d/%m/%Y", "%Y-%m-%d", "%d-%m-%Y"):
+        try:
+            return datetime.strptime(raw[:10], fmt).date()
+        except ValueError:
+            continue
+    return None
+
+
+def _float_from_spreadsheet(value: Any) -> Optional[float]:
+    if value in (None, ""):
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    raw = str(value).strip().replace(" ", "")
+    if not raw:
+        return None
+    if "," in raw:
+        raw = raw.replace(".", "").replace(",", ".")
+    try:
+        return float(raw)
+    except ValueError:
+        return None
+
+
+# Un export con almeno tante righe e nessun importo negativo non dice quali
+# sono entrate e quali uscite: il 29/09/2026 «ElencoEntrateUsciteAndamento_
+# 31-07-2026.csv» (1.873 righe, zero negativi) e il foglio della carta Nexi
+# sono entrati tutti come «entrata», addebiti SDD e prelievi assegno compresi.
+MIN_RIGHE_CONTROLLO_SEGNO = 10
+
+# Campi che una fonte scrive sul movimento tali e quali (conto BNL: conto
+# contabile, fonte, IBAN, causale ABI, estratto e impronta del PDF). Le fonti
+# che non li portano non li hanno: niente valori inventati.
+_CAMPI_PASSANTI_FONTE = (
+    "conto_contabile", "fonte", "source", "iban", "causale_abi", "numero_estratto",
+    "periodo_dal", "periodo_al", "file_sha256", "natura", "numero_assegno", "f24_info",
+)
+
+
+def _si_proietta_in_prima_nota(record: Dict[str, Any]) -> bool:
+    """Il conto BNL storico resta solo archivio bancario per le riconciliazioni."""
+    return record.get("conto_contabile") not in CONTI_SENZA_PROIEZIONE_PRIMA_NOTA
+
+
+def segno_assente(movimenti: List[Dict[str, Any]]) -> bool:
+    """True se il file non distingue entrate e uscite (nessun importo negativo)."""
+    importi = [m.get("importo") for m in movimenti if m.get("importo") not in (None, 0, 0.0)]
+    return len(importi) >= MIN_RIGHE_CONTROLLO_SEGNO and all(float(i) > 0 for i in importi)
+
+
+# Macro-categorie che il portale Banco BPM assegna solo agli accrediti. Un
+# export filtrato «solo entrate» ha tutti gli importi positivi di suo: il
+# verso lo dichiara la banca riga per riga, non lo indoviniamo noi. Basta una
+# riga fuori da queste famiglie (Fornitori, Salari, Commissioni...) e il file
+# resta senza segno.
+CATEGORIE_BPM_SOLO_ENTRATE = (
+    "Ricavi - ",
+    "Intercompany in entrata - ",
+    "Patrimonio - fonti finanziamento - ",
+)
+
+
+def categorie_tutte_in_entrata(movimenti: List[Dict[str, Any]]) -> bool:
+    """True se ogni riga porta una categoria della banca riservata agli accrediti."""
+    if not movimenti:
+        return False
+    return all(
+        str(m.get("categoria") or "").strip().startswith(CATEGORIE_BPM_SOLO_ENTRATE)
+        for m in movimenti
+    )
+
+
+def parse_enti_file_contabili_xlsx(contents: bytes) -> Optional[List[Dict[str, Any]]]:
+    """Legge l'export ``Enti_File_Contabili`` delle carte aziendali.
+
+    Ritorna ``None`` quando il foglio non e' di questo tipo, cosi' il chiamante
+    puo' usare il parser XLSX bancario generico. Le spese sono uscite anche se
+    il portale le esporta come numeri positivi; ``Data Valuta`` e' la data
+    dell'operazione, mentre il valore tecnico 30/11/1999 del bollo viene
+    sostituito con la data contabile del rendiconto.
+    """
+    import openpyxl
+
+    workbook = openpyxl.load_workbook(io.BytesIO(contents), data_only=True)
+    sheet = workbook.active
+    headers_raw = [str(cell.value or "").strip() for cell in sheet[1]]
+    headers = [header.casefold() for header in headers_raw]
+    required = {"data contabile", "data valuta", "importo spesa", "insegna", "codice carta"}
+    if not required.issubset(set(headers)):
+        workbook.close()
+        return None
+
+    result: List[Dict[str, Any]] = []
+    for row_num in range(2, sheet.max_row + 1):
+        row = {
+            headers[index]: sheet.cell(row=row_num, column=index + 1).value
+            for index in range(len(headers))
+        }
+        amount = _float_from_spreadsheet(
+            row.get("importo movimento in valuta") or row.get("importo spesa")
+        )
+        accounting_date = _date_from_spreadsheet(row.get("data contabile"))
+        transaction_date = _date_from_spreadsheet(row.get("data valuta"))
+        if transaction_date and transaction_date.year < 2000:
+            transaction_date = None
+        operation_date = transaction_date or accounting_date
+        if operation_date is None or amount is None:
+            continue
+
+        merchant = str(row.get("insegna") or "").strip()
+        locality = str(
+            row.get("localita") or row.get("località") or row.get("localit�") or ""
+        ).strip()
+        external_reference = str(row.get("codice interno") or "").strip()
+        description_parts = [part for part in (merchant, locality) if part]
+        identity_description = " ".join(description_parts)
+        if external_reference:
+            description_parts.append(f"RIF {external_reference}")
+        description = " - ".join(description_parts) or "MOVIMENTO CARTA AZIENDALE"
+
+        card = re.sub(r"\s+", "", str(row.get("codice carta") or ""))
+        rapporto = str(row.get("posizione") or "").strip()
+        currency = str(
+            row.get("codice valuta") or row.get("codice divisa posizione") or "EUR"
+        ).strip() or "EUR"
+        category_code = str(row.get("codice categoria merceologica") or "").strip()
+        category = f"Carta aziendale MCC {category_code}" if category_code else "Carta aziendale"
+
+        result.append({
+            "data": operation_date,
+            "ragione_sociale": str(row.get("anagrafica") or "").strip() or None,
+            "fornitore": merchant or None,
+            "importo": -abs(amount),
+            "numero_fattura": None,
+            "data_pagamento": accounting_date,
+            "categoria": category,
+            "descrizione_originale": description,
+            "identity_description": identity_description or description,
+            "banca": "Nexi",
+            "rapporto": rapporto or card,
+            "divisa": currency,
+            "hashtag": "carta_aziendale",
+            "tipo": "uscita",
+            "external_reference": external_reference or None,
+            "numero_carta_mascherato": card or None,
+        })
+    workbook.close()
+    return result
+
+
+def mappa_categoria_ec(categoria: Optional[str], descrizione: Optional[str] = None) -> Optional[str]:
+    """Categoria OPERATIVA di Prima Nota per una riga di estratto conto.
+
+    Prima la causale (che batte la classificazione della banca: PayPal
+    finisce classificato dalla banca in 3 modi diversi), poi la tassonomia
+    del CSV. Ritorna None se non riconosciuta (resta l'originale)."""
+    desc = (descrizione or "").upper()
+    if desc:
+        if "PAYPAL" in desc:
+            return "Pagamento PayPal"
+        if is_storno_versamento(desc):
+            return "Storno versamento"
+        if is_versamento_contanti(desc):
+            return "Versamento Banca"
+        if is_prelievo_contanti(desc):
+            return "Prelevamento Banca"
+        if "UTENZ" in desc:
+            return "Utenze"
+    if not categoria:
+        return None
+    if categoria in _CATEGORIE_EC_ESATTE:
+        return _CATEGORIE_EC_ESATTE[categoria]
+    prefisso = categoria.split(" - ")[0].strip()
+    return _CATEGORIE_EC_PREFISSI.get(prefisso)
+
+
+def is_prelievo_contanti(descrizione: str) -> bool:
+    """Riconosce la causale di un prelievo di contanti dal conto (bancomat,
+    sportello, ATM): il movimento opposto del versamento — il denaro esce
+    dalla banca ed entra in cassa."""
+    desc_upper = (descrizione or "").upper()
+    if "PRELIEVO" not in desc_upper and "PRELEV" not in desc_upper:
+        return False
+    return any(k in desc_upper for k in ("BANCOMAT", "CONTANT", "SPORTELLO", " ATM"))
+
+
+def estrai_fornitore_pulito(descrizione: str) -> Optional[str]:
+    """Estrae il nome fornitore dalla descrizione, pulendolo."""
+    if not descrizione:
+        return None
+    
+    desc_upper = descrizione.upper()
+    
+    if "FAVORE" in desc_upper:
+        idx = desc_upper.find("FAVORE")
+        after = descrizione[idx + 7:].strip()
+        
+        # Prendi fino a "NOTPROVIDE" o " - " o fine
+        for sep in ["NOTPROVIDE", " - ADD.", " - "]:
+            if sep.upper() in after.upper():
+                idx_sep = after.upper().find(sep.upper())
+                after = after[:idx_sep].strip()
+                break
+        
+        # Rimuovi forme societarie alla fine per pulizia display
+        # Ma mantienile se sono parte del nome
+        nome = after.strip()
+
+        return nome if nome else None
+
+    # Addebiti diretti SDD (CORE o B2B): niente "FAVORE", il beneficiario è
+    # il testo dopo il codice mandato/riferimento (senza spazi), es. "SDD
+    # CORE: <codice mandato> Nome Beneficiario" o "SDD B2B : <codice>
+    # Nome Fornitore Srl". Bug segnalato dall'utente 15/07/2026: su un
+    # export reale di 4287 movimenti, 240 righe SDD (utenze, leasing,
+    # assicurazioni, fornitori ricorrenti) non estraevano MAI il fornitore,
+    # perdendo il bonus di punteggio "nome in causale" nel matching con le
+    # fatture.
+    match_sdd = re.search(r"SDD\s+(?:CORE|B2B)\s*:\s*\S+\s+(.+)$", descrizione, re.IGNORECASE)
+    if match_sdd:
+        nome = match_sdd.group(1).strip()
+        return nome if nome else None
+
+    return None
+
+
+@router.post("/import")
+@handle_errors
+async def import_estratto_conto(file: UploadFile = File(...)) -> Dict[str, Any]:
+    """
+    Importa estratto conto bancario e salva tutti i movimenti con campi strutturati.
+    
+    Formato CSV atteso (delimitatore ';'):
+    - Ragione Sociale: nome azienda
+    - Data contabile: data in formato DD/MM/YYYY
+    - Data valuta: data valuta in formato DD/MM/YYYY
+    - Banca: nome banca e codice
+    - Rapporto: numero rapporto/conto
+    - Importo: importo con virgola decimale (es: 254,5)
+    - Divisa: valuta (EUR)
+    - Descrizione: descrizione del movimento
+    - Categoria/sottocategoria: categoria del movimento
+    - Hashtag: tag opzionale
+    
+    Evita duplicati controllando data + importo + descrizione.
+    """
+    db = Database.get_db()
+    regole_banca = await _carica_regole_riconoscimento(db)
+    # Il job Drive puo' incontrare archivi storici gia' importati. In quel
+    # canale non ripete le riparazioni globali per ogni file interamente
+    # duplicato; upload manuali conservano invece il comportamento storico.
+    skip_duplicate_repairs = bool(getattr(file, "skip_duplicate_repairs", False))
+    drive_file_id = getattr(file, "drive_file_id", None)
+    drive_source_path = getattr(file, "source_path", None)
+    
+    filename_originale = file.filename or "estratto-conto"
+    filename = filename_originale.lower()
+    evidenza = campi_evidenza(filename_originale)
+    fonte_ufficiale = evidenza["livello_evidenza"] == EVIDENZA_UFFICIALE
+    contents = await file.read()
+    # L'originale si conserva sempre, per poterlo rivedere e riscaricare.
+    from app.services.estratti_originali import conserva_originale
+    originale_id = await conserva_originale(
+        db, contents, filename_originale, fonte="import_estratto_conto",
+        drive_file_id=drive_file_id,
+    )
+    
+    movimenti = []
+    segno_da_controllare = False
+    
+    if filename.endswith('.pdf') and e_estratto_bnl_pdf(contents):
+        # Conto BNL 4500/3192 (chiuso): il PDF si riconosce dal contenuto, il
+        # lettore prende il verso dalla colonna e rifiuta l'estratto se i saldi
+        # non tornano. Nessun ripiego sugli altri lettori: importerebbero
+        # righe col verso indovinato.
+        try:
+            estratto_bnl = leggi_estratto_bnl(contents)
+        except EstrattoBNLNonValido as exc:
+            raise HTTPException(
+                status_code=422, detail=f"Estratto conto BNL non importato: {exc}",
+            ) from exc
+        movimenti.extend(movimenti_per_archivio_bnl(
+            estratto_bnl, sha256=hashlib.sha256(contents).hexdigest(),
+        ))
+        logger.info(
+            "[ESTRATTO-BNL] %s: estratto %s (%s → %s), %s righe, saldi verificati",
+            filename_originale, estratto_bnl.numero_estratto, estratto_bnl.periodo_dal,
+            estratto_bnl.periodo_al, len(estratto_bnl.righe),
+        )
+
+    elif filename.endswith('.pdf'):
+        from app.parsers.estratto_conto_bpm_parser import parse_estratto_conto_bpm
+        from app.parsers.estratto_conto_bnl_parser import parse_estratto_conto_bnl
+        from app.parsers.estratto_conto_nexi_parser import EstrattoContoNexiParser
+
+        # Un solo ingresso per tutti i PDF: prova i parser deterministici in
+        # ordine e accetta soltanto un risultato con movimenti reali. Prima
+        # questo endpoint provava esclusivamente BPM, quindi i PDF BNL e carta
+        # finivano in Errori anche se i parser esistevano gia' nel progetto.
+        attempts = []
+        parser_errors = []
+        for parser_name, parser in (
+            ("Banco BPM", parse_estratto_conto_bpm),
+            ("BNL", parse_estratto_conto_bnl),
+            ("Nexi", EstrattoContoNexiParser().parse_pdf),
+        ):
+            try:
+                attempts.append(parser(contents))
+            except Exception as exc:
+                # Un formato non riconosciuto da un parser non deve impedire
+                # agli altri parser di esaminare lo stesso PDF.
+                parser_errors.append(f"{parser_name}: {exc}")
+        parsed = next(
+            (candidate for candidate in attempts
+             if candidate.get("success") and candidate.get("transazioni")),
+            None,
+        )
+        if parsed is None:
+            errors = [candidate.get("error") for candidate in attempts if candidate.get("error")]
+            errors.extend(parser_errors)
+            raise HTTPException(
+                status_code=400,
+                detail="; ".join(errors) or "PDF bancario/carta non riconosciuto",
+            )
+
+        def _date_obj(value):
+            if isinstance(value, datetime):
+                return value.date()
+            if isinstance(value, date):
+                return value
+            raw = str(value or "").strip()
+            for fmt in ("%Y-%m-%d", "%d/%m/%Y", "%d/%m/%y"):
+                try:
+                    return datetime.strptime(raw[:10], fmt).date()
+                except ValueError:
+                    continue
+            return None
+
+        is_nexi_parser = (
+            "nexi" in (parsed.get("tipo_documento") or "").lower()
+            or str(parsed.get("banca") or "").lower().startswith("nexi")
+        )
+        banca_parser = "Nexi" if is_nexi_parser else parsed.get("banca") or (
+            "BNL" if "bnl" in (parsed.get("tipo_documento") or "").lower()
+            else "Banco BPM"
+        )
+        for transazione in parsed.get("transazioni") or []:
+            data_contabile = _date_obj(
+                transazione.get("data") or transazione.get("data_contabile")
+            )
+            if data_contabile is None:
+                continue
+            data_valuta = _date_obj(transazione.get("data_valuta"))
+            descrizione = transazione.get("descrizione") or f"Movimento {banca_parser}"
+            importo = float(transazione.get("importo") or 0)
+            tipo_parser = str(transazione.get("tipo") or "").lower()
+            if tipo_parser in {"uscita", "addebito", "carta_credito"}:
+                importo = -abs(importo)
+            elif tipo_parser in {"entrata", "accredito"}:
+                importo = abs(importo)
+            movimenti.append({
+                "data": data_contabile,
+                "ragione_sociale": None,
+                "fornitore": estrai_fornitore_pulito(descrizione),
+                "importo": importo,
+                "numero_fattura": estrai_numero_fattura(descrizione),
+                "data_pagamento": data_valuta,
+                "categoria": transazione.get("categoria") or "",
+                "descrizione_originale": descrizione,
+                "identity_description": descrizione if is_nexi_parser else None,
+                "banca": banca_parser,
+                "rapporto": (parsed.get("metadata") or {}).get("numero_conto"),
+                "divisa": transazione.get("divisa") or "EUR",
+                "hashtag": None,
+                "tipo": "uscita" if importo < 0 else "entrata",
+            })
+
+    elif filename.endswith('.csv'):
+        segno_da_controllare = True
+        # Prova diversi encoding
+        text = None
+        for encoding in ['utf-8-sig', 'utf-8', 'latin-1', 'cp1252']:
+            try:
+                text = contents.decode(encoding)
+                break
+            except (UnicodeDecodeError, Exception):
+                continue
+        
+        if not text:
+            raise HTTPException(status_code=400, detail="Impossibile decodificare il file CSV")
+        
+        reader = csv.DictReader(io.StringIO(text), delimiter=';')
+        
+        for row in reader:
+            # Estrai dati con supporto per varianti di nomi colonna
+            # Supporta sia formato con virgolette che senza
+            
+            # Ragione sociale
+            ragione_sociale = row.get('Ragione Sociale', '') or row.get('"Ragione Sociale"', '')
+            
+            # Data contabile
+            data_contabile = (
+                row.get('Data contabile', '') or 
+                row.get('"Data contabile"', '') or
+                row.get('Data', '')
+            ).strip().strip('"')
+            
+            # Data valuta
+            data_valuta = (
+                row.get('Data valuta', '') or 
+                row.get('"Data valuta"', '') or
+                row.get('Data valut.', '')
+            ).strip().strip('"')
+            
+            # Banca
+            banca = (row.get('Banca', '') or row.get('"Banca"', '')).strip().strip('"')
+            
+            # Rapporto (numero conto)
+            rapporto = (row.get('Rapporto', '') or row.get('"Rapporto"', '')).strip().strip('"')
+            
+            # Importo - può essere con virgola come separatore decimale
+            importo_str = (
+                row.get('Importo', '0') or 
+                row.get('"Importo"', '0')
+            ).strip().strip('"')
+            
+            # Parse importo: rimuovi punti migliaia, sostituisci virgola con punto
+            importo_str = importo_str.replace('.', '').replace(',', '.')
+            try:
+                importo = float(importo_str)
+            except (ValueError, TypeError):
+                continue
+            
+            # Divisa
+            divisa = (row.get('Divisa', 'EUR') or row.get('"Divisa"', 'EUR')).strip().strip('"')
+            
+            # Descrizione
+            descrizione = (
+                row.get('Descrizione', '') or 
+                row.get('"Descrizione"', '') or
+                row.get('Descrizion', '')
+            ).strip().strip('"')
+            
+            # Categoria
+            categoria = (
+                row.get('Categoria/sottocategoria', '') or 
+                row.get('"Categoria/sottocategoria"', '') or
+                row.get('Categoria', '') or
+                row.get('"Categoria"', '')
+            ).strip().strip('"')
+            
+            # Hashtag
+            hashtag = (row.get('Hashtag', '') or row.get('"Hashtag"', '')).strip().strip('"')
+            
+            # Parse data contabile (DD/MM/YYYY)
+            try:
+                if '/' in data_contabile:
+                    parts = data_contabile.split('/')
+                    data_obj = date(int(parts[2]), int(parts[1]), int(parts[0]))
+                else:
+                    continue
+            except (ValueError, TypeError, IndexError):
+                continue
+            
+            # Parse data valuta
+            data_pagamento = None
+            try:
+                if '/' in data_valuta:
+                    parts = data_valuta.split('/')
+                    data_pagamento = date(int(parts[2]), int(parts[1]), int(parts[0]))
+            except (ValueError, TypeError, IndexError):
+                pass
+            
+            # Estrai fornitore/beneficiario dalla descrizione
+            fornitore = estrai_fornitore_pulito(descrizione)
+            
+            # Estrai numero fattura dalla descrizione
+            numero_fattura = estrai_numero_fattura(descrizione)
+            
+            movimenti.append({
+                "data": data_obj,
+                "ragione_sociale": ragione_sociale.strip().strip('"') if ragione_sociale else None,
+                "fornitore": fornitore,
+                "importo": importo,
+                "numero_fattura": numero_fattura,
+                "data_pagamento": data_pagamento,
+                "categoria": categoria,
+                "descrizione_originale": descrizione,
+                "banca": banca,
+                "rapporto": rapporto,
+                "divisa": divisa,
+                "hashtag": hashtag,
+                "tipo": "uscita" if importo < 0 else "entrata"
+            })
+    
+    elif filename.endswith(('.xlsx', '.xls')):
+        try:
+            from app.services.sumup_conto import e_export_spese_sumup
+            import openpyxl as _opx
+
+            _intestazioni = [str(c.value or "") for c in _opx.load_workbook(io.BytesIO(contents), read_only=True).active[1]]
+            if e_export_spese_sumup(_intestazioni):
+                # L'export «Spese» di SumUp ha Importo netto E Importo IVA: il parser generico
+                # prendeva l'ultima colonna «importo» (l'IVA) e scriveva 0,00 sul conto BPM.
+                raise HTTPException(status_code=422, detail=(
+                    "Questo e' l'export Spese di SumUp (netto, IVA, fornitore), non un estratto conto BPM: "
+                    "caricalo da Documenti > Import, arricchisce i movimenti SumUp gia' presenti."))
+            enti_rows = parse_enti_file_contabili_xlsx(contents)
+            if enti_rows is not None:
+                movimenti.extend(enti_rows)
+            else:
+                segno_da_controllare = True
+                import openpyxl
+                wb = openpyxl.load_workbook(io.BytesIO(contents))
+                sheet = wb.active
+
+                # Mappa header originali a chiavi normalizzate
+                headers_raw = [str(cell.value or '') for cell in sheet[1]]
+                headers = [h.lower().strip() for h in headers_raw]
+
+                for row_num in range(2, sheet.max_row + 1):
+                    row_data = {headers[i]: sheet.cell(row=row_num, column=i+1).value
+                               for i in range(len(headers))}
+
+                    # Trova colonne con supporto per varianti
+                    data_contabile = None
+                    importo = None
+                    descrizione = ""
+                    categoria = ""
+                    data_valuta = None
+                    ragione_sociale = ""
+                    banca = ""
+                    rapporto = ""
+                    divisa = "EUR"
+                    hashtag = ""
+
+                    for h, v in row_data.items():
+                        if not v:
+                            continue
+                        h_lower = h.lower()
+
+                        # Ragione Sociale
+                        if 'ragione sociale' in h_lower:
+                            ragione_sociale = str(v).strip()
+
+                        # Data contabile
+                        elif 'data contabile' in h_lower or (h_lower == 'data' and not data_contabile):
+                            data_contabile = _date_from_spreadsheet(v)
+
+                        # Data valuta
+                        elif 'data valuta' in h_lower or 'data valut' in h_lower:
+                            data_valuta = _date_from_spreadsheet(v)
+
+                        # Banca
+                        elif h_lower == 'banca':
+                            banca = str(v).strip()
+
+                        # Rapporto
+                        elif h_lower == 'rapporto':
+                            rapporto = str(v).strip()
+
+                        # Importo
+                        elif 'importo' in h_lower:
+                            importo = _float_from_spreadsheet(v)
+
+                        # Divisa
+                        elif h_lower == 'divisa':
+                            divisa = str(v).strip()
+
+                        # Descrizione
+                        elif 'descri' in h_lower:
+                            descrizione = str(v).strip()
+
+                        # Categoria
+                        elif 'categoria' in h_lower:
+                            categoria = str(v).strip()
+
+                        # Hashtag
+                        elif h_lower == 'hashtag':
+                            hashtag = str(v).strip()
+
+                    if data_contabile and importo is not None:
+                        movimenti.append({
+                            "data": data_contabile,
+                            "ragione_sociale": ragione_sociale if ragione_sociale else None,
+                            "fornitore": estrai_fornitore_pulito(descrizione),
+                            "importo": importo,
+                            "numero_fattura": estrai_numero_fattura(descrizione),
+                            "data_pagamento": data_valuta,
+                            "categoria": categoria,
+                            "descrizione_originale": descrizione,
+                            "banca": banca,
+                            "rapporto": rapporto,
+                            "divisa": divisa,
+                            "hashtag": hashtag,
+                            "tipo": "uscita" if importo < 0 else "entrata"
+                        })
+                wb.close()
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"Errore parsing Excel: {str(e)}") from e
+    else:
+        raise HTTPException(status_code=400, detail="Formato non supportato. Usa PDF, CSV o Excel.")
+    
+    if segno_da_controllare and segno_assente(movimenti) and not categorie_tutte_in_entrata(movimenti):
+        # Mai indovinare il verso: registrare «entrata» un addebito gonfia il
+        # saldo e riempie la coda di Prima Nota Banca di doppioni.
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"File senza segno: {len(movimenti)} importi tutti positivi, nessuna uscita. "
+                "Non si capisce quali sono entrate e quali uscite: il file non viene registrato. "
+                "Scarica dalla banca l'export con gli importi negativi per le uscite "
+                "(o l'estratto conto PDF)."
+            ),
+        )
+
+    # Salva nel database, evitando duplicati con un singolo query bulk
+    import uuid as _uuid
+    inserted = 0
+    duplicates = 0
+    gia_ufficiali = 0
+    
+    if not movimenti:
+        return {
+            "success": True,
+            "stats": {"nuovi": 0, "duplicati": 0, "totale_letti": 0},
+            "message": "Nessun movimento trovato nel file."
+        }
+    
+    # Ordina per data contabile ASCENDENTE prima di inserire
+    movimenti.sort(key=lambda x: x["data"].isoformat()[:10] if hasattr(x["data"], "isoformat") else str(x["data"]))
+    
+    # Recupera tutte le chiavi dedup già in DB nel range di date del CSV (1 sola query)
+    date_nel_csv = sorted(set(
+        m["data"].isoformat()[:10] if hasattr(m["data"], "isoformat") else str(m["data"])[:10]
+        for m in movimenti
+    ))
+    data_min, data_max = date_nel_csv[0], date_nel_csv[-1]
+    
+    # Carica le chiavi dedup esistenti per quel range
+    existing_cursor = db["estratto_conto_movimenti"].find(
+        {"data": {"$gte": data_min, "$lte": data_max}},
+        {"data": 1, "importo": 1, "descrizione_originale": 1, "descrizione": 1,
+         "id": 1, "tipo": 1, "banca": 1, "operation_key": 1, "operation_id": 1,
+         "livello_evidenza": 1, "evidenza_bancaria_ufficiale": 1, "_id": 0}
+    )
+    # chiave whitespace-insensibile: gli export bancari variano gli spazi
+    # interni ("NUMIA-INTER  DEL" vs "NUMIA-INTER DEL") e senza normalizzare
+    # un re-import duplicherebbe centinaia di movimenti identici
+    def _norm_desc(desc: str) -> str:
+        return normalizza_descrizione_ec(desc)
+
+    existing_by_key: Dict[Any, List[Dict[str, Any]]] = defaultdict(list)
+    existing_all: List[Dict[str, Any]] = []
+    existing_usati: set = set()
+    existing_operation_keys = set()
+    existing_card_by_base: Dict[Any, List[Dict[str, Any]]] = defaultdict(list)
+    from app.services.nexi_carta import _nexi_description, nexi_operation_identity
+    async for rec in existing_cursor:
+        existing_all.append(rec)
+        dstr = rec.get("data", "")[:10]
+        imp  = abs(float(rec.get("importo", 0)))
+        desc = _norm_desc(rec.get("descrizione_originale") or rec.get("descrizione") or "")
+        existing_by_key[(dstr, rec.get("tipo"), round(imp, 2), desc)].append(rec)
+        if rec.get("operation_key"):
+            existing_operation_keys.add(str(rec["operation_key"]))
+        if rec.get("tipo") == "carta_credito" or str(rec.get("banca") or "").startswith("Nexi"):
+            raw_amount = float(rec.get("importo") or 0)
+            card_amount = raw_amount if rec.get("tipo") == "carta_credito" else abs(raw_amount)
+            card_base = (
+                dstr, int(round(card_amount * 100)),
+                _nexi_description(rec.get("descrizione_originale") or rec.get("descrizione")),
+            )
+            existing_card_by_base[card_base].append(rec)
+    
+    records_to_insert = []
+    records_promossi = []
+    identity_backfills = []
+    incoming_occurrences: Counter = Counter()
+    for mov in movimenti:
+        data_str    = mov["data"].isoformat()[:10] if hasattr(mov["data"], "isoformat") else str(mov["data"])[:10]
+        importo_abs = abs(mov["importo"])
+        desc_raw    = _norm_desc(mov.get("descrizione_originale") or mov.get("descrizione") or "")
+        
+        # Determina tipo da segno importo
+        tipo_mov = "entrata" if mov["importo"] >= 0 else "uscita"
+        if any(kw in desc_raw.upper() for kw in ["DISPOSIZIONE", "VS.DISP", "ADD.TOT"]):
+            tipo_mov = "uscita"
+        if any(kw in desc_raw.upper() for kw in ["I24 AGENZIA ENTRATE", "BOLL.CBILL", "PAG. UTENZE"]):
+            tipo_mov = "uscita"
+        
+        # Le carte possono arrivare sia dal PDF Nexi sia dal foglio contabile:
+        # entrambi devono produrre la stessa identita' e non due movimenti.
+        is_card_movement = str(mov.get("banca") or "").startswith("Nexi")
+        identity_description = mov.get("identity_description") or (
+            mov.get("descrizione_originale") or mov.get("descrizione") or ""
+        )
+
+        # Dedup uniforme: vale anche per commissioni e piccoli importi.
+        dedup_key = (data_str, tipo_mov, round(importo_abs, 2), desc_raw)
+
+        if is_card_movement:
+            card_base = (
+                data_str, int(round(importo_abs * 100)),
+                _nexi_description(identity_description),
+            )
+            occurrence_counter_key = ("nexi", card_base)
+            incoming_occurrences[occurrence_counter_key] += 1
+            occurrence = incoming_occurrences[occurrence_counter_key]
+            operation_key, operation_id = nexi_operation_identity(
+                data_str, importo_abs, identity_description, occurrence,
+            )
+            existing_rows = existing_card_by_base.get(card_base, [])
+            identity_version = "nexi_v2"
+        else:
+            incoming_occurrences[dedup_key] += 1
+            occurrence = incoming_occurrences[dedup_key]
+            operation_key, operation_id = bank_operation_identity(
+                data_str, tipo_mov, importo_abs, desc_raw, occurrence,
+            )
+            existing_rows = existing_by_key.get(dedup_key, [])
+            identity_version = "bank_v2"
+
+        direct_operation_match = operation_key in existing_operation_keys
+        if direct_operation_match or len(existing_rows) >= occurrence:
+            existing = (
+                next((row for row in existing_rows if row.get("operation_key") == operation_key), None)
+                or (existing_rows[occurrence - 1] if len(existing_rows) >= occurrence else {})
+            )
+            if not existing.get("id") and direct_operation_match:
+                # chiave gia' in archivio ma riga non trovata per descrizione:
+                # senza questa la riga restava operativa per sempre
+                existing = next(
+                    (row for row in existing_all if row.get("operation_key") == operation_key), {},
+                )
+            if not existing.get("operation_key") or not existing.get("operation_id"):
+                identity_backfills.append((
+                    existing.get("id"), operation_key, operation_id, occurrence,
+                    identity_version,
+                ))
+            if existing.get("id"):
+                existing_usati.add(existing["id"])
+            if fonte_ufficiale and not (
+                existing.get("evidenza_bancaria_ufficiale") is True
+                or existing.get("livello_evidenza") == EVIDENZA_UFFICIALE
+            ):
+                records_promossi.append(existing)
+            elif fonte_ufficiale:
+                gia_ufficiali += 1
+            duplicates += 1
+            continue
+        
+        fingerprint = operation_key
+        mov_id = f"EC-{data_str}-{importo_abs:.2f}-{operation_key[:12]}"
+
+        campi_categoria = _categoria_import_con_fallback(
+            mov.get("categoria"), mov.get("descrizione_originale") or mov.get("descrizione"),
+            mov["importo"], regole=regole_banca,
+        )
+        records_to_insert.append({
+            "id": mov_id,
+            "operation_id": operation_id,
+            "operation_key": operation_key,
+            "identity_version": identity_version,
+            "occurrence_index": occurrence,
+            "data": data_str,
+            "ragione_sociale": mov.get("ragione_sociale"),
+            "fornitore": mov.get("fornitore"),
+            "importo": importo_abs,
+            "numero_fattura": mov.get("numero_fattura"),
+            "data_pagamento": mov["data_pagamento"].isoformat() if mov.get("data_pagamento") else None,
+            **campi_categoria,
+            "descrizione_originale": mov["descrizione_originale"],
+            "descrizione": mov.get("descrizione") or mov["descrizione_originale"],
+            "banca": mov.get("banca"),
+            "rapporto": mov.get("rapporto"),
+            "divisa": mov.get("divisa", "EUR"),
+            "hashtag": mov.get("hashtag"),
+            "external_reference": mov.get("external_reference"),
+            "numero_carta_mascherato": mov.get("numero_carta_mascherato"),
+            **{campo: mov[campo] for campo in _CAMPI_PASSANTI_FONTE if campo in mov},
+            "tipo": tipo_mov,
+            "descrizione_hash": desc_raw[:50],
+            "fingerprint": fingerprint,
+            "riconciliato": False,
+            "source_filename": filename_originale,
+            "estratto_originale_id": originale_id,
+            "drive_file_id": drive_file_id,
+            "drive_source_path": drive_source_path,
+            **evidenza,
+            "created_at": datetime.now(timezone.utc).isoformat()
+        })
+
+    # Stesso conto, altro export: la banca scrive la stessa operazione con
+    # parole diverse (categoria davanti, assegno «VOSTRO ASSEGNO N.» contro
+    # «PRELIEVO ASSEGNO … NUM:»). Il 23/09/2026 cosi' gennaio–agosto BPM e'
+    # entrato due volte. Ultimo controllo prima di scrivere: giorno, segno,
+    # importo e quante volte compare, mai due assegni con numeri diversi.
+    if records_to_insert:
+        from app.services.doppioni_estratto_conto import accoppia, conto_del_movimento
+
+        liberi = [
+            rec for rec in existing_all
+            if rec.get("id") not in existing_usati and conto_del_movimento(rec) == "bpm"
+        ]
+        coppie = accoppia(
+            [rec for rec in records_to_insert if conto_del_movimento(rec) == "bpm"],
+            liberi,
+        )
+        if coppie:
+            gia_presenti = {id(nuovo) for nuovo, _ in coppie}
+            records_to_insert = [
+                rec for rec in records_to_insert if id(rec) not in gia_presenti
+            ]
+            duplicates += len(coppie)
+            # Il PDF ufficiale scrive la causale senza il prefisso dell'export
+            # («SDD CORE: …» contro «ADDEBITO DIRETTO SDD - SDD CORE: …»): la
+            # riga si riconosce solo qui, e senza questo restava «operativa»
+            # per sempre (Q1 2026: 330 promosse su 616 lette).
+            if fonte_ufficiale:
+                for _, esistente in coppie:
+                    if not (esistente.get("evidenza_bancaria_ufficiale") is True
+                            or esistente.get("livello_evidenza") == EVIDENZA_UFFICIALE):
+                        records_promossi.append(esistente)
+                        if esistente.get("id"):
+                            existing_usati.add(esistente["id"])
+
+    promoted_ids = [record.get("id") for record in records_promossi if record.get("id")]
+    async with _write_batch(db):
+        if promoted_ids:
+            await db["estratto_conto_movimenti"].update_many(
+                {"id": {"$in": promoted_ids}},
+                {"$set": {
+                    **evidenza,
+                    "source_filename_ufficiale": filename_originale,
+                    "drive_file_id": drive_file_id,
+                    "drive_source_path": drive_source_path,
+                    "riconciliato": False,
+                    "promosso_a_ufficiale_at": datetime.now(timezone.utc).isoformat(),
+                }, "$unset": {
+                    "riconciliato_provvisoriamente": "",
+                }},
+            )
+        for record_id, operation_key, operation_id, occurrence, identity_version in identity_backfills:
+            if record_id:
+                await db["estratto_conto_movimenti"].update_one(
+                    {"id": record_id}, {"$set": {
+                        "operation_key": operation_key,
+                        "operation_id": operation_id,
+                        "identity_version": identity_version,
+                        "occurrence_index": occurrence,
+                    }},
+                )
+        if records_to_insert:
+            await db["estratto_conto_movimenti"].insert_many(records_to_insert, ordered=False)
+            inserted = len(records_to_insert)
+
+    has_material_changes = bool(records_to_insert or promoted_ids)
+    if fonte_ufficiale and duplicates - len(set(promoted_ids)) - gia_ufficiali > 0:
+        logger.warning(
+            "[ESTRATTO-UFFICIALE] %s: %s righe lette come doppioni ma non promosse ne' gia' ufficiali",
+            filename_originale, duplicates - len(set(promoted_ids)) - gia_ufficiali,
+        )
+
+    riconciliazione_operativa = None
+    if not fonte_ufficiale and records_to_insert:
+        from app.services.riconciliazione_operativa_banca import annota_movimenti_operativi
+        riconciliazione_operativa = await annota_movimenti_operativi(
+            db, [record["id"] for record in records_to_insert]
+        )
+
+    
+    # ===== RICONCILIAZIONE AUTOMATICA =====
+    # Dopo l'import, avvia la riconciliazione automatica
+    riconciliazione_results = None
+    try:
+        from app.services.riconciliazione_bancaria import riconcilia_movimenti_banca
+        ids_da_riconciliare = list(dict.fromkeys(
+            [record["id"] for record in records_to_insert if record.get("id")]
+            + promoted_ids
+        ))
+        riconciliazione_results = (
+            await riconcilia_movimenti_banca(
+                movimento_ids=ids_da_riconciliare,
+            )
+            if fonte_ufficiale and has_material_changes
+            else {
+                "success": True,
+                "skipped": True,
+                "message": "Nessun nuovo movimento bancario da riconciliare",
+            }
+            if fonte_ufficiale
+            else {
+                "success": True,
+                "provvisoria": True,
+                "message": "Abbinamenti in attesa dell'estratto bancario ufficiale",
+            }
+        )
+    except Exception as e:
+        logger.error(f"Errore riconciliazione automatica: {e}")
+        riconciliazione_results = {"error": str(e)}
+    
+    # ===== RICONCILIAZIONE AUTOMATICA PAGHE (Stipendi + F24) =====
+    riconciliazione_paghe = None
+    try:
+        from app.services.paghe_riconciliazione import esegui_riconciliazione_paghe_completa
+        riconciliazione_paghe = (
+            await esegui_riconciliazione_paghe_completa(db)
+            if fonte_ufficiale and has_material_changes
+            else {"skipped": True, "riconciliati": 0}
+            if fonte_ufficiale
+            else {"provvisoria": True, "riconciliati": 0}
+        )
+    except Exception as e:
+        logger.error(f"Errore riconciliazione paghe: {e}")
+    
+    # ===== SYNC ASSEGNI DA ESTRATTO CONTO =====
+    # Prima era un bottone manuale nella pagina Assegni ("Sync da E/C"):
+    # ora scatta automaticamente subito dopo ogni import dell'estratto conto.
+    assegni_sync = None
+    # Va eseguito anche quando il CSV e' interamente duplicato: in passato un
+    # movimento gia importato ma non trasformato in assegno restava bloccato
+    # per sempre, perche inserted=0 impediva la riparazione.
+    try:
+        from app.routers.bank.assegni import sync_assegni_da_estratto_conto
+        assegni_sync = (
+            await sync_assegni_da_estratto_conto(
+                movimento_ids=ids_da_riconciliare,
+            )
+            if fonte_ufficiale and (has_material_changes or not skip_duplicate_repairs)
+            else {
+                "skipped": True,
+                "message": "File Drive interamente duplicato: riparazione assegni non ripetuta",
+            }
+            if fonte_ufficiale
+            else {"provvisoria": True, "assegni_riconciliati": 0}
+        )
+    except Exception as e:
+        logger.error(f"Errore sync assegni da estratto conto: {e}")
+
+    # ===== SYNC GENERICO IN PRIMA NOTA BANCA (+ CASSA per prelievi/versamenti) =====
+    # Le fasi sopra (fatture/F24/stipendi/assegni) registrano in Prima Nota
+    # solo i movimenti abbinati con certezza a un documento noto: tutti gli
+    # altri restavano visibili solo nell'Estratto Conto e non comparivano mai
+    # in Prima Nota Banca. Ora ogni movimento rimasto senza match viene
+    # comunque registrato in Prima Nota Banca (categoria generica,
+    # riclassificabile a mano in seguito), con provenienza tracciata
+    # (estratto_conto_id + source) così un reimport non lo duplica e
+    # un'eventuale associazione manuale successiva può aggiornare la riga
+    # invece di crearne una seconda.
+    # In più: prelievi bancomat e versamenti di contanti generano anche il
+    # movimento speculare in Prima Nota Cassa (un prelievo fa entrare
+    # contanti in cassa, un versamento li fa uscire dalla cassa verso banca).
+    sync_generico = {"inseriti_banca": 0, "inseriti_cassa": 0}
+    pos_storico = None
+    # Il conto BNL storico non si proietta: le sue righe restano archivio
+    # bancario per assegni, F24, cartelle e bonifici ai dipendenti.
+    records_da_proiettare = [rec for rec in records_to_insert if _si_proietta_in_prima_nota(rec)]
+    if records_da_proiettare:
+        try:
+            ec_ids = [m["id"] for m in records_da_proiettare]
+            stato_aggiornato: Dict[str, Any] = {}
+            async for m in db["estratto_conto_movimenti"].find(
+                {"id": {"$in": ec_ids}},
+                {"_id": 0, "id": 1, "riconciliato": 1, "riconciliato_paghe": 1}
+            ):
+                stato_aggiornato[m["id"]] = m
+
+            KEYWORDS_PRELIEVO = ["BANCOMAT", "CONTANT", "SPORTELLO", " ATM"]
+            # P0-1 (verifica Contabilità): un accredito POS (NUMIA) è la stessa
+            # moneta della quota "Corrispettivi POS" già registrata in
+            # prima_nota_banca all'import del corrispettivo. Se lo inserissimo
+            # anche qui come nuova entrata, il POS verrebbe contato DUE VOLTE nel
+            # Bilancio. Perciò gli accrediti POS NON generano una nuova entrata:
+            # marcano l'EC riconciliato e chiudono (best-effort) le entrate
+            # sintetiche "Corrispettivi POS" ancora aperte.
+            KEYWORDS_ACCREDITO_POS = ["NUMIA", "ACCREDITO POS", "INCASSO POS",
+                                      "POS ACQUIRING", "ACCR. POS", "ACCRED POS"]
+
+            banca_batch = []
+            cassa_batch = []
+            ec_da_marcare = []
+            ec_pos_accrediti = []  # id EC accrediti POS (riconciliati senza duplicare)
+            ec_in_attesa = []      # id EC che aspettano il documento a cui agganciarsi
+            for mov in records_da_proiettare:
+                mid = mov["id"]
+                stato = stato_aggiornato.get(mid, {})
+                if stato.get("riconciliato") or stato.get("riconciliato_paghe"):
+                    continue  # già registrato/gestito dalle fasi precedenti
+
+                desc_upper = (mov.get("descrizione_originale") or mov.get("descrizione") or "").upper()
+                now_iso = datetime.now(timezone.utc).isoformat()
+
+                # Il versamento nasce dalla registrazione manuale in Cassa,
+                # non dalla sola lettura dell'estratto conto. Se la gamba
+                # manuale manca, la riga resta da verificare e non inventiamo
+                # due movimenti. Gli storni non sono mai nuovi versamenti.
+                if is_versamento_contanti(desc_upper) or is_storno_versamento(desc_upper):
+                    continue
+
+                # REGOLA CANONICA POS (utente 18/07/2026): l'accredito POS
+                # dell'estratto conto NON crea un'entrata — RICONCILIA il
+                # trasferimento cassa→banca del suo giorno di vendita,
+                # sommando i circuiti della stessa giornata (BNCMT, AMEX,
+                # INTER, per ogni punto vendita).
+                #
+                # Vale anche per l'export CSV (07/08/2026, richiesta utente):
+                # prima scattava solo col PDF ufficiale, e nel frattempo le
+                # righe NUMIA del CSV finivano in Prima Nota come "Rimborso" —
+                # entrate mai avvenute, visto che il denaro era gia' contato
+                # nel trasferimento. Se poi arriva il PDF, la promozione a
+                # ufficiale azzera `riconciliato` e il gruppo viene riverificato
+                # con l'evidenza piena.
+                if mov.get("tipo") == "entrata" and any(k in desc_upper for k in KEYWORDS_ACCREDITO_POS):
+                    try:
+                        from app.services.scritture_contabili import riconcilia_accredito_pos_ec
+                        if await riconcilia_accredito_pos_ec(db, mov):
+                            ec_pos_accrediti.append(mid)
+                    except Exception as e:
+                        logger.warning(f"Accredito POS non riconciliato ({mid}): {e}")
+                    continue
+
+                categoria_pn = (mappa_categoria_ec(mov.get("categoria"), desc_upper)
+                                or mov.get("categoria") or "Altro")
+
+                # Un pagamento che dovrebbe avere un documento e non l'ha
+                # trovato NON entra in Prima Nota: resta nella coda da
+                # riconciliare, dove lo si aggancia alla sua fattura o al suo
+                # cedolino. Prima finiva qui come riga grezza "da verificare",
+                # ed e' il motivo per cui la Prima Nota Banca sembrava una
+                # fotocopia dell'estratto conto.
+                if not entra_in_prima_nota(categoria_pn):
+                    ec_in_attesa.append(mid)
+                    continue
+
+                banca_batch.append({
+                    "id": str(_uuid.uuid4()),
+                    "data": mov["data"],
+                    "tipo": mov["tipo"],
+                    "importo": mov["importo"],
+                    "descrizione": mov.get("descrizione") or mov.get("descrizione_originale") or "",
+                    # in Prima Nota entra il nome operativo; l'originale
+                    # bancario resta sulla riga di estratto conto
+                    "categoria": categoria_pn,
+                    "estratto_conto_id": mid,
+                    "source": "estratto_conto_auto" if fonte_ufficiale else "export_bancario_operativo",
+                    "provvisorio": not fonte_ufficiale,
+                    "riconciliato": False,
+                    "in_attesa_estratto_ufficiale": not fonte_ufficiale,
+                    "stato": "da_verificare" if fonte_ufficiale else "in_attesa_estratto_bancario_ufficiale",
+                    "created_at": now_iso,
+                })
+
+                is_prelievo = "PRELIEVO" in desc_upper and any(k in desc_upper for k in KEYWORDS_PRELIEVO)
+                is_versamento = is_versamento_contanti(desc_upper)
+                if fonte_ufficiale and is_prelievo:
+                    cassa_batch.append({
+                        "id": str(_uuid.uuid4()), "data": mov["data"], "tipo": "entrata",
+                        "importo": mov["importo"],
+                        "descrizione": f"Prelevamento da banca - {(mov.get('descrizione') or '')[:100]}",
+                        "categoria": "Prelevamento Banca",
+                        "estratto_conto_id": mid,
+                        "source": "estratto_conto_auto_prelievo",
+                        "created_at": now_iso,
+                    })
+                elif fonte_ufficiale and is_versamento:
+                    cassa_batch.append({
+                        "id": str(_uuid.uuid4()), "data": mov["data"], "tipo": "uscita",
+                        "importo": mov["importo"],
+                        "descrizione": f"Versamento in banca - {(mov.get('descrizione') or '')[:100]}",
+                        "categoria": "Versamento Banca",
+                        "estratto_conto_id": mid,
+                        "source": "estratto_conto_auto_versamento",
+                        "created_at": now_iso,
+                    })
+
+                ec_da_marcare.append(mid)
+
+            for _mov_batch in banca_batch:
+                await scrivi_movimento(db, "banca", _mov_batch)
+            for _mov_batch in cassa_batch:
+                await scrivi_movimento(db, "cassa", _mov_batch)
+            if ec_da_marcare:
+                await db["estratto_conto_movimenti"].update_many(
+                    {"id": {"$in": ec_da_marcare}},
+                    {"$set": {
+                        "importato_prima_nota": True,
+                        "riconciliato": False,
+                        "stato_riconciliazione": (
+                            "da_verificare" if fonte_ufficiale
+                            else "in_attesa_estratto_bancario_ufficiale"
+                        ),
+                    }, "$unset": {"tipo_riconciliazione": ""}}
+                )
+            if ec_in_attesa:
+                # Marcati, non nascosti: sono il motivo per cui la Prima Nota
+                # e il saldo della banca non coincidono ancora, e devono
+                # potersi contare.
+                await db["estratto_conto_movimenti"].update_many(
+                    {"id": {"$in": ec_in_attesa}},
+                    {"$set": {
+                        "importato_prima_nota": False,
+                        "riconciliato": False,
+                        "stato_riconciliazione": "in_attesa_documento",
+                    }}
+                )
+            # (le entrate banca degli accrediti POS sono già state create
+            # dal motore unico riga per riga, con marcatura EC inclusa)
+            sync_generico = {
+                "inseriti_banca": len(banca_batch),
+                "inseriti_cassa": len(cassa_batch),
+                "accrediti_pos_riconciliati": len(ec_pos_accrediti),
+                "in_attesa_documento": len(ec_in_attesa),
+            }
+        except Exception as e:
+            logger.error(f"Errore sync generico estratto conto -> prima nota: {e}")
+
+    # Dopo avere salvato tutte le righe, somma le componenti NUMIA dello stesso
+    # giorno vendita (causale DEL) e prova a soddisfare l'attesa POS gia'
+    # generata dalla chiusura del terminale. L'estratto conto e' una prova:
+    # non crea mai la chiusura o un credito POS mancante.
+    if fonte_ufficiale and records_da_proiettare:
+        try:
+            from app.services.scritture_contabili import recupera_pos_storico_da_estratto
+            anni_pos = sorted({
+                int(str(m.get("data") or "")[:4])
+                for m in records_da_proiettare
+                if str(m.get("data") or "")[:4].isdigit()
+            })
+            esiti_pos = [
+                await recupera_pos_storico_da_estratto(db, anno_pos)
+                for anno_pos in anni_pos
+            ]
+            pos_storico = {"anni": esiti_pos}
+        except Exception as e:
+            logger.error(f"Errore riconciliazione POS da estratto conto: {e}")
+
+    # ── EVENTO: pubblica sul bus unico per matching automatico ──
+    paypal_api_sync = None
+    try:
+        from app.services.event_bus import propagate_event, EventTypes
+        if fonte_ufficiale:
+            event_results = await propagate_event(EventTypes.ESTRATTO_CONTO_IMPORTATO, {
+                "movimenti": [
+                    {
+                        "id":          m.get("id"),
+                        "data":        str(m.get("data", ""))[:10],
+                        "importo":     abs(float(m.get("importo", 0))),
+                        "tipo":        m.get("tipo", ""),
+                        "descrizione": m.get("descrizione", ""),
+                    }
+                    for m in records_to_insert
+                ],
+                "banca": records_to_insert[0].get("banca", "") if records_to_insert else "",
+                "inseriti": inserted,
+            }, db, source_module="estratto_conto_import")
+            for event_result in event_results:
+                if event_result.get("handler") == "on_estratto_conto_importato_riprocessa":
+                    esito_ripasso = event_result.get("result") or {}
+                    paypal_api_sync = esito_ripasso.get("paypal_api")
+                    if esito_ripasso.get("action") == "riconciliazione_accodata":
+                        paypal_api_sync = {"stato": "in_sottofondo"}
+                    if not event_result.get("success"):
+                        paypal_api_sync = {"stato": "errore_riconciliazione"}
+    except Exception as _ev:
+        logger.debug(f"[EstrattoContoRouter] Event Bus: {_ev}")
+
+    nexi_verifica = None
+    try:
+        from app.services.nexi_carta import verifica_addebiti_nexi
+        nexi_verifica = await verifica_addebiti_nexi(db)
+    except Exception as _nexi_err:
+        logger.debug(f"[EstrattoContoRouter] Verifica Nexi: {_nexi_err}")
+
+    return {
+        "success": True,
+        "message": "Importazione estratto conto completata",
+        "nexi_verifica": nexi_verifica,
+        "paypal_api_sync": paypal_api_sync,
+        "movimenti_trovati": len(movimenti),
+        "movimenti_importati": inserted,
+        "inseriti": inserted,
+        "duplicati_saltati": duplicates,
+        "movimenti_promossi_a_ufficiali": len(promoted_ids),
+        "livello_evidenza": evidenza["livello_evidenza"],
+        "in_attesa_estratto_ufficiale": not fonte_ufficiale,
+        "stats": {
+            "nuovi": inserted,
+            "duplicati": duplicates,
+            "totale_letti": len(movimenti),
+            # Un estratto ufficiale deve spiegare ogni riga letta: nuova,
+            # gia' ufficiale o promossa. Il resto e' una lettura che non ha
+            # lasciato prova (Q2-Q4 2025: 784 righe lette, ~100 ufficiali).
+            "promossi": len(set(promoted_ids)),
+            "gia_ufficiali": gia_ufficiali,
+            "duplicati_non_promossi": (
+                max(0, duplicates - len(set(promoted_ids)) - gia_ufficiali)
+                if fonte_ufficiale else 0
+            ),
+        },
+        "riconciliazione_automatica": riconciliazione_results,
+        "riconciliazione_operativa": riconciliazione_operativa,
+        "riconciliazione_summary": (riconciliazione_results or {}).get("summary"),
+        "riconciliazione_paghe": riconciliazione_paghe,
+        "assegni_sync": assegni_sync,
+        "sync_prima_nota": sync_generico,
+        "recupero_pos_storico": pos_storico,
+    }
+
+
+@router.post("/pulizia-non-in-csv")
+@handle_errors
+async def pulizia_movimenti_non_in_csv(
+    file: UploadFile = File(...),
+    dry_run: bool = Query(True, description="Sola lettura; false è bloccato"),
+    _admin: Dict[str, Any] = Depends(get_current_admin_user),
+) -> Dict[str, Any]:
+    """Confronta l'export ufficiale con la fonte importata, in sola lettura.
+
+    I movimenti bancari sono evidenze immutabili: l'assenza da un CSV non
+    autorizza cancellazioni, scollegamenti o riaperture automatiche. Il
+    risultato è un report di anomalie da esaminare puntualmente.
+    """
+    from collections import Counter
+
+    if not dry_run:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "Operazione bloccata: il confronto con il CSV è solo lettura; "
+                "i movimenti bancari e i collegamenti contabili restano immutati"
+            ),
+        )
+
+    db = Database.get_db()
+    contents = await file.read()
+    text = None
+    for encoding in ['utf-8-sig', 'utf-8', 'latin-1', 'cp1252']:
+        try:
+            text = contents.decode(encoding)
+            break
+        except (UnicodeDecodeError, Exception):
+            continue
+    if not text:
+        raise HTTPException(status_code=400, detail="Impossibile decodificare il file CSV")
+
+    def _chiave_desc(descr: str) -> str:
+        # gli export della banca variano gli spazi interni ("NUMIA-INTER  DEL"
+        # vs "NUMIA-INTER DEL"): la chiave di confronto è whitespace-insensibile
+        return re.sub(r"\s+", " ", (descr or "").strip())[:80]
+
+    attesi: Counter = Counter()
+    date_csv = []
+    has_entrate = has_uscite = False
+    for row in csv.DictReader(io.StringIO(text), delimiter=';'):
+        data_it = (row.get('Data contabile') or row.get('Data') or '').strip().strip('"')
+        importo_str = (row.get('Importo') or '').strip().strip('"').replace('.', '').replace(',', '.')
+        descr = (row.get('Descrizione') or '').strip().strip('"')
+        try:
+            parts = data_it.split('/')
+            data_iso = f"{int(parts[2]):04d}-{int(parts[1]):02d}-{int(parts[0]):02d}"
+            importo = float(importo_str)
+        except (ValueError, TypeError, IndexError):
+            continue
+        if importo >= 0:
+            has_entrate = True
+        else:
+            has_uscite = True
+        date_csv.append(data_iso)
+        attesi[(data_iso, round(abs(importo), 2), _chiave_desc(descr))] += 1
+
+    if not date_csv:
+        raise HTTPException(status_code=400, detail="Nessun movimento leggibile nel CSV")
+    data_min, data_max = min(date_csv), max(date_csv)
+
+    movimenti_db = await db["estratto_conto_movimenti"].find(
+        {"data": {"$gte": data_min, "$lte": data_max}},
+        {"_id": 0, "id": 1, "data": 1, "importo": 1, "tipo": 1, "banca": 1,
+         "descrizione_originale": 1, "descrizione": 1, "riconciliato": 1},
+    ).sort("created_at", 1).to_list(50000)
+
+    rimasti = Counter(attesi)
+    da_eliminare = []
+    esempi = []
+    esclusi_altra_banca = 0
+    for m in movimenti_db:
+        # nella stessa collezione vivono anche gli estratti PayPal e di altre
+        # banche (banca="PayPal (Europe)…"): l'export Banco BPM non può mai
+        # decidere la loro sorte
+        banca_mov = (m.get("banca") or "").upper()
+        if banca_mov and "BPM" not in banca_mov and "BANCO" not in banca_mov:
+            esclusi_altra_banca += 1
+            continue
+        e_uscita = m.get("tipo") == "uscita" or float(m.get("importo") or 0) < 0
+        if (e_uscita and not has_uscite) or ((not e_uscita) and not has_entrate):
+            continue  # segno non coperto dall'export: mai toccato
+        chiave = ((m.get("data") or "")[:10],
+                  round(abs(float(m.get("importo") or 0)), 2),
+                  _chiave_desc(m.get("descrizione_originale") or m.get("descrizione") or ""))
+        if rimasti.get(chiave, 0) > 0:
+            rimasti[chiave] -= 1  # presente nel CSV: resta (link intatti)
+        else:
+            da_eliminare.append(m)
+            if len(esempi) < 20:
+                esempi.append({"data": chiave[0], "importo": chiave[1],
+                               "descrizione": chiave[2][:60],
+                               "riconciliato": bool(m.get("riconciliato"))})
+
+    mancanti_nel_db = sum(v for v in rimasti.values() if v > 0)
+    return {
+        "dry_run": True,
+        "sola_lettura": True,
+        "intervallo": [data_min, data_max],
+        "segni_nel_csv": {"entrate": has_entrate, "uscite": has_uscite},
+        "movimenti_csv": len(date_csv),
+        "movimenti_db_in_scope": len(movimenti_db),
+        "anomalie_non_presenti_nel_csv": len(da_eliminare),
+        "esclusi_altra_banca_o_paypal": esclusi_altra_banca,
+        "movimenti_modificati": 0,
+        "collegamenti_modificati": 0,
+        "mancanti_nel_db_da_importare": mancanti_nel_db,
+        "esempi": esempi,
+    }
+
+
+@router.post("/force-reimport")
+@router.post("/reimport")  # alias onesto: NON cancella nulla (vedi P0.6)
+@handle_errors
+async def force_reimport_estratto_conto(file: UploadFile = File(...), _admin: Dict[str, Any] = Depends(get_current_admin_user)) -> Dict[str, Any]:
+    """
+    Re-import ADDITIVO dell'estratto conto da CSV (NON distruttivo).
+    - NON cancella alcun record: i movimenti esistenti e le riconciliazioni
+      restano intatti (`record_cancellati` è sempre 0).
+    - Inserisce solo i movimenti NUOVI, saltando i duplicati per fingerprint.
+    - Sincronizza gli assegni dai nuovi movimenti.
+
+    NB (P0.6): il nome storico "force-reimport" è fuorviante — l'endpoint non
+    forza né sovrascrive; è un import additivo con deduplica. Il contratto della
+    risposta è quello reale (nessuna cancellazione).
+    """
+
+    db = Database.get_db()
+    regole_banca = await _carica_regole_riconoscimento(db)
+
+    filename = file.filename.lower()
+    contents = await file.read()
+    
+    if not filename.endswith('.csv'):
+        raise HTTPException(status_code=400, detail="Formato non supportato. Usa CSV.")
+    
+    # Decode
+    text = None
+    for encoding in ['utf-8-sig', 'utf-8', 'latin-1', 'cp1252']:
+        try:
+            text = contents.decode(encoding)
+            break
+        except (UnicodeDecodeError, Exception):
+            continue
+    
+    if not text:
+        raise HTTPException(status_code=400, detail="Impossibile decodificare il file CSV")
+    
+    reader = csv.DictReader(io.StringIO(text), delimiter=';')
+    movimenti = []
+    
+    for row in reader:
+        ragione_sociale = row.get('Ragione Sociale', '') or row.get('"Ragione Sociale"', '')
+        
+        data_contabile = (
+            row.get('Data contabile', '') or 
+            row.get('"Data contabile"', '') or
+            row.get('Data', '')
+        ).strip().strip('"')
+        
+        data_valuta = (
+            row.get('Data valuta', '') or 
+            row.get('"Data valuta"', '') or
+            row.get('Data valut.', '')
+        ).strip().strip('"')
+        
+        banca = (row.get('Banca', '') or row.get('"Banca"', '')).strip().strip('"')
+        rapporto = (row.get('Rapporto', '') or row.get('"Rapporto"', '')).strip().strip('"')
+        
+        importo_str = (row.get('Importo', '0') or row.get('"Importo"', '0')).strip().strip('"')
+        importo_str = importo_str.replace('.', '').replace(',', '.')
+        try:
+            importo = float(importo_str)
+        except (ValueError, TypeError):
+            continue
+        
+        divisa = (row.get('Divisa', 'EUR') or row.get('"Divisa"', 'EUR')).strip().strip('"')
+        
+        descrizione = (
+            row.get('Descrizione', '') or 
+            row.get('"Descrizione"', '') or
+            row.get('Descrizion', '')
+        ).strip().strip('"')
+        
+        categoria = (
+            row.get('Categoria/sottocategoria', '') or 
+            row.get('"Categoria/sottocategoria"', '') or
+            row.get('Categoria', '') or
+            row.get('"Categoria"', '')
+        ).strip().strip('"')
+        
+        hashtag = (row.get('Hashtag', '') or row.get('"Hashtag"', '')).strip().strip('"')
+        
+        try:
+            if '/' in data_contabile:
+                parts = data_contabile.split('/')
+                data_obj = date(int(parts[2]), int(parts[1]), int(parts[0]))
+            else:
+                continue
+        except (ValueError, TypeError, IndexError):
+            continue
+        
+        data_pagamento = None
+        try:
+            if '/' in data_valuta:
+                parts = data_valuta.split('/')
+                data_pagamento = date(int(parts[2]), int(parts[1]), int(parts[0]))
+        except (ValueError, TypeError, IndexError):
+            pass
+        
+        movimenti.append({
+            "data": data_obj,
+            "ragione_sociale": ragione_sociale.strip().strip('"') if ragione_sociale else None,
+            "fornitore": estrai_fornitore_pulito(descrizione),
+            "importo": importo,
+            "numero_fattura": estrai_numero_fattura(descrizione),
+            "data_pagamento": data_pagamento,
+            "categoria": categoria,
+            "descrizione_originale": descrizione,
+            "banca": banca,
+            "rapporto": rapporto,
+            "divisa": divisa,
+            "hashtag": hashtag,
+            "tipo": "uscita" if importo < 0 else "entrata"
+        })
+    
+    if not movimenti:
+        raise HTTPException(status_code=400, detail="Nessun movimento valido trovato nel CSV")
+    
+    # SICUREZZA: NON cancellare MAI i record esistenti.
+    # Se il CSV sovrappone un periodo già importato, inserisci SOLO i nuovi.
+    # I record già riconciliati NON vengono toccati.
+    
+    # Calcola range date del CSV
+    date_nel_csv = sorted(set(
+        mov["data"].isoformat()[:10] for mov in movimenti
+    ))
+    data_min_csv, data_max_csv = date_nel_csv[0], date_nel_csv[-1]
+    
+    # Carica chiavi dedup esistenti per il range del CSV
+    existing_counts: Counter = Counter()
+    existing_cursor = db["estratto_conto_movimenti"].find(
+        {"data": {"$gte": data_min_csv, "$lte": data_max_csv}},
+        {"data": 1, "importo": 1, "tipo": 1,
+         "descrizione_originale": 1, "descrizione": 1, "_id": 0}
+    )
+    async for rec in existing_cursor:
+        dstr = rec.get("data", "")[:10]
+        imp = abs(float(rec.get("importo", 0)))
+        desc = normalizza_descrizione_ec(
+            rec.get("descrizione_originale") or rec.get("descrizione") or ""
+        )
+        existing_counts[(dstr, rec.get("tipo"), round(imp, 2), desc)] += 1
+    
+    
+    # Ordina per data contabile ascendente
+    movimenti.sort(key=lambda x: x["data"].isoformat()[:10])
+    
+    # Inserisce SOLO i nuovi (dedup con chiavi esistenti)
+    records = []
+    duplicates_skipped = 0
+    incoming_occurrences: Counter = Counter()
+    for mov in movimenti:
+        data_str = mov["data"].isoformat()[:10]
+        importo_abs = abs(mov["importo"])
+        desc_raw = normalizza_descrizione_ec(mov.get("descrizione_originale") or "")
+        tipo_mov = "entrata" if mov["importo"] >= 0 else "uscita"
+        if any(kw in desc_raw.upper() for kw in ["DISPOSIZIONE", "VS.DISP", "ADD.TOT", "I24 AGENZIA ENTRATE", "BOLL.CBILL", "PAG. UTENZE"]):
+            tipo_mov = "uscita"
+
+        # Dedup: se esiste gia', salta. Il verso fa parte dell'identita'.
+        dedup_key = (data_str, tipo_mov, round(importo_abs, 2), desc_raw)
+        incoming_occurrences[dedup_key] += 1
+        occurrence = incoming_occurrences[dedup_key]
+        if existing_counts[dedup_key] >= occurrence:
+            duplicates_skipped += 1
+            continue
+
+        operation_key, operation_id = bank_operation_identity(
+            data_str, tipo_mov, importo_abs, desc_raw, occurrence,
+        )
+        fingerprint = operation_key
+        mov_id = f"EC-{data_str}-{importo_abs:.2f}-{operation_key[:12]}"
+
+        campi_categoria = _categoria_import_con_fallback(
+            mov.get("categoria"), mov.get("descrizione_originale"), mov["importo"],
+            regole=regole_banca,
+        )
+        record = {
+            "id": mov_id,
+            "operation_id": operation_id,
+            "operation_key": operation_key,
+            "identity_version": "bank_v2",
+            "occurrence_index": occurrence,
+            "data": data_str,
+            "ragione_sociale": mov.get("ragione_sociale"),
+            "fornitore": mov.get("fornitore"),
+            "importo": importo_abs,
+            "numero_fattura": mov.get("numero_fattura"),
+            "data_pagamento": mov["data_pagamento"].isoformat() if mov.get("data_pagamento") else None,
+            **campi_categoria,
+            "descrizione_originale": mov["descrizione_originale"],
+            "descrizione": mov.get("descrizione_originale"),
+            "banca": mov.get("banca"),
+            "rapporto": mov.get("rapporto"),
+            "divisa": mov.get("divisa", "EUR"),
+            "hashtag": mov.get("hashtag"),
+            "tipo": tipo_mov,
+            "descrizione_hash": desc_raw[:50],
+            "fingerprint": fingerprint,
+            "riconciliato": False,
+            "created_at": datetime.now(timezone.utc).isoformat()
+        }
+        records.append(record)
+    
+    if records:
+        await db["estratto_conto_movimenti"].insert_many(records)
+
+    # Sync assegni: prima era un bottone manuale, ora scatta ad ogni import.
+    assegni_sync = None
+    try:
+        from app.routers.bank.assegni import sync_assegni_da_estratto_conto
+        assegni_sync = await sync_assegni_da_estratto_conto()
+    except Exception as e:
+        logger.error(f"Errore sync assegni da estratto conto: {e}")
+
+    # Calcola statistiche per la risposta
+    entrate = sum(r["importo"] for r in records if r["tipo"] == "entrata")
+    uscite = sum(r["importo"] for r in records if r["tipo"] == "uscita")
+
+    return {
+        "message": "Import completato: solo nuovi movimenti aggiunti",
+        "periodo_csv": f"{data_min_csv} → {data_max_csv}",
+        "record_nel_csv": len(movimenti),
+        "duplicati_saltati": duplicates_skipped,
+        "movimenti_nuovi_importati": len(records),
+        "record_cancellati": 0,
+        "totale_entrate": round(entrate, 2),
+        "totale_uscite": round(uscite, 2),
+        "assegni_sync": assegni_sync,
+        "saldo": round(entrate - uscite, 2),
+        "nota": "I record esistenti e le riconciliazioni NON sono stati toccati"
+    }
+
+
+@router.post("/quarantena-import-errato")
+async def quarantena_import_errato_endpoint(
+    source_filename: str = Query(..., min_length=3, max_length=200),
+    motivo: str = Query("file letto con il lettore sbagliato", max_length=200),
+    dry_run: bool = Query(True, description="True = solo anteprima (predefinito)"),
+    _admin: Dict[str, Any] = Depends(get_current_admin_user),
+) -> Dict[str, Any]:
+    """Toglie dall'estratto conto, per id e in quarantena, le righe di un import sbagliato (solo admin)."""
+    from app.services.doppioni_estratto_conto import quarantena_import_errato
+
+    return await quarantena_import_errato(
+        Database.get_db(), source_filename, motivo, dry_run=dry_run,
+        actor=str(_admin.get("email") or _admin.get("sub") or "admin"))
+
+
+@router.get("/movimenti")
+@handle_errors
+async def get_movimenti(
+    anno: Optional[int] = Query(None),
+    mese: Optional[int] = Query(None),
+    categoria: Optional[str] = Query(None),
+    fornitore: Optional[str] = Query(None),
+    tipo: Optional[str] = Query(None),  # "entrata" | "uscita"
+    limit: int = Query(500, le=10000),
+    offset: int = Query(0)
+) -> Dict[str, Any]:
+    """
+    Recupera i movimenti dell'estratto conto con filtri.
+    Ordinati per data decrescente.
+
+    NOTA: il filtro usa il campo stringa `data` (YYYY-MM-DD), che è quello
+    scritto da TUTTI gli importer (parser universale, email monitor, API).
+    Il vecchio filtro su `data_contabile_obj` (datetime) non trovava nulla
+    perché nessun importer valorizza quel campo.
+    """
+    import calendar as _calendar
+    db = Database.get_db()
+
+    query = {}
+
+    if anno:
+        # `data` è una stringa YYYY-MM-DD: il range lessicografico è corretto
+        if mese:
+            last_day = _calendar.monthrange(anno, mese)[1]
+            query["data"] = {
+                "$gte": f"{anno}-{mese:02d}-01",
+                "$lte": f"{anno}-{mese:02d}-{last_day:02d}"
+            }
+        else:
+            query["data"] = {
+                "$gte": f"{anno}-01-01",
+                "$lte": f"{anno}-12-31"
+            }
+
+    if categoria:
+        query["categoria"] = {"$regex": categoria, "$options": "i"}
+
+    if fornitore:
+        query["fornitore"] = {"$regex": fornitore, "$options": "i"}
+
+    if tipo:
+        query["tipo"] = tipo
+
+    # Count totale
+    total = await db["estratto_conto_movimenti"].count_documents(query)
+
+    # Recupera movimenti — più recenti prima
+    movimenti = await db["estratto_conto_movimenti"].find(
+        query,
+        {"_id": 0}
+    ).sort("data", -1).skip(offset).limit(limit).to_list(limit)
+
+    # Serializza i campi datetime per la risposta JSON
+    for m in movimenti:
+        if isinstance(m.get("data_contabile_obj"), datetime):
+            m["data_contabile_obj"] = m["data_contabile_obj"].strftime("%Y-%m-%d")
+        if isinstance(m.get("imported_at"), datetime):
+            m["imported_at"] = m["imported_at"].isoformat()
+        # Converti importo in float (arriva come stringa in alcuni doc)
+        try:
+            m["importo"] = float(m.get("importo", 0))
+        except (ValueError, TypeError):
+            m["importo"] = 0.0
+        # Categoria operativa per la vista Banca (calcolata, non salvata)
+        canonica = mappa_categoria_ec(
+            m.get("categoria"),
+            m.get("descrizione_originale") or m.get("descrizione"),
+        )
+        if canonica:
+            m["categoria_canonica"] = canonica
+
+    # §6.4: totali/riporto/saldo dalla funzione UNICA di saldo (stessa formula
+    # di cassa/banca). query_base_precedente={} riproduce il comportamento
+    # storico dell'estratto conto: il riporto considera TUTTI i movimenti
+    # prima dell'anno (qui non esistono soft-delete né categorie escluse).
+    saldi = await aggrega_saldo_prima_nota(
+        db, "estratto_conto_movimenti", query, anno, query_base_precedente={}
+    )
+
+    return {
+        "movimenti": movimenti,
+        "totale": total,
+        "offset": offset,
+        "limit": limit,
+        "totale_entrate": saldi["totale_entrate"],
+        "totale_uscite": saldi["totale_uscite"],
+        "saldo_anno": saldi["saldo_anno"],
+        "saldo_precedente": saldi["saldo_precedente"],
+        "saldo": saldi["saldo"],
+        "anno": anno
+    }
+
+
+@router.get("/categorie")
+@handle_errors
+async def get_categorie() -> List[str]:
+    """Restituisce lista categorie uniche."""
+    db = Database.get_db()
+    categorie = await db["estratto_conto_movimenti"].distinct("categoria")
+    return sorted([c for c in categorie if c])
+
+
+@router.get("/fornitori")
+@handle_errors
+async def get_fornitori_unici() -> List[str]:
+    """Restituisce lista fornitori unici."""
+    db = Database.get_db()
+    fornitori = await db["estratto_conto_movimenti"].distinct("fornitore")
+    return sorted([f for f in fornitori if f])
+
+
+@router.get("/riepilogo")
+@handle_errors
+async def get_riepilogo(
+    anno: Optional[int] = Query(None),
+    mese: Optional[int] = Query(None),
+    categoria: Optional[str] = Query(None),
+    tipo: Optional[str] = Query(None),
+    fornitore: Optional[str] = Query(None)
+) -> Dict[str, Any]:
+    """Riepilogo estratto conto con filtri."""
+    db = Database.get_db()
+    
+    query = {}
+    if anno:
+        if mese:
+            query["data"] = {"$regex": f"^{anno}-{mese:02d}"}
+        else:
+            query["data"] = {"$regex": f"^{anno}"}
+    
+    if categoria:
+        query["categoria"] = {"$regex": categoria, "$options": "i"}
+    
+    if tipo:
+        query["tipo"] = tipo
+    
+    if fornitore:
+        query["fornitore"] = {"$regex": fornitore, "$options": "i"}
+    
+    total = await db["estratto_conto_movimenti"].count_documents(query)
+    
+    # Totali per tipo
+    pipeline = [
+        {"$match": query},
+        {"$group": {
+            "_id": "$tipo",
+            "totale": {"$sum": {"$abs": "$importo"}},
+            "count": {"$sum": 1}
+        }}
+    ]
+    by_tipo = await db["estratto_conto_movimenti"].aggregate(pipeline).to_list(10)
+    
+    entrate = next((t for t in by_tipo if t["_id"] == "entrata"), {"totale": 0, "count": 0})
+    uscite = next((t for t in by_tipo if t["_id"] == "uscita"), {"totale": 0, "count": 0})
+    
+    # Movimenti per categoria (top 10)
+    pipeline_cat = [
+        {"$match": query},
+        {"$group": {
+            "_id": "$categoria",
+            "totale": {"$sum": {"$abs": "$importo"}},
+            "count": {"$sum": 1}
+        }},
+        {"$sort": {"totale": -1}},
+        {"$limit": 10}
+    ]
+    by_categoria = await db["estratto_conto_movimenti"].aggregate(pipeline_cat).to_list(10)
+    
+    return {
+        "totale_movimenti": total,
+        "entrate": {"count": entrate["count"], "totale": round(entrate["totale"], 2)},
+        "uscite": {"count": uscite["count"], "totale": round(uscite["totale"], 2)},
+        "saldo": round(entrate["totale"] - uscite["totale"], 2),
+        "per_categoria": [{"categoria": c["_id"] or "N/D", "totale": round(c["totale"], 2), "count": c["count"]} for c in by_categoria]
+    }
+
+
+@router.delete("/clear")
+@handle_errors
+async def clear_estratto_conto(anno: Optional[int] = Query(None)) -> Dict[str, Any]:
+    """La fonte bancaria e' immutabile: lo svuotamento non e' consentito."""
+    raise HTTPException(
+        status_code=409,
+        detail="Operazione bloccata: i movimenti bancari non si cancellano; usare esclusione o archivio duplicato",
+    )
+
+
+@router.delete("/{movimento_id}")
+@handle_errors
+async def elimina_singolo_movimento(movimento_id: str) -> Dict[str, Any]:
+    """La fonte bancaria e' immutabile: nessuna cancellazione fisica."""
+    raise HTTPException(
+        status_code=409,
+        detail="Operazione bloccata: escludere il movimento dalla coda conservando la fonte",
+    )
+
+
+@router.get("/export-excel")
+@handle_errors
+async def export_estratto_conto_excel(
+    anno: Optional[int] = Query(None),
+    mese: Optional[int] = Query(None),
+    categoria: Optional[str] = Query(None),
+    fornitore: Optional[str] = Query(None),
+    tipo: Optional[str] = Query(None)
+):
+    """
+    Esporta i movimenti dell'estratto conto in formato Excel.
+    Applica gli stessi filtri della visualizzazione.
+    """
+    from fastapi.responses import StreamingResponse
+    import openpyxl
+    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+    from openpyxl.utils import get_column_letter
+    
+    db = Database.get_db()
+    
+    # Costruisci query con filtri
+    query = {}
+    
+    if anno:
+        query["data"] = {"$regex": f"^{anno}"}
+        if mese:
+            query["data"] = {"$regex": f"^{anno}-{mese:02d}"}
+    
+    if categoria:
+        query["categoria"] = {"$regex": categoria, "$options": "i"}
+    
+    if fornitore:
+        query["fornitore"] = {"$regex": fornitore, "$options": "i"}
+    
+    if tipo:
+        query["tipo"] = tipo
+    
+    # Recupera tutti i movimenti (senza paginazione per export)
+    movimenti = await db["estratto_conto_movimenti"].find(
+        query,
+        {"_id": 0}
+    ).sort("data", -1).to_list(10000)
+    
+    # Crea workbook Excel
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Estratto Conto"
+    
+    # Stili
+    header_font = Font(bold=True, color="FFFFFF")
+    header_fill = PatternFill(start_color="1E3A5F", end_color="1E3A5F", fill_type="solid")
+    header_alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+    cell_alignment = Alignment(horizontal="center", vertical="center")
+    thin_border = Border(
+        left=Side(style='thin'),
+        right=Side(style='thin'),
+        top=Side(style='thin'),
+        bottom=Side(style='thin')
+    )
+    
+    # Headers
+    headers = ["Data", "Fornitore", "Importo (€)", "Tipo", "N. Fattura", "Data Pag.", "Categoria"]
+    for col, header in enumerate(headers, 1):
+        cell = ws.cell(row=1, column=col, value=header)
+        cell.font = header_font
+        cell.fill = header_fill
+        cell.alignment = header_alignment
+        cell.border = thin_border
+    
+    # Larghezze colonne
+    col_widths = [12, 35, 15, 10, 30, 12, 40]
+    for i, width in enumerate(col_widths, 1):
+        ws.column_dimensions[get_column_letter(i)].width = width
+    
+    # Dati
+    entrata_fill = PatternFill(start_color="E8F5E9", end_color="E8F5E9", fill_type="solid")
+    uscita_fill = PatternFill(start_color="FFEBEE", end_color="FFEBEE", fill_type="solid")
+    
+    totale_entrate = 0
+    totale_uscite = 0
+    
+    for row_num, mov in enumerate(movimenti, 2):
+        # Formatta data
+        data_str = mov.get("data", "")
+        if data_str:
+            try:
+                parts = data_str.split("-")
+                data_formatted = f"{parts[2]}/{parts[1]}/{parts[0]}"
+            except (ValueError, TypeError, IndexError):
+                data_formatted = data_str
+        else:
+            data_formatted = ""
+        
+        data_pag = mov.get("data_pagamento", "")
+        if data_pag:
+            try:
+                parts = data_pag.split("-")
+                data_pag_formatted = f"{parts[2]}/{parts[1]}/{parts[0]}"
+            except (ValueError, TypeError, IndexError):
+                data_pag_formatted = data_pag
+        else:
+            data_pag_formatted = ""
+        
+        importo = mov.get("importo", 0)
+        tipo_mov = "Entrata" if importo >= 0 else "Uscita"
+        
+        if importo >= 0:
+            totale_entrate += importo
+        else:
+            totale_uscite += abs(importo)
+        
+        row_data = [
+            data_formatted,
+            mov.get("fornitore") or "",
+            abs(importo),
+            tipo_mov,
+            mov.get("numero_fattura") or "",
+            data_pag_formatted,
+            mov.get("categoria") or ""
+        ]
+        
+        row_fill = entrata_fill if importo >= 0 else uscita_fill
+        
+        for col, value in enumerate(row_data, 1):
+            cell = ws.cell(row=row_num, column=col, value=value)
+            cell.alignment = cell_alignment
+            cell.border = thin_border
+            cell.fill = row_fill
+            
+            # Formato numerico per importo
+            if col == 3:
+                cell.number_format = '#,##0.00'
+    
+    # Riga totali
+    last_row = len(movimenti) + 2
+    totals_row = last_row + 1
+    
+    ws.cell(row=totals_row, column=1, value="TOTALI")
+    ws.cell(row=totals_row, column=1).font = Font(bold=True)
+    
+    ws.cell(row=totals_row, column=2, value=f"Entrate: € {totale_entrate:,.2f}")
+    ws.cell(row=totals_row, column=2).font = Font(bold=True, color="16A34A")
+    
+    ws.cell(row=totals_row, column=3, value=f"Uscite: € {totale_uscite:,.2f}")
+    ws.cell(row=totals_row, column=3).font = Font(bold=True, color="DC2626")
+    
+    saldo = totale_entrate - totale_uscite
+    ws.cell(row=totals_row, column=4, value=f"Saldo: € {saldo:,.2f}")
+    ws.cell(row=totals_row, column=4).font = Font(bold=True, color="16A34A" if saldo >= 0 else "DC2626")
+    
+    # Salva in memory buffer
+    output = io.BytesIO()
+    wb.save(output)
+    output.seek(0)
+    
+    # Nome file
+    filename_parts = ["estratto_conto"]
+    if anno:
+        filename_parts.append(str(anno))
+    if mese:
+        mesi_nomi = ['gen', 'feb', 'mar', 'apr', 'mag', 'giu', 'lug', 'ago', 'set', 'ott', 'nov', 'dic']
+        filename_parts.append(mesi_nomi[mese - 1])
+    filename = "_".join(filename_parts) + ".xlsx"
+    
+    return StreamingResponse(
+        output,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f"attachment; filename={filename}"}
+    )
+
+
+# ==================== RICONCILIAZIONE STIPENDI ====================
+
+@router.post("/riconcilia-stipendi")
+@handle_errors
+async def riconcilia_stipendi_automatico(
+    anno: Optional[int] = Query(None),
+    dry_run: bool = Query(
+        False,
+        description=(
+            "True = solo analisi del riallineo di competenza dei bonifici gia' "
+            "collegati (regola del giorno 25), senza scrivere nulla"
+        ),
+    ),
+) -> Dict[str, Any]:
+    """
+    Riconcilia automaticamente i bonifici stipendio con la prima nota salari.
+    Cerca i movimenti "VOSTRA DISPOSIZIONE" con nomi di dipendenti e li collega.
+
+    Con ``dry_run=true`` restituisce soltanto l'analisi del riallineo di
+    competenza (audit 03/09/2026, PR 13): quali bonifici stanno sul mese
+    sbagliato e dove andrebbero. Con ``dry_run=false`` il riallineo viene
+    applicato e poi parte l'associazione ordinaria (stesso motore).
+    """
+    db = Database.get_db()
+    # Unico motore autorizzato: nome completo nella causale, importo esatto,
+    # periodo/data compatibili e candidato univoco. Il vecchio percorso per
+    # singola parola/cognome non deve mai essere raggiunto.
+    from app.services.stipendi_bonifici import (
+        associa_bonifici_stipendi,
+        riallinea_competenza_bonifici_stipendi,
+    )
+    if dry_run:
+        return await riallinea_competenza_bonifici_stipendi(db, dry_run=True, anno=anno)
+    return await associa_bonifici_stipendi(db, anno=anno)
+    
+    # Carica nomi dipendenti dalla prima_nota_salari (fonte più affidabile)
+
+
+@router.get("/movimenti-stipendi")
+@handle_errors
+async def get_movimenti_stipendi(
+    anno: Optional[int] = Query(None),
+    solo_non_riconciliati: bool = Query(False)
+) -> Dict[str, Any]:
+    """
+    Restituisce i movimenti dell'estratto conto che sembrano essere stipendi.
+    """
+    db = Database.get_db()
+    
+    query = {
+        "descrizione": {"$regex": "VOSTRA DISPOSIZIONE|VS\\.DISP", "$options": "i"},
+        "tipo": "uscita"
+    }
+    
+    if anno:
+        query["data"] = {"$regex": f"^{anno}"}
+    
+    if solo_non_riconciliati:
+        query["$or"] = [
+            {"riconciliato_salario": {"$exists": False}},
+            {"riconciliato_salario": False}
+        ]
+    
+    movimenti = await db["estratto_conto_movimenti"].find(query, {"_id": 0}).sort("data", -1).to_list(1000)
+    
+    # Raggruppa per dipendente se riconciliato
+    per_dipendente = {}
+    non_riconciliati = []
+    
+    for m in movimenti:
+        if m.get("riconciliato_salario") and m.get("dipendente_nome"):
+            nome = m.get("dipendente_nome")
+            if nome not in per_dipendente:
+                per_dipendente[nome] = {"count": 0, "totale": 0, "movimenti": []}
+            per_dipendente[nome]["count"] += 1
+            per_dipendente[nome]["totale"] += abs(m.get("importo", 0))
+            if len(per_dipendente[nome]["movimenti"]) < 5:
+                per_dipendente[nome]["movimenti"].append(m)
+        else:
+            non_riconciliati.append(m)
+    
+    return {
+        "totale": len(movimenti),
+        "riconciliati": len(movimenti) - len(non_riconciliati),
+        "non_riconciliati": len(non_riconciliati),
+        "per_dipendente": [
+            {"nome": k, **v} for k, v in sorted(per_dipendente.items(), key=lambda x: x[1]["totale"], reverse=True)
+        ],
+        "non_riconciliati_sample": non_riconciliati[:20]
+    }
+
+
+@router.post("/ricategorizza-batch")
+@handle_errors
+async def ricategorizza_batch_movimenti(
+    _admin: Dict[str, Any] = Depends(get_current_admin_user),
+) -> Dict[str, Any]:
+    """Alias storico (bottone "Categorizzazione" in BatchProcessor).
+
+    Fino al 19/09/2026 leggeva e scriveva `bank_movements`, una collezione
+    che l'estratto conto non usa mai: zero righe reali venivano toccate,
+    lo confermano `aggiornati` sempre a 0 in produzione. Ora delega al motore
+    unico (`app.services.categorizzazione_movimenti`) sulla collezione vera
+    `estratto_conto_movimenti`, in background come `/backfill-categorie`
+    (stesso stato in `sistema_stato`, stesso `GET .../backfill-categorie/stato`).
+    """
+    db = Database.get_db()
+    from app.services.categorizzazione_movimenti import (
+        avvia_backfill_in_background, backfill_in_corso,
+    )
+    if backfill_in_corso():
+        return {"success": True, "status": "running",
+                "message": "Categorizzazione gia' in corso"}
+    avvia_backfill_in_background(db, anno=None)
+    return {"success": True, "status": "started",
+            "message": "Categorizzazione avviata in background su tutti gli anni",
+            "stato_url": "/api/estratto-conto-movimenti/backfill-categorie/stato"}
+
+
+@router.post("/backfill-categorie")
+@handle_errors
+async def backfill_categorie_movimenti(
+    anno: Optional[int] = Query(2026, description="Anno da categorizzare (omesso = tutti gli anni)"),
+    dry_run: bool = Query(False, description="Solo conteggio, nessuna scrittura"),
+    _admin: Dict[str, Any] = Depends(get_current_admin_user),
+) -> Dict[str, Any]:
+    """Categorizza i movimenti bancari gia' importati che ne sono privi.
+
+    Riconosce SOLO parole chiave/pattern non ambigui (F24, commissioni
+    bancarie, utenze, riferimenti espliciti a fatture) piu' il motore
+    stipendi esistente (nome completo + importo esatto + periodo). Non
+    associa mai per solo importo: un movimento senza pattern certo resta
+    senza categoria, contato fra i "non riconosciuti".
+
+    `?dry_run=true` restituisce subito i conteggi senza scrivere (il motore
+    stipendi non viene eseguito in dry-run: non ha una modalita' di sola
+    simulazione). Il giro vero parte in background e risponde subito;
+    avanzamento ed esito: `GET .../backfill-categorie/stato`.
+    """
+    from app.services.categorizzazione_movimenti import (
+        avvia_backfill_in_background, backfill_categorie_banca, backfill_in_corso,
+    )
+    db = Database.get_db()
+    if dry_run:
+        return await backfill_categorie_banca(db, anno=anno, dry_run=True)
+    if backfill_in_corso():
+        return {"success": True, "status": "running",
+                "message": "Backfill categorie gia' in corso"}
+    avvia_backfill_in_background(db, anno=anno)
+    return {"success": True, "status": "started",
+            "message": f"Backfill categorie avviato in background (anno={anno or 'tutti'})"}
+
+
+@router.get("/backfill-categorie/stato")
+@handle_errors
+async def stato_backfill_categorie_movimenti(
+    _admin: Dict[str, Any] = Depends(get_current_admin_user),
+) -> Dict[str, Any]:
+    """Avanzamento ed esito dell'ultimo giro di `POST .../backfill-categorie`."""
+    from app.services.categorizzazione_movimenti import (
+        backfill_in_corso, stato_backfill_categorie_banca,
+    )
+    stato = await stato_backfill_categorie_banca(Database.get_db())
+    stato["in_corso"] = backfill_in_corso()
+    return stato
+
+
+
+@router.get("/originali")
+@handle_errors
+async def elenco_estratti_originali() -> Dict[str, Any]:
+    """Gli estratti conto caricati (banca e Nexi), da rivedere e riscaricare."""
+    from app.services.estratti_originali import elenco
+
+    voci = await elenco(Database.get_db())
+    return {"estratti": voci, "totale": len(voci)}

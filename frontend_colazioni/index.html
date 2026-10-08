@@ -1,0 +1,1380 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#7a2e1d">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; connect-src 'self' https://lohczjdiawjryuopncwc.supabase.co; img-src 'self' data: blob: https:; media-src 'self' blob:; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self'">
+<title>Colazioni B&B · Bar Ceraldi</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js" integrity="sha384-3zSEDfvllQohrq0PHL1fOXJuC/jSOO34H46t6UQfobFOmxE5BpjjaIJY5F2/bMnU" crossorigin="anonymous"></script>
+<style>
+:root{--bg:#fbf6ee;--card:#fff;--ink:#2b1d16;--mute:#7b6a60;--brand:#7a2e1d;--brand2:#c8873a;--ok:#2f7d4f;--warn:#b7791f;--bad:#b3261e;--line:#eadfce;--r:16px}
+@media(prefers-color-scheme:dark){:root{--bg:#1c1410;--card:#2a1e18;--ink:#f4e9dd;--mute:#b5a294;--line:#3d2c23;--brand:#e0a06a;--brand2:#c8873a}}
+*{box-sizing:border-box}
+body{margin:0;font-family:"Plus Jakarta Sans",sans-serif;background:var(--bg);color:var(--ink);line-height:1.45}
+header{background:linear-gradient(135deg,#7a2e1d,#a4492b);color:#fff;padding:14px 16px;display:flex;align-items:center;gap:10px;position:sticky;top:0;z-index:5}
+header h1{font-size:18px;margin:0;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+header button{background:rgba(255,255,255,.18);color:#fff;border:0;border-radius:10px;padding:6px 10px;font-size:13px}
+.area-badge{border:1px solid rgba(255,255,255,.5);border-radius:99px;padding:4px 9px;font-size:11px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;white-space:nowrap}
+body[data-area="hotel"]{color-scheme:light;--bg:#fbf8f2;--card:#fff;--ink:#243229;--mute:#66736b;--line:#dfe7df;--brand:#3f5a4e;--brand2:#5b7a6b}
+body[data-area="hotel"] header{background:linear-gradient(135deg,#3f5a4e,#5b7a6b)}
+body[data-area="hotel"] .demo{background:#e7efe9;color:#2a3329}
+body[data-area="bar"] header{background:linear-gradient(135deg,#7a2e1d,#a4492b)}
+main{width:100%;max-width:760px;margin:0 auto;padding:16px 16px 90px;overflow-x:hidden}
+h2{font-size:20px;margin:18px 0 8px}h3{font-size:16px;margin:0 0 6px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:14px;margin:10px 0}
+.grid{display:grid;gap:10px;grid-template-columns:repeat(auto-fill,minmax(150px,1fr))}
+.big{display:block;width:100%;text-align:left;background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:18px;margin:10px 0;font-size:16px;color:var(--ink);cursor:pointer}
+.big b{display:block;font-size:18px}.big span{color:var(--mute);font-size:14px}
+.btn{background:var(--brand);color:#fff;border:0;border-radius:12px;padding:12px 16px;font-size:16px;font-weight:600;cursor:pointer}
+.btn.sec{background:transparent;color:var(--brand);border:1.5px solid var(--brand)}
+.btn.sm{padding:6px 10px;font-size:13px;border-radius:9px}
+.btn:disabled{opacity:.4}
+input,select{width:100%;padding:11px;border:1px solid var(--line);border-radius:10px;font-size:16px;background:var(--card);color:var(--ink);margin:4px 0 10px}
+label{font-size:13px;color:var(--mute);font-weight:600}
+.row{display:flex;gap:10px;align-items:center;justify-content:space-between}
+.pill{display:inline-block;padding:2px 9px;border-radius:99px;font-size:12px;font-weight:700}
+.p-ok{background:#dff3e6;color:var(--ok)}.p-warn{background:#fbecd0;color:var(--warn)}.p-bad{background:#f8dcda;color:var(--bad)}
+.price{font-size:26px;font-weight:800;color:var(--brand)}
+.kpi{font-size:30px;font-weight:800}.mute{color:var(--mute);font-size:14px}
+.tabs{display:flex;gap:6px;overflow-x:auto;margin:6px 0 10px}
+.tabs button{flex:none;border:1px solid var(--line);background:var(--card);color:var(--ink);padding:8px 14px;border-radius:99px;font-size:14px}
+.tabs button.on{background:var(--brand);color:#fff;border-color:var(--brand)}
+.hotel-tabs{position:sticky;top:58px;z-index:4;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:5px;overflow:visible;background:color-mix(in srgb,var(--bg) 94%,transparent);padding:7px 0;margin-left:-4px;margin-right:-4px;backdrop-filter:blur(10px)}
+.hotel-tabs button{width:100%;min-width:0;padding:7px 4px;border-radius:11px;font-size:11px;line-height:1.15;white-space:normal;min-height:38px}
+.owner-context{border:2px solid #e4a161;border-radius:13px;background:#fff1df;color:#532719;padding:10px 12px;margin:6px 0 12px;font-size:14px}
+.owner-context b{display:block;font-size:15px}.owner-context span{display:block;margin-top:2px}
+.guest-day{display:grid;grid-template-columns:44px minmax(0,1fr) 44px;gap:8px;align-items:center;text-align:center}.guest-day button{width:44px;height:44px;padding:0}.guest-day b{display:block;font-size:17px}.guest-day span{display:block}
+.guest-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px}.guest-actions .btn{min-height:52px;padding:10px;font-size:14px}.guest-actions .primary{grid-column:1/-1}
+.guest-line{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 0;border-bottom:1px solid var(--line)}.guest-line:last-child{border-bottom:0}.guest-line .btn{min-width:88px;min-height:44px}
+.guest-panel-head{display:flex;align-items:center;gap:9px;margin-bottom:10px}.guest-panel-head .btn{width:44px;height:44px;padding:0}.guest-panel-head h3{margin:0}.guest-saved{border:1px solid var(--ok);border-radius:12px;padding:9px 11px;margin-top:10px;color:var(--ok);font-weight:700}
+.production-toolbar{display:grid;grid-template-columns:auto auto auto minmax(170px,1fr) auto;gap:8px;align-items:center}.production-list{display:grid;gap:10px}.production-item{border:1px solid var(--line);border-radius:14px;padding:12px;background:var(--card)}.production-head{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}.production-head h4{margin:0;font-size:17px}.production-count{min-width:48px;height:48px;border-radius:12px;background:var(--brand);color:#fff;display:grid;place-items:center;font-size:22px;font-weight:800}.production-composition{margin-top:8px}.production-hotels{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}.production-hotels .pill{background:var(--bg);color:var(--ink);border:1px solid var(--line)}.production-summary{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}.production-summary div{border-radius:12px;background:var(--bg);padding:10px;text-align:center}.production-summary b{display:block;font-size:21px;color:var(--brand)}.production-extra,.production-request{border:1px solid var(--line);border-radius:12px;padding:10px;margin-top:8px;background:var(--card)}
+table{width:100%;border-collapse:collapse;font-size:14px}td,th{padding:8px 4px;border-bottom:1px solid var(--line);text-align:left}
+.qr{display:flex;justify-content:center;padding:14px;background:#fff;border-radius:14px}
+.alert{border-left:5px solid var(--warn);background:var(--card);border-radius:10px;padding:10px 12px;margin:8px 0}
+.alert.bad{border-color:var(--bad)}.alert.ok{border-color:var(--ok)}
+.toast{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);background:#222;color:#fff;padding:10px 16px;border-radius:12px;z-index:9;font-size:14px}
+.demo{font-size:12px;background:#fff3cd;color:#664d03;padding:6px 10px;text-align:center}
+.wallet-custom{justify-content:flex-start;align-items:stretch;gap:8px}.wallet-custom input{margin:0;max-width:240px}.recharge-choice{min-width:105px}.wallet-kpis .k{font-size:27px}
+@media(max-width:640px){.wallet-custom{display:grid;grid-template-columns:1fr}.wallet-custom input{max-width:none}.wallet-kpis{grid-template-columns:repeat(3,minmax(0,1fr))}.wallet-kpis .card{padding:12px 8px}.wallet-kpis .k{font-size:20px}}
+
+main.wide{max-width:1100px}
+.tabs button.on{font-weight:700}
+.kpis{display:grid;gap:10px;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));margin:10px 0}
+.kpis .card{margin:0}.kpis .k{font-size:26px;font-weight:800;line-height:1.1}
+.bars{display:flex;align-items:flex-end;gap:8px;height:110px;margin-top:8px}
+.bars div{flex:1;text-align:center;font-size:11px;color:var(--mute)}
+.bars i{display:block;background:var(--brand2);border-radius:6px 6px 0 0;min-height:3px;margin-bottom:4px}
+.bars b{display:block;color:var(--ink);font-size:13px}
+.scroll{overflow-x:auto}
+.filters{display:grid;gap:8px;grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}
+.filters input,.filters select{margin:0}
+textarea{width:100%;padding:11px;border:1px solid var(--line);border-radius:10px;font-size:15px;background:var(--card);color:var(--ink);margin:4px 0 10px;font-family:inherit}
+.btn.bad{background:var(--bad)}
+a{color:var(--brand);font-weight:600}a:visited{color:var(--brand)}
+.crumb{font-size:14px;margin:4px 0 8px}.crumb a{color:var(--brand)}
+.hint{background:var(--card);border:1px dashed var(--line);border-radius:12px;padding:10px 12px;font-size:14px;color:var(--mute);margin:8px 0}
+#printarea{display:none}
+@media print{
+ body>*:not(#printarea){display:none!important}
+ #printarea{display:grid!important;grid-template-columns:1fr 1fr;gap:10mm;background:#fff;color:#000}
+ .pcard{border:2px dashed #999;border-radius:8px;padding:8mm;text-align:center;break-inside:avoid;font-family:system-ui,sans-serif}
+ .pcard h3{margin:0 0 2mm;font-size:16pt}.pcard .qr{border:0;padding:4mm}.pcard small{color:#444}
+}
+
+.stepper{display:flex;align-items:center;gap:6px}
+.stepper button{width:30px;height:30px;border-radius:50%;border:1px solid var(--line);background:var(--card);color:var(--ink);font-size:18px;line-height:1;cursor:pointer}
+.sticky-bar{position:fixed;left:0;right:0;bottom:0;background:var(--card);border-top:1px solid var(--line);padding:10px 16px;display:flex;gap:10px;align-items:center;justify-content:space-between;z-index:6;box-shadow:0 -4px 14px rgba(0,0,0,.08)}
+.hero{width:100%;max-width:100%;overflow:hidden;border-radius:16px;color:#fff;padding:34px 20px;text-align:center;background:linear-gradient(135deg,#7a2e1d,#c8873a);background-size:cover;background-position:center;margin-bottom:12px;text-shadow:0 1px 6px rgba(0,0,0,.45)}
+.hero.img{padding:0;aspect-ratio:3/1;min-height:110px;background-size:cover;background-position:center;background-repeat:no-repeat}
+#pf_h{width:100%;max-width:100%;min-width:0;overflow:hidden}
+#pf_f{max-width:100%;min-width:0;overflow:hidden}
+.hero h1{margin:0;font-size:26px}.hero p{margin:8px 0 0;font-size:15px}
+.prod{display:flex;gap:10px;padding:10px 0;border-bottom:1px solid var(--line);cursor:pointer;align-items:center}
+.pimg{width:64px;height:64px;border-radius:12px;object-fit:cover;background:var(--line);flex:none}
+.pimg.ph,.bigph{display:flex;align-items:center;justify-content:center;font-size:26px;color:var(--brand2)}
+.bigph{height:140px;background:var(--line);border-radius:20px 20px 0 0;font-size:48px}
+.pinfo{flex:1;min-width:0}.pinfo .mute{font-size:13px}
+.pside{text-align:right;white-space:nowrap}.pside .stepper{justify-content:flex-end;margin-top:4px}
+.sheet-bg{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:20;display:flex;align-items:flex-end;justify-content:center}
+.sheet{background:var(--card);color:var(--ink);width:100%;max-width:560px;max-height:90vh;overflow:auto;border-radius:20px 20px 0 0;padding-bottom:16px}
+.sheet img.big{width:100%;height:220px;object-fit:cover;border-radius:20px 20px 0 0;display:block}
+.sheet .in{padding:14px 16px}
+.catalog-tools{display:grid;gap:8px;grid-template-columns:minmax(190px,1.2fr) minmax(150px,.8fr) minmax(150px,.8fr);margin:10px 0}
+.catalog-grid{display:grid;gap:10px;grid-template-columns:repeat(auto-fill,minmax(330px,1fr))}
+.catalog-card{display:grid;grid-template-columns:82px minmax(0,1fr);gap:10px;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:10px;min-width:0;align-items:start}
+.catalog-card.selected{border-color:var(--brand);box-shadow:0 0 0 1px var(--brand)}
+.catalog-card img{width:82px;height:82px;object-fit:cover;border-radius:10px;background:var(--line)}
+.catalog-card .no-photo{width:82px;height:82px;border-radius:10px;background:linear-gradient(145deg,var(--line),color-mix(in srgb,var(--line) 70%,var(--brand2)));display:flex;align-items:center;justify-content:center;text-align:center;padding:6px;color:var(--brand);font-size:28px}
+.catalog-card input[type=checkbox]{width:22px;height:22px;margin:0;flex:none}
+.catalog-card input[type=number]{margin:4px 0 0;max-width:120px}
+.catalog-origin{font-size:11px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--brand)}
+.catalog-title{font-size:15px;line-height:1.25;display:block;min-width:0}
+.catalog-desc{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;margin-top:3px;font-size:12px;line-height:1.35}
+.catalog-allergens{background:#fff1cf;color:#6c4200;border:1px solid #e5b95e;border-radius:9px;padding:5px 7px;margin-top:6px;font-size:12px;line-height:1.3}
+.catalog-allergens b{color:#8b250e;text-transform:uppercase;letter-spacing:.025em}
+.catalog-price-row{display:flex;align-items:end;justify-content:space-between;gap:8px;margin-top:7px}.catalog-price-row label{white-space:nowrap}.catalog-price-row input{flex:0 0 116px}
+.service-choice{display:inline-flex;gap:3px;padding:3px;background:var(--bg);border:1px solid var(--line);border-radius:12px;white-space:nowrap}
+.service-choice button{border:0;background:transparent;color:var(--mute);padding:7px 9px;border-radius:9px;font:inherit;font-size:12px;font-weight:800;cursor:pointer}
+.service-choice button.on{background:var(--brand);color:#fff;box-shadow:0 2px 7px rgba(0,0,0,.14)}
+.booking-room{border:1px solid var(--line);border-radius:14px;padding:14px;margin-top:10px;background:linear-gradient(145deg,var(--card),color-mix(in srgb,var(--card) 88%,var(--brand2)))}
+.booking-room-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px}
+.booking-room-head h4{margin:0;font-size:19px}.booking-room-total{font-size:20px;font-weight:800;color:var(--brand);white-space:nowrap}
+.booking-room-grid{display:grid;grid-template-columns:minmax(120px,.7fr) minmax(190px,1.3fr);gap:12px;align-items:end}
+.booking-room .stepper{min-height:46px}.booking-room .stepper button{width:40px;height:40px}
+.booking-room .service-choice{display:grid;grid-template-columns:1fr 1fr;width:100%;margin-top:5px}
+.booking-room .service-choice button{min-height:44px;white-space:normal}
+.booking-actions{display:grid;grid-template-columns:1fr;gap:8px;margin-top:12px}.booking-actions .btn{width:100%;min-height:50px}
+.nap-guide{overflow:hidden;padding:0}
+.nap-hero{padding:18px;background:linear-gradient(135deg,#3f5a4e,#5b7a6b);color:#fff}
+.nap-hero h3{font-size:20px}.nap-hero p{margin:5px 0 0;color:#d8f4f5;font-size:14px}
+.nap-tabs{display:flex;gap:7px;overflow-x:auto;padding:12px 12px 4px}
+.nap-tabs button{flex:none;border:1px solid var(--line);background:var(--card);color:var(--ink);padding:8px 12px;border-radius:99px;font-weight:750;cursor:pointer}
+.nap-tabs button.on{background:#3f5a4e;border-color:#3f5a4e;color:#fff}
+.nap-list{display:grid;gap:9px;padding:10px 12px 14px}
+.nap-card{border:1px solid var(--line);border-radius:14px;padding:12px;background:var(--card)}
+.nap-card h4{margin:0 0 4px;font-size:16px}.nap-card p{margin:4px 0}
+.nap-meta{color:var(--mute);font-size:13px}
+.nap-actions{display:flex;gap:7px;flex-wrap:wrap;margin-top:9px}
+.nap-actions a{display:inline-block;text-decoration:none;padding:8px 11px;border-radius:9px;font-size:13px;font-weight:800}
+.nap-go{background:#3f5a4e;color:#fff!important}.nap-info{border:1px solid #3f5a4e;color:#3f5a4e!important;background:transparent}
+.nap-note{padding:0 13px 13px;color:var(--mute);font-size:12px}
+.morning-card{position:relative}.morning-card .stepper{margin-top:8px}.morning-card.in-cart{border-color:var(--ok);box-shadow:0 0 0 1px var(--ok)}
+.morning-cart{position:sticky;bottom:74px;z-index:4;box-shadow:0 8px 30px rgba(0,0,0,.18)}
+.order-line{padding:7px 0;border-bottom:1px solid var(--line)}
+@media(max-width:620px){
+ main{padding-left:12px;padding-right:12px}.card{margin-left:0;margin-right:0}.catalog-tools{grid-template-columns:1fr}.catalog-grid{grid-template-columns:1fr}.catalog-card{grid-template-columns:68px minmax(0,1fr)}.catalog-card img,.catalog-card .no-photo{width:68px;height:68px}.catalog-price-row{align-items:center}.catalog-price-row input{flex-basis:108px}
+ .hotel-tabs{top:56px}
+ .owner-tabs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:5px;overflow:visible}.owner-tabs button{width:100%;min-width:0;padding:8px 4px;border-radius:11px;font-size:11px;line-height:1.15;white-space:normal;min-height:42px}
+ .booking-room-grid{grid-template-columns:1fr}.booking-room-head{align-items:flex-start}.booking-room{padding:12px}
+ .production-toolbar{grid-template-columns:repeat(3,1fr)}.production-toolbar .date-field{grid-column:1/3;width:100%!important}.production-toolbar .print-production{width:100%}.guest-actions .btn{font-size:13px}
+}
+.review-hero{padding:26px 18px;background:linear-gradient(145deg,var(--brand),#a4492b);color:#fff;border-radius:var(--r);margin-bottom:12px}
+.review-hero h2{font-size:28px;line-height:1.08;letter-spacing:-.02em;margin:4px 0 10px}.review-hero p{margin:0;opacity:.9}
+.consent-box{border:1px solid var(--line);border-radius:14px;padding:14px;margin:12px 0}.consent-box h3{margin-bottom:5px}.consent-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px}.consent-actions .btn{min-height:44px}.consent-actions .chosen{background:var(--ok);border-color:var(--ok);color:#fff}
+.review-links{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:10px}.review-qr{text-align:center}.review-qr .qr{min-height:184px;align-items:center}.privacy-note{font-size:12px;color:var(--mute);line-height:1.55}.review-destination{width:100%;min-height:54px;margin:6px 0;font-size:16px}.review-success{text-align:center;padding:24px 10px}.review-success h2{font-size:30px;letter-spacing:-.02em}
+</style>
+</head>
+<body>
+<div class="demo">VERSIONE DI PROVA</div>
+<header><h1 id="ttl">☕ Colazioni B&B</h1><span class="area-badge" id="area_badge">Ospite</span><button id="back" hidden onclick="go('#/')">← Home</button></header>
+<main id="app"></main>
+
+<script>
+/* ============ CONFIG ============ */
+const SB_URL="https://lohczjdiawjryuopncwc.supabase.co";
+const SB_KEY="sb_publishable_bJy0E8c6MwYl0GA7W5Clvg_JIe3Zvcn"; // chiave pubblica: i dati sono protetti dai PIN nelle funzioni bb_*
+const eur=n=>Number(n).toLocaleString("it-IT",{style:"currency",currency:"EUR"});
+const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const dmy=d=>{const[a,b,c]=String(d).slice(0,10).split("-");return `${c}/${b}/${a}`};
+const addDays=(d,n)=>{const x=new Date(d+"T12:00:00");x.setDate(x.getDate()+n);return x.toISOString().slice(0,10)};
+const $=s=>document.querySelector(s),app=$("#app");
+function toast(m){const t=document.createElement("div");t.className="toast";t.textContent=m;document.body.appendChild(t);setTimeout(()=>t.remove(),2800)}
+
+/* ============ API (Supabase RPC) ============ */
+async function rpc(fn,args={}){
+ const r=await fetch(`${SB_URL}/rest/v1/rpc/${fn}`,{method:"POST",headers:{apikey:SB_KEY,Authorization:"Bearer "+SB_KEY,"Content-Type":"application/json"},body:JSON.stringify(args)});
+ const j=await r.json().catch(()=>null);
+ if(!r.ok)throw new Error((j&&j.message)||"Errore di rete");
+ return j}
+async function run(fn,args,okMsg){try{const r=await rpc(fn,args);if(okMsg)toast(okMsg);return r??true}catch(e){
+ if(/Sessione scaduta/i.test(e.message)&&sess){const r=sess.r,c=sess.c;setSess(null);toast("Sessione scaduta: rientra");go(r==="alb"&&c?"#/hotel/"+c:"#/titolare");return undefined}
+ toast(e.message);return undefined}}
+
+/* ============ DATI ESTERNI: navi (Guardia Costiera) e scioperi (MIT), via Supabase ============ */
+let EXT=null;
+async function loadExt(){if(!EXT)EXT=await rpc("bb_esterni_pubblico").catch(()=>({}));return EXT}
+const romeDay=iso=>new Date(iso).toLocaleDateString("sv-SE",{timeZone:"Europe/Rome"});
+const romeTime=iso=>new Date(iso).toLocaleTimeString("it-IT",{hour:"2-digit",minute:"2-digit",timeZone:"Europe/Rome"});
+function naviOggi(E){
+ const N=E&&E.navi;if(!N||!N.arrivi)return null;const oggi=E.oggi,ok=n=>n.stato!=="CANCELED"&&romeDay(n.ora)===oggi;
+ const arr=N.arrivi.filter(ok);return {cr:arr.filter(n=>n.tipo==="crociera"),alt:arr.filter(n=>n.tipo!=="crociera"),part:(N.partenze||[]).filter(n=>ok(n)&&n.tipo==="crociera")}}
+function naviHtml(E){
+ const o=naviOggi(E);if(!o)return `<p class="mute">Dati sulle navi non disponibili al momento.</p>`;
+ const r=n=>`<div class="row"><span>${esc(n.nome)}</span><span class="mute">${romeTime(n.ora)}${n.banchina?" · "+esc(n.banchina):""}</span></div>`;
+ return (o.cr.length?`<b>Crociere in arrivo (${o.cr.length})</b>${o.cr.map(r).join("")}`:`<p class="mute">Nessuna nave da crociera in arrivo oggi.</p>`)+
+  (o.part.length?`<b style="display:block;margin-top:8px">Crociere in partenza</b>${o.part.map(r).join("")}`:"")+
+  `<p class="mute">${o.alt.length} arrivi di traghetti/aliscafi oggi. Orari previsti, fuso italiano · fonte Guardia Costiera.</p>`}
+function scioperiList(E,giorni=14){
+ const S=E&&E.scioperi&&E.scioperi.elenco;if(!S)return null;const oggi=E.oggi,fine=addDays(oggi,giorni);
+ return S.filter(x=>x.fine>=oggi&&x.inizio<=fine).slice(0,10)}
+function scioperiHtml(E){
+ const l=scioperiList(E);if(!l)return `<p class="mute">Dati sugli scioperi non disponibili al momento.</p>`;
+ return (l.length?l.map(x=>`<div class="alert ${x.inizio<=E.oggi?"bad":""}"><b>${esc(x.settore)} · ${x.inizio<=E.oggi?"OGGI":dmy(x.inizio)}${x.fine!==x.inizio?" → "+dmy(x.fine):""}</b><br>${esc(x.modalita)} · ${esc(x.categoria)}${x.rilevanza==="Nazionale"?" (nazionale)":""}</div>`).join(""):`<p class="mute">Nessuno sciopero dei trasporti previsto nei prossimi 14 giorni.</p>`)+`<p class="mute">Fonte: Ministero delle Infrastrutture e dei Trasporti.</p>`}
+
+/* ============ SESSIONE, ROUTER, UTILITÀ ============ */
+let sess=JSON.parse(sessionStorage.getItem("sess")||"null");
+const setSess=x=>{sess=x;sessionStorage.setItem("sess",JSON.stringify(x))};
+const go=h=>{if(location.hash===h)render();else location.hash=h};
+const esci=()=>{const c=sess&&sess.c,r=sess&&sess.r,p=sess&&sess.p;if(p&&(r==="alb"||r==="tit"))rpc(r==="alb"?"bb_alb_logout":"bb_tit_logout",{p}).catch(()=>{});setSess(null);go(c?"#/hotel/"+c:r==="tit"?"#/titolare":"#/")};
+const loading=()=>{app.innerHTML=`<p class="mute" style="text-align:center;margin-top:40px">Caricamento…</p>`};
+addEventListener("hashchange",render);
+async function render(){
+ const h=location.hash||"#/";const p=h.split("/");
+ setArea(p[1]==="titolare"?"bar":(["hotel","albergatore"].includes(p[1])?"hotel":"guest"));
+ $("#back").hidden=h==="#/"||h==="#"||["ospite","hotel","invito","recupero","recensioni","recensione-invito"].includes(p[1])||(!!sess&&sess.r==="alb"&&p[1]==="albergatore");
+ app.classList.toggle("wide",p[1]==="titolare"&&!!sess);
+ if(p[1]==="ospite")return ospite(p[2]);
+ if(p[1]==="hotel"){if(p[3]&&sess&&sess.r==="alb"&&sess.c===p[2])return alb(p[3]);return hotelLogin(p[2])}
+ if(p[1]==="invito")return invito(p[2]);
+ if(p[1]==="recupero")return recupero(p[2]);
+ if(p[1]==="recensioni")return recensioniOspite(p[2],p[3]||"link");
+ if(p[1]==="recensione-invito")return recensioneInvito(p[2]);
+ if(p[1]==="albergatore")return sess&&sess.r==="alb"?(sess.c&&history.replaceState(null,"","#/hotel/"+sess.c+"/"+(p[2]||"home")),alb(p[2]||"home")):(($("#ttl").textContent="☕ Colazioni B&B"),void(app.innerHTML=`<div class="card">Per entrare usa il <b>link personale</b> che ti ha inviato il bar.</div>`));
+ if(p[1]==="titolare")return sess&&sess.r==="tit"?tit(p[2]||"cruscotto",p[3]):loginTit();
+ home()}
+function setArea(area){document.body.dataset.area=area;const b=$("#area_badge");if(b)b.textContent=area==="bar"?"Area Bar":area==="hotel"?"Area Hotel":"Ospite"}
+function qr(el,text,size=200){el.innerHTML="";if(window.QRCode)new QRCode(el,{text,width:size,height:size,correctLevel:QRCode.CorrectLevel.M});else el.textContent=text}
+const base=()=>location.href.split("#")[0];
+const linkOspite=id=>base()+"#/ospite/"+id;
+const tabsHtml=(tabs,sec,pre)=>`<nav class="tabs ${pre==="albergatore"?"hotel-tabs":""} ${pre==="titolare"?"owner-tabs":""}" aria-label="Sezioni ${pre}">${tabs.map(t=>`<button class="${t[0]===sec?"on":""}" onclick="go('#/${pre}/${t[0]}')">${t[1]}</button>`).join("")}<button onclick="esci()">Esci</button></nav>`;
+const camNome=v=>{const c=(v.camera||"").trim();if(!c)return v.ospite||"";return /^(camera|suite|stanza|appartamento|junior|room|studio|mansarda)\b/i.test(c)?c:"Camera "+c};
+const ospTxt=n=>`${n} ospit${n>1?"i":"e"}`;
+const descV=(v,prezzo=true)=>{const eu=prezzo&&v.fascia!=null?" · colazione da €"+String(v.fascia).replace(".",","):"";return v.camera?camNome(v)+" · "+ospTxt(v.ospiti||1)+eu:camNome(v)+eu};
+const fine=v=>v.data_fine||v.data;
+const dRange=v=>fine(v)!==v.data?dmy(v.data)+" → "+dmy(fine(v)):dmy(v.data);
+const nGiorni=(a,b)=>Math.round((Date.UTC(...b.split("-").map((x,i)=>i==1?x-1:+x))-Date.UTC(...a.split("-").map((x,i)=>i==1?x-1:+x)))/864e5)+1;
+function stato(v,oggi){return v.annullato?["Annullata","p-bad"]:v.usate>=v.qta?["Ritirata","p-ok"]:fine(v)<oggi?["Scaduta","p-bad"]:v.data>oggi?["Programmata","p-warn"]:["In corso","p-warn"]}
+function download(name,text,type="text/csv"){const a=document.createElement("a");a.href=URL.createObjectURL(new Blob(["﻿"+text],{type}));a.download=name;a.click()}
+const csvRows=rows=>rows.map(r=>r.map(x=>`"${String(x??"").replace(/"/g,'""')}"`).join(";")).join("\n");
+/* stampa schede con QR */
+function stampa(items){
+ document.getElementById("printarea")?.remove();
+ const d=document.createElement("div");d.id="printarea";
+ d.innerHTML=items.map((c,i)=>`<div class="pcard"><small>${esc(c.sopra||"")}</small><h3>${esc(c.titolo)}</h3><div>${esc(c.riga||"")}</div><div class="qr" id="pq${i}"></div><b style="font-size:16pt;letter-spacing:2px">${esc(c.codice||"")}</b><div><small>${esc(c.sotto||"")}</small></div></div>`).join("");
+ document.body.appendChild(d);items.forEach((c,i)=>qr(document.getElementById("pq"+i),c.qr,170));
+ setTimeout(()=>{print()},250)}
+/* il QR del voucher e' il link completo della pagina ospite: lo scanner del bar ne estrae il codice */
+const cardVoucher=(v,menu,struttura)=>({sopra:struttura,titolo:camNome(v),riga:(v.camera?ospTxt(v.ospiti||1):`${v.qta} colazion${v.qta>1?"i":"e"}`)+` · ${dRange(v)}`,qr:linkOspite(v.id),codice:v.id,sotto:menu||"Mostra questo QR al bar"});
+/* scelta di un motivo da chip (piu' «Altro»): niente testo libero obbligatorio */
+function scegliMotivo(titolo,opzioni,nota){return new Promise(res=>{document.getElementById("sheet")?.remove();const d=document.createElement("div");d.id="sheet";d.className="sheet-bg";let scelta="";
+ d.innerHTML=`<div class="sheet"><div class="in"><h3>${esc(titolo)}</h3>${nota?`<p class="mute">${esc(nota)}</p>`:""}<div class="tabs" style="flex-wrap:wrap" id="mot_chips">${opzioni.map(o=>`<button type="button" data-m="${esc(o)}">${esc(o)}</button>`).join("")}<button type="button" data-m="*">Altro (scrivi tu)</button></div><input id="mot_txt" maxlength="200" placeholder="Scrivi il motivo" hidden><div class="row" style="margin-top:10px"><button class="btn sec" id="mot_no">Annulla</button><button class="btn" id="mot_ok">Conferma</button></div></div></div>`;
+ d.querySelectorAll("#mot_chips button").forEach(b=>b.onclick=()=>{d.querySelectorAll("#mot_chips button").forEach(x=>x.classList.toggle("on",x===b));scelta=b.dataset.m;const t=d.querySelector("#mot_txt");t.hidden=scelta!=="*";if(scelta==="*")t.focus()});
+ const chiudi=v=>{d.remove();res(v)};
+ d.querySelector("#mot_no").onclick=()=>chiudi(null);d.onclick=e=>{if(e.target===d)chiudi(null)};
+ d.querySelector("#mot_ok").onclick=()=>{const v=scelta==="*"?d.querySelector("#mot_txt").value.trim():scelta;if(!v)return toast("Scegli o scrivi il motivo");chiudi(v)};
+ document.body.appendChild(d)})}
+
+const hero=(nome,sfondo,msg)=>sfondo?`<div class="hero img" role="img" aria-label="${esc(nome)}" style="background-image:url('${esc(sfondo)}')"></div>`:`<div class="hero"><h1>${esc(nome)}</h1>${msg?`<p>${esc(msg)}</p>`:""}</div>`;
+function home(){
+ $("#ttl").textContent="☕ Colazioni B&B";
+ app.innerHTML=`<div class="hero"><h1>Colazioni per i B&B</h1><p>Bar Pasticceria Ceraldi · Napoli</p></div>
+ <div class="card"><p>Se sei un albergatore, apri il <b>link personale</b> che ti ha inviato il bar: lì trovi il tuo accesso.</p><p class="mute">Se sei un ospite, apri il link o il QR che ti ha dato il tuo albergo.</p></div>
+ <p style="text-align:center"><a class="mute" href="#/titolare">Area riservata del bar</a></p>`}
+
+/* ============ INVITI RECENSIONE: OSPITE ============ */
+let REC=null;
+async function recensioniOspite(token,fonte){
+ $("#ttl").textContent="Ceraldi Caffè";loading();
+ fonte=["qr","nfc","wifi","link","whatsapp"].includes(fonte)?fonte:"link";
+ try{
+  const info=await rpc("bb_recensioni_link_pubblico",{ptoken:token});
+  if(!info)throw new Error("Link non valido o disattivato");
+  const visita=await rpc("bb_recensioni_visita_apri",{ptoken:token,pfonte:fonte});
+  REC={token,fonte,info,sessione:visita.sessione,scelte:{},telefono:false};
+  recPagina()}
+ catch(e){app.innerHTML='<div class="card"><h2>Invito non disponibile</h2><p class="mute">'+esc(e.message)+'</p></div>'}}
+function recMostra(html){const h=REC&&REC.host&&$("#"+REC.host);if(h)h.innerHTML=html;else app.innerHTML=html}
+function recPagina(){
+ const i=REC.info,ha=!!i.informativa_url,privacy=ha?'<a href="'+esc(i.informativa_url)+'" target="_blank" rel="noopener">Leggi l’informativa completa</a>.':'L’informativa completa non è ancora pubblicata: senza informativa non è possibile acconsentire, puoi solo continuare senza.';
+ /* senza informativa pubblicata un consenso non e' informato: resta solo «Non acconsento / continua» (il database rifiuta comunque un si') */
+ const geo=ha?'<div class="consent-actions"><button class="btn sec" id="rg0" onclick="recScelta(\'geolocalizzazione\',false)">Non acconsento</button><button class="btn sec" id="rg1" onclick="recScelta(\'geolocalizzazione\',true)">Acconsento</button></div>':'<div class="consent-actions" style="grid-template-columns:1fr"><button class="btn sec" id="rg0" onclick="recScelta(\'geolocalizzazione\',false)">Non acconsento / continua</button></div>';
+ const wa=ha?'<div class="consent-actions"><button class="btn sec" id="rw0" onclick="recScelta(\'whatsapp\',false)">Non acconsento</button><button class="btn sec" id="rw1" onclick="recScelta(\'whatsapp\',true)">Acconsento</button></div>':'<div class="consent-actions" style="grid-template-columns:1fr"><button class="btn sec" id="rw0" onclick="recScelta(\'whatsapp\',false)">Non acconsento / continua</button></div>';
+ recMostra('<div class="review-hero"><div class="mute" style="color:#fff">OSPITE DI '+esc(i.struttura).toUpperCase()+'</div><h2>La colazione ha il suo rito.</h2><p>Le scelte sulla privacy restano tue, sempre.</p></div>'+
+ '<div class="card"><h2>Come vuoi vivere l’esperienza?</h2>'+
+ '<div class="consent-box"><h3>Geolocalizzazione</h3><p class="mute">Serve solo a registrare la presenza nel luogo della colazione. Il browser chiederà la posizione esclusivamente dopo il tuo consenso.</p>'+geo+'</div>'+
+ '<div class="consent-box"><h3>Invito WhatsApp</h3><p class="mute">Ricevi un solo messaggio post-consumo con i link Google e Tripadvisor. Nessun messaggio promozionale.</p>'+wa+'</div>'+
+ '<p class="privacy-note">Nessuna opzione è preselezionata. Puoi revocare in ogni momento. Versione informativa: '+esc(i.informativa_versione)+'. '+privacy+'</p>'+
+ '<div id="rec_next"></div></div>')}
+async function recScelta(finalita,si){
+ try{
+  await rpc("bb_recensioni_consenso",{psessione:REC.sessione,pfinalita:finalita,pacconsento:si,pversione:REC.info.informativa_versione,pclient:navigator.userAgent});
+  REC.scelte[finalita]=si;
+  const pre=finalita==="geolocalizzazione"?"rg":"rw";
+  $("#"+pre+"0").classList.toggle("chosen",!si);if($("#"+pre+"1"))$("#"+pre+"1").classList.toggle("chosen",si);
+  if(finalita==="geolocalizzazione"&&si)recPosizione();
+  recAvanti()}
+ catch(e){toast(e.message)}}
+function recPosizione(){
+ if(!navigator.geolocation)return toast("Posizione non disponibile su questo dispositivo");
+ navigator.geolocation.getCurrentPosition(async p=>{
+  try{await rpc("bb_recensioni_posizione",{psessione:REC.sessione,plat:p.coords.latitude,plon:p.coords.longitude,paccuratezza:p.coords.accuracy})}
+  catch(e){toast(e.message)}
+ },()=>toast("Il dispositivo non ha condiviso la posizione. Puoi comunque continuare."),{enableHighAccuracy:false,timeout:10000,maximumAge:300000})}
+function recAvanti(){
+ if(!("geolocalizzazione" in REC.scelte)||!("whatsapp" in REC.scelte))return;
+ $("#rec_next").innerHTML=REC.scelte.whatsapp?
+  '<label>Numero WhatsApp in formato internazionale</label><input id="rec_tel" type="tel" inputmode="tel" autocomplete="tel" placeholder="+39 333 123 4567"><p class="privacy-note">Il numero è protetto dalle regole del database e viene usato solo per questo invito.</p><button class="btn" style="width:100%" onclick="recSalvaTelefono()">Salva il numero e continua</button>':
+  '<button class="btn" style="width:100%" onclick="recPronto()">Continua senza messaggi</button>'}
+async function recSalvaTelefono(){
+ const telefono=$("#rec_tel").value;
+ try{await rpc("bb_recensioni_telefono",{psessione:REC.sessione,ptelefono:telefono});REC.telefono=true;recPronto()}
+ catch(e){toast(e.message)}}
+function recPronto(){
+ recMostra('<div class="review-hero"><h2>Buona colazione.</h2><p>Il tuo momento Ceraldi può iniziare.</p></div><div class="card review-success"><h2>Quando hai terminato</h2><p class="mute">Conferma la fine della colazione. Se hai scelto WhatsApp, l’unico invito sarà programmato da quel momento.</p><button class="btn review-destination" onclick="recFine()">Ho terminato la colazione</button><div id="rec_revoche"></div></div>');
+ recRevoche()}
+function recRevoche(){
+ const a=[];
+ if(REC.scelte.geolocalizzazione)a.push('<button class="btn sec sm" onclick="recRevoca(\'geolocalizzazione\',this)">Revoca geolocalizzazione</button>');
+ if(REC.scelte.whatsapp)a.push('<button class="btn sec sm" onclick="recRevoca(\'whatsapp\',this)">Revoca WhatsApp</button>');
+ if($("#rec_revoche"))$("#rec_revoche").innerHTML=a.join(" ")}
+async function recRevoca(finalita,bottone){
+ try{await rpc("bb_recensioni_revoca",{psessione:REC.sessione,pfinalita:finalita,pclient:navigator.userAgent});REC.scelte[finalita]=false;bottone.remove();toast("Consenso revocato")}
+ catch(e){toast(e.message)}}
+async function recFine(){
+ try{
+  const r=await rpc("bb_recensioni_completa",{psessione:REC.sessione});
+  const g=r.google_url?'<button class="btn review-destination" data-rec-fine="google">Recensisci su Google</button>':'';
+  const t=r.tripadvisor_url?'<button class="btn sec review-destination" data-rec-fine="tripadvisor">Recensisci su Tripadvisor</button>':'';
+  recMostra('<div class="card review-success"><h2>Grazie, a presto.</h2><p class="mute">'+(r.invito_pianificato?"Riceverai anche un solo promemoria WhatsApp all’orario previsto.":"Nessun messaggio verrà inviato.")+'</p><h3>Se vuoi, lascia ora una recensione</h3>'+g+t+'<p class="privacy-note">Nessun premio o incentivo è associato alla recensione.</p>'+(g||t?"":'<div class="alert">I link alle recensioni non sono ancora configurati.</div>')+'</div>');
+  const root=REC.host?$("#"+REC.host):app;
+  root.querySelectorAll("[data-rec-fine]").forEach(b=>b.onclick=()=>recApri(r.review_token,b.dataset.recFine,b.dataset.recFine==="google"?r.google_url:r.tripadvisor_url))}
+ catch(e){toast(e.message)}}
+async function recensioneInvito(token){
+ $("#ttl").textContent="Ceraldi Caffè";loading();
+ try{
+  const i=await rpc("bb_recensioni_invito_pubblico",{ptoken:token});
+  if(!i)throw new Error("Invito non valido o scaduto");
+  const g=i.google_url?'<button class="btn review-destination" data-dest="google">Recensisci su Google</button>':'';
+  const t=i.tripadvisor_url?'<button class="btn sec review-destination" data-dest="tripadvisor">Recensisci su Tripadvisor</button>':'';
+  app.innerHTML='<div class="review-hero"><div class="mute" style="color:#fff">GRAZIE DA '+esc(i.struttura).toUpperCase()+'</div><h2>Com’è stata la tua esperienza?</h2><p>La tua opinione ci aiuta a servire una colazione ancora migliore.</p></div><div class="card"><h2>Scegli liberamente dove recensire</h2>'+g+t+'<p class="privacy-note">Nessun premio o incentivo è associato alla recensione.</p>'+(g||t?"":'<div class="alert">I link alle recensioni non sono ancora configurati.</div>')+'</div>';
+  app.querySelectorAll("[data-dest]").forEach(b=>b.onclick=()=>recApri(token,b.dataset.dest,b.dataset.dest==="google"?i.google_url:i.tripadvisor_url))}
+ catch(e){app.innerHTML='<div class="card"><h2>Invito non disponibile</h2><p class="mute">'+esc(e.message)+'</p></div>'}}
+async function recApri(token,destinazione,url){
+ try{await rpc("bb_recensioni_click",{ptoken:token,pdestinazione:destinazione})}catch(e){}
+ location.href=url}
+
+/* ============ ACCESSO DELL'ALBERGATORE (link personale e invito) ============ */
+/* Conto alla rovescia quando il PIN e' bloccato: il server decide (5 errori = 15 minuti), qui si mostra soltanto. */
+const BLOCCO_PIN_SEC=900;
+let BLK={t:null,fine:0,chiave:"",ids:[]};
+const mmss=s=>String(Math.floor(s/60)).padStart(2,"0")+":"+String(s%60).padStart(2,"0");
+function bloccoSalva(chiave,fine){try{sessionStorage.setItem("bb_blocco_"+chiave,String(fine))}catch(e){}}
+function bloccoLeggi(chiave){try{const v=+sessionStorage.getItem("bb_blocco_"+chiave);return v>Date.now()?v:0}catch(e){return 0}}
+function bloccoSecondi(r){return r&&r.bloccato>0?Math.ceil(r.bloccato):(r&&r.restanti===0?BLOCCO_PIN_SEC:0)}
+function bloccoFerma(){if(BLK.t){clearInterval(BLK.t);BLK.t=null}}
+function bloccoAvvia(chiave,sec,ids,boxId){
+ bloccoFerma();BLK.chiave=chiave;BLK.fine=Date.now()+sec*1000;BLK.ids=ids;bloccoSalva(chiave,BLK.fine);
+ const tick=()=>{const box=$("#"+boxId);if(!box){bloccoFerma();return}
+  const resto=Math.max(0,Math.ceil((BLK.fine-Date.now())/1000)),blocca=resto>0;
+  ids.forEach(i=>{const e=$("#"+i);if(e)e.disabled=blocca});
+  box.hidden=false;box.className="alert"+(blocca?"":" ok");
+  box.innerHTML=blocca?`<b>Accesso bloccato per troppi tentativi.</b><br>Riprova tra <b style="font-size:20px;font-variant-numeric:tabular-nums">${mmss(resto)}</b>`:`<b>Puoi riprovare ora.</b>`;
+  if(!blocca){bloccoFerma();try{sessionStorage.removeItem("bb_blocco_"+chiave)}catch(e){}}};
+ tick();BLK.t=setInterval(tick,1000)}
+const bloccoBox='<div id="blocco_pin" class="alert" role="status" aria-live="polite" hidden></div>';
+function bloccoRipristina(chiave,ids){const fine=bloccoLeggi(chiave);if(fine)bloccoAvvia(chiave,Math.ceil((fine-Date.now())/1000),ids,"blocco_pin")}
+
+async function hotelLogin(cod){
+ $("#ttl").textContent="☕ Colazioni B&B";loading();
+ const h=await rpc("bb_hotel_info",{codice:cod||""}).catch(()=>null);
+ if(!h){app.innerHTML=`<div class="card">Link non valido. Chiedi al bar di inviartene uno nuovo.</div>`;return}
+ if(sess&&sess.r==="alb"&&sess.s===h.id){go("#/albergatore/home");return}
+ if(h.disattivata){app.innerHTML=hero(h.nome,h.sfondo,"")+`<div class="card">Questo accesso è stato disattivato dal bar. Per informazioni contatta ${esc((h.bar&&h.bar.bar_nome)||"il bar")}.</div>`;return}
+ if(h.demo){app.innerHTML=hero(h.nome,h.sfondo,"")+`<div class="card"><h3>Registrazione del gestore richiesta</h3><p>Questo collegamento appartiene ancora ai dati di prova. Non inserire il PIN dimostrativo: chiedi al bar di condividere il link di registrazione, poi scegli il tuo PIN personale.</p></div>`;return}
+ if(!h.attivo){app.innerHTML=hero(h.nome,h.sfondo,"")+`<div class="card">L'accesso non è ancora attivo. Usa il <b>link di invito</b> che ti ha inviato il bar.</div>`;return}
+ app.innerHTML=hero(h.nome,h.sfondo,h.benvenuto)+`<div class="card"><label>PIN</label><input id="lp" type="password" inputmode="numeric" autocomplete="current-password"><button class="btn" id="lp_btn">Entra</button>${bloccoBox}
+  <p style="text-align:center;margin:12px 0 0"><a href="#/recupero/${esc(cod)}">Ho perso il PIN</a></p></div>`;
+ $("#lp").onkeydown=e=>{if(e.key==="Enter")hotelEntra(h.id,cod)};$("#lp_btn").onclick=()=>hotelEntra(h.id,cod);bloccoRipristina("alb:"+cod,["lp","lp_btn"])}
+async function hotelEntra(id,cod){
+ const pin=$("#lp")?$("#lp").value:"";if(!pin)return toast("Scrivi il tuo PIN");
+ const r=await run("bb_alb_login",{paccesso:cod,ppin:pin});if(!r||r===true)return;
+ if(!r.ok){if($("#lp"))$("#lp").value="";const sec=bloccoSecondi(r);if(sec)return bloccoAvvia("alb:"+cod,sec,["lp","lp_btn"],"blocco_pin");toast(r.msg||"PIN errato");return}
+ setSess({r:"alb",s:r.sid,p:r.token,c:cod});go("#/albergatore/home")}
+/* --- recupero del PIN: codice di recupero, oppure richiesta al bar --- */
+async function recupero(cod){
+ $("#ttl").textContent="☕ Colazioni B&B";loading();
+ const h=await rpc("bb_hotel_info",{codice:cod||""}).catch(()=>null);
+ if(!h||!h.attivo){app.innerHTML=`<div class="card">Link non valido. Chiedi al bar di inviartene uno nuovo.</div>`;return}
+ app.innerHTML=hero(h.nome,h.sfondo,"")+`<div class="card"><h3>Recupera il tuo accesso</h3>
+  <p class="mute">Scrivi il <b>codice di recupero</b> che hai ricevuto quando hai attivato l'accesso (sono 8 caratteri, per esempio K7QM-2XPD) e scegli un nuovo PIN.</p>
+  <label>Codice di recupero</label><input id="rc" autocapitalize="characters" autocomplete="off" placeholder="XXXX-XXXX">
+  <label>Nuovo PIN (almeno 4 caratteri)</label><input id="rp" type="password" autocomplete="new-password"><label>Ripeti il nuovo PIN</label><input id="rp2" type="password" autocomplete="new-password">
+  <button class="btn" id="rc_btn">Imposta il nuovo PIN</button>${bloccoBox}</div>
+  <div class="card"><h3>Non trovi il codice?</h3><p class="mute">Chiedi al bar: ti manda un nuovo link per scegliere un PIN.</p>
+  <label>Un recapito (facoltativo)</label><input id="ra" placeholder="il tuo numero, se diverso da quello del bar"><button class="btn sec" id="ra_btn">Chiedi aiuto al bar</button>
+  <p style="text-align:center;margin:12px 0 0"><a href="#/hotel/${esc(cod)}">← Torna all'accesso</a></p></div>`;
+ $("#rc_btn").onclick=()=>recuperoOk(cod);$("#ra_btn").onclick=()=>recuperoAiuto(cod);bloccoRipristina("rec:"+cod,["rc","rp","rp2","rc_btn"])}
+async function recuperoOk(cod){
+ const n=$("#rp").value;if(n!==$("#rp2").value)return toast("I due PIN non coincidono");
+ const r=await run("bb_alb_recupera",{paccesso:cod,pcodice:$("#rc").value,pnuovo:n});if(!r||r===true)return;
+ if(!r.ok){const sec=bloccoSecondi(r);if(sec)return bloccoAvvia("rec:"+cod,sec,["rc","rp","rp2","rc_btn"],"blocco_pin");return toast(r.msg||"Codice errato")}
+ setSess({r:"alb",s:r.sid,p:r.token,c:cod});codiceRecupero(r.recupero,"Nuovo PIN impostato ✓")}
+async function recuperoAiuto(cod){
+ if(await run("bb_alb_richiedi_aiuto",{paccesso:cod,pnota:$("#ra").value}))app.innerHTML=`<div class="card"><h3>Richiesta inviata ✓</h3><p>Il bar l'ha ricevuta: ti manderà un nuovo link per scegliere il PIN. Quando lo apri, potrai impostarlo subito.</p><a class="btn" style="display:inline-block;text-decoration:none" href="#/hotel/${esc(cod)}">Torna all'accesso</a></div>`}
+/* schermata del codice di recupero: si mostra una volta sola */
+function codiceRecupero(codice,titolo){
+ $("#ttl").textContent="☕ Colazioni B&B";
+ app.innerHTML=`<div class="card" style="text-align:center"><h3>${esc(titolo||"Accesso attivato ✓")}</h3>
+  <p>Questo è il tuo <b>codice di recupero</b>. Se un giorno perdi il PIN, con questo codice ne scegli uno nuovo senza chiamare nessuno.</p>
+  <div style="font-size:32px;font-weight:800;letter-spacing:4px;margin:14px 0">${esc(codice)}</div>
+  <p class="mute">Salvalo adesso: fai uno screenshot o scrivilo. Per motivi di sicurezza non si può rivedere: se lo perdi, ne crei uno nuovo dal Profilo.</p>
+  <button class="btn sec" id="cr_copy">Copia il codice</button>
+  <button class="btn" onclick="go('#/albergatore/profilo')">Ho salvato il codice</button></div>`;
+ $("#cr_copy").onclick=()=>navigator.clipboard.writeText(codice).then(()=>toast("Codice copiato"))}
+async function invito(tok){
+ $("#ttl").textContent="☕ Colazioni B&B";loading();
+ const h=await rpc("bb_invito_info",{token:tok||""}).catch(()=>null);
+ if(!h){app.innerHTML=`<div class="card">Invito non valido o già utilizzato. Se hai già attivato l'accesso, usa il tuo link personale; altrimenti chiedi al bar un nuovo invito.</div>`;return}
+ app.innerHTML=hero(h.nome,h.sfondo,h.benvenuto||"Benvenuto! Attiva il tuo accesso in pochi secondi.")+`<div class="card"><h3>Registrati come gestore</h3><p class="mute">Scegli un PIN personale: ti servirà ogni volta che entri. I PIN dimostrativi non sono accettati.</p>
+ <label>PIN (almeno 4 caratteri)</label><input id="i_p" type="password" autocomplete="new-password"><label>Ripeti il PIN</label><input id="i_p2" type="password" autocomplete="new-password">
+ <label>Indirizzo della struttura</label><input id="i_a" value="${esc(h.indirizzo)}"><label>Telefono</label><input id="i_t" type="tel" value="${esc(h.telefono)}"><label>Email</label><input id="i_e" type="email" value="${esc(h.email)}">
+ <h3 style="margin-top:16px">🧾 Dati per la fattura</h3>${fiscaliForm({})}
+ <button class="btn" id="i_btn">Attiva il mio accesso</button></div>`;
+ $("#i_btn").onclick=()=>invitoOk(tok)}
+async function invitoOk(tok){
+ const p=$("#i_p").value;if(p!==$("#i_p2").value)return toast("I due PIN non coincidono");
+ if(["1111","2222","3333"].includes(p))return toast("Scegli un PIN personale diverso da quello di prova");
+ const r=await run("bb_invito_accetta",{token:tok,ppin:p,pindirizzo:$("#i_a").value,ptelefono:$("#i_t").value,pemail:$("#i_e").value});if(!r||r===true)return;
+ const fd=fiscaliLeggi();
+ if(Object.values(fd).some(x=>String(x).trim())){const q=await rpc("bb_alb_fiscali_salva",{sid:r.id,p:r.token,pdati:fd}).catch(e=>({ok:false,msg:e.message}));if(!q||!q.ok)toast("Dati per la fattura non salvati ("+((q&&q.msg)||"errore")+"): li completi dal Profilo")}
+ setSess({r:"alb",s:r.id,p:r.token,c:r.accesso});codiceRecupero(r.recupero,"Accesso attivato ✓")}
+/* --- dati per la fattura: stesso modulo in registrazione e nel Profilo --- */
+function fiscaliForm(f){f=f||{};const v=k=>esc(f[k]||"");return `<label>Ragione sociale *</label><input id="f_rs" value="${v("ragione_sociale")}" autocomplete="organization">
+ <div class="filters"><div><label>Partita IVA</label><input id="f_piva" inputmode="numeric" maxlength="11" value="${v("piva")}"></div><div><label>Codice fiscale</label><input id="f_cf" maxlength="16" value="${v("codice_fiscale")}"></div></div>
+ <label>Indirizzo di fatturazione (via e numero) *</label><input id="f_ind" value="${v("indirizzo")}" autocomplete="street-address">
+ <div class="filters"><div><label>CAP *</label><input id="f_cap" inputmode="numeric" maxlength="5" value="${v("cap")}"></div><div><label>Comune *</label><input id="f_com" value="${v("comune")}"></div><div><label>Prov. *</label><input id="f_prov" maxlength="2" value="${v("provincia")}" placeholder="NA"></div></div>
+ <div class="filters"><div><label>Codice destinatario</label><input id="f_cd" maxlength="7" value="${f.codice_destinatario&&f.codice_destinatario!=="0000000"?v("codice_destinatario"):""}" placeholder="0000000"></div><div><label>PEC</label><input id="f_pec" type="email" value="${v("pec")}"></div></div>
+ <div class="mute">Servono per la fattura delle tue ricariche. Scrivi la partita IVA o il codice fiscale. Codice destinatario o PEC: se non li conosci lasciali vuoti.</div>`}
+const fiscaliLeggi=()=>({ragione_sociale:$("#f_rs").value,piva:$("#f_piva").value,codice_fiscale:$("#f_cf").value,indirizzo:$("#f_ind").value,cap:$("#f_cap").value,comune:$("#f_com").value,provincia:$("#f_prov").value,codice_destinatario:$("#f_cd").value,pec:$("#f_pec").value});
+async function pfFiscali(){
+ const profilo=await run("bb_alb_profilo_salva",{sid:sess.s,p:sess.p,pbenvenuto:$("#pf_b").value,psfondo:PF.cambiato?PF.sfondo:null,pindirizzo:$("#pf_a").value,ptelefono:$("#pf_t").value});if(!profilo)return;
+ const r=await run("bb_alb_fiscali_salva",{sid:sess.s,p:sess.p,pdati:fiscaliLeggi()});if(!r||r===true)return;
+ if(!r.ok)return toast(r.msg||"Dati non validi");HOT=null;toast("Profilo e dati per la fattura salvati ✓");alb("profilo")}
+/* La ricarica con carta non richiede piu' i dati per la fattura: il bar emette lo scontrino fiscale; i dati restano facoltativi nel Profilo. */
+const fiscBanner=()=>"";
+const statoFatt=f=>f.stato==="emessa"?`<span class="pill p-ok">emessa${f.numero?" n. "+esc(f.numero):""}</span>`:f.stato==="non_dovuta"?`<span class="pill">non dovuta</span>`:`<span class="pill p-warn">in preparazione</span>`;
+let ALB=null,HOT=null,PF={};
+async function pinCambia(){
+ const n=$("#sp1").value;if(n!==$("#sp2").value)return toast("I due PIN non coincidono");
+ const r=await run("bb_alb_pin_cambia",{sid:sess.s,p:sess.p,pvecchio:$("#sp0").value,pnuovo:n});if(!r||r===true)return;
+ if(!r.ok)return toast(r.msg||"Non riesco a cambiare il PIN");toast("PIN cambiato ✓");["sp0","sp1","sp2"].forEach(i=>$("#"+i).value="")}
+async function recuperoNuovo(){
+ const pin=prompt("Per crearne uno nuovo scrivi il tuo PIN");if(!pin)return;
+ const r=await run("bb_alb_recupero_nuovo",{sid:sess.s,p:sess.p,ppin:pin});if(!r||r===true)return;
+ if(!r.ok)return toast(r.msg||"PIN non corretto");codiceRecupero(r.recupero,"Nuovo codice di recupero")}
+/* --- profilo: benvenuto e sfondo --- */
+function pfHtml(s){
+ PF={sfondo:HOT?HOT.sfondo:"",cambiato:false};const link=base()+"#/hotel/"+s.accesso;
+ return `<div class="card"><h3>La tua schermata di benvenuto</h3><p class="mute">È quella che vedi tu quando entri e che vedono i tuoi ospiti quando aprono il link della colazione.</p>
+ <div id="pf_h"></div>
+ <label>Messaggio di benvenuto (facoltativo)</label><input id="pf_b" maxlength="200" value="${esc(s.benvenuto)}" oninput="pfPrev()" placeholder="es. Buongiorno! La colazione vi aspetta da Ceraldi">
+ <label>Logo o immagine dell'hotel (facoltativa)</label><input id="pf_f" type="file" accept="image/*" onchange="pfFile(this)"> <button class="btn sm sec" onclick="PF.sfondo='';PF.img=null;PF.cambiato=true;pfPrev();pfPos()">Rimuovi immagine</button>
+ <div class="mute" style="margin:4px 0 8px">Se la carichi compare in alto, sopra i bottoni. Senza immagine non compare nessuna card. Formato consigliato: largo (3 a 1).</div>
+ <div id="pf_pos" hidden><label>Sposta l'immagine: sinistra ⟷ destra</label><input type="range" min="0" max="100" value="50" id="pf_px" oninput="PF.px=+this.value;pfRitaglia()"><label>Sposta l'immagine: alto ⟷ basso</label><input type="range" min="0" max="100" value="50" id="pf_py" oninput="PF.py=+this.value;pfRitaglia()"><button class="btn sm sec" onclick="PF.px=50;PF.py=50;$('#pf_px').value=50;$('#pf_py').value=50;pfRitaglia()">Centra</button></div>
+ <label>Indirizzo</label><input id="pf_a" value="${esc(s.indirizzo)}"><label>Telefono</label><input id="pf_t" type="tel" value="${esc(s.telefono)}">
+ <button class="btn" onclick="pfSalva()">Salva profilo e immagine</button></div>
+ <div class="card"><h3>🧾 Dati per la fattura <span class="mute">(facoltativi)</span></h3><p class="mute">Servono solo se vuoi la fattura invece dello scontrino.</p>${fiscaliForm(ALB.fiscali)}<button class="btn" onclick="pfFiscali()">Salva dati fiscali e profilo</button></div>
+ <div class="card"><h3>🔐 Sicurezza</h3><label>PIN attuale</label><input id="sp0" type="password" autocomplete="current-password"><label>Nuovo PIN (almeno 4 caratteri)</label><input id="sp1" type="password" autocomplete="new-password"><label>Ripeti il nuovo PIN</label><input id="sp2" type="password" autocomplete="new-password">
+ <button class="btn" onclick="pinCambia()">Cambia PIN</button>
+ <p class="mute" style="margin-top:14px">Il codice di recupero serve se perdi il PIN. Se non lo hai più, ne puoi creare uno nuovo (il vecchio smette di funzionare).</p>
+ <button class="btn sec" onclick="recuperoNuovo()">Crea un nuovo codice di recupero</button></div>
+ <div class="card" style="text-align:center"><h3>Il tuo link di accesso</h3><p class="mute">Salvalo tra i preferiti: è il modo per entrare.</p><div class="qr" id="pf_q" style="display:inline-flex"></div>
+ <button class="btn sm sec" id="pf_copy">Copia link</button></div>`}
+function pfPrev(){const e=$("#pf_h");if(e)e.innerHTML=PF.sfondo?hero(ALB.struttura.nome,PF.sfondo,""):`<p class="mute">Nessuna immagine: in alto resta solo il nome dell'hotel.</p>`}
+const pfPos=()=>{const e=$("#pf_pos");if(e)e.hidden=!PF.img};
+function pfFile(el){
+ const f=el.files[0];if(!f)return;const img=new Image(),rd=new FileReader();
+ rd.onload=()=>{img.onload=()=>{
+  const k=Math.min(1,2400/Math.max(img.width,img.height)),c=document.createElement("canvas");c.width=Math.round(img.width*k);c.height=Math.round(img.height*k);
+  c.getContext("2d").drawImage(img,0,0,c.width,c.height);
+  PF.img=c;PF.px=50;PF.py=50;if($("#pf_px"))$("#pf_px").value=50;if($("#pf_py"))$("#pf_py").value=50;pfPos();pfRitaglia()};img.src=rd.result};rd.readAsDataURL(f)}
+/* ritaglia l'immagine in formato largo 3:1 attorno al punto scelto con i cursori */
+function pfRitaglia(){
+ if(!PF.img)return;
+ cancelAnimationFrame(PF.raf);PF.raf=requestAnimationFrame(()=>{
+  const im=PF.img,W=1200,H=400,sc=Math.max(W/im.width,H/im.height),sw=W/sc,sh=H/sc,sx=(im.width-sw)*(PF.px??50)/100,sy=(im.height-sh)*(PF.py??50)/100;
+  const c=document.createElement("canvas");c.width=W;c.height=H;c.getContext("2d").drawImage(im,sx,sy,sw,sh,0,0,W,H);
+  let q=.8,u=c.toDataURL("image/jpeg",q);while(u.length>420000&&q>.3){q-=.1;u=c.toDataURL("image/jpeg",q)}
+  if(u.length>440000)return toast("Immagine troppo pesante: scegline una più semplice");
+  PF.sfondo=u;PF.cambiato=true;pfPrev()})}
+async function pfSalva(){
+ const r=await run("bb_alb_profilo_salva",{sid:sess.s,p:sess.p,pbenvenuto:$("#pf_b").value,psfondo:PF.cambiato?PF.sfondo:null,pindirizzo:$("#pf_a").value,ptelefono:$("#pf_t").value},"Salvato ✓");
+ if(r){HOT=null;alb("profilo")}}
+
+async function alb(sec){
+ loading();
+ const dati=await Promise.all([run("bb_alb_stato",{sid:sess.s,p:sess.p}),run("bb_alb_portafoglio",{sid:sess.s,p:sess.p})]);
+ ALB=dati[0];if(!ALB||ALB===true)return sess?esci():undefined;ALB.portafoglio=dati[1]||{};
+ if(!HOT||HOT.id!==ALB.struttura.id)HOT=await rpc("bb_hotel_info",{codice:ALB.struttura.accesso}).catch(()=>null);
+ const s=ALB.struttura,my=ALB.vouchers,oggi=ALB.oggi;
+ $("#ttl").textContent="🏨 "+s.nome;
+  const tabs=[["home","Riepilogo"],["nuova","Nuova colazione"],["prodotti","Prodotti e ordini"],["lista","Ospiti"],["camere","Camere"],["profilo","Profilo"],["borsellino","Borsellino"]];
+ let body="";
+ if(sec==="home"){
+  const att=my.filter(v=>!v.annullato&&v.usate<v.qta&&fine(v)>=oggi),att2=ALB.movimenti.filter(m=>!m.confermato).reduce((a,m)=>a+m.importo,0);
+  const prossime=att.slice().sort((a,b)=>a.data.localeCompare(b.data)).slice(0,5);
+  body=fiscBanner()+`<div class="kpis"><div class="card"><div class="mute">Saldo</div><div class="k">${eur(s.saldo)}</div>${att2?`<div class="mute">+${eur(att2)} in attesa</div>`:""}</div>
+  <div class="card"><div class="mute">Colazioni da ritirare</div><div class="k">${att.reduce((a,v)=>a+v.qta-v.usate,0)}</div></div>
+  <div class="card"><div class="mute">Ritirate (totale)</div><div class="k">${my.reduce((a,v)=>a+v.usate,0)}</div></div></div>
+  <button class="btn" onclick="go('#/albergatore/nuova')">+ Nuova colazione</button> <button class="btn sec" onclick="go('#/albergatore/borsellino')">Ricarica</button>
+  <h3 style="margin-top:18px">Prossime colazioni</h3>${prossime.map(v=>`<div class="card row"><div><b>${esc(descV(v))}</b><div class="mute">${dRange(v)}${v.colazione_nome?" · "+esc(v.colazione_nome):""}</div></div><button class="btn sm sec" onclick="mostraQR('${v.id}')">QR</button></div>`).join("")||`<p class="mute">Nessuna colazione in programma.</p>`}`;
+ }else if(sec==="nuova"){
+  body=nuovaHtml();
+ }else if(sec==="lista"){
+  body=`<input id="q" placeholder="Cerca camera, ospite o codice…" oninput="filtraAlb()"><div id="al"></div>`;
+ }else if(sec==="prodotti"){
+  body=`<div class="card"><h3>🥐 Ordine mattutino dolce e salato</h3><p class="mute">Scegli i prodotti che vuoi ricevere per i tuoi ospiti. Questo acquisto è dell’albergatore: l’ospite non deve venire al bar. Prezzi IVA inclusa; allergeni e tracciabilità restano registrati nell’ordine.</p></div><div id="alb_prodotti"><p class="mute">Caricamento prodotti…</p></div><div id="alb_ordini"></div>`;
+ }else if(sec==="profilo"){
+  body=pfHtml(s);
+ }else if(sec==="camere"){
+  CR=ALB.camere.map(c=>({nome:c.nome,ospiti:c.ospiti,servizio_tavolo:!!c.servizio_tavolo}));body=camereEditor("Le tue camere");
+ }else if(sec==="borsellino"){
+  const w=ALB.portafoglio||{},ric=w.ricariche||[];
+  body=fiscBanner()+`<div class="kpis wallet-kpis"><div class="card"><div class="mute">Disponibile</div><div class="k">${eur(w.disponibile??s.saldo)}</div></div><div class="card"><div class="mute">Impegnato nei QR</div><div class="k">${eur(w.impegnato||0)}</div></div><div class="card"><div class="mute">Consumato</div><div class="k">${eur(w.consumato||0)}</div></div></div>
+  <div class="card"><h3>Ricarica credito</h3><p class="mute">Il pagamento è intestato a <b>${esc(s.nome)}</b>. Il saldo aumenta solo dopo la conferma effettiva di SumUp.</p>
+  <div class="row" style="justify-content:flex-start;flex-wrap:wrap;gap:8px;margin:12px 0">${[100,250,500].filter(v=>v>=ALB.config.ricarica_min&&v<=ALB.config.ricarica_max).map(v=>`<button class="btn recharge-choice" onclick="ricaricaSumup(${v})">${v} €</button>`).join("")}</div>
+  <label for="r_i">Oppure scegli un altro importo (€)</label><div class="row wallet-custom"><input id="r_i" type="number" step="0.01" min="${ALB.config.ricarica_min}" max="${ALB.config.ricarica_max}" value="${Math.max(100,ALB.config.ricarica_min)}"><button class="btn" onclick="ricaricaSumup()">Ricarica con SumUp</button></div>
+  <div class="mute">Da ${eur(ALB.config.ricarica_min)} a ${eur(ALB.config.ricarica_max)}. I prodotti extra scelti dall’ospite restano da pagare alla cassa.</div></div>
+  <h3>Storico ricariche</h3><div class="card scroll">${ric.length?`<table>${ric.map(r=>`<tr><td><b>${esc(r.riferimento)}</b><div class="mute">${new Date(r.creato).toLocaleDateString("it-IT")}</div></td><td>${statoRicarica(r)}${r.rimborsato>0?`<div class="mute">Rimborsati ${eur(r.rimborsato)}</div>`:""}${r.stato==="PENDING"&&r.hosted_url?`<div><a href="${esc(r.hosted_url)}">Completa pagamento</a></div>`:""}</td><td style="text-align:right"><b>${eur(r.importo)}</b></td></tr>`).join("")}</table>`:`<p class="mute">Nessuna ricarica SumUp ancora effettuata.</p>`}</div>
+  <h3>Movimenti del credito</h3><div class="card scroll"><table>${ALB.movimenti.filter(m=>m.confermato).map(m=>`<tr><td>${new Date(m.t).toLocaleDateString("it-IT")}</td><td>${esc(m.nota)}</td><td style="text-align:right;color:${m.importo<0?"var(--bad)":"var(--ok)"}">${eur(m.importo)}</td></tr>`).join("")}</table></div>
+  ${(ALB.fatture||[]).length?`<h3>Le tue fatture</h3><div class="card scroll"><table>${ALB.fatture.map(f=>`<tr><td>${new Date(f.pagata_il).toLocaleDateString("it-IT")}</td><td>Ricarica ${eur(f.importo)}</td><td style="text-align:right">${statoFatt(f)}</td></tr>`).join("")}</table></div><p class="mute">La fattura ti arriva dal bar via email o PEC.</p>`:""}`;
+ }
+ /* Il logo/immagine dell'hotel, se caricato dal Profilo, sta sopra i bottoni; senza immagine nessuna card (il nome e' gia' nella barra in alto). */
+ app.innerHTML=(HOT&&HOT.sfondo?hero(s.nome,HOT.sfondo,""):"")+tabsHtml(tabs,sec,"albergatore")+body;
+ if(sec==="profilo"){pfPrev();const e=$("#pf_q");if(e)qr(e,base()+"#/hotel/"+s.accesso,140);const cb=$("#pf_copy");if(cb)cb.onclick=()=>navigator.clipboard.writeText(base()+"#/hotel/"+s.accesso).then(()=>toast("Link copiato"))}
+ if(sec==="nuova"&&$("#nt")){ntTab();ricalcNuova()}
+ if(sec==="lista")filtraAlb();
+ if(sec==="prodotti")albProdotti();
+ if(sec==="camere")crTab();
+ if(sec==="borsellino")setTimeout(sincronizzaRicariche,0);
+}
+let AP={prodotti:[],cart:{},ordini:[],termini:null,data:"",ora:"07:00",nota:"",met:"in_loco",esito:null};
+async function albProdotti(){
+ const [prodotti,storico]=await Promise.all([run("bb_alb_prodotti",{sid:sess.s,p:sess.p}),fetch("/api/colazioni/ordini-prodotti/albergatore/elenco",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({sid:sess.s,p:sess.p})}).then(r=>r.ok?r.json():({ordini:[]})).catch(()=>({ordini:[]}))]);
+ if(!Array.isArray(prodotti))return;AP.prodotti=prodotti;AP.ordini=storico.ordini||[];AP.termini=storico.termini||null;if(AP.termini&&(!AP.data||AP.data<AP.termini.prima_consegna))AP.data=AP.termini.prima_consegna;AP.cart={};apDisegna();apStorico()}
+function apQ(i,d){const p=AP.prodotti[i];if(!p)return;AP.esito=null;AP.cart[i]=Math.max(0,Math.min(200,(AP.cart[i]||0)+d));if(!AP.cart[i])delete AP.cart[i];apDisegna()}
+function apTesta(){const saldo=Number(ALB.struttura.saldo||0),e=AP.esito;
+ return `<div class="row" style="margin:0 0 8px"><span class="mute">Saldo borsellino</span><b class="price" style="font-size:18px">${eur(saldo)}</b></div>`+
+ (e?`<div class="alert ok" role="status" style="margin-bottom:10px"><div class="row" style="align-items:flex-start"><div><b>✓ Ordine ${esc(e.id)} inviato al bar</b><div>Consegna ${dmy(e.data)} ore ${esc(e.ora)}</div><div>${e.metodo==="borsellino"?`<b>Pagato dal borsellino: ${eur(e.totale)}</b>${e.saldo!=null?` · saldo residuo ${eur(e.saldo)}`:""}`:`Da pagare in loco: <b>${eur(e.totale)}</b>`}</div></div><button class="btn sm sec" onclick="AP.esito=null;apDisegna()">Chiudi</button></div></div>`:"")}
+function apDisegna(){const el=$("#alb_prodotti");if(!el)return;const righe=Object.entries(AP.cart),tot=righe.reduce((a,[i,q])=>a+q*Number(AP.prodotti[i].prezzo||0),0),pezzi=righe.reduce((a,[,q])=>a+q,0);
+ el.innerHTML=apTesta()+(AP.prodotti.length?`<div class="catalog-grid">${AP.prodotti.map((p,i)=>`<article class="catalog-card morning-card ${AP.cart[i]?"in-cart":""}">${catalogFoto(p)}<div><b class="catalog-title">${esc(p.nome)}</b>${catalogDescrizione(p)}${catalogAllergeni(p)}<div class="row"><div class="price" style="font-size:20px;margin-top:5px">${eur(p.prezzo)}</div><div class="stepper"><button onclick="apQ(${i},-1)">−</button><b>${AP.cart[i]||0}</b><button onclick="apQ(${i},1)">+</button></div></div></div></article>`).join("")}</div>`:`<div class="card"><p class="mute">Il bar non ha ancora pubblicato prodotti per questa struttura.</p></div>`)+
+ (pezzi?apCarrello(pezzi,tot):"")}
+function apCarrello(pezzi,tot){const T=AP.termini||{prima_consegna:ALB.oggi,ora_limite:"14:00",fasce_ritiro:["07:00"]},saldo=Number(ALB.struttura.saldo||0),basta=saldo>=tot;if(AP.met==="borsellino"&&!basta)AP.met="in_loco";
+ return `<div class="card morning-cart"><div class="row"><div><b>🛒 ${pezzi} prodotti</b></div><span class="price">${eur(tot)}</span></div><div class="filters" style="margin-top:9px"><div><label>Giorno di consegna</label><input id="ap_data" type="date" min="${T.prima_consegna}" max="${addDays(ALB.oggi,30)}" value="${AP.data||T.prima_consegna}" onchange="AP.data=this.value"></div><div><label>Orario di ritiro</label><select id="ap_ora" onchange="AP.ora=this.value">${T.fasce_ritiro.map(h=>`<option value="${h}" ${h===AP.ora?"selected":""}>${h}</option>`).join("")}</select></div></div><p class="mute">Si ordina entro le ${esc(T.ora_limite)} del giorno prima: prima consegna possibile ${dmy(T.prima_consegna)}.</p><div class="filters"><div><label>Nota</label><input id="ap_nota" maxlength="500" placeholder="es. lasciare in reception" value="${esc(AP.nota)}" oninput="AP.nota=this.value"></div></div><div style="margin:10px 0"><label class="row" style="justify-content:flex-start;gap:8px;min-height:44px"><input type="radio" name="ap_met" ${AP.met==="borsellino"?"checked":""} ${basta?"":"disabled"} onchange="AP.met='borsellino';apDisegna()"> <span><b>Paga dal borsellino</b> <span class="mute">saldo ${eur(saldo)}${basta?"":" · insufficiente: ricarica il borsellino"}</span></span></label><label class="row" style="justify-content:flex-start;gap:8px;min-height:44px"><input type="radio" name="ap_met" ${AP.met==="in_loco"?"checked":""} onchange="AP.met='in_loco';apDisegna()"> <span><b>Paga in loco</b> <span class="mute">al bar, alla consegna</span></span></label></div><button class="btn" id="ap_send" onclick="apInvia()">${AP.met==="borsellino"?"Paga dal borsellino "+eur(tot)+" e invia l'ordine":"Invia ordine al bar · paghi in loco "+eur(tot)}</button></div>`}
+async function apInvia(){const righe=Object.entries(AP.cart).map(([i,q])=>({chiave:AP.prodotti[i].chiave,quantita:q}));if(!righe.length)return toast("Il carrello è vuoto");const b=$("#ap_send");b.disabled=true;
+ const payload={sid:sess.s,p:sess.p,data_consegna:AP.data||$("#ap_data").value,ora_ritiro:AP.ora,pagamento_metodo:AP.met,nota:AP.nota,righe,idempotenza:(crypto.randomUUID?crypto.randomUUID():Date.now()+"-"+Math.random())};
+ try{const r=await fetch("/api/colazioni/ordini-prodotti/albergatore",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)}),j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.detail||"Ordine non inviato");AP.cart={};AP.nota="";if(j.saldo!=null)ALB.struttura.saldo=Number(j.saldo);AP.esito={id:j.ordine.id,data:j.ordine.data_consegna,ora:j.ordine.ora_ritiro,metodo:j.ordine.pagamento_metodo,totale:j.ordine.totale,saldo:j.saldo};toast("Ordine "+j.ordine.id+(AP.esito.metodo==="borsellino"?" pagato dal borsellino ✓":" inviato ✓"));await albProdotti();try{window.scrollTo({top:0,behavior:"smooth"})}catch(e){}}catch(e){toast(e.message);b.disabled=false}}
+function apStorico(){const el=$("#alb_ordini");if(!el)return;el.innerHTML=`<h2>I tuoi ordini prodotti</h2>`+(AP.ordini.length?AP.ordini.map(o=>`<div class="card"><div class="row"><div><b>${esc(o.id)} · consegna ${dmy(o.data_consegna)}${o.ora_ritiro?" ore "+esc(o.ora_ritiro):""}</b><div class="mute">${esc(String(o.stato||"").replaceAll("_"," "))} · ${o.pagamento==="incassato"?(o.pagamento_metodo==="borsellino"?"pagato dal borsellino":"pagato"):"da pagare in loco"}</div></div><span class="price" style="font-size:20px">${eur(o.totale)}</span></div>${(o.righe||[]).map(r=>`<div class="order-line"><b>${r.quantita}× ${esc(r.nome)}</b> · ${eur(r.totale)}${(r.allergeni||[]).length?`<div class="mute"><b>Allergeni:</b> ${r.allergeni.map(esc).join(", ")}</div>`:""}${(r.lotti_associati||[]).length?`<div class="mute">Lotto: ${r.lotti_associati.map(x=>esc(x.numero_lotto||x.id)).join(", ")}</div>`:`<div class="mute">Tracciabilità: ${esc(String(r.tracciabilita_stato||"in verifica").replaceAll("_"," "))}</div>`}</div>`).join("")}${o.nota?`<p class="mute">Nota: ${esc(o.nota)}</p>`:""}</div>`).join(""):`<div class="card"><p class="mute">Nessun ordine prodotti inviato.</p></div>`)}
+/* --- nuova colazione: tutto in una pagina --- */
+let NR=[],DEF={},NRSEL=-1;
+const colById=id=>ALB.colazioni.find(c=>c.id===id);
+const sup=()=>+(ALB.struttura.supp_tavolo||0);
+function nuovaHtml(){
+ const oggi=ALB.oggi,C=ALB.camere,cols=ALB.colazioni;
+ if(!cols.length)return `<div class="card"><h3>Nessuna colazione disponibile</h3><p class="mute">Il bar non ha ancora attivato le colazioni per la tua struttura. Contatta ${esc(ALB.bar.bar_nome||"il bar")}.</p></div>`;
+ DEF={dal:oggi,al:oggi,col:cols[0].id};
+ NR=C.map(c=>({camera:c.nome,ospiti:c.ospiti,dal:oggi,al:oggi,col:cols[0].id,on:false,tavolo:!!c.servizio_tavolo,attenzione:""}));NRSEL=-1;
+ if(!C.length){NR.push({camera:"",ospiti:2,dal:oggi,al:oggi,col:cols[0].id,on:true,libera:true,tavolo:false,attenzione:""});NRSEL=0}
+ const pre=[["Oggi",0],["Domani",1],["2 notti",2],["3 notti",3],["1 settimana",6]];
+ return `<div class="card"><h3>1 · Periodo e colazione</h3><p class="mute">Imposta il periodo una volta: resta pronto anche quando passi alla camera successiva.</p>
+  <div class="chips" style="margin-bottom:8px">${pre.map(p=>`<button class="btn sm sec" onclick="ntPre(${p[1]},${p[0]==="Domani"?1:0})">${p[0]}</button>`).join(" ")}</div>
+  <div class="filters">
+  <div><label>Dal</label><input id="n_dal" type="date" value="${oggi}" min="${oggi}" max="${addDays(oggi,ALB.config.anticipo)}" onchange="ntDef()"></div>
+  <div><label>Al (compreso)</label><input id="n_al" type="date" value="${oggi}" min="${oggi}" onchange="ntDef()"></div>
+  <div><label>Tipo di colazione</label><select id="n_col" onchange="ntDef()">${cols.map(c=>`<option value="${c.id}">${esc(c.nome)} · ${eur(c.prezzo)}</option>`).join("")}</select></div></div>
+  <div class="mute">Per ogni camera scegli <b>☕ Banco</b> oppure <b>🪑 Tavolo</b>. Solo Tavolo aggiunge ${eur(sup())} a persona per ogni colazione.</div>
+  <div id="n_cd" class="mute"></div>
+  ${ALB.config.limite_ora?`<div class="mute">Per il giorno stesso ordina entro le ${esc(ALB.config.limite_ora)} del giorno prima.</div>`:""}</div>
+ <div class="card"><h3>2 · Camera e ospiti</h3><p class="mute">Seleziona e salva una camera alla volta. Per inserirne un'altra ripeti questo passaggio: non serve scorrere lateralmente.</p>
+  ${C.length?"":`<p class="mute">Non hai ancora inserito camere: scrivine una qui oppure <a href="#/albergatore/camere">salvala una volta per sempre</a>.</p>`}
+  <div id="nt"></div></div>
+ <div class="card"><div class="row"><span class="mute" id="n_s"></span><span class="price" id="n_t"></span></div><div id="n_w"></div><div class="booking-actions"><button class="btn" id="n_b" onclick="doNuova()">Salva questa camera e crea il QR</button></div></div>`}
+function ntPre(n,start){const oggi=ALB.oggi,d=addDays(oggi,start);$("#n_dal").value=d;$("#n_al").value=addDays(d,start?Math.max(0,n-1):n);ntDef()}
+function ntDef(){
+ let d=$("#n_dal").value||ALB.oggi,a=$("#n_al").value||d;if(a<d)a=d;if(a>addDays(d,30))a=addDays(d,30);$("#n_al").value=a;$("#n_al").min=d;
+ DEF={dal:d,al:a,col:$("#n_col").value};NR.forEach(r=>{r.dal=d;r.al=a;r.col=DEF.col});
+ const c=colById(DEF.col);$("#n_cd").innerHTML=c?(c.descrizione?esc(c.descrizione)+"<br>":"")+(c.voci||[]).map(v=>(v.qta>1?v.qta+"× ":"")+esc(v.nome)).join(" · "):"";
+ ntTab();ricalcNuova()}
+function ntRow(i,k,v){const r=NR[i];r[k]=v;if(k==="dal"&&r.al<v)r.al=v;if(k==="al"&&v<r.dal)r.dal=v;if(r.al>addDays(r.dal,30))r.al=addDays(r.dal,30);ntTab();ricalcNuova()}
+function rigaTot(r){const c=colById(r.col);return c?(c.prezzo+(r.tavolo?sup():0))*r.ospiti*nGiorni(r.dal,r.al):0}
+function ntScegliCamera(v){
+ if(v==="nuova"){NR.push({camera:"",ospiti:2,dal:DEF.dal,al:DEF.al,col:DEF.col,on:true,libera:true,tavolo:false,attenzione:""});NRSEL=NR.length-1}
+ else NRSEL=Number(v);
+ NR.forEach((r,i)=>r.on=i===NRSEL);ntTab();ricalcNuova()}
+function ntTab(){
+ const el=$("#nt");if(!el)return;const r=NRSEL>=0?NR[NRSEL]:null;
+ el.innerHTML=`<label for="n_cam">Camera</label><select id="n_cam" onchange="ntScegliCamera(this.value)"><option value="" ${NRSEL<0?"selected":""} disabled>Scegli una camera…</option>${NR.map((x,i)=>`<option value="${i}" ${i===NRSEL?"selected":""}>${esc(x.camera||"Camera non in elenco")}</option>`).join("")}<option value="nuova">+ Camera non in elenco</option></select>`+
+ (r?`<section class="booking-room" aria-label="Dettagli camera selezionata"><div class="booking-room-head"><div>${r.libera?`<label for="n_cam_nome">Nome camera</label><input id="n_cam_nome" value="${esc(r.camera)}" placeholder="es. Camera 12" oninput="NR[${NRSEL}].camera=this.value" style="margin:3px 0 0">`:`<h4>${esc(r.camera)}</h4><div class="mute">Periodo scelto sopra</div>`}</div><div class="booking-room-total">${eur(rigaTot(r))}</div></div>
+ <div class="booking-room-grid"><div><label>Ospiti</label><div class="stepper"><button type="button" aria-label="Diminuisci ospiti" onclick="ntOsp(${NRSEL},-1)">−</button><b>${r.ospiti}</b><button type="button" aria-label="Aumenta ospiti" onclick="ntOsp(${NRSEL},1)">+</button></div></div><div><label for="n_cam_col">Colazione</label><select id="n_cam_col" onchange="ntRow(${NRSEL},'col',this.value)" style="margin:3px 0 0">${ALB.colazioni.map(c=>`<option value="${c.id}" ${c.id===r.col?"selected":""}>${esc(c.nome)} · ${eur(c.prezzo+(r.tavolo?sup():0))}</option>`).join("")}</select></div></div>
+ <label>Servizio</label><div class="service-choice" role="group" aria-label="Servizio per ${esc(r.camera||"camera")}"><button type="button" class="${r.tavolo?"":"on"}" aria-pressed="${r.tavolo?"false":"true"}" onclick="ntServ(${NRSEL},false)">☕ Banco</button><button type="button" class="${r.tavolo?"on":""}" aria-pressed="${r.tavolo?"true":"false"}" onclick="ntServ(${NRSEL},true)">🪑 Tavolo +${eur(sup())}</button></div>
+ <label for="n_attenzione" style="display:block;margin-top:10px">⚠️ Allergie o intolleranze segnalate dall’ospite</label><textarea id="n_attenzione" rows="2" maxlength="500" placeholder="es. intolleranza al lattosio" oninput="NR[${NRSEL}].attenzione=this.value">${esc(r.attenzione||"")}</textarea><div class="catalog-allergens"><b>Attenzione:</b> la segnalazione aiuta il bar a prestare maggiore cura, ma non garantisce l’assenza di contaminazioni o tracce nei prodotti acquistati.</div></section>`:`<div class="hint">Scegli la camera da prenotare. Dopo il salvataggio potrai passare subito alla successiva.</div>`)}
+function ntOsp(i,d){NR[i].ospiti=Math.min(10,Math.max(1,NR[i].ospiti+d));ntTab();ricalcNuova()}
+function ntServ(i,v){NR[i].tavolo=!!v;ntTab();ricalcNuova()}
+function ricalcNuova(){
+ const on=NRSEL>=0&&NR[NRSEL]?[NR[NRSEL]]:[],pers=on.reduce((a,r)=>a+r.ospiti,0),tot=on.reduce((a,r)=>a+rigaTot(r),0),dopo=ALB.struttura.saldo-tot;
+ $("#n_t").textContent=on.length?eur(tot):"";$("#n_s").textContent=on.length?`${pers} ospiti · saldo dopo: ${eur(dopo)}`:"Scegli una camera";
+ $("#n_w").innerHTML=dopo<0?`<div class="alert bad">Saldo insufficiente: mancano ${eur(-dopo)}. <a href="#/albergatore/borsellino">Ricarica il borsellino</a></div>`:""}
+async function doNuova(){
+ const righe=NRSEL>=0&&NR[NRSEL]?[NR[NRSEL]].map(r=>({camera:r.camera.trim(),ospiti:r.ospiti,dal:r.dal,al:r.al,colazione_id:r.col,servizio_tavolo:!!r.tavolo,attenzione_alimentare:(r.attenzione||"").trim()})):[];
+ if(!righe.length)return toast("Seleziona una camera");
+ if(righe.some(r=>!r.camera))return toast("Scrivi il nome della camera");
+ $("#n_b").disabled=true;
+ const r=await run("bb_alb_crea_soggiorni",{sid:sess.s,p:sess.p,righe});
+ if(!r){$("#n_b").disabled=false;return}
+ ALB=await run("bb_alb_stato",{sid:sess.s,p:sess.p});
+ if(r.creati.length===1)return mostraQR(r.creati[0].id,true);
+ const ids=r.creati.map(c=>c.id);
+ app.innerHTML=`<div class="card"><h3>${ids.length} colazioni create · ${eur(r.totale)}</h3><p class="mute">Ogni camera ha il suo QR da inviare all'ospite.</p><button class="btn" onclick='stampaIds(${JSON.stringify(ids)})'>🖨 Stampa tutti i QR</button> <button class="btn sec" onclick="go('#/albergatore/lista')">Vai all'elenco</button></div>`+
+  r.creati.map(c=>`<div class="card row"><div><b>${esc(camNome({camera:c.camera,ospite:c.nome}))}</b></div><button class="btn sm sec" onclick="mostraQR('${c.id}')">QR</button></div>`).join("")}
+/* --- elenco ospiti --- */
+function filtraAlb(){
+ const q=($("#q").value||"").toLowerCase(),oggi=ALB.oggi;
+ const l=ALB.vouchers.filter(v=>!q||(v.ospite+" "+v.camera).toLowerCase().includes(q)||v.id.toLowerCase().includes(q));
+ $("#al").innerHTML=l.map(v=>{const [t,c]=stato(v,oggi);return `<div class="card row"><div><b>${esc(descV(v))}</b><div class="mute">${dRange(v)}${v.colazione_nome?" · "+esc(v.colazione_nome):""} · ritirate ${v.usate}/${v.qta}</div>
+ <div>${v.has_richieste?`<span class="pill p-warn">richieste dell'ospite</span> `:""}${v.extra_da_pagare>0?`<span class="pill p-ok">extra ${eur(v.extra_da_pagare)} da pagare al bar</span>`:v.extra_totale>0?`<span class="pill">extra incassati</span>`:""}</div></div>
+ <div style="text-align:right"><span class="pill ${c}">${t}</span><br><button class="btn sm sec" onclick="mostraQR('${v.id}')">QR</button> ${!v.annullato&&v.usate<v.qta&&fine(v)>=oggi?`<button class="btn sm sec" onclick="annullaAlb('${v.id}')">Annulla</button>`:""}</div></div>`}).join("")||`<p class="mute">Nessun risultato.</p>`}
+/* l'albergatore annulla solo entro il soggiorno (dopo la data di fine decide il bar, con motivo) */
+async function annullaAlb(id){if(!confirm("Annullare questa colazione? Le non ritirate tornano nel borsellino."))return;const r=await run("bb_alb_annulla",{sid:sess.s,p:sess.p,vid:id});if(r){toast("Rimborsati "+eur(r.rimborsato));alb("lista")}}
+function stampaIds(ids){stampa(ids.map(id=>cardVoucher(ALB.vouchers.find(x=>x.id===id),"",ALB.struttura.nome)))}
+function statoRicarica(r){const m={PAID:["Pagata","p-ok"],PENDING:["In attesa","p-warn"],CREATA:["In preparazione","p-warn"],EXPIRED:["Scaduta",""],FAILED:["Non riuscita","p-bad"],ERROR:["Da verificare","p-bad"],PARTIALLY_REFUNDED:["Rimborso parziale","p-warn"],REFUNDED:["Rimborsata",""]},x=m[r.stato]||[r.stato,""];return `<span class="pill ${x[1]}">${esc(x[0])}</span>`}
+let WSYNC=0;
+async function sincronizzaRicariche(){if(Date.now()-WSYNC<5000)return;WSYNC=Date.now();try{const r=await fetch("/api/colazioni/ricariche/sumup/sincronizza",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({sid:sess.s,p:sess.p})}),j=await r.json().catch(()=>({}));if(r.ok&&j.aggiornate>0)alb("borsellino")}catch(e){}}
+const fiscCompleti=()=>{const f=ALB&&ALB.fiscali;if(!f)return false;if(f.completi!==undefined)return !!f.completi;return !!(f.ragione_sociale&&(f.piva||f.codice_fiscale)&&f.indirizzo&&f.cap&&f.comune&&f.provincia&&(f.codice_destinatario||f.pec))};
+function fiscScelta(i){return new Promise(ok=>{const d=document.createElement("div");d.style.cssText="position:fixed;inset:0;background:rgba(42,51,41,.55);z-index:99;display:flex;align-items:center;justify-content:center;padding:16px";
+ d.innerHTML=`<div class="card" style="max-width:420px;width:100%"><h3>Ricarica di ${eur(i)}</h3><p class="mute">Mancano i dati per la fattura. Come preferisci procedere?</p>
+ <button class="btn" style="width:100%;margin:6px 0;min-height:48px" data-s="dati">Compila i dati per la fatturazione</button>
+ <button class="btn sec" style="width:100%;margin:6px 0;min-height:48px" data-s="scontrino">Acquista con scontrino fiscale</button>
+ <button class="btn sec" style="width:100%;margin:6px 0;min-height:48px" data-s="annulla">Annulla</button></div>`;
+ d.onclick=e=>{const b=e.target.closest("[data-s]");if(!b)return;d.remove();ok(b.dataset.s)};document.body.appendChild(d)})}
+async function ricaricaSumup(imp){
+ const i=imp!==undefined?+imp:+$("#r_i").value;if(!(i>=ALB.config.ricarica_min))return toast("Importo minimo "+eur(ALB.config.ricarica_min));
+ if(i>ALB.config.ricarica_max)return toast("Importo massimo "+eur(ALB.config.ricarica_max));
+ if(!fiscCompleti()){const sc=await fiscScelta(i);if(sc==="dati")return go("#/albergatore/profilo");if(sc!=="scontrino")return}
+ else if(!confirm("Ricaricare "+eur(i)+" con SumUp?"))return;
+ document.querySelectorAll(".recharge-choice,.wallet-custom button").forEach(b=>b.disabled=true);
+ try{const r=await fetch("/api/colazioni/ricariche/sumup",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({sid:sess.s,p:sess.p,importo:i,idempotenza:crypto.randomUUID?crypto.randomUUID():Date.now()+"-"+Math.random()})}),j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.detail||"Pagamento non disponibile");if(j.url)location.href=j.url;else throw new Error("Pagina SumUp non disponibile")}catch(e){toast(e.message);document.querySelectorAll(".recharge-choice,.wallet-custom button").forEach(b=>b.disabled=false)}}
+async function doRicarica(){const i=+$("#r_i").value;if(await run("bb_alb_ricarica",{sid:sess.s,p:sess.p,imp:i},"Richiesta inviata al bar"))alb("borsellino")}
+async function mostraQR(id,continua=false){
+ const v=ALB.vouchers.find(x=>x.id===id),l=linkOspite(id);
+ app.innerHTML=`<div class="card" style="text-align:center"><h3>${esc(descV(v,false))}</h3><p class="mute">${dRange(v)}</p><div class="qr" id="qrbox"></div>
+ <p><b style="letter-spacing:2px;font-size:20px">${id}</b></p>
+ <p class="mute">Questo unico accesso contiene colazione, consensi e recensioni.</p>
+ <button class="btn" id="sh">Condividi con il cliente</button> <button class="btn sec" onclick="stampaIds(['${id}'])">��� Stampa</button>
+ <button class="btn sec" onclick="go('${continua?"#/albergatore/nuova":"#/albergatore/lista"}')">${continua?"Continua con una nuova camera":"Chiudi"}</button></div>`;
+ qr($("#qrbox"),l);
+ const msg=(ALB.config.msg||"La tua colazione da {bar}").replace("{ospite}",v.ospite).replace("{bar}",ALB.bar.bar_nome||"Bar Ceraldi").replace("{link}","").trim();
+ $("#sh").onclick=()=>navigator.share?navigator.share({title:"La tua colazione",text:msg,url:l}).catch(()=>{}):navigator.clipboard.writeText((msg?msg+"\n":"")+l).then(()=>toast("Link unico copiato"))}
+/* --- editor camere (albergatore e titolare) --- */
+let CR=[],CRSID=null;
+function camereEditor(titolo){return `<div class="card"><h3>${esc(titolo)}</h3><p class="mute">Scrivi nome e ospiti, poi scegli Banco o Tavolo per ogni camera. Durante ogni prenotazione potrai ancora cambiare la scelta.</p><div id="ce"></div>
+ <button class="btn sm sec" onclick="CR.push({nome:'',ospiti:2,servizio_tavolo:crDefaultTavolo()});crTab()">+ Aggiungi camera</button></div>
+ <div class="card"><h3>Crea più camere insieme</h3><div class="filters"><div><label>Nome</label><input id="g_p" value="Camera"></div><div><label>Dal numero</label><input id="g_a" type="number" value="1"></div><div><label>Quante</label><input id="g_n" type="number" value="6"></div><div><label>Ospiti</label><input id="g_o" type="number" value="2"></div></div>
+ <button class="btn sm sec" style="margin-top:8px" onclick="crGen()">Aggiungi all'elenco</button></div>
+ <button class="btn" onclick="crSalva()">Salva camere</button>`}
+const crDefaultTavolo=()=>false;
+function crTab(){$("#ce").innerHTML=CR.map((c,i)=>`<div class="row" style="gap:6px;margin:7px 0;flex-wrap:wrap"><input value="${esc(c.nome)}" placeholder="Nome camera" oninput="CR[${i}].nome=this.value" style="margin:0;flex:1;min-width:150px"><div class="stepper"><button onclick="crOsp(${i},-1)">−</button><b>${c.ospiti}</b><button onclick="crOsp(${i},1)">+</button></div><div class="service-choice" role="group" aria-label="Servizio abituale per ${esc(c.nome||"camera")}"><button type="button" class="${c.servizio_tavolo?"":"on"}" aria-pressed="${c.servizio_tavolo?"false":"true"}" onclick="crServ(${i},false)">☕ Banco</button><button type="button" class="${c.servizio_tavolo?"on":""}" aria-pressed="${c.servizio_tavolo?"true":"false"}" onclick="crServ(${i},true)">🪑 Tavolo</button></div><button class="btn sm sec" onclick="CR.splice(${i},1);crTab()">✕</button></div>`).join("")||`<p class="mute">Nessuna camera inserita.</p>`}
+function crServ(i,v){CR[i].servizio_tavolo=!!v;crTab()}
+function crOsp(i,d){CR[i].ospiti=Math.min(10,Math.max(1,CR[i].ospiti+d));crTab()}
+function crGen(){const p=$("#g_p").value.trim(),a=+$("#g_a").value||1,n=Math.min(100,+$("#g_n").value||0),o=Math.min(10,Math.max(1,+$("#g_o").value||2));for(let i=0;i<n;i++)CR.push({nome:(p+" "+(a+i)).trim(),ospiti:o,servizio_tavolo:crDefaultTavolo()});crTab()}
+async function crSalva(){
+ const camere=CR.filter(c=>c.nome.trim()).map(c=>({nome:c.nome.trim(),ospiti:c.ospiti,servizio_tavolo:!!c.servizio_tavolo}));
+ const ok=sess.r==="alb"?await run("bb_alb_camere_salva",{sid:sess.s,p:sess.p,camere},"Camere salvate"):await run("bb_tit_camere_salva",{p:sess.p,sid:CRSID,camere},"Camere salvate");
+ if(ok!==undefined)render()}
+
+/* ============ OSPITE ============ */
+const modTxt=m=>m.tipo==="senza"?`Senza ${esc(m.testo)}`:m.tipo==="senza_glutine"?"Versione senza glutine"+(m.testo?": "+esc(m.testo):""):esc(m.testo)+"";
+const modChi=m=>m.chi&&m.chi!=="Tutti"?` <span class="mute">(${esc(m.chi)})</span>`:"";
+let G=null;
+async function recensioniVoucher(){
+ try{
+  const info=await rpc("bb_recensioni_voucher_apri",{vid:G.d.id});
+  REC={token:null,fonte:"qr",info,sessione:info.sessione,scelte:{},telefono:false,host:"g_rec"};
+  recPagina();$("#g_rec").scrollIntoView({behavior:"smooth"})}
+ catch(e){toast(e.message)}}
+async function ospite(id){
+ $("#ttl").textContent="☕ La tua colazione";loading();
+ const d0=await rpc("bb_ospite",{vid:id||""}).catch(e=>({errore:e.message}));
+ if(d0&&d0.errore){app.innerHTML=`<div class="card">${esc(d0.errore)}</div>`;return}
+ if(!d0){app.innerHTML=`<div class="card">Codice non valido.</div>`;return}
+ const d=gNorm(d0),r=(d.richieste&&typeof d.richieste==="object")?d.richieste:{};
+ G={d,req:{allergie:Array.isArray(r.allergie)?r.allergie:[],nota:typeof r.nota==="string"?r.nota:"",modifiche:[]},cart:{},cata:null,sub:"",q:"",form:null,sporco:false,giorno:d.oggi<d.data?d.data:(d.oggi<=fine(d)?d.oggi:fine(d)),panel:"home",saved:false};
+ const b=d.bar||{},maps=b.bar_maps||"https://www.google.com/maps/search/?api=1&query="+encodeURIComponent((b.bar_nome||"Bar Pasticceria Ceraldi")+" "+(b.bar_indirizzo||"Napoli"));
+ const persone=d.ospiti||1,titolo=descV(d,false);
+ app.innerHTML=hero(d.struttura,d.sfondo,d.benvenuto)+`<div class="card" style="text-align:center"><h2 style="margin:4px 0">${esc(titolo)}</h2>
+ ${d.annullato?`<div class="alert bad"><b>Questa colazione è stata annullata.</b></div>`:""}
+ <div class="price" style="font-size:22px">Colazione inclusa${d.qta>1?` · ${d.qta} persone`:""}</div><p class="mute">${d.colazione?esc(d.colazione)+" · ":""}${fine(d)!==d.data?"Valida dal "+dmy(d.data)+" al "+dmy(fine(d)):"Valida il "+dmy(d.data)} · ritirate ${d.usate}/${d.qta}</p>
+ <div class="alert ok" style="text-align:left"><b>${d.tavolo?"🪑 La colazione sarà servita al tavolo":"☕ La colazione sarà servita al banco"}</b></div><div class="qr" id="qrbox"></div><p><b style="letter-spacing:2px;font-size:20px">${d.id}</b></p><p class="mute">Mostra questo codice al bancone di ${esc(b.bar_nome||"Bar Pasticceria Ceraldi")}.</p>
+ <a class="btn" style="display:inline-block;text-decoration:none" href="${esc(maps)}" target="_blank" rel="noopener">📍 Come arrivare al bar</a>
+ ${b.bar_indirizzo?`<p class="mute">${esc(b.bar_indirizzo)}${b.bar_orari?" · "+esc(b.bar_orari):""}</p>`:""}${b.bar_tel||b.bar_whatsapp||b.bar_email?`<p>${b.bar_tel?`<a href="tel:${esc(b.bar_tel)}">📞 Chiama</a> `:""}${b.bar_whatsapp?`<a href="https://wa.me/${esc(String(b.bar_whatsapp).replace(/\D/g,""))}" target="_blank" rel="noopener">💬 WhatsApp</a> `:""}${b.bar_email?`<a href="mailto:${esc(b.bar_email)}">✉️ Email</a>`:""}</p>`:""}</div>
+ <div id="g_rec"><div class="card"><h2>Recensioni e privacy</h2><p class="mute">Da questo stesso accesso puoi scegliere separatamente geolocalizzazione e invito WhatsApp, senza opzioni preselezionate. Al termine puoi recensire su Google o Tripadvisor.</p><button class="btn" onclick="recensioniVoucher()">Apri recensioni e consensi</button></div></div><div id="g_day"></div><div id="g_menu"></div><div id="g_form"></div><div id="g_all"></div><div id="g_cart"></div><div id="g_cat"></div><div id="g_bar"></div>
+ ${albergoHtml(d.indirizzo)}<details class="card"><summary><b>Informazioni utili su Napoli</b></summary><div style="margin-top:12px">${napoli()}</div></details>`;
+ qr($("#qrbox"),linkOspite(d.id));gSetGiorno(G.giorno);
+ loadExt().then(E=>{$("#ex_n").innerHTML=naviHtml(E);$("#ex_s").innerHTML=scioperiHtml(E)})}
+/* la risposta del database si legge con le forme attese: una lista mancante e' una lista vuota, mai un TypeError */
+function gNorm(d){
+ d.voci=(Array.isArray(d.voci)?d.voci:[]).map(v=>({...v,nome:String(v.nome||""),allergeni:Array.isArray(v.allergeni)?v.allergeni:[],ingredienti:Array.isArray(v.ingredienti)?v.ingredienti:[]}));
+ d.extra=(Array.isArray(d.extra)?d.extra:[]).map(e=>({...e,voci:Array.isArray(e.voci)?e.voci:[],totale:+e.totale||0}));
+ d.scelte=d.scelte&&typeof d.scelte==="object"?d.scelte:{};
+ d.allergeni_elenco=Array.isArray(d.allergeni_elenco)?d.allergeni_elenco:[];d.glutine=Array.isArray(d.glutine)?d.glutine:[];
+ d.extra_da_pagare=+d.extra_da_pagare||0;return d}
+const gChiuso=()=>G.d.annullato||G.giorno<G.d.oggi;
+const gA=()=>Object.fromEntries(G.d.allergeni_elenco.map(a=>[a.id,a]));
+const gDayLabel=()=>G.giorno===G.d.oggi?"Colazione di oggi":G.giorno===addDays(G.d.oggi,1)?"Colazione di domani":"Colazione del "+dmy(G.giorno);
+function gCambiaGiorno(n){if(G.sporco&&!confirm("Hai modifiche non salvate. Cambiare giorno senza inviarle?"))return;const g=addDays(G.giorno,n);if(g<G.d.data||g>fine(G.d))return;gSetGiorno(g);document.getElementById("g_day").scrollIntoView({behavior:"smooth",block:"start"})}
+function menuCartaOspite(){location.href="/menu/carta/index.html?bb="+encodeURIComponent(G.d.id)+"&giorno="+encodeURIComponent(G.giorno)}
+function gApri(p){G.panel=p;G.form=null;gRender();document.getElementById("g_menu").scrollIntoView({behavior:"smooth",block:"start"})}
+function gRender(){
+ const d=G.d,A=gA(),ch=gChiuso(),sel=G.req.allergie,extra=gExtraDi(G.giorno);
+ $("#g_day").innerHTML=`<div class="card"><div class="guest-day"><button class="btn sec" aria-label="Giorno precedente" ${G.giorno<=d.data?"disabled":""} onclick="gCambiaGiorno(-1)">‹</button><div><b>${gDayLabel()}</b><span class="mute">${dmy(G.giorno)} · stesso QR</span></div><button class="btn sec" aria-label="Giorno successivo" ${G.giorno>=fine(d)?"disabled":""} onclick="gCambiaGiorno(1)">›</button></div>${G.saved?`<div class="guest-saved">Scelte salvate per il ${dmy(G.giorno)}</div>`:""}</div>`;
+ const riepilogo=`<div class="card"><h3 style="margin-bottom:6px">Incluso nella colazione</h3>${d.voci.length?d.voci.map(v=>`<div class="guest-line"><span><b>${v.qta>1?v.qta+"× ":""}${esc(v.nome)}</b></span></div>`).join(""):`<p>${esc(d.menu||"")}</p>`}
+  ${G.req.modifiche.length?`<div class="guest-saved">${G.req.modifiche.length} modifica${G.req.modifiche.length===1?"":"he"} per questa giornata</div>`:""}
+  ${extra&&extra.voci.length?`<div class="guest-saved">${extra.voci.filter(e=>!e.glutine).reduce((a,e)=>a+(+e.qta||0),0)} prodotti extra · ${eur(extra.totale)}</div>`:""}
+  ${ch?`<p class="mute">Questa giornata non è più modificabile.</p>`:`<div class="guest-actions"><button class="btn sec primary" onclick="gApri('custom')">Cambia un prodotto</button><button class="btn sec" onclick="menuCartaOspite()">🛒 Menu e prodotti extra</button><button class="btn sec" onclick="gApri('allergy')">Allergie</button></div>`}</div>`;
+ let menu=riepilogo;
+ if(G.panel==="custom")menu=`<div class="card"><div class="guest-panel-head"><button class="btn sec" aria-label="Indietro" onclick="gApri('home')">‹</button><h3>Cambia un prodotto</h3></div>`+(d.voci.length?d.voci.map((v,i)=>{const conf=v.allergeni.filter(a=>sel.includes(a));return `<div class="guest-line"><div><b>${v.qta>1?v.qta+"× ":""}${esc(v.nome)}</b>${conf.length?`<div class="mute">Contiene: ${conf.map(a=>esc((A[a]||{}).nome||a)).join(", ")}</div>`:""}</div><button class="btn sm sec" onclick="gRic(${i})">Cambia</button></div>${G.req.modifiche.map((m,j)=>m.voce===v.nome?`<div class="alert ok">${modTxt(m)}${modChi(m)}${m.diff>0?` <b>+${eur(m.diff)}</b>`:""} <a href="#" onclick="gDelMod(${j});return false">Elimina</a></div>`:"").join("")}`}).join(""):`<p>${esc(d.menu||"")}</p>`)+`</div>`;
+ $("#g_menu").innerHTML=menu;$("#g_form").innerHTML=G.form===null?"":gFormHtml();
+ $("#g_all").innerHTML=G.panel!=="allergy"?"":`<div class="card"><div class="guest-panel-head"><button class="btn sec" aria-label="Indietro" onclick="gApri('home')">‹</button><h3>Allergie e intolleranze</h3></div><p class="mute">Segnalazione per maggiore attenzione: non garantisce l'assenza di contaminazioni. Chiedi conferma al bar.</p><div class="tabs" style="flex-wrap:wrap">${d.allergeni_elenco.map(a=>`<button class="${sel.includes(a.id)?"on":""}" ${ch?"disabled":""} onclick="gAll('${a.id}')">${a.icon} ${esc(a.nome)}</button>`).join("")}</div><textarea rows="2" ${ch?"disabled":""} placeholder="Altre note" oninput="G.req.nota=this.value;gSporco()">${esc(G.req.nota)}</textarea></div>`;
+ gCartRender();$("#g_bar").innerHTML=ch||!G.sporco?"":`<div class="sticky-bar"><div><b>${gBarTesto()}</b><div class="mute">Solo per il ${dmy(G.giorno)}</div></div><button class="btn" onclick="gSalva()">Invia al bar</button></div>`}
+const gBarTesto=()=>{const t=gTot();return t>0?(gPagato(G.giorno)?"Extra già pagati":"Da pagare al bar: "+eur(t)):"Salva le modifiche"};
+const gSporco=()=>{G.sporco=true;gBarRefresh()};
+function gAll(id){const a=G.req.allergie,i=a.indexOf(id);i<0?a.push(id):a.splice(i,1);G.sporco=true;gRender()}
+function gDelMod(j){G.req.modifiche.splice(j,1);G.sporco=true;gRender()}
+function gRic(i){G.form={i,tipo:"senza"};gRender();$("#g_form").scrollIntoView({behavior:"smooth"})}
+function gFormHtml(){
+ const d=G.d,v=d.voci[G.form.i],t=G.form.tipo;
+ return `<div class="card"><h3>Personalizza: ${esc(v.nome)}</h3><label>Cosa vuoi?</label>
+  <select id="rf_t" onchange="G.form.tipo=this.value;$('#g_form').innerHTML=gFormHtml()"><option value="senza" ${t==="senza"?"selected":""}>Senza un ingrediente</option><option value="senza_glutine" ${t==="senza_glutine"?"selected":""}>Versione senza glutine</option><option value="nota" ${t==="nota"?"selected":""}>Altra richiesta</option></select>
+  ${t==="senza"?`<label>Quale ingrediente togliere?</label><input id="rf_x" list="rf_l" placeholder="es. funghi">${v.ingredienti.length?`<datalist id="rf_l">${v.ingredienti.map(x=>`<option value="${esc(x)}">`).join("")}</datalist><div class="mute" style="margin:-6px 0 10px">Suggeriti: ${v.ingredienti.map(esc).join(", ")}</div>`:""}`:""}
+  ${t==="senza_glutine"?gGluHtml(v):""}
+  ${t==="nota"?`<label>Scrivi la richiesta</label><input id="rf_x" maxlength="120" placeholder="es. tè al posto del cappuccino">`:""}
+  ${d.ospiti>1?`<label>Per chi</label><select id="rf_c"><option>Tutti</option>${[...Array(d.ospiti)].map((_,k)=>`<option>Ospite ${k+1}</option>`).join("")}</select>`:""}
+  <button class="btn" onclick="rfAdd()">Aggiungi</button> <button class="btn sec" onclick="G.form=null;gRender()">Annulla</button></div>`}
+function gGluHtml(v){
+ const l=G.d.glutine||[],k=l.filter(x=>x.per&&v.nome.toLowerCase().includes(x.per.toLowerCase())),lista=k.length?k.concat(l.filter(x=>!x.per)):l;
+ if(!lista.length)return `<p class="mute">Chiederemo al bar una versione senza glutine, se disponibile. Ti confermiamo al ritiro.</p>`;
+ return `<label>Scegli la versione senza glutine</label>`+lista.map((x,i)=>`<label style="display:flex;gap:8px;align-items:center;color:var(--ink);font-size:16px;font-weight:400;padding:6px 0"><input type="radio" name="rf_g" value="${x.id}" ${i===0?"checked":""} style="width:auto;margin:0"><span style="flex:1">${esc(x.nome)}</span><b>${x.differenza>0?"+"+eur(x.differenza):"nessun supplemento"}</b></label>`).join("")+`<p class="mute">Paghi solo la differenza, al bar.</p>`}
+function rfAdd(){
+ const v=G.d.voci[G.form.i],t=G.form.tipo;let x=$("#rf_x")?$("#rf_x").value.trim():"",extra={};
+ if(t==="senza_glutine"){const r=document.querySelector("input[name=rf_g]:checked");if(r){const g=G.d.glutine.find(y=>y.id===r.value);x=g.nome;extra={variante:g.id,diff:g.differenza}}}
+ else if(!x)return toast("Scrivi la richiesta");
+ G.req.modifiche.push({voce:v.nome,tipo:t,testo:x.slice(0,120),chi:$("#rf_c")?$("#rf_c").value:"Tutti",...extra});G.form=null;G.sporco=true;gRender()}
+/* --- carrello extra per giorno (l'ospite vede i prezzi solo degli extra; i prezzi veri li mette il database) --- */
+const gGiorni=()=>{const d=G.d,l=[];for(let x=d.data;x<=fine(d)&&l.length<32;x=addDays(x,1))l.push(x);return l};
+const gExtraDi=g=>G.d.extra.find(e=>e.giorno===g)||null;
+const gPagato=g=>{const e=gExtraDi(g);return !!(e&&e.pagato)};
+function gSetGiorno(g){G.giorno=g;G.cart={};const e=gExtraDi(g),s=(G.d.scelte||{})[g]||{},r=s.richieste||{};(e?e.voci:[]).forEach(x=>{if(x.id)G.cart[x.id]=x.qta});G.req={allergie:Array.isArray(r.allergie)?r.allergie:[],nota:typeof r.nota==="string"?r.nota:"",modifiche:Array.isArray(r.modifiche)?r.modifiche:[]};G.form=null;G.panel="home";G.sporco=false;G.saved=false;gRender()}
+const gGlu=()=>G.req.modifiche.reduce((a,m)=>a+(m.variante?(+m.diff||0):0),0);
+const gPrezzo=id=>{const p=G.cata&&G.cata.find(x=>x.id==id);if(p)return +p.prezzo||0;const e=gExtraDi(G.giorno),v=e&&e.voci.find(x=>x.id==id);return v?+v.prezzo||0:0};
+const gTot=()=>Object.entries(G.cart).reduce((a,[id,q])=>a+gPrezzo(id)*q,0)+gGlu();
+function gCartRender(){
+ const d=G.d,ch=gChiuso(),g=G.giorno,pag=gPagato(g),ids=Object.keys(G.cart).filter(i=>G.cart[i]>0);
+ const nome=id=>{const p=G.cata&&G.cata.find(x=>x.id==id);const e=gExtraDi(g),v=e&&e.voci.find(x=>x.id==id);return p?p.nome:v?v.nome:"Prodotto"};
+ $("#g_cart").innerHTML=G.panel!=="extra"?"":`<div class="card"><div class="guest-panel-head"><button class="btn sec" aria-label="Indietro" onclick="gApri('home')">‹</button><h3>Aggiungi extra</h3></div><p class="mute">Solo per il ${dmy(g)}. Paghi al bar al ritiro.</p>
+  ${ids.map(id=>`<div class="row" style="margin:6px 0"><span>${G.cart[id]}× ${esc(nome(id))}</span><span>${eur(gPrezzo(id)*G.cart[id])} ${ch||pag?"":`<button class="btn sm sec" onclick="gQta(${+id},-${G.cart[id]})">✕</button>`}</span></div>`).join("")}
+  ${G.req.modifiche.map(m=>m.variante?`<div class="row" style="margin:6px 0"><span>Senza glutine: ${esc(m.testo)}</span><span>${eur(+m.diff||0)}</span></div>`:"").join("")}
+  ${ids.length||gGlu()>0?`<div class="row"><b>Totale extra del ${dmy(g)}</b><b>${eur(gTot())}</b></div>`:""}
+  ${pag?`<div class="alert ok">Extra del ${dmy(g)} già pagati al bar.</div>`:ch?"":`<button class="btn sec" onclick="gApriCat()">Sfoglia il menù</button>`}</div>`}
+let XTRA=null;
+async function loadXtra(){if(!XTRA)XTRA=await fetch("menu-img/extra.json").then(r=>r.json()).catch(()=>({}));return XTRA}
+const imgOf=p=>{const x=XTRA&&XTRA[p.id];return x&&x.i?"menu-img/"+x.i:(p.img||"")};
+function phErr(img){const d=document.createElement("div");d.className=img.classList.contains("big")?"bigph":"pimg ph";d.textContent="☕";img.replaceWith(d)}
+const prodImg=(p,big)=>{const u=imgOf(p);return u?`<img class="${big?"big":"pimg"}" loading="lazy" src="${esc(u)}" alt="" onerror="phErr(this)">`:`<div class="${big?"bigph":"pimg ph"}">☕</div>`};
+async function gApriCat(){
+ if(!G.cata){const [c]=await Promise.all([run("bb_catalogo"),loadXtra()]);if(!c||c===true)return;G.cata=c}
+ G.panel="extra";G.catAperto=true;gCatRender();$("#g_cat").scrollIntoView({behavior:"smooth"})}
+function gCatRender(){
+ const cats=[...new Set(G.cata.map(p=>p.cat))],subs=[...new Set(G.cata.filter(p=>!G.cat||p.cat===G.cat).map(p=>p.sub||p.cat))];
+ $("#g_cat").innerHTML=`<div class="card"><div class="row"><h3 style="margin:0">Il nostro menù</h3><button class="btn sm sec" onclick="G.catAperto=false;$('#g_cat').innerHTML=''">Chiudi</button></div>
+  <input id="gq" placeholder="Cerca (es. cornetto, spremuta…)" value="${esc(G.q)}" oninput="G.q=this.value;gCatList()" style="margin-top:8px">
+  <div class="tabs" style="flex-wrap:wrap"><button class="${!G.cat?"on":""}" onclick="G.cat='';G.sub='';gCatRender()">Tutto</button>${cats.map(c=>`<button class="${G.cat===c?"on":""}" data-c="${esc(c)}" onclick="G.cat=this.dataset.c;G.sub='';gCatRender()">${esc(c)}</button>`).join("")}</div>
+  ${G.cat?`<div class="tabs" style="flex-wrap:wrap"><button class="${!G.sub?"on":""}" onclick="G.sub='';gCatRender()">Tutti</button>${subs.map(x=>`<button class="${G.sub===x?"on":""}" data-s="${esc(x)}" onclick="G.sub=this.dataset.s;gCatRender()">${esc(x)}</button>`).join("")}</div>`:""}
+  <div id="gl"></div></div>`;gCatList()}
+const tagPill=t=>`<span class="pill p-ok">${esc(t)}</span>`;
+function gCatList(){
+ const A=gA(),q=G.q.toLowerCase(),l=G.cata.filter(p=>(!G.cat||p.cat===G.cat)&&(!G.sub||(p.sub||p.cat)===G.sub)&&(!q||p.nome.toLowerCase().includes(q))).slice(0,80);
+ $("#gl").innerHTML=l.map(p=>`<div class="prod" onclick="gDettaglio(${p.id})">${prodImg(p)}<div class="pinfo"><b>${esc(p.nome)}</b>${p.desc?`<div class="mute">${esc(p.desc.slice(0,80))}</div>`:""}
+  <div>${p.allergeni.map(a=>`<span title="${esc((A[a]||{}).nome||a)}">${(A[a]||{}).icon||""}</span>`).join(" ")} ${p.tags.filter(t=>t!=="alcolico"&&t!=="surgelato").map(tagPill).join(" ")}</div></div>
+  <div class="pside"><b>${eur(p.prezzo)}</b><div class="stepper" onclick="event.stopPropagation()"><button onclick="gQta(${p.id},-1)">−</button><b id="q${p.id}">${G.cart[p.id]||0}</b><button onclick="gQta(${p.id},1)">+</button></div></div></div>`).join("")||`<p class="mute">Nessun prodotto trovato.</p>`}
+function gDettaglio(id){
+ const p=G.cata.find(x=>x.id===id),x=(XTRA||{})[id]||{},A=gA();document.getElementById("sheet")?.remove();
+ const d=document.createElement("div");d.id="sheet";d.className="sheet-bg";d.onclick=e=>{if(e.target===d)d.remove()};
+ d.innerHTML=`<div class="sheet">${prodImg(p,true)}<div class="in"><div class="row"><h3 style="margin:0">${esc(p.nome)}</h3><b class="price" style="font-size:20px">${eur(p.prezzo)}</b></div>
+  <div style="margin:6px 0">${p.tags.map(tagPill).join(" ")}</div>
+  ${(x.l||p.desc)?`<p>${esc(x.l||p.desc).replace(/\n/g,"<br>")}</p>`:""}
+  ${x.m?`<h4 style="margin:10px 0 4px">Ingredienti</h4><p class="mute">${esc(x.m).replace(/\n/g,", ")}</p>`:""}
+  <h4 style="margin:10px 0 4px">Allergeni</h4><div>${p.allergeni.length?p.allergeni.map(a=>`<span class="pill p-warn">${(A[a]||{}).icon||""} ${esc((A[a]||{}).nome||a)}</span>`).join(" "):`<span class="mute">Nessun allergene dichiarato</span>`}</div>
+  <p class="mute" style="font-size:12px">Per informazioni complete sugli allergeni chiedi al bancone (Reg. UE 1169/2011).</p>
+  <div class="row" style="margin-top:12px"><div class="stepper"><button onclick="gQta(${id},-1);$('#sq').textContent=G.cart[${id}]||0">−</button><b id="sq">${G.cart[id]||0}</b><button onclick="gQta(${id},1);$('#sq').textContent=G.cart[${id}]||0">+</button></div><button class="btn" onclick="document.getElementById('sheet').remove()">Fatto</button></div></div></div>`;
+ document.body.appendChild(d)}
+function gQta(id,d){if(gPagato(G.giorno))return toast("Extra del "+dmy(G.giorno).slice(0,5)+" già pagati");G.cart[id]=Math.max(0,Math.min(20,(G.cart[id]||0)+d));G.sporco=true;gRender()}
+function gBarRefresh(){if(!G||gChiuso()||!G.sporco)return;$("#g_bar").innerHTML=`<div class="sticky-bar"><div><b>${gBarTesto()}</b><div class="mute">Solo per il ${dmy(G.giorno)}</div></div><button class="btn" onclick="gSalva()">Invia al bar</button></div>`}
+async function gSalva(){
+ const extra=Object.entries(G.cart).filter(([,q])=>q>0).map(([id,qta])=>({id:+id,qta}));
+ const r=await run("bb_ospite_salva",{vid:G.d.id,prichieste:G.req,pextra:gPagato(G.giorno)?[]:extra,pgiorno:G.giorno});
+ if(r&&r.errore)return toast(r.errore);
+ if(r&&r.id){const g=G.giorno;toast("Scelte del "+dmy(g)+" inviate al bar");G.d=gNorm(r);gSetGiorno(g);G.saved=true;gRender()}}
+const ANM="https://www.anm.it";
+const ANM_MAPPA="https://www.anm.it/resource/1749111448000/MappaReteSuFerroPDF";
+const ANM_PUNTI="https://www.anm.it/resource/1768990802000/cartadellamobilita25";
+const MAPS=d=>"https://www.google.com/maps/dir/?api=1&destination="+encodeURIComponent(d);
+function albergoHtml(alb){return `<div class="card"><h3>🏨 Il tuo albergo</h3><p>${esc(alb)}</p>
+ <a class="btn" style="display:inline-block;text-decoration:none" href="https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(alb||"")}&travelmode=transit" target="_blank" rel="noopener">📍 Indicazioni</a>
+ <a class="btn sec" style="display:inline-block;text-decoration:none" href="${ANM}" target="_blank" rel="noopener">🚌 Linee e orari ANM</a></div>`}
+const NAP_GUIDE={
+ anm:[
+  {i:"Ⓜ️",n:"Metro Linea 1",d:"Consulta fermate, collegamenti e stato del servizio sulla mappa ufficiale ANM.",m:"Stazione Municipio Metro Linea 1 Napoli",u:ANM_MAPPA},
+  {i:"🚇",n:"Metro Linea 6",d:"Linea Mostra–Municipio e collegamenti: verifica sempre gli aggiornamenti ANM.",m:"Stazione Chiaia Metro Linea 6 Napoli",u:ANM_MAPPA},
+  {i:"🚞",n:"Funicolari di Napoli",d:"Centrale, Chiaia, Montesanto e Mergellina. Orari e avvisi sul sito ANM.",m:"Funicolare Centrale Augusteo Napoli",u:"https://www.anm.it/s/funicolari?language=it"},
+  {i:"🚌",n:"Rete bus e Alibus",d:"Consulta linee, fermate, orari e avvisi ufficiali prima di partire.",m:"Fermata Alibus Stazione Centrale Napoli",u:ANM}
+ ],
+ biglietti:[
+  {i:"🎫",n:"ANM Point Garibaldi",d:"Biglietti e assistenza · lun–sab 07:00–20:30, dom 07:00–14:00.",m:"ANM Point Piazza Garibaldi Napoli",u:ANM_PUNTI},
+  {i:"🎫",n:"ANM Point Municipio",d:"Biglietti e assistenza · lun–sab 07:00–20:30, dom 07:00–14:00.",m:"ANM Point Municipio Napoli",u:ANM_PUNTI},
+  {i:"🎫",n:"ANM Point Augusteo",d:"Biglietti e assistenza · lun–sab 07:00–20:30, dom 07:00–14:00.",m:"ANM Point Augusteo Napoli",u:ANM_PUNTI},
+  {i:"🎫",n:"ANM Point Montesanto",d:"Biglietti e assistenza · lun–sab 07:00–20:30, dom 07:00–14:00.",m:"ANM Point Montesanto Napoli",u:ANM_PUNTI},
+  {i:"🎫",n:"ANM Point Fuga",d:"Biglietti e assistenza · lun–sab 07:00–20:30, dom 07:00–14:00.",m:"ANM Point Piazza Fuga Napoli",u:ANM_PUNTI},
+  {i:"🎫",n:"ANM Point Piazza Vittoria",d:"Biglietti e assistenza · lun–sab 07:00–20:30, dom 07:00–14:00.",m:"ANM Point Piazza Vittoria Napoli",u:ANM_PUNTI},
+  {i:"🎫",n:"ANM Point Brin",d:"Biglietti e assistenza · lun–sab 07:00–20:30, dom 07:00–14:00. Distributori anche nelle stazioni metro e funicolari.",m:"Parcheggio Brin ANM Napoli",u:ANM_PUNTI}
+ ],
+ musei:[
+  {i:"🏛️",n:"MANN · Museo Archeologico",d:"09:00–19:30; biglietteria fino alle 18:30; chiuso il martedì. Intero €20, ridotto €2 per aventi diritto.",m:"Museo Archeologico Nazionale di Napoli",u:"https://www.museoarcheologiconapoli.it/orari-e-biglietti/"},
+  {i:"🗿",n:"Museo Cappella Sansevero",d:"09:00–19:00; chiuso il martedì; ultimo ingresso 30 minuti prima. Intero €12; prenotazione obbligatoria.",m:"Museo Cappella Sansevero Napoli",u:"https://www.museosansevero.it/organizza-la-tua-visita/orari-e-tariffe"},
+  {i:"🖼️",n:"Museo e Real Bosco di Capodimonte",d:"Museo chiuso il mercoledì; gli orari cambiano secondo galleria. Intero €15, ridotto UE 18–25 anni €2.",m:"Museo e Real Bosco di Capodimonte Napoli",u:"https://capodimonte.cultura.gov.it/biglietti/"},
+  {i:"👑",n:"Palazzo Reale di Napoli",d:"Consulta sul sito ufficiale orari, aperture degli ambienti e tariffe aggiornate prima della visita.",m:"Palazzo Reale di Napoli",u:"https://palazzorealedinapoli.org/"},
+  {i:"🌊",n:"Piazza del Plebiscito e Lungomare",d:"Passeggiata libera tra il centro monumentale e il lungomare. Accesso gratuito agli spazi pubblici.",m:"Piazza del Plebiscito Napoli",u:"https://napoliforme.comune.napoli.it/"}
+ ],
+ info:[
+  {i:"ℹ️",n:"Infopoint Molo Beverello",d:"Informazioni e accoglienza turistica · orario comunale pubblicato 10:00–19:00; possibili variazioni stagionali.",m:"Molo Beverello Napoli",u:"https://static-www.comune.napoli.it/wp-content/uploads/2025/09/CARTELLA_STAMPA_vedi_napoli_estate_con_dichiarazioni.pdf?mode=download"},
+  {i:"ℹ️",n:"Infopoint Piazza del Gesù",d:"Informazioni e accoglienza turistica · orario comunale pubblicato 10:00–19:00; possibili variazioni stagionali.",m:"Piazza del Gesù Nuovo Napoli",u:"https://static-www.comune.napoli.it/wp-content/uploads/2025/09/CARTELLA_STAMPA_vedi_napoli_estate_con_dichiarazioni.pdf?mode=download"},
+  {i:"ℹ️",n:"Infopoint Piazza del Plebiscito",d:"Angolo via Cesario Console · orario comunale pubblicato 10:00–19:00; possibili variazioni stagionali.",m:"Via Cesario Console angolo Piazza del Plebiscito Napoli",u:"https://static-www.comune.napoli.it/wp-content/uploads/2025/09/CARTELLA_STAMPA_vedi_napoli_estate_con_dichiarazioni.pdf?mode=download"},
+  {i:"ℹ️",n:"Infopoint via Morghen",d:"Informazioni e accoglienza turistica · orario comunale pubblicato 10:00–19:00; possibili variazioni stagionali.",m:"Via Raffaele Morghen Napoli",u:"https://static-www.comune.napoli.it/wp-content/uploads/2025/09/CARTELLA_STAMPA_vedi_napoli_estate_con_dichiarazioni.pdf?mode=download"}
+ ]
+};
+let NAP_CAT="anm";
+function napCards(cat){return (NAP_GUIDE[cat]||[]).map(x=>`<article class="nap-card"><h4>${x.i} ${esc(x.n)}</h4><p class="nap-meta">${esc(x.d)}</p><div class="nap-actions"><a class="nap-go" href="${MAPS(x.m)}" target="_blank" rel="noopener">📍 Portami</a><a class="nap-info" href="${x.u}" target="_blank" rel="noopener">Fonte ufficiale ↗</a></div></article>`).join("")}
+function napCat(cat,btn){NAP_CAT=cat;document.querySelectorAll(".nap-tabs button").forEach(b=>b.classList.toggle("on",b===btn));const e=$("#nap_list");if(e)e.innerHTML=napCards(cat)}
+function napoli(){return `
+ <div class="card"><h3>🚢 Navi in porto oggi</h3><div id="ex_n" class="mute">Caricamento…</div></div>
+ <div class="card"><h3>✊ Scioperi dei trasporti</h3><div id="ex_s" class="mute">Caricamento…</div></div>
+ <section class="card nap-guide"><div class="nap-hero"><h3>🧭 Napoli, a portata di tap</h3><p>Trasporti, biglietti, musei e assistenza turistica. Ogni scheda apre il percorso in Maps.</p></div>
+  <div class="nap-tabs" role="tablist"><button class="on" onclick="napCat('anm',this)">🚇 Linee ANM</button><button onclick="napCat('biglietti',this)">🎫 Biglietti</button><button onclick="napCat('musei',this)">🏛️ Musei e luoghi</button><button onclick="napCat('info',this)">ℹ️ Infopoint</button></div>
+  <div class="nap-list" id="nap_list">${napCards("anm")}</div><div class="nap-note">Dati e collegamenti ufficiali verificati il 01/10/2026. Orari, tariffe e servizio possono cambiare: controlla sempre la fonte ufficiale prima di partire.</div></section>`}
+
+/* ============ TITOLARE ============ */
+async function loginTit(){
+ $("#ttl").textContent="🧁 Area titolare";loading();
+ if(await titSessione())return go("#/titolare/cruscotto");
+ app.innerHTML=`<div class="card"><h3>Accesso del titolare</h3><p class="mute">Si entra con lo stesso PIN del gestionale.</p>
+  <label>PIN</label><input id="tp" type="password" inputmode="numeric" autocomplete="current-password" onkeydown="if(event.key==='Enter')doTit()"><button class="btn" onclick="doTit()">Entra</button><div id="tmsg" class="mute" style="margin-top:10px"></div></div>`}
+/* La sessione del titolare la apre il gestionale: stesso PIN (e stesso secondo fattore) dell'ERP. */
+async function titSessione(){
+ try{
+  const t=localStorage.getItem("auth_token");
+  const r=await fetch("/api/colazioni/accesso",{method:"POST",credentials:"same-origin",headers:t?{Authorization:"Bearer "+t}:{}});
+  if(!r.ok)return false;const j=await r.json();if(!j||!j.token)return false;
+  setSess({r:"tit",p:j.token});return true}catch(e){return false}}
+const ora=f=>{try{return new Date(String(f).replace(" ","T").replace(/\+00$/,"+00:00")).toLocaleTimeString("it-IT",{hour:"2-digit",minute:"2-digit",timeZone:"Europe/Rome"})}catch(e){return ""}};
+async function doTit(){
+ const pin=($("#tp")?$("#tp").value:"").trim(),m=$("#tmsg");if(!pin)return;m.textContent="";
+ try{
+  const r=await fetch("/api/auth/pin-login",{method:"POST",credentials:"same-origin",headers:{"Content-Type":"application/json"},body:JSON.stringify({pin})});
+  const j=await r.json().catch(()=>null);
+  if(!j){m.textContent="Apri l'area titolare da gestionalecloud.onrender.com/convenzioni/";return}
+  if(j.mfa_required){m.innerHTML="Il tuo accesso ha il secondo fattore: entra prima nel <a href=\"/\">gestionale</a>, poi torna qui.";return}
+  if(!r.ok){m.textContent=(typeof j.detail==="string"&&j.detail)||"PIN non valido";return}
+  if(j.access_token)try{localStorage.setItem("auth_token",j.access_token)}catch(e){}
+  if(await titSessione())return go("#/titolare/cruscotto");
+  m.textContent="Non riesco ad aprire la sessione: riprova tra poco."}
+ catch(e){m.textContent="Connessione non riuscita"}}
+const pinStrict=()=>sess.p;
+let TIT=null;
+async function ordiniHotelTitolare(){try{const t=localStorage.getItem("auth_token"),r=await fetch("/api/colazioni/ordini-prodotti",{credentials:"same-origin",headers:t?{Authorization:"Bearer "+t}:{}});if(!r.ok)return[];const j=await r.json();return j.ordini||[]}catch(e){return[]}}
+const TABS=[["cruscotto","Cruscotto"],["produzione","Produzione"],["scan","Scanner"],["ordini","Ordini colazioni"],["forniture","Ordini prodotti"],["strutture","Strutture"],["prodotti","Prodotti ordinabili dall’hotel"],["fatture","Fatture"],["menu","Menù"],["impostazioni","Impostazioni"]];
+const supTxt=()=>eur(+String((TIT.config||{}).supplemento_tavolo||"1.5").replace(",","."));
+const fasceMenu=()=>Object.keys(TIT.menu).map(Number).sort((a,b)=>a-b);
+const barNome=()=>TIT.bar.bar_nome||"Bar Pasticceria Ceraldi";
+async function tit(sec,arg){
+ loading();
+ TIT=await run("bb_tit_stato",{p:sess.p});if(!TIT)return sess?esci():undefined;
+ TIT.richieste_pin=await rpc("bb_tit_richieste_pin",{p:sess.p}).catch(()=>[]);
+ TIT.fatture=await rpc("bb_tit_fatture",{p:sess.p}).catch(()=>[]);
+ TIT.ordini_hotel=await ordiniHotelTitolare();
+ const gestita=arg&&["struttura","invito","recensioni","prodotti"].includes(sec)?TIT.strutture.find(s=>s.id===arg):null;
+ $("#ttl").textContent="🧁 "+barNome()+(gestita?" · gestisci "+gestita.nome:"");
+ const fn={cruscotto:pCruscotto,produzione:pProduzione,scan:pScan,ordini:pOrdini,forniture:pForniture,strutture:pStrutture,struttura:pStruttura,invita:pInvita,invito:pInvito,recensioni:pRecensioni,prodotti:pProdottiHotel,fatture:pFatture,menu:pMenu,impostazioni:pImpostazioni}[sec]||pCruscotto;
+ const nf=(TIT.fatture||[]).filter(f=>f.stato==="da_emettere"&&!f.demo).length;
+ const no=(TIT.ordini_hotel||[]).filter(o=>!["consegnato","annullato"].includes(o.stato)).length;
+ const contesto=gestita?`<div class="owner-context"><b>SEI NELL’AREA BAR CERALDI</b><span>Stai gestendo la struttura <strong>${esc(gestita.nome)}</strong>. Non sei entrato come albergatore.</span></div>`:"";
+ app.innerHTML=tabsHtml(TABS.map(t=>t[0]==="fatture"&&nf?[t[0],t[1]+" ("+nf+")"]:t[0]==="forniture"&&no?[t[0],t[1]+" ("+no+")"]:t),["struttura","invita","invito","recensioni"].includes(sec)?"strutture":sec,"titolare")+contesto+fn(arg);
+ (fn.after||(()=>{}))(arg)}
+const consegnato=vs=>vs.reduce((a,v)=>a+v.usate*v.fascia,0);
+const attivi=vs=>vs.filter(v=>!v.annullato);
+const copre=(v,D)=>v.data<=D&&D<=fine(v);
+const perDay=v=>fine(v)===v.data?v.qta:v.ospiti;
+const doneOn=(v,D)=>fine(v)===v.data?v.usate:(v.riscatti||[]).filter(x=>x===D).length;
+const colNome=v=>v.colazione_nome||("Colazione da "+eur(+v.fascia));
+const colVoci=v=>{const c=((TIT.colazioni||{})[v.struttura_id]||[]).find(x=>x.id===v.colazione_id);return c?(c.voci||[]).map(x=>(x.qta>1?x.qta+"× ":"")+x.nome).join(" + "):(TIT.menu[v.fascia]||"")};
+
+/* --- Cruscotto --- */
+function pCruscotto(){
+ const oggi=TIT.oggi,vs=attivi(TIT.vouchers),day=vs.filter(v=>copre(v,oggi));
+ const daPrep=day.reduce((a,v)=>a+perDay(v)-doneOn(v,oggi),0),fatte=day.reduce((a,v)=>a+doneOn(v,oggi),0);
+ const mese=vs.filter(v=>v.data.slice(0,7)===oggi.slice(0,7));
+ const saldo=TIT.strutture.reduce((a,s)=>a+s.saldo,0);
+ const giorni=[...Array(7)].map((_,i)=>{const d=addDays(oggi,i);return {d,n:vs.filter(v=>copre(v,d)).reduce((a,v)=>a+perDay(v),0)}});
+ const max=Math.max(1,...giorni.map(g=>g.n));
+ const top=TIT.strutture.map(s=>({n:s.nome,v:consegnato(vs.filter(v=>v.struttura_id===s.id&&v.data.slice(0,7)===oggi.slice(0,7)))})).sort((a,b)=>b.v-a.v).slice(0,5);
+
+ const nfc=(TIT.fatture||[]).filter(f=>f.stato==="da_emettere"&&!f.demo);
+ const oh=(TIT.ordini_hotel||[]).filter(o=>!["consegnato","annullato"].includes(o.stato)),ohDue=oh.filter(o=>o.pagamento!=="incassato").reduce((a,o)=>a+Number(o.totale||0),0);
+ return `${oh.length?`<div class="alert ok"><b>🛒 ${oh.length} ordin${oh.length>1?"i":"e"} prodotti dagli hotel da lavorare</b> · ${eur(ohDue)} da incassare <button class="btn sm" onclick="go('#/titolare/forniture')">Apri</button></div>`:""}${nfc.length?`<div class="alert"><b>🧾 ${nfc.length} fattur${nfc.length>1?"e":"a"} da emettere</b> (${eur(nfc.reduce((a,f)=>a+ +f.importo,0))}) <button class="btn sm" onclick="go('#/titolare/fatture')">Apri</button></div>`:""}${(TIT.richieste_pin||[]).map(r=>`<div class="alert"><b>🔑 ${esc(r.struttura)}</b> ha perso il PIN e il codice di recupero${r.telefono?` · ${esc(r.telefono)}`:""}${r.nota?` · «${esc(r.nota)}»`:""}<div class="row" style="margin-top:6px;justify-content:flex-start;gap:6px"><button class="btn sm" onclick="richiestaInvito('${r.struttura_id}','${r.id}')">Invia nuovo link</button><button class="btn sm sec" onclick="richiestaChiudi('${r.id}')">Ignora</button></div></div>`).join("")}
+ ${TIT.attesa.length?`<div class="alert"><b>💶 Ricariche da confermare</b>${TIT.attesa.map(a=>`<div class="row" style="margin-top:6px"><span>${esc(a.nome)} · ${eur(a.importo)}</span><button class="btn sm" onclick="conferma('${a.id}')">Incassata</button></div>`).join("")}</div>`:""}
+ ${(()=>{const n=day.filter(v=>hasReq(v.richieste)||hasExtra(v,oggi)).length;return n?`<div class="alert"><b>⚠️ ${n} colazioni di oggi con richieste o extra</b> <button class="btn sm" onclick="go('#/titolare/produzione')">Vedi</button></div>`:""})()}
+ <div class="kpis"><div class="card"><div class="mute">Da preparare oggi</div><div class="k">${daPrep}</div></div>
+ <div class="card"><div class="mute">Consegnate oggi</div><div class="k">${fatte}</div></div>
+ <div class="card"><div class="mute">Consegnato nel mese</div><div class="k">${eur(consegnato(mese))}</div></div>
+ <div class="card"><div class="mute">Borsellini (totale)</div><div class="k">${eur(saldo)}</div></div></div>
+ <div class="card"><h3>Prossimi 7 giorni · colazioni prenotate</h3><div class="bars">${giorni.map(g=>`<div><b>${g.n}</b><i style="height:${Math.round(g.n/max*70)}px"></i>${dmy(g.d).slice(0,5)}</div>`).join("")}</div></div>
+ <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(260px,1fr))">
+ <div class="card"><h3>Strutture del mese</h3>${top.map(t=>`<div class="row"><span>${esc(t.n)}</span><b>${eur(t.v)}</b></div>`).join("")||`<p class="mute">Nessuna struttura.</p>`}</div>
+ <div class="card"><h3>🚢 Navi oggi</h3><div id="ex_n" class="mute">Caricamento…</div></div></div>
+ <div class="card"><h3>✊ Scioperi nei prossimi 14 giorni</h3><div id="ex_s" class="mute">Caricamento…</div></div>
+ <button class="btn" onclick="go('#/titolare/produzione')">Vai alla produzione di oggi →</button>`}
+pCruscotto.after=()=>loadExt().then(E=>{if($("#ex_n")){$("#ex_n").innerHTML=naviHtml(E);$("#ex_s").innerHTML=scioperiHtml(E)}});
+async function richiestaInvito(sid,rid){if(await run("bb_tit_invito_rigenera",{p:sess.p,sid})){await run("bb_tit_richiesta_chiudi",{p:sess.p,pid:rid});go("#/titolare/invito/"+sid)}}
+async function richiestaChiudi(rid){if(await run("bb_tit_richiesta_chiudi",{p:sess.p,pid:rid})!==undefined)render()}
+/* --- Fatture da emettere (a mano da SumUp Fatture: nessuna API pubblica) --- */
+let FT_F="da_emettere";
+const ftData=f=>new Date(f.pagata_il).toLocaleDateString("it-IT");
+const ftEuro=n=>Number(n).toFixed(2).replace(".",",");
+function ftTesto(f){const x=f.fiscali;return [x.ragione_sociale,"P.IVA "+(x.piva||"—")+" · C.F. "+(x.codice_fiscale||"—"),x.indirizzo+", "+x.cap+" "+x.comune+" ("+x.provincia+")","Codice destinatario "+x.codice_destinatario+(x.pec?" · PEC "+x.pec:""),"Importo € "+ftEuro(f.importo),"Descrizione: Ricarica credito colazioni del "+ftData(f)].join("\n")}
+function pFatture(){
+ const l=TIT.fatture||[],vis=l.filter(f=>FT_F==="tutte"||f.stato===FT_F);
+ const tot=vis.reduce((a,f)=>a+ +f.importo,0);
+ return `<div class="card"><h3>🧾 Fatture delle ricariche</h3><p class="mute">Ogni ricarica pagata (carta o bar) compare qui. Copia i dati, emetti la fattura da SumUp Fatture e segna il numero. La ricevuta di SumUp non è una fattura.</p>
+  <div class="row" style="justify-content:flex-start;flex-wrap:wrap;gap:6px"><select onchange="FT_F=this.value;go('#/titolare/fatture')" style="width:auto;margin:0"><option value="da_emettere" ${FT_F==="da_emettere"?"selected":""}>Da emettere</option><option value="emessa" ${FT_F==="emessa"?"selected":""}>Emesse</option><option value="non_dovuta" ${FT_F==="non_dovuta"?"selected":""}>Non dovute</option><option value="tutte" ${FT_F==="tutte"?"selected":""}>Tutte</option></select>
+  <span class="mute">${vis.length} · ${eur(tot)}</span><button class="btn sm sec" onclick="ftCsv()">Esporta CSV</button></div></div>`+
+ (vis.map(f=>`<div class="card"><div class="row"><div><b>${esc(f.struttura.replace(" (DEMO)",""))}</b> ${f.demo?`<span class="pill p-warn">DEMO</span>`:""} <span class="mute">· ${ftData(f)} · ${esc(f.metodo)}</span></div><span class="price" style="font-size:20px">${eur(f.importo)}</span></div>
+  ${f.fiscali.completi?`<div class="mute" style="white-space:pre-line;margin:6px 0">${esc(ftTesto(f).split("\n").slice(0,4).join("\n"))}</div>`:`<div class="alert bad">Dati fiscali mancanti. ${f.telefono?`<a href="https://wa.me/${digits(f.telefono)}?text=${encodeURIComponent("Ciao! Per la fattura della ricarica di "+ftEuro(f.importo)+" € ci servono i dati fiscali: entra nel tuo Profilo e compila «Dati per la fattura».")}" target="_blank" rel="noopener">Chiedili su WhatsApp</a>`:"Chiedili all'albergatore."}</div>`}
+  ${f.stato==="da_emettere"?`<div class="row" style="justify-content:flex-start;flex-wrap:wrap;gap:6px">${f.fiscali.completi?`<button class="btn sm" onclick="ftCopia('${f.id}')">Copia i dati</button> `:""}<a class="btn sm sec" style="text-decoration:none;display:inline-block" href="https://me.sumup.com/" target="_blank" rel="noopener">Apri SumUp (menu Fatture)</a> <button class="btn sm" onclick="ftEmessa('${f.id}')">Segna come emessa</button> <button class="btn sm sec" onclick="ftNonDovuta('${f.id}')">Non dovuta</button></div>`:
+   `<div class="row"><span>${f.stato==="emessa"?`Emessa n. <b>${esc(f.numero)}</b>${f.data_emissione?" del "+dmy(f.data_emissione):""}`:`Non dovuta${f.nota?": "+esc(f.nota):""}`}</span><button class="btn sm sec" onclick="ftRiapri('${f.id}')">Riapri</button></div>`}</div>`).join("")||`<p class="mute">Nessuna fattura in questa lista.</p>`)}
+const ftAggiorna=msg=>{toast(msg);render()};
+const ftById=id=>(TIT.fatture||[]).find(f=>f.id===id);
+const ftCopia=id=>navigator.clipboard.writeText(ftTesto(ftById(id))).then(()=>toast("Dati copiati: incollali in SumUp Fatture"));
+async function ftEmessa(id){const n=prompt("Numero della fattura emessa (es. 12/2026)");if(!n)return;if(await run("bb_tit_fattura_stato",{p:sess.p,pid:id,pstato:"emessa",pnumero:n,pdata:null,pnota:""})!==undefined)ftAggiorna("Segnata come emessa")}
+async function ftNonDovuta(id){const n=prompt("Perché non serve la fattura? (es. prova, già fatturata)");if(n===null)return;if(await run("bb_tit_fattura_stato",{p:sess.p,pid:id,pstato:"non_dovuta",pnumero:"",pdata:null,pnota:n})!==undefined)ftAggiorna("Segnata come non dovuta")}
+async function ftRiapri(id){if(await run("bb_tit_fattura_stato",{p:sess.p,pid:id,pstato:"da_emettere",pnumero:"",pdata:null,pnota:""})!==undefined)ftAggiorna("Rimessa da emettere")}
+const ftCsv=()=>download("fatture-ricariche.csv",csvRows([["data","struttura","importo","metodo","stato","numero","data_emissione","ragione_sociale","piva","codice_fiscale","indirizzo","cap","comune","provincia","codice_destinatario","pec"],...(TIT.fatture||[]).map(f=>[ftData(f),f.struttura,ftEuro(f.importo),f.metodo,f.stato,f.numero,f.data_emissione||"",f.fiscali.ragione_sociale,f.fiscali.piva,f.fiscali.codice_fiscale,f.fiscali.indirizzo,f.fiscali.cap,f.fiscali.comune,f.fiscali.provincia,f.fiscali.codice_destinatario,f.fiscali.pec])]));
+const conferma=async id=>{if(await run("bb_tit_conferma_ricarica",{p:sess.p,mid:id},"Ricarica confermata"))go("#/titolare/cruscotto")};
+
+/* --- Produzione --- */
+let PDAY=null;
+function pProduzione(){PDAY=PDAY||TIT.oggi;return `<div class="card"><div class="production-toolbar">
+ <button class="btn sm sec" onclick="setPd(0)">Oggi</button><button class="btn sm sec" onclick="setPd(1)">Domani</button><button class="btn sm sec" onclick="setPd(2)">Dopodomani</button>
+ <input class="date-field" id="pd" type="date" value="${PDAY}" onchange="PDAY=this.value;prodTab()"><button class="btn sm print-production" onclick="stampaProd()">🖨 Stampa</button></div></div><div id="pt"></div>`}
+pProduzione.after=()=>prodTab();
+const setPd=n=>{PDAY=addDays(TIT.oggi,n);$("#pd").value=PDAY;prodTab()};
+const tA=()=>Object.fromEntries((TIT.allergeni_elenco||[]).map(a=>[a.id,a]));
+/* le richieste arrivano dal database gia' validate, ma si leggono sempre con la forma attesa (liste) */
+const reqListe=r=>{r=r&&typeof r==="object"?r:{};return {allergie:Array.isArray(r.allergie)?r.allergie:[],nota:typeof r.nota==="string"?r.nota:"",modifiche:Array.isArray(r.modifiche)?r.modifiche:[]}};
+const hasReq=r=>{const x=reqListe(r);return !!(x.allergie.length||x.nota||x.modifiche.length)};
+const hasAnyReq=v=>hasReq(v.richieste)||Object.values(v.modifiche_giorni||{}).some(x=>Array.isArray(x)&&x.length);
+/* extra per giorno: una voce {giorno, voci, totale, pagato} per ogni giorno ordinato */
+const extraDi=(v,g)=>(Array.isArray(v.extra)?v.extra:[]).find(e=>e&&e.giorno===g)||null;
+const hasExtra=(v,g)=>{const e=extraDi(v,g);return !!(e&&e.totale>0)};
+const vGiorno=(v,g)=>{const r=reqListe(v.richieste),m=v.modifiche_giorni&&Array.isArray(v.modifiche_giorni[g])?v.modifiche_giorni[g]:[];return {...v,richieste:{allergie:r.allergie,nota:r.nota,modifiche:m}}};
+function reqHtml(v,giorno){
+ const r=reqListe(v.richieste),A=tA();let h="";
+ if(r.allergie.length)h+=`<div class="alert bad"><b>⚠️ ALLERGIE:</b> ${r.allergie.map(a=>esc((A[a]||{}).nome||a)).join(", ")}</div>`;
+ if(r.nota)h+=`<div class="alert bad">📝 ${esc(r.nota)}</div>`;
+ r.modifiche.forEach(m=>h+=`<div class="alert">✏️ <b>${esc(m.voce)}</b>: ${modTxt(m)}${modChi(m)}</div>`);
+ const e=extraDi(v,giorno);
+ if(e&&Array.isArray(e.voci)&&e.voci.length)h+=`<div class="alert ok">🛒 Extra del ${dmy(e.giorno).slice(0,5)}: ${e.voci.map(x=>x.qta+"× "+esc(x.nome)).join(", ")} — <b>${eur(e.totale)}</b> ${e.pagato?"(incassati)":"<b>da incassare</b>"}</div>`;
+ return h}
+function prodTab(){
+ const day=attivi(TIT.vouchers).filter(v=>copre(v,PDAY)).map(v=>vGiorno(v,PDAY));
+ const per={};day.forEach(v=>{const k=colNome(v)+"|"+v.fascia,o=per[k]||(per[k]={v,tot:0,fatte:0,s:{}});const n=perDay(v);o.tot+=n;o.fatte+=doneOn(v,PDAY);o.s[v.struttura]=(o.s[v.struttura]||0)+n});
+ const ks=Object.keys(per).sort((a,b)=>per[a].v.fascia-per[b].v.fascia);
+ const sp=day.filter(v=>hasReq(v.richieste)||hasExtra(v,PDAY));
+ const ex={};day.forEach(v=>{const e=extraDi(v,PDAY);(e&&Array.isArray(e.voci)?e.voci:[]).forEach(x=>{ex[x.nome]=(ex[x.nome]||0)+(+x.qta||0)})});
+ $("#pt").innerHTML=`<div class="card" id="prodprint"><h3>Produzione del ${dmy(PDAY)}</h3>${ks.length?`<div class="production-list">${ks.map(k=>`<article class="production-item"><div class="production-head"><div><h4>${esc(colNome(per[k].v))}</h4><span class="mute">${eur(+per[k].v.fascia)} a colazione</span></div><div class="production-count">${per[k].tot}</div></div><div class="production-composition">${esc(colVoci(per[k].v))}</div><div class="production-hotels">${Object.entries(per[k].s).map(([n,q])=>`<span class="pill">${esc(n.replace(" (DEMO)",""))} · ${q}</span>`).join("")}</div><div class="mute" style="margin-top:8px">Ritirate: ${per[k].fatte}</div></article>`).join("")}</div><div class="production-summary"><div><span class="mute">Da preparare</span><b>${ks.reduce((a,k)=>a+per[k].tot,0)}</b></div><div><span class="mute">Già ritirate</span><b>${ks.reduce((a,k)=>a+per[k].fatte,0)}</b></div></div>`:`<p class="mute">Nessuna colazione prenotata per questo giorno.</p>`}
+ ${Object.keys(ex).length?`<h3 style="margin-top:14px">🛒 Extra da preparare</h3>${Object.entries(ex).map(([n,q])=>`<div class="production-extra row"><span>${esc(n)}</span><b>${q}</b></div>`).join("")}`:""}
+ ${sp.length?`<h3 style="margin-top:14px">⚠️ Richieste degli ospiti (${sp.length})</h3>${sp.map(v=>`<div class="production-request"><b>${esc(v.struttura.replace(" (DEMO)",""))} · ${esc(descV(v))}</b> <span class="mute">${v.id}</span>${reqHtml(v,PDAY)}</div>`).join("")}`:""}</div>`}
+function stampaProd(){const w=window.open("","_blank");w.document.write(`<title>Produzione</title><body style="font-family:system-ui">${document.getElementById("prodprint").outerHTML}<script>print()<\/script>`);w.document.close()}
+
+/* --- Scanner --- */
+function pScan(){return `<div class="card"><label>Codice voucher</label><input id="sc" placeholder="es. AB12CD34EF" autocapitalize="characters">
+ <button class="btn" onclick="doScan($('#sc').value)">Verifica e consegna</button>
+ <button class="btn sec" onclick="camera()">📷 Scansiona con fotocamera</button><video id="vid" playsinline style="width:100%;margin-top:10px;border-radius:12px" hidden></video><div id="scr"></div></div>
+ <p class="hint">Consegna una colazione alla volta: per una camera con 2 ospiti scansiona due volte. Un voucher su più giorni vale ogni giorno fino a tanti ritiri quanti sono gli ospiti; il sistema blocca voucher esauriti, scaduti, non ancora validi o annullati.</p>`}
+pScan.after=()=>{$("#sc").onkeydown=e=>{if(e.key==="Enter")doScan($("#sc").value)}};
+/* accetta il codice oppure il link completo della pagina ospite (e' quello stampato nel QR) */
+const codiceDaScan=c=>{c=String(c||"").trim();const m=c.match(/#\/ospite\/([A-Za-z0-9]+)/i);return m?m[1]:c};
+async function doScan(c){
+ c=codiceDaScan(c);if(!c)return;
+ const r=await run("bb_tit_riscatta",{p:sess.p,vid:c});if(!r||r===true)return;const v=r.voucher;
+ const voci=v&&Array.isArray(v.voci)?v.voci:[],eo=v&&v.extra_oggi&&typeof v.extra_oggi==="object"?v.extra_oggi:null,altri=v?(+v.extra_da_pagare||0)-(eo&&!eo.pagato?+eo.totale||0:0):0;
+ $("#scr").innerHTML=`<div class="alert ${r.ok?"ok":"bad"}"><b>${r.ok?"✅":"❌"} ${esc(r.msg)}</b>${v?`<br>${esc(v.struttura)} · ${esc(descV(v,false))}${v.colazione?" · "+esc(v.colazione):""}<br>${dRange(v)} · ritirate ${v.usate}/${v.qta}
+ <br>Da preparare: ${voci.length?voci.map(x=>(x.qta>1?x.qta+"× ":"")+esc(x.nome)).join(" + "):esc(v.menu||"")}`:""}</div>${v?reqHtml(v,TIT.oggi):""}
+ ${eo&&eo.totale>0&&!eo.pagato?`<button class="btn" onclick="incassaExtra('${v.id}')">Incassato ${eur(eo.totale)} di extra di oggi</button>`:""}
+ ${altri>0?`<p class="mute">Altri extra da incassare in altri giorni: ${eur(altri)}.</p>`:""}`;$("#sc").value=""}
+async function incassaExtra(id){const r=await run("bb_tit_extra_incassato",{p:sess.p,vid:id,pgiorno:TIT.oggi});if(r&&r!==true){toast("Extra incassati");$("#scr").innerHTML+=`<div class="alert ok">Extra del ${dmy(r.giorno).slice(0,5)} incassati: ${eur(r.incassato)}.</div>`}}
+async function camera(){
+ if(!("BarcodeDetector" in window))return toast("Scanner non supportato su questo browser: digita il codice");
+ const vid=$("#vid");vid.hidden=false;const st=await navigator.mediaDevices.getUserMedia({video:{facingMode:"environment"}});vid.srcObject=st;vid.play();
+ const det=new BarcodeDetector({formats:["qr_code"]});
+ const t=setInterval(async()=>{try{const r=await det.detect(vid);if(r[0]){clearInterval(t);st.getTracks().forEach(x=>x.stop());vid.hidden=true;doScan(r[0].rawValue)}}catch(e){}},400)}
+
+/* --- Ordini --- */
+function pForniture(){
+ const l=TIT.ordini_hotel||[],aperti=l.filter(o=>!["consegnato","annullato"].includes(o.stato)),due=l.filter(o=>o.pagamento!=="incassato"&&o.stato!=="annullato").reduce((a,o)=>a+Number(o.totale||0),0);
+ return `<div class="kpis"><div class="card"><div class="mute">Da lavorare</div><div class="k">${aperti.length}</div></div><div class="card"><div class="mute">Da incassare</div><div class="k">${eur(due)}</div></div></div><p class="hint">Gli ordini sono registrati anche in Lotti. I prodotti interni attendono il lotto di produzione; i prodotti Vandemoortele attendono l’associazione al lotto fornitore reale.</p>`+
+ (l.map(o=>`<div class="card"><div class="row" style="align-items:flex-start"><div><b>${esc(o.struttura_nome)} · ${esc(o.id)}</b><div class="mute">Consegna ${dmy(o.data_consegna)}${o.ora_ritiro?" ore "+esc(o.ora_ritiro):""} · ${esc(String(o.stato).replaceAll("_"," "))} · ${o.pagamento_metodo==="borsellino"?"borsellino":"in loco"}</div></div><span class="price" style="font-size:21px">${eur(o.totale)}</span></div>${(o.righe||[]).map(r=>`<div class="order-line"><b>${r.quantita}× ${esc(r.nome)}</b> · ${eur(r.totale)}${(r.allergeni||[]).length?`<div class="mute"><b>Allergeni:</b> ${r.allergeni.map(esc).join(", ")}</div>`:""}<div class="mute">${r.ricetta_id?`Ricetta ${esc(r.ricetta_id)} · `:""}${esc(String(r.tracciabilita_stato||"da verificare").replaceAll("_"," "))}${(r.lotti_associati||[]).length?` · lotto ${r.lotti_associati.map(x=>esc(x.numero_lotto||x.id)).join(", ")}`:""}</div></div>`).join("")}${o.nota?`<p class="alert">📝 ${esc(o.nota)}</p>`:""}<div class="row" style="justify-content:flex-start;flex-wrap:wrap"><select onchange="ohAgg('${o.id}',this.value,null)" style="width:auto;margin:0"><option value="ricevuto" ${o.stato==="ricevuto"?"selected":""}>Ricevuto</option><option value="confermato" ${o.stato==="confermato"?"selected":""}>Confermato</option><option value="in_preparazione" ${o.stato==="in_preparazione"?"selected":""}>In preparazione</option><option value="pronto" ${o.stato==="pronto"?"selected":""}>Pronto</option><option value="consegnato" ${o.stato==="consegnato"?"selected":""}>Consegnato</option><option value="annullato" ${o.stato==="annullato"?"selected":""}>Annullato</option></select><button class="btn sm ${o.pagamento==="incassato"?"sec":""}" onclick="ohAgg('${o.id}',null,'${o.pagamento==="incassato"?"da_incassare":"incassato"}')">${o.pagamento==="incassato"?"✓ Incassato":"Segna incassato"}</button><a class="btn sm sec" style="text-decoration:none" href="/lotti/#ordini_hotel" target="_blank">Apri in Lotti</a></div></div>`).join("")||`<div class="card"><p class="mute">Nessun ordine prodotti ricevuto.</p></div>`)}
+async function ohAgg(id,stato,pagamento){const t=localStorage.getItem("auth_token"),r=await fetch("/api/colazioni/ordini-prodotti/"+encodeURIComponent(id),{method:"PATCH",headers:{"Content-Type":"application/json",...(t?{Authorization:"Bearer "+t}:{})},body:JSON.stringify({stato,pagamento})}),j=await r.json().catch(()=>({}));if(!r.ok)return toast(j.detail||"Aggiornamento non riuscito");toast("Ordine aggiornato");tit("forniture")}
+function pOrdini(){return `<div class="card"><div class="filters">
+ <select id="f_s" onchange="ordTab()"><option value="">Tutte le strutture</option>${TIT.strutture.map(s=>`<option value="${s.id}">${esc(s.nome)}</option>`).join("")}</select>
+ <select id="f_t" onchange="ordTab()"><option value="">Tutti gli stati</option><option>Da ritirare</option><option>Programmata</option><option>Ritirata</option><option>Scaduta</option><option>Annullata</option></select>
+ <input id="f_a" type="date" onchange="ordTab()" title="Dal"><input id="f_b" type="date" onchange="ordTab()" title="Al">
+ <input id="f_q" placeholder="Cerca ospite o codice" oninput="ordTab()"></div>
+ <div class="row" style="margin-top:10px"><span class="mute" id="f_n"></span><span><button class="btn sm sec" onclick="csvOrdini()">Esporta CSV</button> <button class="btn sm sec" onclick="stampaOrdini()">🖨 Stampa QR</button></span></div></div>
+ <div class="card scroll"><table id="ot"></table></div>`}
+pOrdini.after=()=>ordTab();
+let ORD=[];
+function ordTab(){
+ const s=$("#f_s").value,t=$("#f_t").value,a=$("#f_a").value,b=$("#f_b").value,q=$("#f_q").value.toLowerCase(),oggi=TIT.oggi;
+ ORD=TIT.vouchers.filter(v=>(!s||v.struttura_id===s)&&(!t||stato(v,oggi)[0]===t)&&(!a||fine(v)>=a)&&(!b||v.data<=b)&&(!q||(v.ospite+" "+v.camera).toLowerCase().includes(q)||v.id.toLowerCase().includes(q))).sort((x,y)=>y.data.localeCompare(x.data));
+ $("#f_n").textContent=`${ORD.length} ordini · consegnato ${eur(consegnato(attivi(ORD)))}`;
+ $("#ot").innerHTML=`<tr><th>Periodo</th><th>Struttura</th><th>Camera / ospite</th><th>Colazione</th><th>Ritirate</th><th>Stato</th><th>Note</th><th>Codice</th><th></th></tr>`+ORD.slice(0,300).map(v=>{const[t,c]=stato(v,oggi);return `<tr><td>${dRange(v)}</td><td>${esc(v.struttura.replace(" (DEMO)",""))}</td><td>${esc(descV(v,false))}</td><td>${esc(colNome(v))}<div class="mute">${v.qta}× ${eur(v.fascia)}</div></td><td>${v.usate}/${v.qta}</td><td><span class="pill ${c}">${t}</span></td>
+ <td>${hasAnyReq(v)?`<span title="Richieste dell'ospite">⚠️</span>`:""}${v.extra_totale>0?`<span title="Extra ${eur(v.extra_totale)}${v.extra_da_pagare>0?", da incassare "+eur(v.extra_da_pagare):" incassati"}"> 🛒${v.extra_da_pagare>0?"":"✓"}</span>`:""}${v.annullato&&v.annullo_motivo?`<div class="mute">${esc(v.annullo_motivo)}</div>`:""}</td><td>${v.id}</td>
+ <td style="white-space:nowrap"><button class="btn sm sec" onclick="stampaUno('${v.id}')">QR</button>${!v.annullato&&v.usate<v.qta?` <button class="btn sm sec" onclick="annullaTit('${v.id}')">Annulla</button>`:""}</td></tr>`}).join("")}
+const csvOrdini=()=>download("ordini-colazioni.csv",csvRows([["dal","al","struttura","camera","ospite","colazione","prezzo","qta","ritirate","stato","codice","importo_consegnato"],...ORD.map(v=>[v.data,fine(v),v.struttura,v.camera,v.ospite,colNome(v),v.fascia,v.qta,v.usate,stato(v,TIT.oggi)[0],v.id,v.annullato?0:v.usate*v.fascia])]));
+const cardTit=v=>cardVoucher(v,colNome(v),v.struttura);
+const stampaUno=id=>stampa([cardTit(TIT.vouchers.find(v=>v.id===id))]);
+const stampaOrdini=()=>ORD.length&&stampa(ORD.slice(0,60).map(cardTit));
+/* il titolare annulla anche dopo la fine del soggiorno, ma sempre con un motivo (resta sul voucher) */
+async function annullaTit(id){const m=await scegliMotivo("Annulla il voucher",["No-show","Errore di prenotazione"],"Le colazioni non ritirate tornano nel borsellino della struttura. Il motivo resta scritto sul voucher.");if(!m)return;const r=await run("bb_tit_annulla",{p:sess.p,vid:id,pmotivo:m});if(r){toast("Rimborsati "+eur(r.rimborsato));tit(location.hash.split("/")[2],location.hash.split("/")[3])}}
+
+/* --- Strutture --- */
+/* --- Strutture e inviti --- */
+const digits=s=>String(s||"").replace(/\D/g,"");
+const linkInvito=s=>base()+"#/invito/"+s.invito_token, linkHotel=s=>base()+"#/hotel/"+s.accesso;
+const msgAccesso=(s,link)=>"Ciao! Ecco l'accesso alla tua area colazioni di "+barNome()+": "+link+" — entri con il tuo PIN. Da lì scegli camere, giorni e colazione e mandi il QR ai tuoi ospiti.";
+const msgInvito=(s,link)=>((TIT.config||{}).msg_invito||"Attiva il tuo accesso: {link}").replace("{bar}",barNome()).replace("{hotel}",s.nome).replace("{link}",link);
+function pStrutture(){
+ return `<div class="row"><h2 style="margin:8px 0">Strutture partner</h2><button class="btn" onclick="go('#/titolare/invita')">+ Invita nuovo B&B</button></div>`+
+ TIT.strutture.map(s=>`<button class="big" onclick="go('#/titolare/struttura/${s.id}')"><div class="row"><b>${esc(s.nome)} ${s.demo?`<span class="pill p-warn">DEMO</span>`:""}${s.disattivata_il?` <span class="pill p-bad">disattivata</span>`:s.attivo?"":` <span class="pill p-warn">in attesa di attivazione</span>`}</b><span class="price" style="font-size:20px">${eur(s.saldo)}</span></div>
+ <span>${esc(s.indirizzo)} · ${attivi(TIT.vouchers.filter(v=>v.struttura_id===s.id)).length} ordini</span></button>
+ <div class="row" style="justify-content:flex-start;margin:-2px 0 12px 4px"><button class="btn sm" onclick="go('#/titolare/invito/${s.id}')">Condividi con l'albergatore</button><button class="btn sm sec" onclick="go('#/titolare/recensioni/${s.id}')">Inviti recensione</button></div>`).join("")||`<p class="mute">Nessuna struttura. Creane una con "+ Invita nuovo B&B".</p>`}
+function pInvita(){return `<div class="crumb"><a href="#/titolare/strutture">← Strutture</a></div><div class="card"><h3>1 · Dati del nuovo B&B</h3>
+ <label>Nome della struttura *</label><input id="in_n" placeholder="es. B&B Vesuvio"><label>Telefono / WhatsApp</label><input id="in_t" type="tel" placeholder="+39 333 1234567"><label>Email</label><input id="in_e" type="email"><label>Indirizzo</label><input id="in_a"></div>
+ <div class="card"><h3>2 · Colazioni che può offrire</h3><p class="mute">Tocca una colazione per aprirla: nome, prezzo e contenuto dal menù. L'albergatore vedrà solo queste.</p><div id="ce2"></div></div>
+ <div class="card"><h3>3 · Impostazione iniziale delle camere</h3><p><b>☕ Banco selezionato di default</b></p><p class="mute">Quando l’albergatore inserisce le camere, può scegliere Tavolo per ciascuna di esse. Le due scelte sono alternative: selezionando Tavolo si deseleziona Banco e si aggiunge ${supTxt()} a persona per colazione.</p></div>
+ <div class="card"><button class="btn" onclick="invitaCrea()">Salva e genera QR / link per l'albergatore</button><p class="mute">Le camere e gli ospiti li inserirà lui, dalla sua pagina.</p></div>`}
+pInvita.after=()=>ceInit(null);
+async function invitaCrea(){
+ if(!$("#in_n").value.trim())return toast("Scrivi il nome della struttura");
+ const righe=ceRighe();if(!righe)return;
+ if(!righe.length&&!confirm("Non hai inserito nessuna colazione: l'albergatore non potrà ordinare finché non le aggiungi. Continuare?"))return;
+ const r=await run("bb_tit_invita",{p:sess.p,pnome:$("#in_n").value,pindirizzo:$("#in_a").value,ptelefono:$("#in_t").value,pemail:$("#in_e").value});
+ if(!r||!r.id)return;
+ if(righe.length&&!await run("bb_tit_colazioni_salva",{p:sess.p,sid:r.id,righe}))return toast("Struttura creata, ma le colazioni non sono state salvate: riprova dalla sua scheda");
+ go("#/titolare/invito/"+r.id)}
+function pInvito(id){
+ const s=TIT.strutture.find(x=>x.id===id);if(!s)return `<div class="card">Struttura non trovata.</div>`;
+ const registrazione=s.demo||!!s.invito_token||!s.attivo;
+ return `<div class="crumb"><a href="#/titolare/strutture">← Strutture</a></div><div class="row"><h2 style="margin:4px 0">${esc(s.nome)}</h2><span class="pill ${s.attivo?"p-ok":"p-warn"}">${s.attivo?"attivo":"in attesa di attivazione"}</span></div>
+ ${registrazione?`<div class="card"><h3>Registrazione del gestore</h3><p class="mute">Condividi l'invito: il gestore si registra e sceglie un PIN personale. Non deve usare il PIN di prova.</p>
+  <button class="btn" onclick="condividiGestore('${id}')">Condividi</button>
+  ${s.invito_token?`<div style="text-align:center;margin-top:12px"><div class="qr" id="invqr" style="display:inline-flex"></div></div>`:`<p class="mute">Il link di registrazione verrà creato quando tocchi Condividi.</p>`}</div>`:""}
+ ${!registrazione?`<div class="card"><h3>Condividi l'accesso con ${esc(s.nome)}</h3><p class="mute">Il gestore è già registrato: questo collegamento apre l'accesso con il suo PIN personale.</p>
+  <button class="btn" onclick="condividiGestore('${id}')">Condividi</button>
+  <div style="text-align:center;margin-top:12px"><div class="qr" id="accqr2" style="display:inline-flex"></div></div></div>`:""}
+ ${!s.demo?`<div class="card"><h3>🔗 Link di accesso personale</h3><p class="mute">È il link che il B&B userà ogni volta per entrare (con il suo PIN). Mostra solo il nome del suo albergo.</p><p style="word-break:break-all">${esc(linkHotel(s))}</p>
+  <button class="btn sm sec" id="acc_copy">Copia link</button> <a class="btn sm sec" style="text-decoration:none;display:inline-block" href="${linkHotel(s)}" target="_blank" rel="noopener">Apri come lo vede il B&B</a></div>`:""}
+ <div class="card"><h3>${s.attivo?"PIN dimenticato?":"Invito scaduto o perso?"}</h3><p class="mute">Crea un nuovo invito: chi lo apre potrà scegliere un nuovo PIN.</p><button class="btn sec" onclick="invRigenera('${id}')">Genera un nuovo invito</button></div>`}
+pInvito.after=id=>{const s=TIT.strutture.find(x=>x.id===id);if(!s)return;const e=$("#invqr");if(e&&s.invito_token)qr(e,linkInvito(s),150);const a=$("#accqr2");if(a&&!s.invito_token)qr(a,linkHotel(s),150);const c=$("#acc_copy");if(c)c.onclick=()=>navigator.clipboard.writeText(linkHotel(s)).then(()=>toast("Link copiato"))};
+async function condividiGestore(id){
+ const s=TIT.strutture.find(x=>x.id===id);if(!s)return;
+ const registrazione=s.demo||!!s.invito_token||!s.attivo;let link,testo;
+ if(registrazione){
+  if(!s.invito_token){const r=await run("bb_tit_invito_rigenera",{p:sess.p,sid:id});if(!r||!r.invito)return;s.invito_token=r.invito}
+  link=linkInvito(s);testo=msgInvito(s,link)
+ }else{link=linkHotel(s);testo=msgAccesso(s,link)}
+ /* Con i testi personalizzati {link} e' facoltativo: aggiungerlo se manca, senza duplicarlo. */
+ if(!testo.includes(link))testo+="\n"+link;
+ if(navigator.share)return navigator.share({title:"Colazioni B&B",text:testo}).catch(e=>{if(e.name!=="AbortError")toast("Condivisione non riuscita")});
+ navigator.clipboard.writeText(testo).then(()=>toast("Messaggio copiato: ora puoi condividerlo"))}
+async function invRigenera(id){if(!confirm("Creare un nuovo invito? Il vecchio link smette di funzionare."))return;if(await run("bb_tit_invito_rigenera",{p:sess.p,sid:id},"Nuovo invito creato"))go("#/titolare/invito/"+id)}
+function pStruttura(id){
+ const s=TIT.strutture.find(x=>x.id===id);if(!s)return `<div class="card">Struttura non trovata.</div>`;
+ const vs=TIT.vouchers.filter(v=>v.struttura_id===id),mv=TIT.movimenti.filter(m=>m.struttura_id===id),oggi=TIT.oggi;
+ return `<div class="crumb"><a href="#/titolare/strutture">← Strutture</a></div>
+ <div class="row"><h2 style="margin:4px 0">${esc(s.nome)}</h2>${s.demo?`<span class="pill p-warn">DEMO</span>`:""}${s.disattivata_il?`<span class="pill p-bad">disattivata</span>`:""}</div>
+ ${s.disattivata_il?`<div class="alert bad"><b>Struttura disattivata</b> il ${new Date(s.disattivata_il).toLocaleDateString("it-IT")}${s.disattivata_motivo?" · "+esc(s.disattivata_motivo):""}. L'albergatore non entra, il link recensioni è spento, borsellino e storico restano. <button class="btn sm" onclick="invRigenera('${id}')">Riattiva con un nuovo invito</button></div>`:""}
+ <div class="kpis"><div class="card"><div class="mute">Saldo borsellino</div><div class="k">${eur(s.saldo)}</div></div><div class="card"><div class="mute">Ordini</div><div class="k">${attivi(vs).length}</div></div><div class="card"><div class="mute">Consegnato</div><div class="k">${eur(consegnato(attivi(vs)))}</div></div></div>
+ <div class="card"><h3>Azioni</h3><button class="btn sm" onclick="ricaricaManuale('${id}')">+ Registra ricarica</button> <button class="btn sm sec" onclick="modificaStruttura('${id}')">Modifica dati</button> <button class="btn sm sec" onclick="go('#/titolare/prodotti/${id}')">Prodotti e prezzi</button> <button class="btn sm sec" onclick="go('#/titolare/recensioni/${id}')">Inviti recensione</button>${s.disattivata_il?"":` <button class="btn sm bad" onclick="disattivaStruttura('${id}')">Disattiva struttura</button>`}
+ <p class="mute" style="margin:8px 0 0">Il PIN lo sceglie l'albergatore: se lo perde usa il suo codice di recupero, oppure gli mandi un nuovo invito.</p></div>
+ <div class="card"><h3>☕ Banco o 🪑 Tavolo per ogni camera</h3><p class="mute">Nell’elenco Camere scegli il servizio per ciascuna camera. In fase di prenotazione l’albergatore può confermare o cambiare la scelta: solo le righe impostate su Tavolo aumentano subito di ${supTxt()} a persona per ogni colazione.</p></div>
+ <div class="card"><h3>🥐 Colazioni offerte a questo hotel</h3><p class="mute">Solo queste colazioni compariranno nella pagina dell'albergatore, con i prezzi che stabilisci qui.</p><div id="ce2"></div></div>
+ ${camereEditor("Camere di "+s.nome)}
+ <div class="card"><div class="row"><h3 style="margin:0">Accesso albergatore</h3><span class="pill ${s.attivo?"p-ok":"p-warn"}">${s.attivo?"attivo":"in attesa di attivazione"}</span></div>
+ <p class="mute">Manda il link personale al B&B (o l'invito, se deve ancora attivarsi), oppure stampa il QR.</p>
+ <button class="btn sm" onclick="go('#/titolare/invito/${id}')">📨 Invia link al B&B</button> <button class="btn sm sec" onclick="stampaAccesso('${id}')">🖨 Stampa QR</button>
+ <div style="text-align:center;margin-top:10px"><div class="qr" id="accqr" style="display:inline-flex"></div></div></div>
+ <h3>Movimenti</h3><div class="card scroll"><table>${mv.map(m=>`<tr><td>${new Date(m.t).toLocaleDateString("it-IT")}</td><td>${esc(m.nota)}${m.confermato?"":` <span class="pill p-warn">in attesa</span>`}</td><td style="text-align:right;color:${m.importo<0?"var(--bad)":"var(--ok)"}">${eur(m.importo)}</td></tr>`).join("")}</table></div>
+ <h3>Colazioni</h3><div class="card scroll"><table><tr><th>Periodo</th><th>Camera / ospite</th><th>Colazione</th><th>Ritirate</th><th>Stato</th></tr>${vs.map(v=>{const[t,c]=stato(v,oggi);return `<tr><td>${dRange(v)}</td><td>${esc(descV(v,false))}</td><td>${esc(colNome(v))}<div class="mute">${v.qta}× ${eur(v.fascia)}</div></td><td>${v.usate}/${v.qta}</td><td><span class="pill ${c}">${t}</span></td></tr>`}).join("")}</table></div>`}
+pStruttura.after=id=>{const s=TIT.strutture.find(x=>x.id===id),e=$("#accqr");if(e&&s)qr(e,linkHotel(s),150);CRSID=id;CR=((TIT.camere||{})[id]||[]).map(c=>({nome:c.nome,ospiti:c.ospiti,servizio_tavolo:!!c.servizio_tavolo}));crTab();ceInit(id)};
+const stampaAccesso=id=>{const s=TIT.strutture.find(x=>x.id===id);stampa([{sopra:barNome(),titolo:s.nome,riga:"Ordina le colazioni per i tuoi ospiti",qr:linkHotel(s),codice:"",sotto:"Scansiona per entrare · serve il tuo PIN"}])};
+async function ricaricaManuale(id){const i=+prompt("Importo incassato (€)");if(i>0&&await run("bb_tit_ricarica_manuale",{p:sess.p,sid:id,imp:i},"Ricarica registrata"))render()}
+async function modificaStruttura(id){const s=TIT.strutture.find(x=>x.id===id);const n=prompt("Nome",s.nome);if(!n)return;const a=prompt("Indirizzo",s.indirizzo);
+ if(await run("bb_tit_struttura_salva",{p:sess.p,sid:id,pnome:n,pindirizzo:a??s.indirizzo},"Salvato"))render()}
+/* disattivazione: PIN e inviti azzerati, sessioni chiuse, link recensioni spento; borsellino e storico restano */
+async function disattivaStruttura(id){const s=TIT.strutture.find(x=>x.id===id);const m=await scegliMotivo("Disattiva "+s.nome,["Collaborazione terminata","Struttura chiusa","Richiesta dell'albergatore"],"L'albergatore non entra più, le sessioni aperte si chiudono e il link recensioni si spegne. Borsellino e storico restano. Per riattivarla basta un nuovo invito.");if(!m)return;if(!confirm("Disattivare «"+s.nome+"»?"))return;if(await run("bb_tit_struttura_disattiva",{p:sess.p,sid:id,pmotivo:m},"Struttura disattivata"))render()}
+
+/* --- Inviti recensione per struttura --- */
+let REVT=null;
+function pRecensioni(id){
+ const s=TIT.strutture.find(x=>x.id===id);
+ if(!s)return '<div class="card">Struttura non trovata.</div>';
+ return '<div class="crumb"><a href="#/titolare/strutture">← Strutture</a></div><div class="row"><h2 style="margin:4px 0">Inviti recensione · '+esc(s.nome)+'</h2></div><div id="revt"><p class="mute">Caricamento…</p></div>'}
+pRecensioni.after=id=>recTitCarica(id);
+const recLink=fonte=>base()+"#/recensioni/"+REVT.token+"/"+fonte;
+async function recTitCarica(id){
+ const stato=await run("bb_tit_recensioni_stato",{p:sess.p,sid:id});if(!stato)return;
+ REVT={...stato,sid:id};recTitDisegna()}
+function recTitDisegna(){
+ const c=REVT.config;
+ const pos=REVT.posizioni||{},vis=Array.isArray(REVT.visite_recenti)?REVT.visite_recenti:[],geoCfg=c.bar_lat&&c.bar_lon;
+ const posPill=v=>v.posizione==="in_sede"?'<span class="pill p-ok">in sede</span>':v.posizione==="fuori_sede"?'<span class="pill p-warn">fuori sede'+(v.distanza_m!=null?' · '+Math.round(v.distanza_m)+' m':'')+'</span>':'<span class="pill">posizione non nota</span>';
+ $("#revt").innerHTML='<div class="kpis"><div class="card"><div class="mute">Aperture</div><div class="k">'+REVT.visite+'</div></div><div class="card"><div class="mute">Opt-in WhatsApp attivi</div><div class="k">'+REVT.optin_whatsapp+'</div></div><div class="card"><div class="mute">Inviti inviati</div><div class="k">'+REVT.inviti_inviati+'</div></div><div class="card"><div class="mute">Click recensioni</div><div class="k">'+(+REVT.click_google + +REVT.click_tripadvisor)+'</div></div>'+
+ '<div class="card"><div class="mute">In sede</div><div class="k">'+(+pos.in_sede||0)+'</div></div><div class="card"><div class="mute">Fuori sede</div><div class="k">'+(+pos.fuori_sede||0)+'</div></div><div class="card"><div class="mute">Posizione non nota</div><div class="k">'+(+pos.non_nota||0)+'</div></div></div>'+
+ '<div class="card"><h3>Ultime visite</h3><p class="mute">Solo informazione, nessun blocco: «in sede» vale entro '+esc(c.bar_raggio_m||'300')+' m dalle coordinate del bar'+(geoCfg?'':' (non ancora impostate: vai in Impostazioni → Posizione del bar)')+'.</p>'+
+ (vis.map(v=>'<div class="row" style="margin:5px 0"><span>'+new Date(v.creato).toLocaleString("it-IT",{timeZone:"Europe/Rome",day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"})+' · '+esc(String(v.fonte||"")).toUpperCase()+(v.whatsapp?' · WhatsApp':'')+'</span>'+posPill(v)+'</div>').join("")||'<p class="mute">Nessuna visita.</p>')+'</div>'+
+ '<div class="card"><h3>Link unici per questa struttura</h3><p class="mute">Usa lo stesso invito con una fonte diversa per misurare QR, NFC e Wi-Fi. Il cliente vede sempre due scelte separate e non preselezionate.</p><div class="review-links">'+["qr","nfc","wifi"].map(f=>'<div class="review-qr"><b>'+f.toUpperCase()+'</b><div class="qr" id="rq_'+f+'"></div><button class="btn sm sec" onclick="recCopia(\''+f+'\')">Copia link</button></div>').join("")+'</div><div class="row" style="margin-top:12px;justify-content:flex-start;flex-wrap:wrap"><button class="btn" onclick="recStampa()">Stampa i QR</button><button class="btn sec" onclick="recRigenera()">Rigenera link unico</button></div></div>'+
+ '<div class="card"><h3>Configurazione invito</h3><label>URL Google Reviews</label><input id="rc_g" type="url" value="'+esc(c.google_url)+'" placeholder="https://search.google.com/local/writereview?..."><label>URL Tripadvisor</label><input id="rc_t" type="url" value="'+esc(c.tripadvisor_url)+'" placeholder="https://www.tripadvisor.it/UserReviewEdit-..."><label>URL informativa privacy</label><input id="rc_u" type="url" value="'+esc(c.informativa_url)+'" placeholder="https://..."><label>Versione informativa</label><input id="rc_v" value="'+esc(c.informativa_versione)+'"><label>Invio post-consumo dopo quanti minuti</label><input id="rc_r" type="number" min="0" max="10080" value="'+c.ritardo_minuti+'"><button class="btn" onclick="recConfigSalva()">Salva configurazione</button><p class="privacy-note">La configurazione vale per tutte le strutture. Le credenziali WhatsApp restano nelle variabili protette di Render e non compaiono qui.</p></div>';
+ ["qr","nfc","wifi"].forEach(f=>qr($("#rq_"+f),recLink(f),174))}
+const recCopia=f=>navigator.clipboard.writeText(recLink(f)).then(()=>toast("Link "+f.toUpperCase()+" copiato"));
+function recStampa(){
+ const s=TIT.strutture.find(x=>x.id===REVT.sid);
+ stampa(["qr","nfc","wifi"].map(f=>({sopra:"Ceraldi Caffè · "+s.nome,titolo:"Raccontaci la tua colazione",riga:"Apri dal tuo telefono",qr:recLink(f),codice:f.toUpperCase(),sotto:"Consensi separati · nessuna opzione preselezionata"})))}
+async function recRigenera(){
+ if(!confirm("Rigenerare il link? I QR già stampati smetteranno di funzionare."))return;
+ const token=await run("bb_tit_recensioni_link_rigenera",{p:sess.p,sid:REVT.sid},"Nuovo link creato");
+ if(token){REVT.token=token;recTitDisegna()}}
+async function recConfigSalva(){
+ const dati={google_url:$("#rc_g").value,tripadvisor_url:$("#rc_t").value,informativa_url:$("#rc_u").value,informativa_versione:$("#rc_v").value,ritardo_minuti:$("#rc_r").value};
+ const r=await run("bb_tit_recensioni_config_salva",{p:sess.p,pdati:dati},"Configurazione salvata");
+ if(r!==undefined){REVT.config={...REVT.config,...dati,ritardo_minuti:+dati.ritardo_minuti};recTitDisegna()}}
+
+/* --- Catalogo prodotti separato per struttura --- */
+let CP={base:null,lista:[],sid:"",q:"",sezione:"tutte"};
+const cpNorm=s=>String(s||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().replace(/[^a-z0-9]+/g," ").trim();
+const catalogFoto=p=>p.immagine?`<img loading="lazy" src="${esc(p.immagine)}" alt="${esc(p.nome)}" onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'no-photo',textContent:'🥐'}))">`:`<div class="no-photo" aria-hidden="true">🥐</div>`;
+const catalogAllergeni=p=>(p.allergeni||[]).length?`<div class="catalog-allergens"><b>⚠ Allergeni:</b> ${p.allergeni.map(esc).join(", ")}</div>`:"";
+const catalogParole=s=>[...new Set(cpNorm(s).split(" ").filter(Boolean))].sort().join(" ");
+const catalogDescrizione=p=>p.descrizione&&catalogParole(p.descrizione)!==catalogParole(p.nome)?`<div class="mute catalog-desc">${esc(p.descrizione)}</div>`:"";
+const cpNomePulito=s=>cpNorm(s).replace(/\b(prodotto|senza glutine)\b/g," ").replace(/\s+/g," ").trim();
+function cpVoceMenu(p,listino){return listino.find(x=>cpNorm(x.nome)===cpNorm(p.nome))||listino.find(x=>cpNomePulito(x.nome)===cpNomePulito(p.nome))}
+function pProdottiHotel(id){
+ return `<div class="card"><h2 style="margin:0 0 6px">Prodotti ordinabili dall’hotel</h2><p class="mute">È lo stesso Menu digitale pubblico, con le stesse sezioni, foto e allergeni. Scegli l’hotel, abilita sezioni o singoli prodotti, indica il prezzo concordato e salva.</p><div id="cp_head"><p class="mute">Caricamento Menu digitale…</p></div></div><div id="cp_body"></div>`}
+pProdottiHotel.after=id=>cpAvvia(id);
+async function cpAvvia(id){
+ if(!CP.base){
+  try{
+   const r=await fetch("/menu/api/menu/carta?destinazione=bb",{cache:"no-store"});
+   if(!r.ok)throw new Error("Menu digitale non disponibile.");
+   const j=await r.json(),cat=new Map((j.cats||[]).map(x=>[x.id,x])),menu=new Map((j.menus||[]).map(x=>[x.id,x]));
+   CP.base=(j.items||[]).map(p=>{const s=cat.get(p.c)||{},m=menu.get(s.m)||{};return {prodotto_id:p.id,chiave:"menu:"+p.id,origine:"menu",nome:p.n,descrizione:p.d||p.long||"",allergeni:p.a||[],immagine:p.pic||null,prezzo:(+p.p||0)/100,categoria:m.n||"Menu",sezione:s.n||""}});
+  }catch(e){$("#cp_head").innerHTML=`<div class="alert bad">${esc(e.message)}</div>`;return}
+ }
+ const scelta=id&&TIT.strutture.some(s=>s.id===id)?id:(CP.sid&&TIT.strutture.some(s=>s.id===CP.sid)?CP.sid:(TIT.strutture[0]||{}).id);
+ const sez=[...new Set(CP.base.map(p=>p.categoria+" · "+p.sezione))].sort();
+ $("#cp_head").innerHTML=TIT.strutture.length?`<label>Hotel</label><select id="cp_sid" onchange="cpCarica(this.value)">${TIT.strutture.map(s=>`<option value="${s.id}" ${s.id===scelta?"selected":""}>${esc(s.nome)}${s.demo?" (DEMO)":""}</option>`).join("")}</select><div class="catalog-tools"><input id="cp_q" placeholder="Cerca nel Menu digitale…" oninput="CP.q=this.value;cpDisegna()"><select id="cp_o" aria-label="Sezione del Menu" onchange="CP.sezione=this.value;cpDisegna()"><option value="tutte">Tutte le sezioni</option>${sez.map(x=>`<option>${esc(x)}</option>`).join("")}</select><button class="btn sm sec" onclick="cpSezione(true)">Spunta sezione</button><button class="btn sm sec" onclick="cpSezione(false)">Togli sezione</button><button class="btn" onclick="cpSalva()">Salva per l’hotel</button></div><div id="cp_stat" class="mute"></div>`:`<div class="alert">Prima crea almeno una struttura.</div>`;
+ if(scelta)await cpCarica(scelta);
+}
+let CPACQ=null;
+const authAdmin=()=>{const t=localStorage.getItem("auth_token");return t?{Authorization:"Bearer "+t}:{}};
+async function cpAcquaviva(){if(CPACQ)return CPACQ;try{const r=await fetch("/api/colazioni/prodotti-acquaviva",{headers:authAdmin()}),j=await r.json().catch(()=>({}));CPACQ=new Set(r.ok?(j.prodotti||[]).map(String):[])}catch(e){CPACQ=new Set()}return CPACQ}
+async function cpAcq(i){const p=CP.lista[i],attivo=!(CPACQ&&CPACQ.has(String(p.prodotto_id)));
+ try{const r=await fetch("/api/colazioni/prodotti-acquaviva",{method:"PUT",headers:{"Content-Type":"application/json",...authAdmin()},body:JSON.stringify({prodotto_id:+p.prodotto_id,attivo})}),j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.detail||"Non salvato");
+  if(attivo)CPACQ.add(String(p.prodotto_id));else CPACQ.delete(String(p.prodotto_id));toast(attivo?"Fornitore Acquaviva: i lotti nascono dalla fattura":"Acquaviva tolto");cpDisegna()}catch(e){toast(e.message)}}
+async function cpCarica(sid){
+ CP.sid=sid;$("#cp_body").innerHTML=`<p class="mute">Caricamento selezioni…</p>`;
+ const assegnati=await run("bb_tit_menu_prodotti_struttura",{p:sess.p,sid});if(!Array.isArray(assegnati))return;
+ await cpAcquaviva();
+ const perId=new Map(assegnati.map(x=>[+x.prodotto_id,x]));
+ CP.lista=CP.base.map(x=>{const a=perId.get(+x.prodotto_id);return {...x,on:!!a,prezzo:a?+a.prezzo:(x.prezzo?+x.prezzo:0)}});
+ cpDisegna();
+}
+function cpDisegna(){
+ const q=cpNorm(CP.q),vis=CP.lista.filter(p=>(CP.sezione==="tutte"||p.categoria+" · "+p.sezione===CP.sezione)&&(!q||cpNorm([p.nome,p.descrizione,p.categoria,p.sezione].join(" ")).includes(q)));
+ const scelti=CP.lista.filter(p=>p.on),mancanti=scelti.filter(p=>!(p.prezzo>0));
+ if($("#cp_stat"))$("#cp_stat").innerHTML=`${scelti.length} selezionati${mancanti.length?` · <b>${mancanti.length} senza prezzo</b>`:""} · ${vis.length} mostrati`;
+ $("#cp_body").innerHTML=vis.length?`<div class="catalog-grid">${vis.map(p=>{const i=CP.lista.indexOf(p);return `<article class="catalog-card ${p.on?"selected":""}">${catalogFoto(p)}<div><div class="mute" style="font-size:12px">${esc(p.categoria)} · ${esc(p.sezione)}</div><label style="display:flex;gap:7px;align-items:flex-start;color:var(--ink)"><input type="checkbox" ${p.on?"checked":""} onchange="cpSel(${i},this.checked)"><b class="catalog-title">${esc(p.nome)}</b></label>${catalogDescrizione(p)}${catalogAllergeni(p)}<div style="margin:6px 0"><button type="button" class="btn sm ${CPACQ&&CPACQ.has(String(p.prodotto_id))?"":"sec"}" style="min-height:44px" aria-pressed="${!!(CPACQ&&CPACQ.has(String(p.prodotto_id)))}" onclick="cpAcq(${i})">${CPACQ&&CPACQ.has(String(p.prodotto_id))?"✓ Fornitore: Acquaviva (lotto automatico)":"Fornitore: Acquaviva?"}</button></div><div class="catalog-price-row"><label>Prezzo hotel (€)</label><input type="number" min="0" step="0.10" value="${p.prezzo||""}" placeholder="€ 0,00" aria-label="Prezzo hotel per ${esc(p.nome)}" oninput="CP.lista[${i}].prezzo=+this.value;cpAggiornaStat()"></div></div></article>`}).join("")}</div>`:`<div class="card"><p class="mute">Nessun prodotto corrisponde ai filtri.</p></div>`;
+}
+function cpAggiornaStat(){const s=CP.lista.filter(p=>p.on),m=s.filter(p=>!(p.prezzo>0));if($("#cp_stat"))$("#cp_stat").innerHTML=`${s.length} selezionati${m.length?` · <b>${m.length} senza prezzo</b>`:""}`}
+function cpSel(i,v){CP.lista[i].on=v;cpDisegna()}
+function cpSezione(v){CP.lista.forEach(p=>{if(CP.sezione==="tutte"||p.categoria+" · "+p.sezione===CP.sezione)p.on=v});cpDisegna()}
+async function cpSalva(){
+ const scelti=CP.lista.filter(p=>p.on);const senza=scelti.filter(p=>!(p.prezzo>0));
+ if(senza.length)return toast(`Inserisci il prezzo per ${senza[0].nome}${senza.length>1?` e altri ${senza.length-1}`:""}`);
+ const righe=scelti.map(p=>({prodotto_id:p.prodotto_id,prezzo:p.prezzo}));
+ const r=await run("bb_tit_menu_prodotti_salva",{p:sess.p,sid:CP.sid,righe},"Menu e prezzi hotel salvati");if(Array.isArray(r))await cpCarica(CP.sid);
+}
+
+/* --- Menù (modifica + import) --- */
+function pMenu(){
+ return `<div class="card"><h3>🥐 Colazioni standard</h3><p class="mute">Il tuo listino di base. In ogni struttura le importi con un tocco e poi le personalizzi (prezzo, prodotti) senza toccare le standard. Tocca una colazione per modificarla.</p><div id="ce2"></div></div><div id="glwrap"></div>`}
+pMenu.after=async()=>{ceInit("std");const l=await rpc("bb_glutine_pubblico").catch(()=>[]);GL=l.map(x=>({nome:x.nome,differenza:x.differenza,per:x.per}));$("#glwrap").innerHTML=glHtml();glTab()};
+let GL=[];
+function glHtml(){return `<div class="card"><h3>🌾 Versioni senza glutine</h3><p class="mute">I prodotti senza glutine che l'ospite può scegliere al posto di quello del menù. Scrivi <b>solo la differenza da pagare</b> (0 se non c'è supplemento). "Per" è facoltativo: una parola del prodotto a cui si riferisce (es. cornetto), così viene proposto solo su quello.</p>
+ <div id="gl"></div><div class="row" style="justify-content:flex-start;flex-wrap:wrap;gap:6px"><button class="btn sm sec" onclick="GL.push({nome:'',differenza:0,per:''});glTab()">+ Aggiungi</button><button class="btn" onclick="glSalva()">Salva elenco</button></div>
+ <label style="margin-top:14px">Oppure incolla l'elenco (una riga per prodotto: nome ; differenza ; per)</label><textarea id="glt" rows="4" placeholder="Cornetto senza glutine;1,50;cornetto&#10;Pane senza glutine;0,80"></textarea><button class="btn sm sec" onclick="glImporta()">Aggiungi dall'elenco incollato</button></div>`}
+function glTab(){$("#gl").innerHTML=GL.length?`<div class="scroll"><table><tr><th>Prodotto senza glutine</th><th>Differenza €</th><th>Per</th><th></th></tr>${GL.map((g,i)=>`<tr><td><input value="${esc(g.nome)}" oninput="GL[${i}].nome=this.value" style="margin:0;min-width:180px"></td><td><input type="number" step="0.10" min="0" value="${g.differenza}" oninput="GL[${i}].differenza=+this.value" style="margin:0;width:90px"></td><td><input value="${esc(g.per)}" oninput="GL[${i}].per=this.value" style="margin:0;width:110px" placeholder="(tutti)"></td><td><button class="btn sm sec" onclick="GL.splice(${i},1);glTab()">✕</button></td></tr>`).join("")}</table></div>`:`<p class="mute">Nessun prodotto ancora: finché l'elenco è vuoto, l'ospite può solo chiedere una versione senza glutine e il bar la conferma al ritiro.</p>`}
+function glImporta(){const r=$("#glt").value.split(/\r?\n/).map(l=>l.trim()).filter(Boolean).map(l=>{const c=l.split(l.includes(";")?";":"\t").map(x=>x.trim());return {nome:c[0]||"",differenza:parseFloat(String(c[1]||"0").replace("€","").replace(",","."))||0,per:c[2]||""}}).filter(x=>x.nome);if(!r.length)return toast("Nessuna riga valida");GL.push(...r);$("#glt").value="";glTab();toast(r.length+" prodotti aggiunti: ricorda di salvare")}
+async function glSalva(){const n=await run("bb_tit_glutine_salva",{p:sess.p,righe:GL.filter(g=>g.nome.trim())},"Elenco senza glutine salvato");if(n!==undefined&&n!==true)toast(n+" prodotti salvati")}
+
+let CE=[],CESAVED=[],CEOPEN=-1,CESID=null,CATA=null,CEJ=null,CECATLOAD=null,CELIMIT=60;
+const ceCopy=x=>JSON.parse(JSON.stringify(x));
+function ceInit(sid,open=-1){CESID=sid;CESAVED=ceCopy(sid==="std"?(TIT.standard||[]):sid?((TIT.colazioni||{})[sid]||[]):[]);CE=ceCopy(CESAVED);CEOPEN=open;ceTab();ceCat()}
+function ceCatalogoCarta(carta){
+ const menus=new Map(carta.menus.map(m=>[m.id,m])),cats=new Map(carta.cats.map(c=>[c.id,c]));
+ return carta.items.filter(p=>p.on!==0&&cats.has(p.c)).map(p=>{const c=cats.get(p.c);return {id:p.id,nome:p.n,desc:p.d||"",prezzo:Number.isFinite(p.p)&&p.p>0?p.p/100:null,allergeni:p.allergeni_menu||[],cod:p.cod||null,disp:p.disp===0?0:1,cat:(menus.get(c.m)||{}).n||"Altro",sub:c.n,img:p.pic||null}}).sort((a,b)=>a.nome.localeCompare(b.nome,"it"))}
+async function ceCat(){if(CATA)return CATA;if(!CECATLOAD)CECATLOAD=fetch("/menu/api/menu/carta?destinazione=bb",{credentials:"same-origin"}).then(r=>{if(!r.ok)throw Error("Catalogo non disponibile");return r.json()}).then(c=>{CATA=ceCatalogoCarta(c);loadXtra();ceTab();return CATA}).finally(()=>{CECATLOAD=null});try{return await CECATLOAD}catch(e){toast("Catalogo non disponibile: riprova da Prodotto dal menù");return null}}
+const ceList=v=>{const p=CATA&&v.prodotto_id?CATA.find(x=>x.id===v.prodotto_id):null;return p?p.prezzo:null};
+const cePz=v=>v.prezzo!=null?v.prezzo:ceList(v);
+const ceSomma=c=>Math.round(c.voci.reduce((a,v)=>a+(cePz(v)||0)*v.qta,0)*100)/100;
+const ceSumHtml=(c,i)=>{const t=ceSomma(c);return t>0&&t!==c.prezzo?`Somma delle voci: <b>${eur(t)}</b> · <a href="#" onmousedown="event.preventDefault();ceUsa(${i})" onclick="return false">usa come prezzo</a>`:""};
+function ceImpostaPrezzo(i,valore){const c=CE[i],prezzo=Number(String(valore).replace(",","."));if(!Number.isFinite(prezzo)||prezzo<0)return;c.prezzo=prezzo;if(/^Colazione da\s*€\s*\d+(?:[.,]\d+)?\s*$/i.test(c.nome||"")){c.nome="Colazione da €"+prezzo.toLocaleString("it-IT",{minimumFractionDigits:2,maximumFractionDigits:2});const nome=document.getElementById("cenome"+i);if(nome)nome.value=c.nome}ceSumRef(i)}
+const ceUsa=i=>{if(CE[i].voci.some(v=>cePz(v)==null))return toast("Completa i prezzi mancanti prima di usare la somma");ceImpostaPrezzo(i,ceSomma(CE[i]));const e=document.getElementById("ceprice"+i);if(e)e.value=CE[i].prezzo;toast("Prezzo e nome automatico aggiornati")};
+const ceSumRef=i=>{const e=document.getElementById("cesum"+i);if(e)e.innerHTML=ceSumHtml(CE[i],i)};
+const ceRiga=c=>({id:c.id||null,nome:c.nome.trim(),prezzo:c.prezzo,descrizione:(c.descrizione||"").trim(),attiva:c.attiva,voci:c.voci.map(v=>({nome:v.nome.trim(),qta:v.qta,prodotto_id:v.prodotto_id,prezzo:v.prezzo,ingredienti:v.ingredienti,allergeni:v.allergeni}))});
+const ceSporca=c=>{if(!c.id)return true;const s=CESAVED.find(x=>x.id===c.id);return !s||JSON.stringify(ceRiga(c))!==JSON.stringify(ceRiga(s))};
+function ceCheck(c){
+ if(!c.nome.trim()){toast("Scrivi il nome della colazione");return false}
+ if(!(c.prezzo>=0)){toast("Prezzo non valido");return false}
+ if(c.voci.some(v=>!v.nome.trim())){toast("Ogni voce deve avere un nome");return false}
+ return true}
+function ceRighe(){for(const c of CE)if(!ceCheck(c))return null;return CE.map(ceRiga)}
+function ceOpen(i){CEOPEN=CEOPEN===i?-1:i;ceTab();const e=document.getElementById("cec"+i);if(e&&CEOPEN===i)e.scrollIntoView({block:"nearest",behavior:"smooth"})}
+function ceAdd(){CE.push({nome:"",prezzo:5,descrizione:"",attiva:true,voci:[]});CEOPEN=CE.length-1;ceTab();const e=document.getElementById("cec"+CEOPEN);if(e){e.scrollIntoView({block:"nearest"});const n=e.querySelector("input");if(n)n.focus()}}
+function ceModello(f){if(!f)return;const v=((TIT.voci||{})[f]||[]).map(x=>({nome:x.nome,qta:x.qta,prodotto_id:x.prodotto_id,prezzo:null,ingredienti:[...x.ingredienti],allergeni:[...x.allergeni]}));CE.push({nome:"Colazione da €"+String(f).replace(".",","),prezzo:+f,descrizione:"",attiva:true,voci:v});CEOPEN=CE.length-1;ceTab()}
+function ceTab(){
+ const A=tA(),al=TIT.allergeni_elenco||[],el=$("#ce2");if(!el)return;
+ const chiusa=(c,i)=>`<div class="card row" id="cec${i}" onclick="ceOpen(${i})" style="cursor:pointer;margin:6px 0;padding:10px 14px;${c.attiva?"":"opacity:.6"}"><div style="min-width:0"><b>${esc(c.nome||"(senza nome)")}</b> ${c.attiva?"":`<span class="pill p-warn">disattivata</span> `}${ceSporca(c)?`<span class="pill p-warn">da salvare</span>`:""}
+   <div class="mute" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(c.voci.map(v=>(v.qta>1?v.qta+"× ":"")+v.nome).join(" · ")||"nessuna voce")}</div></div><span class="price" style="font-size:18px">${eur(c.prezzo)}</span></div>`;
+ const aperta=(c,i)=>`<div class="card" id="cec${i}" style="margin:6px 0;padding:12px 14px;border-color:var(--brand,#7a2e1c)">
+  <div class="row" style="gap:6px;align-items:center"><input id="cenome${i}" value="${esc(c.nome)}" placeholder="Nome (es. Colazione Vesuvio)" oninput="CE[${i}].nome=this.value" style="margin:0;font-weight:700"><input id="ceprice${i}" type="number" min="0" step="0.1" value="${c.prezzo}" oninput="ceImpostaPrezzo(${i},this.value)" style="margin:0;width:88px" title="Prezzo a persona in €"><span>€</span><a href="#" onclick="ceOpen(${i});return false" title="Chiudi" style="text-decoration:none">▲</a></div>
+  <input value="${esc(c.descrizione||"")}" oninput="CE[${i}].descrizione=this.value" placeholder="Descrizione breve (facoltativa)" style="margin:6px 0">
+  ${c.voci.map((v,j)=>`<div style="border-top:1px solid var(--line,#0002);padding:6px 0"><div class="row" style="gap:6px;align-items:center">
+    <div style="flex:1;min-width:0">${v.prodotto_id?`<b>${esc(v.nome)}</b> <a href="#" onclick="cePick(${i},${j});return false" title="Sostituisci con un altro prodotto">cambia</a><div class="mute">${v.allergeni.map(a=>esc((A[a]||{}).icon||"")).join(" ")||"nessun allergene"}</div>`:`<input list="cemenu" value="${esc(v.nome)}" oninput="CE[${i}].voci[${j}].nome=this.value" onchange="ceAuto(${i},${j},this.value)" placeholder="Scrivi le prime lettere del prodotto" style="margin:0">`}</div>
+    <div class="stepper"><button onclick="ceVQ(${i},${j},-1)">−</button><b>${v.qta}</b><button onclick="ceVQ(${i},${j},1)">+</button></div>
+    <input type="number" min="0" step="0.1" value="${v.prezzo!=null?v.prezzo:""}" placeholder="${ceList(v)!=null?ceList(v):"0"}" title="Prezzo di questa voce (vuoto = listino)" oninput="CE[${i}].voci[${j}].prezzo=this.value===''?null:+this.value;ceSumRef(${i})" style="margin:0;width:74px">
+    <button class="btn sm sec" onclick="CE[${i}].voci.splice(${j},1);ceTab()" title="Togli">✕</button></div>
+   ${v.prodotto_id?"":`<details style="margin-top:4px"><summary class="mute">Ingredienti e allergeni</summary><input value="${esc(v.ingredienti.join(", "))}" onchange="CE[${i}].voci[${j}].ingredienti=this.value.split(',').map(x=>x.trim()).filter(Boolean)" placeholder="Ingredienti che l'ospite può togliere (es. uova, bacon)"><div class="tabs" style="flex-wrap:wrap">${al.map(a=>`<button class="${v.allergeni.includes(a.id)?"on":""}" onclick="ceAll(${i},${j},'${a.id}')">${a.icon} ${esc(a.nome)}</button>`).join("")}</div></details>`}</div>`).join("")||`<p class="mute" style="margin:6px 0">Nessuna voce: aggiungi i prodotti.</p>`}
+  <div id="cesum${i}" class="mute">${ceSumHtml(c,i)}</div>
+  <div class="row" style="justify-content:flex-start;flex-wrap:wrap;gap:6px;margin-top:6px"><button class="btn sm sec" onclick="cePick(${i})">+ Prodotto dal menù</button><button class="btn sm sec" onclick="CE[${i}].voci.push({nome:'',qta:1,prodotto_id:null,prezzo:null,ingredienti:[],allergeni:[]});ceTab()">+ Voce libera</button></div>
+  <div id="cep${i}"></div>
+  <div class="row" style="margin-top:10px"><span><label style="margin:0;display:inline-flex;gap:6px;align-items:center"><input type="checkbox" ${c.attiva?"checked":""} onchange="CE[${i}].attiva=this.checked" style="width:auto;margin:0"> Attiva</label> · <a href="#" onclick="ceDel(${i});return false">Elimina</a></span>
+   <button class="btn" onclick="${CESID?`ceSalvaUno(${i})`:`ceOpen(${i})`}">${CESID?"Salva questa colazione":"Fatto"}</button></div></div>`;
+ el.innerHTML=CE.map((c,i)=>i===CEOPEN?aperta(c,i):chiusa(c,i)).join("")||`<p class="mute">Nessuna colazione ancora.</p>`;
+ el.innerHTML+=`<datalist id="cemenu">${(CATA||[]).map(p=>`<option value="${esc(p.nome)}">${esc(p.cat||"")} · ${p.prezzo?eur(p.prezzo):"prezzo da inserire"}</option>`).join("")}</datalist><div class="row" style="justify-content:flex-start;flex-wrap:wrap;gap:6px;margin-top:8px"><button class="btn sm" onclick="ceAdd()">+ Nuova colazione</button>${CESID!=="std"&&(TIT.standard||[]).some(c=>c.attiva)?`<select id="ce_imp" onchange="ceImporta(this.value)" style="width:auto;margin:0"><option value="">📥 Importa dalle standard…</option>${CESID?`<option value="*">Importa tutte le standard</option>`:""}${(TIT.standard||[]).filter(c=>c.attiva).map(c=>`<option value="${c.id}">${esc(c.nome)} · ${eur(c.prezzo)}</option>`).join("")}</select>`:""}</div>`}
+function ceAuto(i,j,nome){const p=(CATA||[]).find(x=>cpNorm(x.nome)===cpNorm(nome));if(!p)return;const v=CE[i].voci[j];v.nome=p.nome;v.prodotto_id=p.id;v.allergeni=p.allergeni||[];v.ingredienti=[];v.prezzo=null;ceTab();toast("Collegato al Menu digitale: "+p.nome)}
+function ceVQ(i,j,d){const v=CE[i].voci[j];v.qta=Math.min(10,Math.max(1,v.qta+d));ceTab()}
+function ceAll(i,j,a){const x=CE[i].voci[j].allergeni,k=x.indexOf(a);k<0?x.push(a):x.splice(k,1);ceTab()}
+async function cePick(i,j){CEJ=j===undefined?null:j;
+ if(!CATA&&!await ceCat())return;CELIMIT=60;
+ const categorie=[...new Set(CATA.map(p=>p.cat))].sort((a,b)=>a.localeCompare(b,"it"));
+ $("#cep"+i).innerHTML=`<div class="card" style="margin:8px 0;padding:8px"><input id="mq" placeholder="Cerca tra tutti i prodotti che vendiamo…" oninput="CELIMIT=60;ceRes(${i})" style="margin:0 0 6px"><select id="mc" aria-label="Categoria prodotti" onchange="CELIMIT=60;ceRes(${i})"><option value="">Tutte le categorie</option>${categorie.map(c=>`<option value="${esc(c)}">${esc(c)}</option>`).join("")}</select><div id="mr" style="max-height:320px;overflow:auto"></div></div>`;$("#mq").focus();ceRes(i)}
+function ceRes(i){
+ const q=$("#mq").value.toLowerCase(),categoria=$("#mc").value,A=tA(),tutti=CATA.filter(p=>(!q||p.nome.toLowerCase().includes(q)||(p.cod||"").toLowerCase().includes(q))&&(!categoria||p.cat===categoria)),l=tutti.slice(0,CELIMIT);
+ $("#mr").innerHTML=`<p class="mute">${tutti.length} prodotti · ${l.length} mostrati</p>`+(l.map(p=>`<div class="prod" style="cursor:pointer" onclick="ceAdd2(${i},${p.id})">${prodImg(p)}<div class="pinfo"><b>${esc(p.nome)}</b><div class="mute">${p.cod?esc(p.cod)+" · ":""}${p.disp===0?"ESAURITO · ":""}${esc(p.sub||p.cat)} · ${p.prezzo==null?"Prezzo da definire":eur(p.prezzo)} · ${p.allergeni.map(a=>(A[a]||{}).icon||"").join("")}</div></div><span class="btn sm">${CEJ!==null?"Scegli":"Aggiungi"}</span></div>`).join("")||`<p class="mute">Nessun risultato.</p>`)+(l.length<tutti.length?`<button class="btn sm sec" onclick="CELIMIT+=60;ceRes(${i})">Mostra altri prodotti</button>`:"")}
+function ceAdd2(i,id){const p=CATA.find(x=>x.id===id);
+ if(CEJ!==null){const v=CE[i].voci[CEJ];v.nome=p.nome;v.prodotto_id=p.id;v.allergeni=p.allergeni;v.ingredienti=[];CEJ=null;ceTab();return toast("Sostituito con: "+p.nome)}
+ const k=CE[i].voci.find(v=>v.prodotto_id===id);if(k)k.qta=Math.min(10,k.qta+1);else CE[i].voci.push({nome:p.nome,qta:1,prodotto_id:p.id,ingredienti:[],allergeni:p.allergeni,prezzo:null});
+ const q=$("#mq").value;ceTab();toast("Aggiunto: "+p.nome);cePick(i).then(()=>{$("#mq").value=q;ceRes(i)})}
+async function ceInvia(righe,ok){
+ const r=await run("bb_tit_colazioni_salva",{p:sess.p,sid:CESID==="std"?null:CESID,righe},ok);if(!r||r===true)return null;
+ CESAVED=ceCopy(r);if(CESID==="std")TIT.standard=ceCopy(r);else(TIT.colazioni=TIT.colazioni||{})[CESID]=ceCopy(r);return r}
+function ceImporta(v){
+ const sel=document.getElementById("ce_imp");if(sel)sel.value="";
+ if(!v)return;const std=(TIT.standard||[]).filter(c=>c.attiva);
+ const gia=new Set(CE.map(c=>c.nome.trim().toLowerCase()));const lista=v==="*"?std.filter(c=>!gia.has(c.nome.trim().toLowerCase())):std.filter(c=>c.id===v);if(!lista.length)return toast("Le hai già tutte");
+ lista.forEach(c=>CE.push({nome:c.nome,prezzo:c.prezzo,descrizione:c.descrizione||"",attiva:true,voci:ceCopy(c.voci).map(x=>({nome:x.nome,qta:x.qta,prodotto_id:x.prodotto_id,prezzo:x.prezzo!=null?x.prezzo:null,ingredienti:x.ingredienti||[],allergeni:x.allergeni||[]}))}));
+ if(v==="*"&&CESID&&CESID!=="std"){ceSalvaTutte();return}
+ CEOPEN=CE.length-1;ceTab();toast(lista.length>1?lista.length+" colazioni importate":"Importata: personalizzala e salva")}
+async function ceSalvaTutte(){
+ if(CE.length>30)return toast("Massimo 30 colazioni per struttura: importane meno");
+ const nuove=CE.filter(x=>!x.id);for(const c of nuove)if(!ceCheck(c))return;
+ const modif=new Map(CE.filter(x=>x.id&&ceSporca(x)).map(x=>[x.id,ceCopy(x)]));
+ const righe=CE.map(x=>x.id?ceRiga(CESAVED.find(y=>y.id===x.id)||x):ceRiga(x));
+ const r=await ceInvia(righe,"Colazioni standard importate");if(!r)return;
+ CE=ceCopy(r).map(x=>modif.get(x.id)||x);CEOPEN=-1;ceTab()}
+async function ceSalvaUno(i){
+ const c=CE[i];if(!ceCheck(c))return;
+ const vecchi=new Set(CESAVED.map(x=>x.id)),righe=[];
+ CE.forEach((x,k)=>{if(k===i)righe.push(ceRiga(x));else{const s=x.id&&CESAVED.find(y=>y.id===x.id);if(s)righe.push(ceRiga(s))}});
+ const r=await ceInvia(righe,"Colazione salvata");if(!r)return;
+ const nuova=c.id?r.find(y=>y.id===c.id):r.find(y=>!vecchi.has(y.id));
+ if(nuova)CE[i]=ceCopy(nuova);
+ CEOPEN=i;ceTab()}
+async function ceDel(i){
+ const c=CE[i];if(!confirm("Eliminare «"+(c.nome||"senza nome")+"»?"))return;
+ if(!CESID||!c.id){CE.splice(i,1);CEOPEN=-1;ceTab();return}
+ const righe=[];CE.forEach((x,k)=>{if(k!==i){const s=x.id&&CESAVED.find(y=>y.id===x.id);if(s)righe.push(ceRiga(s))}});
+ const r=await ceInvia(righe,"Eliminata");if(!r)return;
+ if(r.find(y=>y.id===c.id)){CE[i]=ceCopy(r.find(y=>y.id===c.id));toast("Già usata da alcune colazioni: l'ho disattivata invece di eliminarla")}else CE.splice(i,1);
+ CEOPEN=-1;ceTab()}
+
+/* --- Impostazioni --- */
+function pImpostazioni(){
+ FR=null;const c=TIT.config||{},demo=TIT.strutture.filter(s=>s.demo).length;
+ const f=(k,l,ph,tipo="text",nota="")=>`<label>${l}</label><input type="${tipo}" value="${esc(c[k]||"")}" placeholder="${esc(ph)}" onchange="salvaCfg('${k}',this.value)">${nota?`<div class="mute" style="margin:-6px 0 10px">${nota}</div>`:""}`;
+ return `<div class="card"><h3>🏪 Dati del bar</h3><p class="mute">Compaiono nella pagina che vede l'ospite. Le modifiche si salvano da sole.</p>
+ ${f("bar_nome","Nome del locale","Bar Pasticceria Ceraldi")}${f("bar_indirizzo","Indirizzo","Via …, Napoli")}${f("bar_tel","Telefono","+39 …","tel")}${f("bar_whatsapp","WhatsApp (con prefisso, senza spazi)","39333…","tel")}${f("bar_email","Email","info@…","email")}${f("bar_orari","Orari di apertura","es. 7:00–14:00")}${f("bar_maps","Link Google Maps (facoltativo)","https://maps.app.goo.gl/…","url","Se lo lasci vuoto uso indirizzo e nome del bar.")}</div>
+ <div class="card"><h3>📏 Regole di vendita</h3>
+ ${f("ricarica_min","Ricarica minima (€)","5","number")}${f("ricarica_max","Ricarica massima (€)","2000","number")}${f("anticipo_max_giorni","Giorni massimi di anticipo per prenotare","60","number")}
+ ${f("supplemento_tavolo","Supplemento servizio al tavolo (€ a persona, per colazione)","es. 1,50","text","Si aggiunge solo alle camere o prenotazioni con Tavolo spuntato. Vale per le prenotazioni nuove.")}
+ ${f("ordini_limite_ora","Orario limite per ordinare il giorno prima","es. 20:00","time","Vuoto = nessun limite. Con 20:00, le colazioni per domani si possono creare fino alle 20:00 di oggi (e quindi mai per lo stesso giorno).")}</div>
+ <div class="card"><h3>🕖 Fasce orarie di ritiro degli ordini prodotti</h3><p class="mute">Sono gli orari che l'albergatore può scegliere quando ordina i prodotti per il giorno dopo. Tocca per accendere o spegnere un orario, poi premi Salva. Se non ne scegli nessuno valgono le fasce ogni mezz'ora dalle 06:00 alle 11:30.</p>
+ <div id="fr_chip" class="chips">${frChips()}</div>
+ <div class="filters" style="margin-top:8px"><div><label>Altro orario</label><input id="fr_altro" type="time"></div><div style="align-self:end"><button class="btn sec" onclick="frAggiungi()">Aggiungi orario</button></div></div>
+ <button class="btn" onclick="frSalva()">Salva fasce di ritiro</button> <button class="btn sec" onclick="frPredefinite()">Usa le predefinite</button></div>
+ <div class="card"><h3>📍 Posizione del bar</h3><p class="mute">Serve solo per dire, nelle visite recensione con consenso alla posizione, se il cliente era in sede o fuori sede. Nessun blocco. Gradi decimali, es. 40.842949 e 14.2489.</p>
+ ${f("bar_lat","Latitudine","40.842949")}${f("bar_lon","Longitudine","14.2489")}${f("bar_raggio_m","Raggio «in sede» (metri)","300","number","Da 10 a 5000 metri.")}</div>
+ <div class="card"><h3>💬 Messaggio all'ospite</h3><p class="mute">Testo proposto quando l'albergatore preme "Invia all'ospite". Puoi usare <b>{ospite}</b>, <b>{bar}</b> e <b>{link}</b>.</p>
+ <textarea rows="3" onchange="salvaCfg('msg_ospite',this.value)">${esc(c.msg_ospite||"")}</textarea></div>
+ <div class="card"><h3>📨 Messaggio di invito ai B&B</h3><p class="mute">Testo proposto quando inviate il link a un nuovo B&B. Puoi usare <b>{hotel}</b>, <b>{bar}</b> e <b>{link}</b>.</p>
+ <textarea rows="3" onchange="salvaCfg('msg_invito',this.value)">${esc(c.msg_invito||"")}</textarea></div>
+ <div class="card"><h3>💳 Pagamenti con carta (SumUp)</h3>
+ ${TIT.sumup?`<div class="alert ok"><b>✅ Attivo</b>${c.sumup_merchant_code?` · codice esercente <b>${esc(c.sumup_merchant_code)}</b>`:""}<br>Gli albergatori possono ricaricare il borsellino con carta e il saldo si aggiorna da solo.</div>
+ <p class="mute">Per cambiare chiave, incollane una nuova qui sotto.</p>`:`<div class="alert"><b>Non ancora attivo.</b> Gli albergatori pagano al bar e tu confermi con "Incassata".</div>
+ <p class="mute"><b>Come attivarlo (una volta sola):</b><br>1. Apri Render → il servizio del gestionale → <i>Environment</i>.<br>2. Trova la variabile di SumUp (nome con SUMUP) e copia il valore.<br>3. Incollalo qui sotto e premi Attiva.</p>`}
+ <label>Chiave API SumUp</label><input id="sk" type="password" autocomplete="off" placeholder="incolla qui la chiave">
+ <button class="btn" onclick="attivaSumup()">${TIT.sumup?"Aggiorna chiave":"Attiva pagamenti"}</button> ${TIT.sumup?`<button class="btn sec" onclick="rimuoviSumup()">Disattiva e cancella la chiave</button>`:""}
+ <p class="mute">La chiave viene controllata con SumUp e salvata cifrata sul server: non viene mai più mostrata né inviata ai browser. Il codice esercente lo ricavo io dal tuo conto.</p></div>
+ <div class="card"><h3>🔌 Stato dei collegamenti</h3><p class="mute">Controlla che database, SumUp, navi e scioperi funzionino.</p><button class="btn" onclick="diagnostica()">Controlla ora</button><div id="dg" style="margin-top:10px"></div></div>
+ <div class="card"><h3>🔒 Accesso</h3><p class="mute">Il titolare entra con lo stesso PIN del gestionale: per cambiarlo si usa il gestionale. Gli albergatori scelgono il PIN da soli quando attivano l'accesso e possono recuperarlo con il loro codice di recupero. Se lo perdono del tutto, ti arriva una richiesta nel Cruscotto.</p></div>
+ <div class="card"><h3>🧪 Dati di prova</h3><p class="mute">${demo?`Ci sono ${demo} strutture dimostrative (PIN 1111, 2222, 3333) con ordini fittizi. Quando inizi con i dati veri, eliminale.`:"Nessun dato di prova presente."}</p>
+ ${demo?`<button class="btn bad" onclick="eliminaDemo()">Elimina tutti i dati di prova</button>`:""}</div>`}
+let FR=null;
+function frCorrenti(){if(FR===null)FR=String((TIT.config||{}).ordini_fasce_ritiro||"").split(",").map(x=>x.trim()).filter(Boolean);return FR}
+function frChips(){const sel=new Set(frCorrenti()),base=[];for(let m=5*60;m<=13*60+30;m+=30)base.push(String(Math.floor(m/60)).padStart(2,"0")+":"+String(m%60).padStart(2,"0"));
+ const tutte=[...new Set([...base,...sel])].sort();return tutte.map(h=>`<button type="button" class="btn sm ${sel.has(h)?"":"sec"}" aria-pressed="${sel.has(h)}" style="min-height:44px" onclick="frToggle('${h}')">${h}</button>`).join("")}
+function frDisegna(){const e=$("#fr_chip");if(e)e.innerHTML=frChips()}
+function frToggle(h){const l=frCorrenti(),i=l.indexOf(h);if(i>=0)l.splice(i,1);else l.push(h);frDisegna()}
+function frAggiungi(){const v=($("#fr_altro")||{}).value;if(!v)return toast("Scegli un orario");const l=frCorrenti();if(!l.includes(v))l.push(v);$("#fr_altro").value="";frDisegna()}
+async function frSalva(){const l=[...new Set(frCorrenti())].sort();if(l.length>24)return toast("Al massimo 24 orari");if(await run("bb_tit_config_set",{p:sess.p,pk:"ordini_fasce_ritiro",pv:l.join(",")},"Fasce di ritiro salvate")!==undefined){TIT.config.ordini_fasce_ritiro=l.join(",");FR=l;frDisegna()}}
+async function frPredefinite(){if(await run("bb_tit_config_set",{p:sess.p,pk:"ordini_fasce_ritiro",pv:""},"Fasce predefinite ripristinate")!==undefined){TIT.config.ordini_fasce_ritiro="";FR=[];frDisegna()}}
+const salvaCfg=async(k,v)=>{if(await run("bb_tit_config_set",{p:sess.p,pk:k,pv:v},"Salvato")!==undefined&&TIT.config)TIT.config[k]=v.trim()};
+async function diagnostica(){
+ $("#dg").innerHTML=`<span class="mute">Controllo in corso…</span>`;
+ const d=await run("bb_tit_diagnostica",{p:sess.p});if(!d)return $("#dg").innerHTML="";
+ const riga=(ok,t,extra)=>`<div class="alert ${ok?"ok":"bad"}"><b>${ok?"✅":"❌"} ${t}</b>${extra?`<br><span class="mute">${extra}</span>`:""}</div>`;
+ const t=x=>x?new Date(x).toLocaleString("it-IT",{timeZone:"Europe/Rome"}):"mai";
+ $("#dg").innerHTML=riga(d.database.ok,"Database",`${d.database.strutture} strutture · ${d.database.ordini} ordini`)+
+  riga(d.sumup.ok,"SumUp",d.sumup.ok?`esercente ${esc(d.sumup.merchant||"")} ${esc(d.sumup.nome||"")}`:esc(d.sumup.errore||("errore "+d.sumup.stato)))+
+  riga(d.navi.ok,"Navi in porto",`${d.navi.n} passeggeri/traghetti in elenco · aggiornato ${t(d.navi.aggiornato)}${d.navi.errore?" · "+esc(d.navi.errore):""}`)+
+  riga(d.scioperi.ok,"Scioperi",`${d.scioperi.n} in elenco · aggiornato ${t(d.scioperi.aggiornato)}${d.scioperi.errore?" · "+esc(d.scioperi.errore):""}`)}
+async function attivaSumup(){const p=pinStrict();if(!p)return;const r=await run("bb_tit_sumup_configura",{p,chiave:$("#sk").value});if(r){toast("SumUp attivo"+(r.nome?" · "+r.nome:""));render()}}
+async function rimuoviSumup(){if(!confirm("Disattivare i pagamenti con carta e cancellare la chiave?"))return;const p=pinStrict();if(!p)return;if(await run("bb_tit_sumup_rimuovi",{p},"Disattivato"))render()}
+async function eliminaDemo(){if(!confirm("Eliminare tutte le strutture e gli ordini di prova?"))return;const p=pinStrict();if(!p)return;const n=await run("bb_tit_elimina_demo",{p});if(n!==undefined){toast(n+" strutture eliminate");render()}}
+
+render();
+</script>
+</body>
+</html>

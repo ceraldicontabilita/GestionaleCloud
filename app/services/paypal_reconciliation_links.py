@@ -1,0 +1,647 @@
+"""Collegamenti canonici PayPal -> fattura -> estratto conto -> Prima Nota.
+
+La transazione PayPal prova quale fattura e' stata pagata; il movimento
+bancario prova invece che il denaro e' realmente uscito.  Le due evidenze
+possono arrivare in qualunque ordine e vengono conservate su entrambi i lati.
+Nessuna fattura viene marcata pagata in assenza del riscontro bancario.
+"""
+
+from __future__ import annotations
+
+from datetime import datetime, timezone
+import logging
+from typing import Any, Dict, Optional
+
+from app.services.paypal_invoice_matching import (
+    evaluate_paypal_invoice_match,
+    invoice_amount,
+    invoice_number,
+    transaction_amount,
+)
+from app.services.accounting_relation_writers import (
+    record_paypal_bank_chain,
+    record_paypal_invoice_link,
+)
+from app.utils.id_fattura import filtro_id
+
+
+COLL_TRANSACTIONS = "paypal_transactions"
+COLL_INVOICES = "invoices"
+COLL_SUPPLIERS = "fornitori"
+COLL_BANK = "estratto_conto_movimenti"
+logger = logging.getLogger(__name__)
+
+
+def _tx_id(transaction: Dict[str, Any]) -> str:
+    return str(transaction.get("transaction_id") or transaction.get("id") or "").strip()
+
+
+def _invoice_id(invoice: Dict[str, Any]) -> str:
+    return str(invoice.get("id") or invoice.get("_id") or "").strip()
+
+
+def is_successful_paypal_payment(transaction: Dict[str, Any]) -> bool:
+    """Scarta righe tecniche, pending, negate e stornate.
+
+    I vecchi import non hanno lo stato: restano processabili per
+    retrocompatibilita'. I codici T02 sono conversioni valuta e non fatture.
+    """
+    status = str(
+        transaction.get("transaction_status")
+        or transaction.get("status")
+        or ""
+    ).strip().upper()
+    if status in {"P", "V", "D", "PENDING", "REVERSED", "DENIED"}:
+        return False
+    balance_affecting = transaction.get("balance_affecting")
+    if balance_affecting is False or str(balance_affecting or "").strip().upper() in {
+        "N", "NO", "FALSE",
+    }:
+        return False
+    event_code = str(
+        transaction.get("transaction_event_code")
+        or transaction.get("event_code")
+        or transaction.get("tipo")
+        or ""
+    ).strip().upper()
+    if event_code.startswith("T02"):
+        return False
+    raw_amount = transaction.get("importo")
+    if raw_amount is None:
+        raw_amount = transaction.get("lordo")
+    if raw_amount is None:
+        raw_amount = transaction.get("amount")
+    try:
+        return float(raw_amount or 0) < 0 and transaction_amount(transaction) > 0
+    except (TypeError, ValueError):
+        return False
+
+
+async def supplier_mapping_for_transaction(db, transaction: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    account_id = transaction.get("paypal_account_id") or transaction.get("account_id")
+    if not account_id:
+        return None
+    supplier = await db[COLL_SUPPLIERS].find_one(
+        {"paypal_account_id": account_id}, {"_id": 0}
+    )
+    if not supplier:
+        return None
+    registry = supplier.get("anagrafica") if isinstance(supplier.get("anagrafica"), dict) else {}
+    return {
+        "fornitore_id": supplier.get("id"),
+        "fornitore_piva": (
+            supplier.get("piva") or supplier.get("partita_iva")
+            or registry.get("piva") or registry.get("partita_iva")
+        ),
+        "codice_fiscale": supplier.get("codice_fiscale") or registry.get("codice_fiscale"),
+        "fornitore_nome": supplier.get("nome") or registry.get("nome"),
+        "fornitore_ragione_sociale": (
+            supplier.get("ragione_sociale") or registry.get("ragione_sociale")
+        ),
+    }
+
+
+async def _invoice_is_available(db, invoice_id: str, transaction_id: str) -> bool:
+    invoice = await db[COLL_INVOICES].find_one(filtro_id(invoice_id), {"_id": 0})
+    if not invoice:
+        return False
+    linked_ids = {
+        str(value) for value in (invoice.get("paypal_transaction_ids") or []) if value
+    }
+    if invoice.get("paypal_transaction_id"):
+        linked_ids.add(str(invoice["paypal_transaction_id"]))
+    if linked_ids - {transaction_id}:
+        return False
+    # Pagata per dichiarazione del titolare: aspetta proprio questa prova.
+    if (
+        invoice.get("pagato") is True
+        or str(invoice.get("stato_pagamento") or "").lower() in {"pagata", "paid"}
+    ) and transaction_id not in linked_ids and not invoice.get("in_attesa_riscontro_banca"):
+        return False
+    other = await db[COLL_TRANSACTIONS].find_one({
+        "fattura_associata.fattura_id": invoice_id,
+        "transaction_id": {"$ne": transaction_id},
+    }, {"_id": 0, "transaction_id": 1})
+    return other is None
+
+
+async def finalizza_transazione_paypal_se_completa(
+    db, transaction_id: str,
+) -> Dict[str, Any]:
+    """Chiude la fattura solo quando PayPal, fattura e banca sono tutti legati."""
+    transaction = await db[COLL_TRANSACTIONS].find_one(
+        {"$or": [{"transaction_id": transaction_id}, {"id": transaction_id}]},
+        {"_id": 0},
+    )
+    if not transaction:
+        return {"finalizzata": False, "motivo": "transazione_non_trovata"}
+    association = transaction.get("fattura_associata") or {}
+    invoice_id = association.get("fattura_id")
+    if not invoice_id:
+        return {"finalizzata": False, "motivo": "fattura_non_collegata"}
+    movement_id = (
+        transaction.get("movimento_banca_id")
+        or transaction.get("estratto_conto_movimento_id")
+    )
+    if not movement_id:
+        return {"finalizzata": False, "motivo": "estratto_conto_non_collegato"}
+    movement = await db[COLL_BANK].find_one(
+        {"id": movement_id}, {"_id": 0}
+    )
+    if not movement or str(movement.get("paypal_transaction_id") or "") != transaction_id:
+        return {"finalizzata": False, "motivo": "riscontro_bancario_non_confermato"}
+    if not movement.get("riconciliato"):
+        # L'estratto ufficiale (PDF) rimette ``riconciliato=False`` sui
+        # movimenti che promuove, perche' i motori li riprovino: il legame
+        # PayPal <-> banca pero' resta scritto sui due lati e nessuno lo
+        # rimetteva (28 addebiti fermi). Vale se il movimento e' ufficiale.
+        ufficiale = (movement.get("evidenza_bancaria_ufficiale") is True
+                     and movement.get("in_attesa_estratto_ufficiale") is not True)
+        legato = str(transaction.get("movimento_banca_id")
+                     or transaction.get("estratto_conto_movimento_id") or "") == movement_id
+        if not (ufficiale and legato):
+            return {"finalizzata": False, "motivo": "riscontro_bancario_non_confermato"}
+        await db[COLL_BANK].update_one({"id": movement_id}, {"$set": {
+            "riconciliato": True,
+            "tipo_riconciliazione": movement.get("tipo_riconciliazione") or "paypal_evidenze_univoche",
+        }})
+    invoice = await db[COLL_INVOICES].find_one(filtro_id(invoice_id))
+    if not invoice:
+        return {"finalizzata": False, "motivo": "fattura_non_trovata"}
+
+    from app.services.riconciliazione_bancaria import _applica_pagamento_banca
+
+    now = datetime.now(timezone.utc).isoformat()
+    # Un solo identificativo attraversa fattura, pagamento PayPal, estratto
+    # conto e Prima Nota. Consente il deep-link tra le sezioni senza usare
+    # importo/data come identita' dell'operazione.
+    operation_id = str(
+        transaction.get("payment_operation_id") or f"paypal:{transaction_id}"
+    )
+    payment_date = str(
+        movement.get("data") or movement.get("data_contabile")
+        or transaction.get("data_banca") or transaction.get("data") or ""
+    )[:10]
+    await _applica_pagamento_banca(
+        db, invoice, "PayPal", payment_date, movement_id,
+        int(transaction.get("riconciliazione_banca_score") or 20), now,
+        source="riconciliazione_paypal_end_to_end",
+        importo_pagamento=transaction_amount(transaction),
+    )
+    await db[COLL_INVOICES].update_one(filtro_id(invoice_id), {"$set": {
+        "riconciliato_paypal": True,
+        "paypal_riconciliato_banca": True,
+        "riconciliato": True,
+        "riconciliato_con_ec": movement_id,
+        "paypal_transaction_id": transaction_id,
+        "paypal_movimento_banca_id": movement_id,
+        "payment_operation_id": operation_id,
+        "stato_finanziario": "riconciliato",
+        "updated_at": now,
+    }})
+    await db[COLL_TRANSACTIONS].update_one(
+        {"$or": [{"transaction_id": transaction_id}, {"id": transaction_id}]},
+        {"$set": {
+            "payment_operation_id": operation_id,
+            "fattura_pagamento_finalizzato": True,
+            "fattura_pagamento_finalizzato_at": now,
+        }},
+    )
+    await db[COLL_BANK].update_one({"id": movement_id}, {"$set": {
+        "payment_operation_id": operation_id,
+        "invoice_id": invoice_id,
+        "paypal_transaction_id": transaction_id,
+    }})
+    await db["prima_nota_banca"].update_many({"$or": [
+        {"id": movement_id}, {"movimento_bancario_id": movement_id},
+        {"fattura_id": invoice_id},
+    ]}, {"$set": {"payment_operation_id": operation_id}})
+    # Le vecchie sincronizzazioni potevano aver creato prima la proiezione
+    # grezza dell'SDD PayPal e poi una seconda riga per la fattura. Sono la
+    # stessa uscita bancaria: conserviamo la riga documentata e archiviamo
+    # soltanto le copie tecniche EC senza documento, a importo identico.
+    righe_operazione = await db["prima_nota_banca"].find({
+        "$and": [
+            {"$or": [
+                {"estratto_conto_id": movement_id},
+                {"movimento_estratto_conto_id": movement_id},
+                {"movimento_bancario_id": movement_id},
+                {"movimento_banca_id": movement_id},
+            ]},
+            {"status": {"$nin": ["deleted", "archived"]}},
+        ],
+    }, {"_id": 0}).to_list(20)
+    riga_documentata = next((
+        riga for riga in righe_operazione
+        if str(riga.get("fattura_id") or riga.get("invoice_id") or "") == invoice_id
+    ), None)
+    if riga_documentata:
+        importo_operazione = round(transaction_amount(transaction), 2)
+        for riga in righe_operazione:
+            if riga.get("id") == riga_documentata.get("id"):
+                continue
+            senza_documento = not (riga.get("fattura_id") or riga.get("invoice_id"))
+            copia_tecnica = riga.get("source") in {
+                "estratto_conto_auto", "proiezione_semantica_ec",
+            }
+            try:
+                stesso_importo = abs(round(float(riga.get("importo") or 0), 2) - importo_operazione) <= 0.005
+            except (TypeError, ValueError):
+                stesso_importo = False
+            if senza_documento and copia_tecnica and stesso_importo:
+                await db["prima_nota_banca"].update_one(
+                    {"id": riga["id"]},
+                    {"$set": {
+                        "status": "archived",
+                        "deleted_reason": "duplicato_proiezione_paypal_documentata",
+                        "canonical_prima_nota_banca_id": riga_documentata.get("id"),
+                        "payment_operation_id": operation_id,
+                        "updated_at": now,
+                    }},
+                )
+    try:
+        await record_paypal_bank_chain(
+            db,
+            transaction=transaction,
+            invoice=invoice,
+            movement=movement,
+            amount=transaction_amount(transaction),
+        )
+    except Exception:
+        logger.exception(
+            "Errore registrazione catena PayPal/banca %s", transaction_id
+        )
+    return {
+        "finalizzata": True,
+        "transaction_id": transaction_id,
+        "fattura_id": invoice_id,
+        "movimento_banca_id": movement_id,
+        "payment_operation_id": operation_id,
+    }
+
+
+async def collega_transazione_a_fattura(
+    db,
+    transaction: Dict[str, Any],
+    invoice: Dict[str, Any],
+    evaluation: Dict[str, Any],
+    *,
+    automatic: bool,
+) -> Dict[str, Any]:
+    """Scrive il link su entrambi i documenti e prova a chiudere la catena."""
+    transaction_id = _tx_id(transaction)
+    invoice_id = _invoice_id(invoice)
+    if not transaction_id or not invoice_id:
+        return {"collegata": False, "motivo": "identificativo_mancante"}
+    if not evaluation.get("associabile"):
+        return {"collegata": False, "motivo": evaluation.get("scarto") or "evidenze_insufficienti"}
+
+    current = transaction.get("fattura_associata") or {}
+    if current.get("fattura_id") and str(current["fattura_id"]) != invoice_id:
+        return {"collegata": False, "motivo": "transazione_gia_collegata_ad_altra_fattura"}
+    if not await _invoice_is_available(db, invoice_id, transaction_id):
+        return {"collegata": False, "motivo": "fattura_gia_collegata_ad_altra_transazione"}
+
+    now = datetime.now(timezone.utc).isoformat()
+    paypal_reference = str(
+        transaction.get("invoice_id_fornitore") or transaction.get("invoice_id") or ""
+    ).strip()
+    link = {
+        "fattura_id": invoice_id,
+        "numero": invoice_number(invoice),
+        "data": invoice.get("invoice_date") or invoice.get("data_fattura"),
+        "fornitore": invoice.get("supplier_name") or invoice.get("cedente_denominazione"),
+        "importo": invoice_amount(invoice),
+        "view_url": f"/api/fatture-ricevute/fattura/{invoice_id}/view-assoinvoice",
+        "auto": automatic,
+        "match": (
+            "fornitore_numero_importo_esatti" if automatic and paypal_reference
+            else "fornitore_importo_data_univoci" if automatic
+            else "manuale_validato"
+        ),
+        "evidenze": evaluation.get("evidenze") or [],
+        "collegata_at": now,
+    }
+    await db[COLL_TRANSACTIONS].update_one(
+        {"$or": [{"transaction_id": transaction_id}, {"id": transaction_id}]},
+        {"$set": {
+            "fattura_associata": link,
+            "payment_operation_id": str(transaction.get("payment_operation_id") or f"paypal:{transaction_id}"),
+        }},
+    )
+    await db[COLL_INVOICES].update_one(filtro_id(invoice_id), {
+        "$set": {
+            "paypal_transaction_id": transaction_id,
+            "payment_operation_id": str(transaction.get("payment_operation_id") or f"paypal:{transaction_id}"),
+            "paypal_fattura_collegata": True,
+            "paypal_fattura_collegata_at": now,
+            "metodo_pagamento_rilevato": "PayPal",
+            "stato_finanziario": "in_attesa_estratto_conto",
+            "updated_at": now,
+        },
+        "$addToSet": {"paypal_transaction_ids": transaction_id},
+    })
+    try:
+        relation_evidence = []
+        for item in evaluation.get("evidenze") or []:
+            if isinstance(item, dict):
+                relation_evidence.append(item)
+            elif str(item or "").strip():
+                relation_evidence.append({
+                    "type": "paypal_match",
+                    "value": str(item).strip(),
+                })
+        await record_paypal_invoice_link(
+            db,
+            transaction=transaction,
+            invoice=invoice,
+            amount=transaction_amount(transaction),
+            evidence=relation_evidence,
+        )
+    except Exception:
+        logger.exception(
+            "Errore registrazione relazione PayPal/fattura %s", transaction_id
+        )
+    finalization = await finalizza_transazione_paypal_se_completa(db, transaction_id)
+    return {
+        "collegata": True,
+        "transaction_id": transaction_id,
+        "fattura_id": invoice_id,
+        "finalizzazione": finalization,
+        "fattura_associata": link,
+    }
+
+
+async def _candidate_invoices(db, transaction: Dict[str, Any], *, invoice_id: Optional[str] = None):
+    amount = transaction_amount(transaction)
+    query: Dict[str, Any]
+    if invoice_id:
+        query = filtro_id(invoice_id)
+    else:
+        query = {"$or": [
+            {"total_amount": {"$gte": amount - 0.004, "$lte": amount + 0.004}},
+            {"importo_totale": {"$gte": amount - 0.004, "$lte": amount + 0.004}},
+        ]}
+    return await db[COLL_INVOICES].find(query, {"_id": 0}).limit(100).to_list(100)
+
+
+async def associa_transazione_univoca(
+    db, transaction: Dict[str, Any], *, invoice_id: Optional[str] = None,
+    automatic: bool = True,
+) -> Dict[str, Any]:
+    if not is_successful_paypal_payment(transaction) or transaction.get("is_pagopa"):
+        return {"collegata": False, "motivo": "non_pagamento_commerciale_valido"}
+    mapping = await supplier_mapping_for_transaction(db, transaction)
+    valid = []
+    for invoice in await _candidate_invoices(db, transaction, invoice_id=invoice_id):
+        evaluation = evaluate_paypal_invoice_match(transaction, invoice, mapping)
+        if evaluation["associabile"]:
+            valid.append((evaluation, invoice))
+    valid.sort(key=lambda item: item[0]["score"], reverse=True)
+    if not valid:
+        return {"collegata": False, "motivo": "nessuna_fattura_con_evidenze_complete"}
+    if len(valid) > 1:
+        # Senza un riferimento fattura esplicito, nome+importo+data producono
+        # una prova utilizzabile soltanto se esiste una singola fattura.
+        reference = str(
+            transaction.get("invoice_id_fornitore")
+            or transaction.get("invoice_id") or ""
+        ).strip()
+        if not reference or valid[0][0]["score"] == valid[1][0]["score"]:
+            return {"collegata": False, "motivo": "fatture_ambigue", "candidati": len(valid)}
+    return await collega_transazione_a_fattura(
+        db, transaction, valid[0][1], valid[0][0], automatic=automatic,
+    )
+
+
+async def riprocessa_collegamenti_paypal(
+    db, *, start_date: Optional[str] = None, end_date: Optional[str] = None,
+    limit: int = 5000,
+) -> Dict[str, Any]:
+    """Riprocessa lo storico senza dipendere dall'ordine degli import."""
+    date_filter: Dict[str, Any] = {}
+    if start_date:
+        date_filter["$gte"] = start_date
+    if end_date:
+        date_filter["$lte"] = end_date + ("T23:59:59Z" if "T" not in end_date else "")
+    query: Dict[str, Any] = {"$or": [
+        {"importo": {"$lt": 0}}, {"lordo": {"$lt": 0}}, {"amount": {"$lt": 0}},
+    ]}
+    if date_filter:
+        query["$and"] = [{"$or": [
+            {"initiation_date": date_filter}, {"data": date_filter},
+        ]}]
+    transactions = await db[COLL_TRANSACTIONS].find(query, {"_id": 0}).limit(limit).to_list(limit)
+    result = {
+        "analizzate": len(transactions), "associate": 0, "finalizzate": 0,
+        "ambigue": 0, "gia_collegate": 0, "non_trovate": 0, "errori": 0,
+    }
+    for transaction in transactions:
+        try:
+            association = transaction.get("fattura_associata") or {}
+            if association.get("fattura_id"):
+                transaction_id = _tx_id(transaction)
+                if not (
+                    transaction.get("movimento_banca_id")
+                    or transaction.get("estratto_conto_movimento_id")
+                ):
+                    historical_bank = await db[COLL_BANK].find_one(
+                        {"paypal_transaction_id": transaction_id}, {"_id": 0}
+                    )
+                    if historical_bank and historical_bank.get("riconciliato"):
+                        historical_bank_id = str(historical_bank.get("id") or "")
+                        if historical_bank_id:
+                            bank_backfill = {
+                                "riconciliato_banca": True,
+                                "riconciliato_con_estratto_banca": True,
+                                "movimento_banca_id": historical_bank_id,
+                                "estratto_conto_movimento_id": historical_bank_id,
+                                "data_banca": historical_bank.get("data"),
+                            }
+                            await db[COLL_TRANSACTIONS].update_one(
+                                {"$or": [
+                                    {"transaction_id": transaction_id},
+                                    {"id": transaction_id},
+                                ]},
+                                {"$set": bank_backfill},
+                            )
+                            transaction.update(bank_backfill)
+                # Rivalida anche i link gia' presenti con le regole correnti.
+                # Serve per migrare le associazioni create prima che fosse
+                # ammessa la prova univoca nome+importo+data senza riferimento.
+                linked_invoice = await db[COLL_INVOICES].find_one(
+                    filtro_id(association.get("fattura_id")), {"_id": 0}
+                )
+                if linked_invoice:
+                    mapping = await supplier_mapping_for_transaction(db, transaction)
+                    evaluation = evaluate_paypal_invoice_match(
+                        transaction, linked_invoice, mapping
+                    )
+                    if evaluation.get("associabile"):
+                        reference = str(
+                            transaction.get("invoice_id_fornitore")
+                            or transaction.get("invoice_id") or ""
+                        ).strip()
+                        migrated_match = (
+                            "fornitore_numero_importo_esatti" if reference
+                            else "fornitore_importo_data_univoci"
+                        )
+                        await db[COLL_TRANSACTIONS].update_one(
+                            {"$or": [
+                                {"transaction_id": _tx_id(transaction)},
+                                {"id": _tx_id(transaction)},
+                            ]},
+                            {"$set": {
+                                "fattura_associata.match": migrated_match,
+                                "fattura_associata.evidenze": evaluation.get("evidenze") or [],
+                            }},
+                        )
+                result["gia_collegate"] += 1
+                finalization = await finalizza_transazione_paypal_se_completa(db, transaction_id)
+                result["finalizzate"] += int(bool(finalization.get("finalizzata")))
+                continue
+            outcome = await associa_transazione_univoca(db, transaction)
+            if outcome.get("collegata"):
+                result["associate"] += 1
+                result["finalizzate"] += int(bool(
+                    (outcome.get("finalizzazione") or {}).get("finalizzata")
+                ))
+            elif outcome.get("motivo") == "fatture_ambigue":
+                result["ambigue"] += 1
+            else:
+                result["non_trovate"] += 1
+        except Exception:
+            logger.exception(
+                "Errore nel riprocessamento PayPal transaction_id=%s",
+                _tx_id(transaction),
+            )
+            result["errori"] += 1
+    return result
+
+
+async def collega_fattura_paypal_appena_importata(db, invoice: Dict[str, Any]) -> Dict[str, Any]:
+    """Hook fattura-late: cerca la transazione PayPal gia' importata."""
+    amount = invoice_amount(invoice)
+    if amount <= 0:
+        return {"collegata": False, "motivo": "importo_fattura_non_valido"}
+    candidates = await db[COLL_TRANSACTIONS].find({"$or": [
+        {"importo": {"$gte": -amount - 0.004, "$lte": -amount + 0.004}},
+        {"lordo": {"$gte": -amount - 0.004, "$lte": -amount + 0.004}},
+        {"amount": {"$gte": -amount - 0.004, "$lte": -amount + 0.004}},
+    ]}, {"_id": 0}).limit(100).to_list(100)
+    valid = []
+    for transaction in candidates:
+        if not is_successful_paypal_payment(transaction) or transaction.get("is_pagopa"):
+            continue
+        mapping = await supplier_mapping_for_transaction(db, transaction)
+        evaluation = evaluate_paypal_invoice_match(transaction, invoice, mapping)
+        if evaluation["associabile"]:
+            valid.append((evaluation, transaction))
+    valid.sort(key=lambda item: item[0]["score"], reverse=True)
+    if not valid:
+        return {"collegata": False, "motivo": "nessuna_transazione_con_evidenze_complete"}
+    if len(valid) > 1:
+        # La fattura appena arrivata non deve essere assegnata a una delle
+        # molte transazioni prive di numero fattura solo per vicinanza.
+        with_reference = [item for item in valid if str(
+            item[1].get("invoice_id_fornitore") or item[1].get("invoice_id") or ""
+        ).strip()]
+        if not with_reference or valid[0][0]["score"] == valid[1][0]["score"]:
+            return {"collegata": False, "motivo": "transazioni_ambigue", "candidati": len(valid)}
+    return await collega_transazione_a_fattura(
+        db, valid[0][1], invoice, valid[0][0], automatic=True,
+    )
+
+
+GIORNI_CANDIDATI_PAYPAL = 120
+
+
+async def candidati_paypal_per_fattura(db, invoice: Dict[str, Any]) -> list:
+    """Pagamenti PayPal che possono aver pagato questa fattura: da far scegliere.
+
+    Stesso importo al centesimo, pagamento commerciale riuscito, entro
+    ``GIORNI_CANDIDATI_PAYPAL`` giorni dalla fattura e non gia' legati a
+    un'altra. Ogni candidato porta l'esito del motore (``associabile``,
+    evidenze, scarto): la lista non collega niente.
+    """
+    from app.services.paypal_invoice_matching import _parse_date
+
+    amount = invoice_amount(invoice)
+    if amount <= 0:
+        return []
+    inv_date = _parse_date(invoice.get("invoice_date") or invoice.get("data_fattura"))
+    invoice_id = _invoice_id(invoice)
+    righe = await db[COLL_TRANSACTIONS].find({"$or": [
+        {"importo": {"$gte": -amount - 0.004, "$lte": -amount + 0.004}},
+        {"lordo": {"$gte": -amount - 0.004, "$lte": -amount + 0.004}},
+        {"amount": {"$gte": -amount - 0.004, "$lte": -amount + 0.004}},
+    ]}, {"_id": 0}).limit(100).to_list(100)
+    candidati = []
+    visti: set = set()
+    for tx in righe:
+        tx_id = _tx_id(tx)
+        if not tx_id or tx_id in visti or tx.get("is_pagopa") or not is_successful_paypal_payment(tx):
+            continue
+        visti.add(tx_id)
+        legata = str((tx.get("fattura_associata") or {}).get("fattura_id") or "")
+        if legata and legata != invoice_id:
+            continue
+        tx_date = _parse_date(tx.get("data") or tx.get("initiation_date"))
+        if inv_date and tx_date and abs((tx_date - inv_date).days) > GIORNI_CANDIDATI_PAYPAL:
+            continue
+        mapping = await supplier_mapping_for_transaction(db, tx)
+        valutazione = evaluate_paypal_invoice_match(tx, invoice, mapping)
+        candidati.append({
+            "transaction_id": tx_id,
+            "data": str(tx.get("data") or tx.get("initiation_date") or "")[:10],
+            "importo": transaction_amount(tx),
+            "valuta": tx.get("currency") or tx.get("valuta"),
+            "controparte": tx.get("nome_controparte") or tx.get("payer_name"),
+            "email": tx.get("email_controparte") or tx.get("payer_email"),
+            "riferimento": tx.get("invoice_id_fornitore") or tx.get("invoice_id"),
+            "descrizione": tx.get("descrizione"),
+            "gia_collegata": legata == invoice_id,
+            "addebito_banca": bool(tx.get("riconciliato_banca") or tx.get("movimento_banca_id")),
+            "associabile": valutazione["associabile"],
+            "evidenze": valutazione["evidenze"],
+            "scarto": valutazione.get("scarto"),
+        })
+    candidati.sort(key=lambda c: (not c["associabile"], c["data"]))
+    return candidati
+
+
+async def collega_paypal_scelto_dal_titolare(
+    db, invoice: Dict[str, Any], transaction_id: str,
+) -> Dict[str, Any]:
+    """Il titolare sceglie quale pagamento PayPal ha pagato la fattura.
+
+    La scelta vale solo fra i candidati di ``candidati_paypal_per_fattura``
+    (importo al centesimo, finestra di date, transazione libera): la sua
+    parola sostituisce l'identita' del fornitore quando PayPal espone un
+    altro nome (il marchio di un gruppo) o un numero d'ordine al posto del
+    numero fattura, mai l'importo. Il link lo scrive il motore unico.
+    """
+    candidati = await candidati_paypal_per_fattura(db, invoice)
+    scelto = next((c for c in candidati if c["transaction_id"] == transaction_id), None)
+    if not scelto:
+        return {"collegata": False, "motivo": "transazione_non_fra_i_candidati"}
+    transaction = await db[COLL_TRANSACTIONS].find_one(
+        {"$or": [{"transaction_id": transaction_id}, {"id": transaction_id}]}, {"_id": 0},
+    )
+    if not transaction:
+        return {"collegata": False, "motivo": "transazione_non_trovata"}
+    mapping = await supplier_mapping_for_transaction(db, transaction)
+    valutazione = evaluate_paypal_invoice_match(transaction, invoice, mapping)
+    if not valutazione["associabile"]:
+        if "importo" not in valutazione["evidenze"]:
+            return {"collegata": False, "motivo": "importo_non_coincidente_al_centesimo"}
+        from app.services.paypal_invoice_matching import invoice_currency, transaction_currency
+
+        tx_valuta, fatt_valuta = transaction_currency(transaction), invoice_currency(invoice)
+        if tx_valuta and fatt_valuta and tx_valuta != fatt_valuta:
+            return {"collegata": False, "motivo": "valuta_non_coincidente"}
+        valutazione = {**valutazione, "associabile": True,
+                       "evidenze": [*valutazione["evidenze"], "scelta_titolare"]}
+    return await collega_transazione_a_fattura(
+        db, transaction, invoice, valutazione, automatic=False,
+    )

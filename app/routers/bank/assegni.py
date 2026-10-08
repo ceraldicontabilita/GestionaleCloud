@@ -1,0 +1,2217 @@
+"""
+Checks (Assegni) router - Gestione Assegni.
+API per generazione, gestione e collegamento assegni.
+"""
+from fastapi import APIRouter, HTTPException, Query, Body, UploadFile, File
+from fastapi.responses import Response
+from pydantic import BaseModel, Field
+from typing import Dict, Any, List, Optional, Union
+from datetime import datetime, timezone
+import asyncio
+import uuid
+import logging
+import re
+from difflib import SequenceMatcher
+
+from app.database import Database
+from app.routers.bank.assegni_auto_match import _f, _norm_piva, TOLL, MAX_RATE, fornitore_esclude_assegno
+from app.services.payment_invoice_matching import (
+    amounts_equal_to_cent,
+    invoice_reference_equals,
+)
+from app.services.assegni_fattura_intent import (
+    capienza_assegno_fattura,
+)
+from app.services.payment_allocation_validator import (
+    is_credit_note,
+    validate_invoice_allocation,
+    to_cents,
+    invoice_total_cents,
+)
+from app.constants.fattura_attiva import FILTRO_FATTURA_ATTIVA
+from app.services.stato_pagamento_fattura import FILTRO_NON_PAGATE
+from app.utils.id_fattura import filtro_id
+
+logger = logging.getLogger(__name__)
+router = APIRouter()
+
+# Collection name
+COLLECTION_ASSEGNI = "assegni"
+
+
+def _token_set_ratio(left: str, right: str) -> int:
+    """Percentuale fuzzy senza dipendenze opzionali non dichiarate."""
+    a = " ".join(sorted(set(re.findall(r"[A-Z0-9]+", left.upper()))))
+    b = " ".join(sorted(set(re.findall(r"[A-Z0-9]+", right.upper()))))
+    return round(100 * SequenceMatcher(None, a, b).ratio()) if a and b else 0
+
+
+def _genera_sequenza_carnet(numero_primo: str, quantita: int) -> tuple[List[str], str]:
+    """Genera numeri progressivi preservando zeri e formato bancario.
+
+    Sono supportati sia i numeri continui presenti sugli assegni reali
+    (``0208770985``), sia il formato storico ``PREFISSO-SUFFISSO``
+    (``0208770000-01``). La larghezza non puo' cambiare durante il carnet:
+    un overflow richiede un nuovo carnet e non viene salvato in parte.
+    """
+    valore = str(numero_primo or "").strip()
+    if not valore:
+        raise ValueError("Inserisci il numero del primo assegno")
+
+    continuo = re.fullmatch(r"\d+", valore)
+    if continuo:
+        larghezza = len(valore)
+        iniziale = int(valore)
+        finale = iniziale + quantita - 1
+        if len(str(finale)) > larghezza:
+            raise ValueError("La progressione supera la lunghezza del numero iniziale")
+        numeri = [f"{iniziale + indice:0{larghezza}d}" for indice in range(quantita)]
+        return numeri, valore
+
+    separato = re.fullmatch(r"(\d+)-(\d+)", valore)
+    if separato:
+        prefisso, suffisso = separato.groups()
+        larghezza = len(suffisso)
+        iniziale = int(suffisso)
+        finale = iniziale + quantita - 1
+        if len(str(finale)) > larghezza:
+            raise ValueError("La progressione supera la lunghezza del suffisso iniziale")
+        numeri = [
+            f"{prefisso}-{iniziale + indice:0{larghezza}d}"
+            for indice in range(quantita)
+        ]
+        return numeri, prefisso
+
+    raise ValueError(
+        "Formato non valido: usa un numero continuo (es. 0208770985) "
+        "oppure PREFISSO-SUFFISSO (es. 0208770000-01)"
+    )
+
+
+def _assegno_riferisce_fattura(assegno: Dict[str, Any], fattura: Dict[str, Any]) -> bool:
+    """Vero solo se il numero fattura dichiarato sull'assegno coincide."""
+    numero_assegno = assegno.get("numero_fattura") or assegno.get("fattura_numero")
+    numero_fattura = fattura.get("invoice_number") or fattura.get("numero_documento")
+    return invoice_reference_equals(numero_assegno, numero_fattura)
+
+
+from app.services.carnet_assegni import carnet_del_numero, numero_canonico, riepilogo_carnet  # noqa: E402
+
+# Stati: un registro solo (app/constants/stati_assegno.py).
+from app.constants.stati_assegno import (  # noqa: E402
+    ASSEGNO_STATI,
+    STATI_DISPONIBILI,
+    STATI_NUMERO_CONSUMATO,
+)
+# Campi che il PUT non annota nello storico (tecnici).
+_CAMPI_SENZA_STORICO = {"updated_at", "storico"}
+
+
+def _voce_storico(prima: Dict[str, Any], dopo: Dict[str, Any], azione: str, now: str,
+                  motivo: Optional[str] = None) -> Optional[Dict[str, Any]]:
+    """Valore precedente e nuovo di ogni campo cambiato: la scheda non si riscrive senza traccia."""
+    campi = {
+        k: {"prima": prima.get(k), "dopo": v}
+        for k, v in dopo.items()
+        if k not in _CAMPI_SENZA_STORICO and prima.get(k) != v
+    }
+    if not campi and azione == "modifica":
+        return None
+    voce: Dict[str, Any] = {"at": now, "azione": azione, "campi": campi}
+    if motivo:
+        voce["motivo"] = motivo
+    return voce
+
+
+async def _scollega_fatture(db, assegno: Dict[str, Any], now: str, *, motivo: str = "assegno scollegato") -> List[Dict[str, Any]]:
+    """Toglie l'assegno dalle fatture che pagava: il loro residuo torna aperto.
+
+    Se l'assegno l'aveva dichiarata pagata (compilazione, non ancora provata
+    dalla banca) la dichiarazione si ritira con lo stesso motore
+    (``ritira_dichiarazione_banca``): mai una fattura che resta "pagata" per
+    un assegno annullato o stornato.
+    """
+    from app.services.pagamenti_dichiarati_titolare import ritira_dichiarazione_banca
+
+    collegate = [q for q in assegno.get("fatture_collegate") or [] if isinstance(q, dict)]
+    ids = [str(q.get("fattura_id")) for q in collegate if q.get("fattura_id")]
+    for campo in ("fattura_collegata", "fattura_id"):
+        if assegno.get(campo) and str(assegno[campo]) not in ids:
+            ids.append(str(assegno[campo]))
+            collegate.append({"fattura_id": str(assegno[campo])})
+    for fid in ids:
+        await db["invoices"].update_one(
+            filtro_id(fid), {"$pull": {"assegni_collegati": {"assegno_id": assegno["id"]}}})
+        await ritira_dichiarazione_banca(db, fid, motivo=motivo)
+        await _aggiorna_stato_intento_fattura(db, fid, now)
+    return collegate
+
+
+@router.get("/stati")
+async def get_assegno_stati() -> Dict[str, Any]:
+    """Ritorna gli stati disponibili per gli assegni."""
+    return ASSEGNO_STATI
+
+
+@router.post("/genera")
+async def genera_assegni(
+    numero_primo: str = Body(
+        ...,
+        description=(
+            "Numero del primo assegno, continuo o con trattino "
+            "(es. 0208770985 oppure 0208769182-11)"
+        ),
+    ),
+    quantita: int = Body(10, ge=1, le=100, description="Numero di assegni da generare"),
+    anno: Optional[int] = Body(None, ge=2000, le=2100, description="Anno globale del carnet"),
+) -> Dict[str, Any]:
+    """
+    Genera N assegni progressivi a partire dal numero fornito.
+    
+    Accetta il formato bancario continuo e il formato storico con trattino,
+    preservando sempre gli zeri iniziali.
+    """
+    db = Database.get_db()
+    
+    try:
+        numeri_richiesti, carnet_id = _genera_sequenza_carnet(numero_canonico(numero_primo), quantita)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    
+    # Verifica se alcuni numeri esistono già
+    # Una sola query per tutto il carnet. Il vecchio ciclo eseguiva fino a
+    # 100 round-trip Atlas prima ancora di salvare.
+    esistenti = await db[COLLECTION_ASSEGNI].find(
+        {"numero": {"$in": numeri_richiesti}},
+        {"_id": 0, "numero": 1},
+    ).to_list(quantita)
+    existing_numbers = [a.get("numero") for a in esistenti if a.get("numero")]
+    
+    if existing_numbers:
+        raise HTTPException(
+            status_code=400, 
+            detail=f"I seguenti numeri esistono già: {', '.join(existing_numbers[:5])}{'...' if len(existing_numbers) > 5 else ''}"
+        )
+    
+    # Genera assegni
+    assegni_creati = []
+    nuovi_assegni = []
+    now = datetime.now(timezone.utc).isoformat()
+    anno_carnet = anno or datetime.now(timezone.utc).year
+    for numero in numeri_richiesti:
+        assegno = {
+            "id": str(uuid.uuid4()),
+            "numero": numero,
+            "carnet_id": carnet_id,
+            "anno_creazione": anno_carnet,
+            "anno": anno_carnet,
+            "stato": "vuoto",
+            "importo": None,
+            "beneficiario": None,
+            "causale": None,
+            "data_emissione": None,
+            "data_scadenza": None,
+            "data_fattura": None,
+            "numero_fattura": None,
+            "fattura_collegata": None,
+            "fatture_collegate": [],  # Lista di fatture (max 4)
+            "fornitore_piva": None,
+            "note": None,
+            "created_at": now,
+            "updated_at": now
+        }
+        nuovi_assegni.append(assegno)
+        assegni_creati.append(numero)
+
+    # Salvataggio unico: il carnet compare integralmente senza una latenza di
+    # rete per ogni assegno.
+    await db[COLLECTION_ASSEGNI].insert_many(nuovi_assegni, ordered=True)
+    
+    return {
+        "success": True,
+        "message": f"Generati {quantita} assegni",
+        "generati": quantita,
+        "carnet_id": carnet_id,
+        "anno": anno_carnet,
+        "primo": assegni_creati[0],
+        "ultimo": assegni_creati[-1],
+        "numeri": assegni_creati
+    }
+
+
+@router.get("")
+async def list_assegni(
+    skip: int = Query(0, ge=0),
+    limit: int = Query(1000, ge=1, le=1000),
+    stato: Optional[str] = Query(None),
+    fornitore_piva: Optional[str] = Query(None),
+    search: Optional[str] = Query(None),
+    anno: Optional[int] = Query(None)
+) -> List[Dict[str, Any]]:
+    """Lista assegni con filtri."""
+    db = Database.get_db()
+    
+    # Escludi assegni eliminati (soft-delete)
+    query = {"entity_status": {"$ne": "deleted"}}
+    if anno:
+        # data_emissione/data sono stringhe YYYY-MM-DD; gli assegni senza
+        # data appartengono all'anno in cui il carnet e' stato creato. Per i
+        # record legacy usiamo created_at, evitando che lo stesso carnet
+        # vuoto compaia contemporaneamente in tutti gli anni globali.
+        query["$and"] = [{"$or": [
+            {"data_emissione": {"$regex": f"^{anno}"}},
+            {"data": {"$regex": f"^{anno}"}},
+            {"anno_creazione": anno},
+            {"anno": anno},
+            {"$and": [
+                {"data_emissione": {"$in": [None, ""]}},
+                {"data": {"$in": [None, ""]}},
+                {"anno_creazione": {"$exists": False}},
+                {"anno": {"$exists": False}},
+                {"created_at": {"$regex": f"^{anno}"}},
+            ]},
+        ]}]
+    if stato:
+        query["stato"] = stato
+    if fornitore_piva:
+        query["fornitore_piva"] = fornitore_piva
+    if search:
+        query["$or"] = [
+            {"numero": {"$regex": search, "$options": "i"}},
+            {"beneficiario": {"$regex": search, "$options": "i"}}
+        ]
+    
+    # Ordina per data (più recenti prima) invece che per stato alfabetico:
+    # con l'ordinamento alfabetico su "stato" (annullato < assegnato <
+    # compilato < emesso < incassato < vuoto) gli assegni "emesso" restavano
+    # tagliati fuori dalla finestra di un limit fisso se c'erano molti
+    # assegni negli stati alfabeticamente precedenti (es. carnet generati in
+    # blocco, tutti "vuoto"/"compilato"/"assegnato"). Il frontend riordina
+    # comunque per numero all'arrivo (GestioneAssegni.jsx::loadData) — qui
+    # conta solo quali record sopravvivono al limit.
+    assegni = await db[COLLECTION_ASSEGNI].find(query, {"_id": 0}).sort([
+        ("data_emissione", -1),
+        ("numero", 1)
+    ]).skip(skip).limit(limit).to_list(limit)
+
+    # Arricchimento display: per gli assegni con fattura collegata ma senza
+    # beneficiario reale, il frontend mostra il fornitore dedotto dalla
+    # fattura (richiesta utente: "conoscendo il numero della fattura è anche
+    # noto il fornitore"). Non scriviamo nulla sull'assegno: solo risposta.
+    ids_fatture = set()
+    numeri_fatture = set()
+    ids_movimenti = set()
+    for assegno in assegni:
+        for chiave in ("fattura_collegata", "fattura_id"):
+            if assegno.get(chiave):
+                ids_fatture.add(str(assegno[chiave]))
+        for link in assegno.get("fatture_collegate") or []:
+            if isinstance(link, dict) and link.get("fattura_id"):
+                ids_fatture.add(str(link["fattura_id"]))
+        for numero in str(assegno.get("numero_fattura") or "").split(","):
+            if numero.strip():
+                numeri_fatture.add(numero.strip())
+        movimento_id = (
+            assegno.get("movimento_estratto_conto_id")
+            or assegno.get("movimento_id")
+            or assegno.get("estratto_conto_id")
+        )
+        if movimento_id:
+            ids_movimenti.add(str(movimento_id))
+
+    condizioni_fatture = []
+    if ids_fatture:
+        condizioni_fatture.append({"id": {"$in": list(ids_fatture)}})
+    if numeri_fatture:
+        condizioni_fatture.append({"invoice_number": {"$in": list(numeri_fatture)}})
+    fatture = []
+    if condizioni_fatture:
+        fatture = await db["invoices"].find(
+            {"$or": condizioni_fatture},
+            {
+                "_id": 0, "id": 1, "invoice_number": 1,
+                "numero_fattura": 1, "invoice_date": 1, "data_fattura": 1,
+                "supplier_name": 1, "cedente_denominazione": 1,
+                "total_amount": 1, "importo_totale": 1,
+                "importo_pagato": 1, "assegni_collegati": 1,
+            },
+        ).to_list(5000)
+
+    # Una fattura puo essere rateizzata su piu assegni, ma la somma delle
+    # quote non puo superare il totale documento. Cerchiamo i riferimenti
+    # anche fuori dalla pagina corrente per esporre i conflitti storici senza
+    # modificare o cancellare alcuna prova contabile.
+    conflitti_per_fattura: Dict[str, Dict[str, Any]] = {}
+    if ids_fatture:
+        assegni_collegati = await db[COLLECTION_ASSEGNI].find(
+            {
+                "entity_status": {"$ne": "deleted"},
+                "$or": [
+                    {"fattura_collegata": {"$in": list(ids_fatture)}},
+                    {"fattura_id": {"$in": list(ids_fatture)}},
+                    {"fatture_collegate.fattura_id": {"$in": list(ids_fatture)}},
+                ],
+            },
+            {
+                "_id": 0, "id": 1, "numero": 1, "importo": 1,
+                "fattura_collegata": 1, "fattura_id": 1,
+                "fatture_collegate": 1,
+            },
+        ).to_list(10000)
+        invoice_by_id = {str(f.get("id")): f for f in fatture if f.get("id")}
+        for fid in ids_fatture:
+            quote_per_assegno: Dict[str, float] = {}
+            numeri_per_assegno: Dict[str, str] = {}
+            for altro in assegni_collegati:
+                aid = str(altro.get("id") or altro.get("numero") or "")
+                if not aid:
+                    continue
+                quote = [
+                    _f(link.get("quota"))
+                    for link in (altro.get("fatture_collegate") or [])
+                    if isinstance(link, dict)
+                    and str(link.get("fattura_id") or "") == str(fid)
+                    and _f(link.get("quota")) > 0
+                ]
+                legacy = (
+                    str(altro.get("fattura_collegata") or "") == str(fid)
+                    or str(altro.get("fattura_id") or "") == str(fid)
+                )
+                if quote:
+                    quote_per_assegno[aid] = round(sum(quote), 2)
+                elif legacy and _f(altro.get("importo")) > 0:
+                    quote_per_assegno[aid] = round(_f(altro.get("importo")), 2)
+                if aid in quote_per_assegno:
+                    numeri_per_assegno[aid] = str(altro.get("numero") or aid)
+
+            inv = invoice_by_id.get(str(fid))
+            totale = round(_f((inv or {}).get("total_amount") or (inv or {}).get("importo_totale")), 2)
+            attribuito = round(sum(quote_per_assegno.values()), 2)
+            if totale > 0 and attribuito > totale + TOLL:
+                conflitti_per_fattura[str(fid)] = {
+                    "fattura_id": str(fid),
+                    "numero_fattura": (inv or {}).get("invoice_number") or (inv or {}).get("numero_fattura"),
+                    "importo_fattura": totale,
+                    "importo_attribuito": attribuito,
+                    "assegni": list(numeri_per_assegno.values()),
+                }
+
+    per_id = {str(f.get("id")): f for f in fatture if f.get("id")}
+    per_numero = {}
+    for fattura in fatture:
+        numero = fattura.get("invoice_number") or fattura.get("numero_fattura")
+        if numero:
+            per_numero.setdefault(str(numero), []).append(fattura)
+
+    movimenti = {}
+    if ids_movimenti:
+        righe_ec = await db["estratto_conto_movimenti"].find(
+            {"id": {"$in": list(ids_movimenti)}},
+            {"_id": 0, "id": 1, "data": 1, "data_contabile": 1},
+        ).to_list(5000)
+        movimenti = {str(m.get("id")): m for m in righe_ec if m.get("id")}
+
+    # Il collegamento manuale e' ammesso soltanto per ambiguita' reali gia'
+    # registrate dal motore (due o piu' candidati senza prova discriminante).
+    # Il frontend non deve aprire il modale per ogni assegno ordinario.
+    ids_assegni = [str(a.get("id")) for a in assegni if a.get("id")]
+    ambigui_ids = set()
+    if ids_assegni:
+        proposte = await db["proposte_associazione_assegni"].find(
+            {"assegno_id": {"$in": ids_assegni}, "stato": "da_confermare"},
+            {"_id": 0, "assegno_id": 1},
+        ).to_list(5000)
+        ambigui_ids = {
+            str(p.get("assegno_id")) for p in proposte if p.get("assegno_id")
+        }
+
+    for assegno in assegni:
+        assegno["associazione_ambigua"] = str(assegno.get("id")) in ambigui_ids
+        collegamenti_ids = []
+        for chiave in ("fattura_collegata", "fattura_id"):
+            if assegno.get(chiave):
+                collegamenti_ids.append(str(assegno[chiave]))
+        for link in assegno.get("fatture_collegate") or []:
+            if isinstance(link, dict) and link.get("fattura_id"):
+                collegamenti_ids.append(str(link["fattura_id"]))
+        collegamenti = [
+            per_id[fid] for fid in dict.fromkeys(collegamenti_ids) if fid in per_id
+        ]
+        if not collegamenti:
+            for numero in str(assegno.get("numero_fattura") or "").split(","):
+                candidate = per_numero.get(numero.strip(), [])
+                if len(candidate) == 1:
+                    collegamenti.append(candidate[0])
+
+        uniche = {str(f.get("id")): f for f in collegamenti if f.get("id")}
+        conflitti = [
+            conflitti_per_fattura[fid]
+            for fid in dict.fromkeys(collegamenti_ids)
+            if fid in conflitti_per_fattura
+        ]
+        assegno["associazione_conflittuale"] = bool(conflitti)
+        assegno["fatture_conflittuali"] = conflitti
+        quote_collegate_cents = sum(
+            to_cents(link.get("quota"))
+            for link in (assegno.get("fatture_collegate") or [])
+            if isinstance(link, dict) and to_cents(link.get("quota")) > 0
+        )
+        totale_collegamenti_cents = sum(
+            invoice_total_cents(fattura) for fattura in uniche.values()
+        )
+        assegno["allocated_cents"] = quote_collegate_cents
+        assegno["residual_cents"] = max(0, totale_collegamenti_cents - quote_collegate_cents)
+        assegno["payment_allocation_status"] = (
+            "conflicting" if conflitti else
+            "ambiguous" if assegno["associazione_ambigua"] else
+            "valid" if uniche else "ambiguous"
+        )
+        if conflitti:
+            assegno["allocation_conflict_reason"] = "quota_supera_totale_fattura"
+        dettagli = [{
+            "fattura_id": fattura.get("id"),
+            "numero_fattura": fattura.get("invoice_number") or fattura.get("numero_fattura"),
+            "data_fattura": fattura.get("invoice_date") or fattura.get("data_fattura"),
+            "fornitore": fattura.get("supplier_name") or fattura.get("cedente_denominazione") or "",
+        } for fattura in uniche.values()]
+        assegno["fatture_dettaglio"] = dettagli
+        if dettagli:
+            assegno["fornitore_fattura"] = ", ".join(dict.fromkeys(
+                d["fornitore"] for d in dettagli if d.get("fornitore")
+            ))
+            assegno["numero_fattura"] = ", ".join(
+                d["numero_fattura"] for d in dettagli if d.get("numero_fattura")
+            )
+            if len(dettagli) == 1:
+                assegno["data_fattura"] = dettagli[0].get("data_fattura")
+
+        movimento_id = str(
+            assegno.get("movimento_estratto_conto_id")
+            or assegno.get("movimento_id")
+            or assegno.get("estratto_conto_id")
+            or ""
+        )
+        movimento = movimenti.get(movimento_id)
+        if movimento:
+            assegno["data_incasso"] = (
+                assegno.get("data_incasso")
+                or movimento.get("data") or movimento.get("data_contabile")
+            )
+            assegno["evidenza_estratto_conto_id"] = movimento_id
+
+        # Il riscontro EC e' distinto dall'intenzione di emettere: finche' non
+        # esiste una riga bancaria il titolo resta da rientrare in banca. Non
+        # e' un incasso presunto e non modifica fatture o Prima Nota.
+        if assegno.get("stato") == "stornato":
+            assegno["riscontro_banca"] = "stornato"
+        elif assegno.get("incassato_confermato_banca") and movimento_id:
+            assegno["riscontro_banca"] = "incassato"
+        elif assegno.get("stato") == "incassato":
+            assegno["riscontro_banca"] = "incasso_da_verificare"
+        elif assegno.get("stato") in {
+            "compilato", "emesso", "parzialmente_assegnato", "assegnato",
+        }:
+            assegno["riscontro_banca"] = "da_rientrare_in_banca"
+
+        if assegno.get("stato") == "incassato":
+            mancanti = []
+            if not assegno.get("data_incasso"):
+                mancanti.append("data_incasso")
+            if not dettagli:
+                mancanti.extend(["fornitore", "numero_fattura"])
+            assegno["dati_riconciliazione_mancanti"] = mancanti
+
+    # Il carnet si ricava dal numero (10 assegni, da …1 a …0): solo risposta.
+    for assegno in assegni:
+        assegno["carnet"] = carnet_del_numero(assegno.get("numero"))
+    return assegni
+
+
+@router.get("/supporto/fatture-disponibili")
+async def fatture_disponibili_per_assegno(
+    anno: int = Query(..., ge=2000, le=2100),
+    limit: int = Query(1000, ge=1, le=2000),
+    fornitore: Optional[str] = Query(None, min_length=2, max_length=160),
+) -> List[Dict[str, Any]]:
+    """Elenco leggero delle fatture aperte associabili a un assegno.
+
+    Evita di caricare migliaia di XML/documenti completi tramite l'endpoint
+    generale delle fatture, causa del timeout del modale di associazione.
+    """
+    db = Database.get_db()
+    inizio, fine = f"{anno}-01-01", f"{anno}-12-31"
+    query = {
+        "$and": [
+            {"$or": [
+                {"invoice_date": {"$gte": inizio, "$lte": fine}},
+                {"data_documento": {"$gte": inizio, "$lte": fine}},
+                {"data_fattura": {"$gte": inizio, "$lte": fine}},
+            ]},
+            # «Attiva» e «non pagata» si decidono in un posto solo: il filtro
+            # locale di prima non conosceva `archiviata` ne' le collisioni, e
+            # ignorava gli stati scritti in altre parole.
+            dict(FILTRO_FATTURA_ATTIVA),
+            dict(FILTRO_NON_PAGATE),
+        ]
+    }
+    nome_fornitore = str(fornitore or "").strip()
+    if nome_fornitore:
+        # Ricerca server-side sicura: ogni parola significativa digitata deve
+        # comparire in almeno un campo identita del fornitore. re.escape evita
+        # che l'input dell'utente diventi una regex Mongo arbitraria.
+        parole_ignorate = {
+            "SRL", "SPA", "SAS", "SNC", "SS", "SCARL", "COOP", "SOCIETA",
+            "LIMITATA", "PER", "AZIONI", "FORNITORE", "DITTA",
+        }
+        parole = [
+            parola for parola in re.findall(r"[A-Z0-9]+", nome_fornitore.upper())
+            if len(parola) >= 3 and parola not in parole_ignorate
+        ][:6]
+        if not parole:
+            parole = [nome_fornitore]
+        campi_fornitore = (
+            "supplier_name", "cedente_denominazione", "fornitore_ragione_sociale",
+            "supplier_vat", "cedente_piva", "fornitore_partita_iva",
+        )
+        for parola in parole:
+            pattern = re.escape(parola)
+            query["$and"].append({
+                "$or": [
+                    {campo: {"$regex": pattern, "$options": "i"}}
+                    for campo in campi_fornitore
+                ]
+            })
+    projection = {
+        "_id": 0,
+        "id": 1,
+        "invoice_key": 1,
+        "invoice_number": 1,
+        "numero_fattura": 1,
+        "numero_documento": 1,
+        "invoice_date": 1,
+        "data_fattura": 1,
+        "data_documento": 1,
+        "supplier_name": 1,
+        "cedente_denominazione": 1,
+        "fornitore_ragione_sociale": 1,
+        "supplier_vat": 1,
+        "cedente_piva": 1,
+        "fornitore_partita_iva": 1,
+        "total_amount": 1,
+        "importo_totale": 1,
+        "tipo_documento": 1,
+        "document_type": 1,
+        "importo_pagato": 1,
+        "importo_residuo": 1,
+        "pagamento_rate": 1,
+    }
+    candidati = await db["invoices"].find(
+        query, projection
+    ).sort("invoice_date", -1).limit(limit * 2).to_list(limit * 2)
+
+    # Difesa sui dati legacy: una sola riga per identita' fiscale.
+    risultato: List[Dict[str, Any]] = []
+    visti = set()
+    for f in candidati:
+        numero = f.get("invoice_number") or f.get("numero_fattura") or f.get("numero_documento") or ""
+        piva = f.get("supplier_vat") or f.get("cedente_piva") or f.get("fornitore_partita_iva") or ""
+        data = f.get("invoice_date") or f.get("data_fattura") or f.get("data_documento") or ""
+        totale = f.get("total_amount") if f.get("total_amount") is not None else f.get("importo_totale")
+        chiave = f.get("invoice_key") or (
+            str(piva).strip().upper(), str(numero).strip().upper(), str(data)[:10], str(totale)
+        )
+        if chiave in visti:
+            continue
+        visti.add(chiave)
+        risultato.append(f)
+        if len(risultato) >= limit:
+            break
+    return risultato
+
+
+@router.get("/carnet")
+async def get_carnet_assegni() -> Dict[str, Any]:
+    """Carnet da 10 assegni ricavati dai numeri: usati, buchi e stati, il piu' recente per primo."""
+    db = Database.get_db()
+    assegni = await db[COLLECTION_ASSEGNI].find(
+        {"entity_status": {"$ne": "deleted"}},
+        {"_id": 0, "numero": 1, "stato": 1, "data_emissione": 1, "data": 1},
+    ).to_list(None)
+    righe = riepilogo_carnet(assegni)
+    return {"carnet": righe, "totale": len(righe)}
+
+
+@router.get("/stats")
+async def get_assegni_stats(anno: Optional[int] = Query(None)) -> Dict[str, Any]:
+    """Statistiche assegni."""
+    db = Database.get_db()
+    
+    # Escludi assegni eliminati (soft-delete)
+    match_filter = {"entity_status": {"$ne": "deleted"}}
+    if anno:
+        match_filter["$and"] = [{"$or": [
+            {"data_emissione": {"$regex": f"^{anno}"}},
+            {"data": {"$regex": f"^{anno}"}},
+            {"anno_creazione": anno},
+            {"anno": anno},
+            {"$and": [
+                {"data_emissione": {"$in": [None, ""]}},
+                {"data": {"$in": [None, ""]}},
+                {"anno_creazione": {"$exists": False}},
+                {"anno": {"$exists": False}},
+                {"created_at": {"$regex": f"^{anno}"}},
+            ]},
+        ]}]
+
+    filtro_tutti_anno = dict(match_filter)
+    if "$and" in match_filter:
+        filtro_tutti_anno["$and"] = list(match_filter["$and"])
+    operativi = {"$or": [
+        {"importo": {"$gt": 0}},
+        {"stato": {"$in": [
+            "compilato", "emesso", "parzialmente_assegnato", "assegnato",
+            "incassato", "annullato", "stornato", "scaduto",
+        ]}},
+    ]}
+    match_filter.setdefault("$and", []).append(operativi)
+    
+    pipeline = [
+        {"$match": match_filter},
+        {"$group": {
+            "_id": "$stato",
+            "count": {"$sum": 1},
+            "totale": {"$sum": {"$ifNull": ["$importo", 0]}}
+        }}
+    ]
+    
+    by_stato = await db[COLLECTION_ASSEGNI].aggregate(pipeline).to_list(100)
+    
+    totale = await db[COLLECTION_ASSEGNI].count_documents(match_filter)
+    totale_record = await db[COLLECTION_ASSEGNI].count_documents(filtro_tutti_anno)
+    
+    return {
+        "totale": totale,
+        "totale_record": totale_record,
+        "carnet_vuoti": max(totale_record - totale, 0),
+        "per_stato": {item["_id"]: {"count": item["count"], "totale": item["totale"]} for item in by_stato}
+    }
+
+
+@router.get("/senza-associazione")
+async def get_assegni_senza_associazione_v2(
+    anno: Optional[int] = Query(None),
+) -> Dict[str, Any]:
+    """
+    Restituisce assegni che hanno importo ma nessun beneficiario/fattura associata.
+    Utile per debug e verifica manuale.
+    """
+    db = Database.get_db()
+    
+    condizioni = [
+        {"entity_status": {"$ne": "deleted"}},
+        {"importo": {"$gt": 0}},
+        {"$or": [
+            {"beneficiario": None},
+            {"beneficiario": ""},
+            {"beneficiario": "N/A"},
+            {"beneficiario": "-"},
+            {"$and": [
+                {"fattura_id": {"$in": [None, ""]}},
+                {"fattura_collegata": {"$in": [None, ""]}},
+            ]},
+        ]},
+    ]
+    if anno:
+        condizioni.append({"$or": [
+            {"data_emissione": {"$regex": f"^{anno}"}},
+            {"data": {"$regex": f"^{anno}"}},
+            {"anno_creazione": anno},
+            {"anno": anno},
+            {"created_at": {"$regex": f"^{anno}"}},
+        ]})
+    assegni = await db[COLLECTION_ASSEGNI].find(
+        {"$and": condizioni}, {"_id": 0}
+    ).to_list(5000)
+    
+    # Raggruppa per importo
+    from collections import defaultdict
+    per_importo = defaultdict(list)
+    for a in assegni:
+        imp = round(a.get("importo", 0), 2)
+        per_importo[imp].append(a.get("numero"))
+    
+    return {
+        "totale": len(assegni),
+        "per_importo": {f"€{k:.2f}": {"count": len(v), "numeri": v[:10]} for k, v in sorted(per_importo.items(), key=lambda x: -len(x[1]))}
+    }
+
+
+@router.get("/verifica-associazioni")
+async def verifica_associazioni_assegni(
+    anno: Optional[int] = Query(None),
+) -> Dict[str, Any]:
+    """
+    Analizza tutte le associazioni assegno-fattura e identifica quelle problematiche.
+    
+    PROBLEMI IDENTIFICATI:
+    1. Importo assegno diverso da importo fattura anche di un centesimo
+    2. Beneficiario assegno diverso da fornitore fattura
+    3. Fattura associata non esistente nel database
+    4. Fattura associata già pagata
+    5. Data assegno molto diversa da data fattura (>180 giorni)
+    
+    Returns:
+        Lista di associazioni problematiche. Le alternative sono suggerite
+        solo quando coincidono numero fattura dichiarato e importo al centesimo.
+    """
+    db = Database.get_db()
+    
+    # Carica tutti gli assegni con fattura associata
+    condizioni = [
+        {"entity_status": {"$ne": "deleted"}},
+        {"$or": [
+            {"fattura_id": {"$exists": True, "$nin": [None, ""]}},
+            {"fattura_collegata": {"$exists": True, "$nin": [None, ""]}},
+        ]},
+    ]
+    if anno:
+        condizioni.append({"$or": [
+            {"data_emissione": {"$regex": f"^{anno}"}},
+            {"data": {"$regex": f"^{anno}"}},
+            {"anno_creazione": anno},
+            {"anno": anno},
+            {"created_at": {"$regex": f"^{anno}"}},
+        ]})
+    assegni = await db[COLLECTION_ASSEGNI].find(
+        {"$and": condizioni},
+        {"_id": 0}
+    ).to_list(10000)
+    
+    # Carica tutte le fatture per lookup veloce
+    fatture_cursor = await db["invoices"].find({}, {"_id": 0}).to_list(50000)
+    if len(fatture_cursor) >= 50000:
+        logger.warning("verifica_associazioni_assegni_fatture: raggiunto il tetto di 50000 documenti, possibile troncamento")
+    fatture_by_id = {f.get("id"): f for f in fatture_cursor}
+    
+    problemi = []
+    statistiche = {
+        "totale_assegni_analizzati": len(assegni),
+        "associazioni_corrette": 0,
+        "problemi_importo": 0,
+        "problemi_fornitore": 0,
+        "problemi_fattura_mancante": 0,
+        "problemi_fattura_pagata": 0,
+        "problemi_data": 0
+    }
+    
+    for assegno in assegni:
+        assegno_id = assegno.get("id")
+        fattura_id = assegno.get("fattura_id") or assegno.get("fattura_collegata")
+        numero_assegno = assegno.get("numero_assegno") or assegno.get("numero")
+        importo_assegno = float(assegno.get("importo") or 0)
+        beneficiario = assegno.get("beneficiario") or ""
+        data_assegno = assegno.get("data_emissione") or assegno.get("data")
+        
+        # Cerca la fattura
+        fattura = fatture_by_id.get(fattura_id)
+        
+        problema = {
+            "assegno_id": assegno_id,
+            "numero_assegno": numero_assegno,
+            "importo_assegno": importo_assegno,
+            "beneficiario": beneficiario,
+            "data_assegno": data_assegno,
+            "fattura_id": fattura_id,
+            "problemi": [],
+            "suggerimenti": []
+        }
+        
+        # PROBLEMA 1: Fattura non trovata
+        if not fattura:
+            problema["problemi"].append("Fattura associata non trovata nel database")
+            statistiche["problemi_fattura_mancante"] += 1
+            
+            # Suggerisci solo riferimenti dichiarati con importo identico al centesimo.
+            fatture_simili = [
+                f for f in fatture_cursor
+                if amounts_equal_to_cent(
+                    f.get("total_amount") or f.get("importo_totale"),
+                    importo_assegno,
+                )
+                and _assegno_riferisce_fattura(assegno, f)
+                and not fornitore_esclude_assegno(f.get("supplier_name") or "")
+            ]
+            if fatture_simili:
+                problema["suggerimenti"] = [
+                    {
+                        "fattura_id": f.get("id"),
+                        "numero": f.get("invoice_number"),
+                        "fornitore": (f.get("supplier_name") or "")[:40],
+                        "importo": f.get("total_amount"),
+                        "match_type": "numero_fattura_e_importo_esatti"
+                    }
+                    for f in fatture_simili[:5]
+                ]
+            problemi.append(problema)
+            continue
+        
+        # Dati fattura
+        importo_fattura = float(fattura.get("total_amount") or fattura.get("importo_totale") or 0)
+        fornitore = fattura.get("supplier_name") or fattura.get("fornitore_ragione_sociale") or ""
+        data_fattura = fattura.get("invoice_date") or fattura.get("data_documento") or ""
+        fattura_pagata = fattura.get("pagato") or fattura.get("status") == "paid"
+        
+        problema["fattura_numero"] = fattura.get("invoice_number") or fattura.get("numero_documento")
+        problema["fattura_fornitore"] = fornitore
+        problema["fattura_importo"] = importo_fattura
+        problema["fattura_data"] = data_fattura
+        problema["fattura_pagata"] = fattura_pagata
+        
+        ha_problemi = False
+        
+        # PROBLEMA 2: importo diverso anche di un solo centesimo.
+        differenza_importo = abs(importo_assegno - importo_fattura)
+        if not amounts_equal_to_cent(importo_assegno, importo_fattura):
+            problema["problemi"].append(f"Importo differisce di €{differenza_importo:.2f}")
+            problema["differenza_importo"] = differenza_importo
+            statistiche["problemi_importo"] += 1
+            ha_problemi = True
+        
+        # PROBLEMA 3: Fornitore diverso (fuzzy match < 60%)
+        if beneficiario and fornitore:
+            similarity = _token_set_ratio(beneficiario, fornitore)
+            if similarity < 60:
+                problema["problemi"].append(f"Beneficiario diverso da fornitore (match: {similarity}%)")
+                problema["similarity_score"] = similarity
+                statistiche["problemi_fornitore"] += 1
+                ha_problemi = True
+        
+        # PROBLEMA 4: Fattura già pagata
+        metodo_effettivo = str(fattura.get("metodo_pagamento_effettivo") or "").lower()
+        pagamento_coerente = assegno.get("stato") == "incassato" and metodo_effettivo == "assegno"
+        if fattura_pagata and not pagamento_coerente:
+            problema["problemi"].append("Fattura già marcata come pagata")
+            statistiche["problemi_fattura_pagata"] += 1
+            ha_problemi = True
+        
+        # PROBLEMA 5: Data molto diversa (>180 giorni)
+        if data_assegno and data_fattura:
+            try:
+                if isinstance(data_assegno, str):
+                    da = datetime.strptime(data_assegno[:10], "%Y-%m-%d")
+                else:
+                    da = data_assegno
+                if isinstance(data_fattura, str):
+                    df = datetime.strptime(data_fattura[:10], "%Y-%m-%d")
+                else:
+                    df = data_fattura
+                giorni_differenza = abs((da - df).days)
+                if giorni_differenza > 180:
+                    problema["problemi"].append(f"Date differiscono di {giorni_differenza} giorni")
+                    problema["giorni_differenza"] = giorni_differenza
+                    statistiche["problemi_data"] += 1
+                    ha_problemi = True
+            except Exception as exc:  # noqa: BLE001
+                logger.debug(
+                    "[Assegni] date non confrontabili: il controllo sullo scarto di "
+                    "giorni non e' stato fatto: %s", exc)
+        
+        if ha_problemi:
+            # Cerca fatture alternative suggerite
+            suggerimenti = []
+            for f in fatture_cursor:
+                f_fornitore = f.get("supplier_name") or f.get("fornitore_ragione_sociale") or ""
+                f_importo = float(f.get("total_amount") or f.get("importo_totale") or 0)
+                f_pagata = f.get("pagato") or f.get("status") == "paid"
+                
+                if f_pagata or f.get("id") == fattura_id:
+                    continue
+                if fornitore_esclude_assegno(f_fornitore):
+                    continue
+
+                # Numero fattura dichiarato e importo esatto sono entrambi obbligatori.
+                if (
+                    amounts_equal_to_cent(f_importo, importo_assegno)
+                    and _assegno_riferisce_fattura(assegno, f)
+                ):
+                    similarity = _token_set_ratio(beneficiario, f_fornitore) if beneficiario else 0
+                    suggerimenti.append({
+                        "fattura_id": f.get("id"),
+                        "numero": f.get("invoice_number") or f.get("numero_documento"),
+                        "fornitore": f_fornitore[:40],
+                        "importo": f_importo,
+                        "similarity": similarity,
+                        "match_type": "numero_fattura_e_importo_esatti"
+                    })
+            
+            suggerimenti.sort(key=lambda x: x.get("similarity", 0), reverse=True)
+            problema["suggerimenti"] = suggerimenti[:5]
+            problemi.append(problema)
+        else:
+            statistiche["associazioni_corrette"] += 1
+    
+    return {
+        "statistiche": statistiche,
+        "problemi": problemi,
+        "totale_problemi": len(problemi)
+    }
+
+
+# === ROUTE AUTO-MATCH (statiche — prima delle dinamiche) ===
+
+@router.post("/auto-match")
+async def auto_match_assegni(
+    dry_run: bool = Query(True, description="Sola anteprima; applicazione con conferma esplicita"),
+    anno: Optional[int] = Query(None, ge=2000, le=2100),
+) -> Dict[str, Any]:
+    """
+    🤖 Auto-matcher Assegni ↔ Fatture (4 livelli, N:M, tolleranza ±0,005€).
+    Vedi PROMPT_MASTER.md, sezioni 6, 10 e 12, per i dettagli.
+    """
+    if not dry_run:
+        raise HTTPException(
+            status_code=400,
+            detail="Auto-match diretto disabilitato: genera l'anteprima e conferma una proposta esplicita",
+        )
+    from app.routers.bank.assegni_auto_match import run_auto_match
+    db = Database.get_db()
+    report = await run_auto_match(db, dry_run=dry_run, anno=anno)
+    return {
+        "success": True,
+        **report,
+        "totali": {
+            "L1": len(report["match_l1"]),
+            "L2": len(report["match_l2"]),
+            "L3": len(report["match_l3"]),
+            "L4": len(report["match_l4"]),
+            "ambigui": len(report["ambigui"]),
+            "non_trovati": len(report["non_trovati"]),
+        },
+    }
+
+
+@router.post("/auto-match/conferma")
+async def conferma_auto_match(payload: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
+    """Applica una sola proposta dopo ricalcolo e conferma esplicita."""
+    from app.routers.bank.assegni_auto_match import conferma_proposta_match
+    try:
+        result = await conferma_proposta_match(
+            Database.get_db(),
+            assegno_ids=payload.get("assegno_ids") or [],
+            fattura_ids=payload.get("fattura_ids") or [],
+            livello=payload.get("livello") or "",
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return {"success": True, **result}
+
+
+@router.get("/ambigui")
+async def lista_ambigui(
+    anno: Optional[int] = Query(None, ge=2000, le=2100),
+) -> Dict[str, Any]:
+    """Elenca gli assegni ambigui (più fatture candidate dell'auto-matcher)."""
+    from app.routers.bank.assegni_auto_match import run_auto_match
+    db = Database.get_db()
+    report = await run_auto_match(db, dry_run=True, anno=anno)
+
+    ambigui_dettaglio = []
+    for amb in report.get("ambigui", []):
+        ass = await db["assegni"].find_one({"id": amb["assegno_id"]}, {"_id": 0})
+        if not ass:
+            continue
+        cands = []
+        for c in amb.get("candidates", []):
+            inv = await db["invoices"].find_one({"id": c["fattura_id"]}, {"_id": 0})
+            if not inv:
+                continue
+            total = float(inv.get("total_amount") or inv.get("importo_totale") or 0)
+            paid = float(inv.get("importo_pagato") or 0)
+            cands.append({
+                "fattura_id": c["fattura_id"],
+                "numero": inv.get("invoice_number") or inv.get("numero_fattura"),
+                "data": inv.get("invoice_date") or inv.get("data_fattura"),
+                "importo_totale": total,
+                "importo_pagato": paid,
+                "importo_residuo": round(total - paid, 2),
+                "fornitore": inv.get("supplier_name") or inv.get("cedente_denominazione"),
+                "payment_status": inv.get("payment_status"),
+            })
+        ambigui_dettaglio.append({
+            "livello": amb.get("livello"),
+            "assegno_id": ass.get("id"),
+            "assegno_numero": ass.get("numero"),
+            "importo": float(ass.get("importo") or 0),
+            "data_emissione": ass.get("data_emissione"),
+            "fornitore_piva": ass.get("fornitore_piva"),
+            "fornitore_ragione_sociale": ass.get("fornitore_ragione_sociale") or ass.get("beneficiario"),
+            "carnet_id": ass.get("carnet_id"),
+            "candidates": cands,
+        })
+
+    # Il riscontro dell'estratto conto genera proposte conservative quando
+    # conosce numero assegno e importo ma non il numero fattura. Queste
+    # proposte prima rimanevano nel DB e non venivano mostrate dalla pagina.
+    proposte_ec = await db["proposte_associazione_assegni"].find(
+        {"stato": "da_confermare", "source": "estratto_conto"}, {"_id": 0}
+    ).sort("created_at", -1).to_list(2000)
+    per_assegno = {a["assegno_id"]: a for a in ambigui_dettaglio}
+    for proposta in proposte_ec:
+        assegno_id = proposta.get("assegno_id")
+        fattura_id = proposta.get("fattura_id")
+        if not assegno_id or not fattura_id:
+            continue
+        ass = await db["assegni"].find_one({"id": assegno_id}, {"_id": 0})
+        if not ass or ass.get("fatture_collegate"):
+            continue
+        data_assegno = str(
+            ass.get("data_incasso") or ass.get("data_emissione") or ass.get("data") or ""
+        )
+        if anno and data_assegno[:4].isdigit() and int(data_assegno[:4]) != anno:
+            continue
+        inv = await db["invoices"].find_one(filtro_id(fattura_id), {"_id": 0})
+        if not inv or inv.get("pagato") is True:
+            continue
+        total = float(inv.get("total_amount") or inv.get("importo_totale") or 0)
+        paid = float(inv.get("importo_pagato") or 0)
+        voce = per_assegno.setdefault(assegno_id, {
+            "livello": "EC",
+            "origine": "estratto_conto",
+            "motivo": (
+                "Importo o rata compatibile, ma manca il numero fattura sul pagamento: "
+                "selezione manuale obbligatoria"
+            ),
+            "assegno_id": ass.get("id"),
+            "assegno_numero": ass.get("numero"),
+            "importo": float(ass.get("importo") or 0),
+            "data_emissione": ass.get("data_emissione") or ass.get("data_incasso") or ass.get("data"),
+            "fornitore_piva": ass.get("fornitore_piva"),
+            "fornitore_ragione_sociale": ass.get("fornitore_ragione_sociale") or ass.get("beneficiario"),
+            "numero_fattura_dichiarato": ass.get("numero_fattura"),
+            "carnet_id": ass.get("carnet_id"),
+            "candidates": [],
+        })
+        if any(c["fattura_id"] == fattura_id for c in voce["candidates"]):
+            continue
+        voce["candidates"].append({
+            "fattura_id": fattura_id,
+            "numero": inv.get("invoice_number") or inv.get("numero_fattura"),
+            "data": inv.get("invoice_date") or inv.get("data_fattura"),
+            "importo_totale": total,
+            "importo_pagato": paid,
+            "importo_residuo": round(total - paid, 2),
+            "fornitore": inv.get("supplier_name") or inv.get("cedente_denominazione"),
+            "fornitore_piva": inv.get("supplier_vat") or inv.get("cedente_piva"),
+            "payment_status": inv.get("payment_status"),
+            "piano_rate_xml": proposta.get("piano_rate_xml"),
+            "modalita_pagamento_xml": proposta.get("modalita_pagamento_xml") or [],
+            "motivo_proposta": proposta.get("nota"),
+        })
+
+    ambigui_dettaglio = [v for v in per_assegno.values() if v.get("candidates")]
+    ambigui_dettaglio.sort(
+        key=lambda x: (str(x.get("data_emissione") or ""), x.get("assegno_numero") or ""),
+        reverse=True,
+    )
+    return {"success": True, "count": len(ambigui_dettaglio), "ambigui": ambigui_dettaglio}
+
+
+@router.post("/{assegno_id}/risolvi-ambiguo")
+async def risolvi_ambiguo(
+    assegno_id: str,
+    payload: Dict[str, Any] = Body(...),
+) -> Dict[str, Any]:
+    """Risolve manualmente un assegno ambiguo collegandolo a 1+ fatture."""
+    from app.routers.bank.assegni_auto_match import _apply_match
+    fattura_ids = payload.get("fattura_ids") or ([payload["fattura_id"]] if payload.get("fattura_id") else [])
+    if not fattura_ids:
+        raise HTTPException(status_code=400, detail="fattura_ids è obbligatorio")
+    db = Database.get_db()
+    ass = await db["assegni"].find_one({"id": assegno_id}, {"_id": 0})
+    if not ass:
+        raise HTTPException(status_code=404, detail="Assegno non trovato")
+    if ass.get("fatture_collegate"):
+        raise HTTPException(status_code=400, detail="Assegno già collegato")
+    fatture = []
+    for fid in fattura_ids:
+        inv = await db["invoices"].find_one(filtro_id(fid), {"_id": 0})
+        if not inv:
+            raise HTTPException(status_code=404, detail=f"Fattura {fid} non trovata")
+        total = float(inv.get("total_amount") or inv.get("importo_totale") or 0)
+        paid = float(inv.get("importo_pagato") or 0)
+        inv["_residuo"] = round(total - paid, 2)
+        fatture.append(inv)
+    importo_assegno = round(float(ass.get("importo") or 0), 2)
+    if len(fatture) == 1:
+        inv = fatture[0]
+        from app.services.assegni_fattura_intent import rata_assegno_disponibile
+        importo_valido = (
+            amounts_equal_to_cent(importo_assegno, inv["_residuo"])
+            or rata_assegno_disponibile(
+                inv, importo_assegno,
+                data_pagamento=ass.get("data_incasso") or ass.get("data_emissione"),
+                max_scarto_centesimi=1,
+            ) is not None
+        )
+    else:
+        importo_valido = amounts_equal_to_cent(
+            importo_assegno, sum(f["_residuo"] for f in fatture)
+        )
+    if not importo_valido:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "L'importo dell'assegno deve coincidere al centesimo con la "
+                "fattura, una rata XML o la somma delle fatture selezionate"
+            ),
+        )
+
+    # Se l'assegno e' gia' stato riscontrato in banca, la scelta manuale deve
+    # completare anche fattura, estratto conto e Prima Nota esistente. Il
+    # percorso generico _apply_match registra invece solo un intento futuro.
+    if len(fatture) == 1 and ass.get("incassato_confermato_banca"):
+        from app.services.assegni_estratto_conto import collega_assegno_riconciliato_a_fattura
+        try:
+            res = await collega_assegno_riconciliato_a_fattura(db, ass, fatture[0])
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        return {"success": True, **res}
+    res = await _apply_match(db, [ass], fatture, livello="MANUAL", dry_run=False)
+    return {"success": True, **res}
+
+
+@router.get("/foto/{foto_id}")
+async def leggi_foto_assegno(foto_id: str):
+    """Serve la foto dell'assegno da Supabase Storage (bucket ``menu-images``,
+    stesso archivio delle foto ricette). Cache lunga: il percorso e' immutabile,
+    un nuovo upload genera un ``foto_id`` diverso."""
+    db = Database.get_db()
+    assegno = await db[COLLECTION_ASSEGNI].find_one(
+        {"foto_id": foto_id}, {"_id": 0, "foto_storage_path": 1, "foto_content_type": 1},
+    )
+    if not assegno or not assegno.get("foto_storage_path"):
+        raise HTTPException(status_code=404, detail="Foto non trovata")
+    from app.services import foto_assegni
+    try:
+        contenuto = await asyncio.to_thread(foto_assegni.leggi, str(assegno["foto_storage_path"]))
+    except Exception as exc:
+        raise HTTPException(status_code=404, detail="Foto non trovata") from exc
+    return Response(
+        content=contenuto, media_type=assegno.get("foto_content_type") or "image/jpeg",
+        headers={"Cache-Control": "public, max-age=31536000, immutable"},
+    )
+
+
+# === ROUTE DINAMICHE (con parametri) - DEVONO STARE DOPO LE STATICHE ===
+
+@router.get("/{assegno_id}")
+async def get_assegno(assegno_id: str) -> Dict[str, Any]:
+    """Dettaglio singolo assegno."""
+    db = Database.get_db()
+    
+    assegno = await db[COLLECTION_ASSEGNI].find_one(
+        {"$or": [{"id": assegno_id}, {"numero": assegno_id}]},
+        {"_id": 0}
+    )
+    
+    if not assegno:
+        raise HTTPException(status_code=404, detail="Assegno non trovato")
+    
+    return assegno
+
+
+@router.put("/{assegno_id}")
+async def update_assegno(
+    assegno_id: str,
+    data: Dict[str, Any] = Body(...)
+) -> Dict[str, Any]:
+    """
+    Aggiorna assegno (compila dati, cambia stato, etc.).
+    """
+    db = Database.get_db()
+    assegno_esistente = await db[COLLECTION_ASSEGNI].find_one(
+        {"$or": [{"id": assegno_id}, {"numero": assegno_id}]},
+        {"_id": 0},
+    )
+    if not assegno_esistente:
+        raise HTTPException(status_code=404, detail="Assegno non trovato")
+    
+    # Rimuovi campi non modificabili
+    data.pop("id", None)
+    data.pop("numero", None)
+    data.pop("created_at", None)
+    # Lo storico lo scrive solo il server.
+    data.pop("storico", None)
+    
+    # Valida stato se fornito
+    if "stato" in data and data["stato"] not in ASSEGNO_STATI:
+        raise HTTPException(status_code=400, detail=f"Stato non valido. Valori ammessi: {list(ASSEGNO_STATI.keys())}")
+    if (
+        assegno_esistente.get("incassato_confermato_banca")
+        and data.get("stato") not in (None, "incassato", "annullato")
+    ):
+        # Una modifica anagrafica non puo' cancellare l'evidenza gia' letta
+        # dall'estratto conto.
+        data.pop("stato", None)
+    if data.get("stato") in STATI_DISPONIBILI and assegno_esistente.get("stato") in STATI_NUMERO_CONSUMATO:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"L'assegno {assegno_esistente.get('numero')} e' {assegno_esistente.get('stato')}: "
+                "un numero emesso non torna disponibile. Per non usarlo si annulla."
+            ),
+        )
+    if data.get("stato") in ("annullato", "stornato") and data.get("stato") != assegno_esistente.get("stato"):
+        raise HTTPException(
+            status_code=409,
+            detail="Annullo e storno hanno un'azione propria (con motivo): /annulla o /storna.",
+        )
+    if (
+        assegno_esistente.get("incassato_confermato_banca")
+        and "importo" in data
+        and abs(_f(data.get("importo")) - _f(assegno_esistente.get("importo"))) > 0.005
+    ):
+        # Dopo il riscontro in banca l'importo nuovo non vale finche' non si
+        # riguarda l'addebito: la riconciliazione torna da verificare.
+        data["riscontro_banca_da_verificare"] = {
+            "motivo": "importo modificato dopo il riscontro in banca",
+            "importo_precedente": _f(assegno_esistente.get("importo")),
+            "rilevato_il": datetime.now(timezone.utc).isoformat(),
+        }
+    
+    # Se si compila un assegno vuoto, cambia stato automaticamente
+    importo_effettivo = data.get("importo", assegno_esistente.get("importo"))
+    riferimento_effettivo = (
+        data.get("beneficiario", assegno_esistente.get("beneficiario"))
+        or data.get("fornitore_piva", assegno_esistente.get("fornitore_piva"))
+        or data.get("numero_fattura", assegno_esistente.get("numero_fattura"))
+    )
+    if importo_effettivo and riferimento_effettivo:
+        if assegno_esistente.get("stato") == "vuoto":
+            data["stato"] = "compilato"
+    
+    data["updated_at"] = datetime.now(timezone.utc).isoformat()
+    voce = _voce_storico(assegno_esistente, data, "modifica", data["updated_at"])
+    aggiornamento: Dict[str, Any] = {"$set": data}
+    if voce:
+        aggiornamento["$push"] = {"storico": voce}
+
+    result = await db[COLLECTION_ASSEGNI].update_one(
+        {"$or": [{"id": assegno_id}, {"numero": assegno_id}]},
+        aggiornamento,
+    )
+    
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Assegno non trovato")
+
+    from app.services.assegni_fattura_intent import prepara_intento_assegno
+    intento = await prepara_intento_assegno(db, str(assegno_esistente["id"]))
+    
+    return {
+        "message": "Assegno aggiornato con successo",
+        "intento_fattura": intento,
+    }
+
+
+@router.post("/{assegno_id}/upload-foto")
+async def upload_foto_assegno(assegno_id: str, file: UploadFile = File(...)) -> Dict[str, Any]:
+    """Foto dell'assegno (scatto da tablet/telefono o file): una sola per
+    assegno, visibile anche dalle fatture che paga. Stesso archivio delle
+    foto ricette (Supabase Storage), un prefisso diverso."""
+    db = Database.get_db()
+    assegno = await db[COLLECTION_ASSEGNI].find_one(
+        {"$or": [{"id": assegno_id}, {"numero": assegno_id}]}, {"_id": 0},
+    )
+    if not assegno:
+        raise HTTPException(status_code=404, detail="Assegno non trovato")
+    mime = file.content_type or ""
+    if not mime.startswith("image/"):
+        raise HTTPException(status_code=400, detail="File non è un'immagine")
+    contenuto = await file.read()
+    if len(contenuto) > 15 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="Immagine troppo grande (max 15MB)")
+
+    from app.services import foto_assegni
+    caricata = await asyncio.to_thread(
+        foto_assegni.carica, assegno_id=assegno["id"], contenuto=contenuto, mime=mime,
+        filename=file.filename,
+    )
+    now = datetime.now(timezone.utc).isoformat()
+    versione = int(datetime.now(timezone.utc).timestamp())
+    foto_id = caricata["id"]
+    foto_url = f"/api/assegni/foto/{foto_id}?v={versione}"
+    campi_foto = {
+        "foto_url": foto_url, "foto_id": foto_id,
+        "foto_storage_bucket": caricata["bucket"], "foto_storage_path": caricata["path"],
+        "foto_filename": file.filename, "foto_content_type": mime,
+        "foto_sha256": caricata["sha256"], "updated_at": now,
+    }
+    await db[COLLECTION_ASSEGNI].update_one(
+        {"id": assegno["id"]},
+        {"$set": campi_foto, "$push": {"storico": _voce_storico(assegno, campi_foto, "foto", now)}},
+    )
+    # Le fatture che l'assegno sta pagando vedono la stessa foto, senza una
+    # seconda copia: stesso oggetto Storage, stesso URL.
+    fatture_collegate = [
+        q.get("fattura_id") for q in (assegno.get("fatture_collegate") or [])
+        if isinstance(q, dict) and q.get("fattura_id")
+    ]
+    if fatture_collegate:
+        await db["invoices"].update_many(
+            {"id": {"$in": fatture_collegate}},
+            {"$set": {
+                "foto_assegno_url": foto_url, "foto_assegno_id": foto_id,
+                "foto_assegno_numero": assegno.get("numero"),
+            }},
+        )
+    return {"success": True, "foto_url": foto_url, "foto_sha256": caricata["sha256"],
+            "fatture_aggiornate": len(fatture_collegate)}
+
+
+class FatturaQuotaIn(BaseModel):
+    # Su `invoices` l'`id` e' un numero su meta' delle righe: la UI lo rimanda cosi' com'e'.
+    fattura_id: Union[str, int]
+    # Positiva per una fattura normale, negativa per una nota di credito (TD04)
+    # che netta l'importo dovuto — vedi PROMPT_MASTER.md, sezione 10.
+    quota: float
+
+
+class FattureCollegateIn(BaseModel):
+    fatture: List[FatturaQuotaIn] = Field(default_factory=list)
+
+
+async def _aggiorna_stato_intento_fattura(db, fattura_id: Union[str, int], now: str) -> None:
+    """Ricalcola l'intento assegno senza alterare il pagamento reale."""
+    inv = await db["invoices"].find_one(filtro_id(fattura_id), {"_id": 0})
+    if not inv:
+        return
+    links = [x for x in inv.get("assegni_collegati") or [] if isinstance(x, dict)]
+    if links or inv.get("riconciliato_con_ec"):
+        await db["invoices"].update_one(filtro_id(fattura_id), {"$set": {
+            "metodo_pagamento_previsto": "assegno",
+            "metodo_pagamento_override_source": "assegno_compilato",
+            "pagamento_specifico_prevale_su_fornitore": True,
+            "stato_finanziario": (
+                "riconciliato" if inv.get("riconciliato_con_ec")
+                else "in_attesa_estratto_conto"
+            ),
+            "updated_at": now,
+        }})
+        return
+    original = inv.get("metodo_pagamento_fornitore_originale")
+    update: Dict[str, Any] = {
+        "$set": {"stato_finanziario": "provvisoria", "updated_at": now},
+        "$unset": {
+            "metodo_pagamento_previsto": "", "metodo_pagamento_override_source": "",
+            "pagamento_specifico_prevale_su_fornitore": "",
+        },
+    }
+    if original:
+        update["$set"]["metodo_pagamento"] = original
+    await db["invoices"].update_one(filtro_id(fattura_id), update)
+
+
+@router.put("/{assegno_id}/fatture-collegate")
+async def collega_fatture_assegno(assegno_id: str, body: FattureCollegateIn) -> Dict[str, Any]:
+    """
+    Collega/scollega fatture a un assegno con il modello a quote N:M
+    documentato in PROMPT_MASTER.md: ogni collegamento ha una
+    quota in euro (parte dell'importo dell'assegno che paga quella fattura).
+    L'importo nominale dell'assegno NON viene mai modificato da qui.
+
+    Sostituisce l'intero set di collegamenti esistenti dell'assegno con
+    quello passato (il modale "Collega Fatture" invia sempre la selezione
+    finale completa dell'utente): i vecchi collegamenti vengono prima
+    annullati sulle rispettive fatture, poi si applicano i nuovi.
+    """
+    db = Database.get_db()
+    now = datetime.now(timezone.utc).isoformat()
+
+    assegno = await db[COLLECTION_ASSEGNI].find_one(
+        {"$or": [{"id": assegno_id}, {"numero": assegno_id}]}
+    )
+    if not assegno:
+        raise HTTPException(status_code=404, detail="Assegno non trovato")
+
+    if len(body.fatture) > MAX_RATE:
+        raise HTTPException(status_code=400, detail=f"Massimo {MAX_RATE} fatture per assegno")
+    if any(abs(f.quota) < 0.005 for f in body.fatture):
+        raise HTTPException(status_code=400, detail="Le quote non possono essere zero")
+
+    importo_assegno = _f(assegno.get("importo"))
+
+    # Carica le fatture nuove: devono esistere e appartenere allo stesso fornitore
+    fatture_map: Dict[str, Dict[str, Any]] = {}
+    for f in body.fatture:
+        if f.fattura_id in fatture_map:
+            continue
+        inv = await db["invoices"].find_one(filtro_id(f.fattura_id), {"_id": 0})
+        if not inv:
+            raise HTTPException(status_code=404, detail=f"Fattura {f.fattura_id} non trovata")
+        fatture_map[f.fattura_id] = inv
+
+    piva_set = {
+        _norm_piva(inv.get("supplier_vat") or inv.get("cedente_piva") or inv.get("partita_iva"))
+        for inv in fatture_map.values()
+    }
+    piva_set.discard("")
+    if len(piva_set) > 1:
+        raise HTTPException(
+            status_code=400,
+            detail="Tutte le fatture collegate a uno stesso assegno devono essere dello stesso fornitore",
+        )
+
+    somma_quote = round(sum(f.quota for f in body.fatture), 2)
+    if body.fatture and not amounts_equal_to_cent(somma_quote, importo_assegno):
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"La somma delle fatture (€{somma_quote:.2f}) deve coincidere al centesimo "
+                f"con l'importo dell'assegno (€{importo_assegno:.2f})"
+            ),
+        )
+
+    for quota_input in body.fatture:
+        inv = fatture_map[quota_input.fattura_id]
+        if quota_input.quota > 0:
+            if is_credit_note(inv):
+                numero = inv.get("invoice_number") or inv.get("numero_fattura") or quota_input.fattura_id
+                raise HTTPException(
+                    status_code=409,
+                    detail=(
+                        f"Il documento {numero} è una nota di credito ({inv.get('tipo_documento') or inv.get('document_type')}); "
+                        "non può ricevere un'allocazione assegno. Usare compensazione o rimborso."
+                    ),
+                )
+            esito_allocazione = validate_invoice_allocation(
+                inv, to_cents(quota_input.quota),
+                allocation_id=str(assegno.get("id") or ""),
+            )
+            if not esito_allocazione["allowed"]:
+                numero = inv.get("invoice_number") or inv.get("numero_fattura") or quota_input.fattura_id
+                raise HTTPException(
+                    status_code=409,
+                    detail=(
+                        f"Allocazione rifiutata per {numero}: {esito_allocazione['reason']} (fattura gia attribuita); "
+                        f"residuo EUR {esito_allocazione['residual_cents'] / 100:.2f}"
+                    ),
+                )
+            disponibile, impegnato, totale_documento = capienza_assegno_fattura(
+                inv, assegno.get("id"), quota_input.quota,
+            )
+            if not disponibile:
+                numero = inv.get("invoice_number") or inv.get("numero_fattura") or quota_input.fattura_id
+                raise HTTPException(
+                    status_code=409,
+                    detail=(
+                        f"Fattura {numero} gia attribuita per EUR {impegnato:.2f}: "
+                        f"la nuova quota supererebbe il totale di EUR {totale_documento:.2f}"
+                    ),
+                )
+        totale = _f(inv.get("importo_residuo") if inv.get("importo_residuo") is not None
+                    else inv.get("total_amount") or inv.get("importo_totale"))
+        if not amounts_equal_to_cent(quota_input.quota, totale):
+            numero = inv.get("invoice_number") or inv.get("numero_fattura") or quota_input.fattura_id
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"La quota della fattura {numero} deve coincidere al centesimo "
+                    f"con il suo importo aperto (€{abs(totale):.2f})"
+                ),
+            )
+
+    # 1) Annulla i vecchi collegamenti sulle fatture precedentemente collegate.
+    # Se la compilazione l'aveva dichiarata pagata (dichiara_pagamento_banca),
+    # la dichiarazione si ritira qui: la fattura non deve restare "pagata" per
+    # un assegno che ora paga un'altra fattura o un altro importo. Se resta
+    # selezionata nel nuovo set, il passo 2 la ridichiara.
+    from app.services.pagamenti_dichiarati_titolare import ritira_dichiarazione_banca
+
+    vecchie = assegno.get("fatture_collegate") or []
+    for vc in vecchie:
+        old_fid = vc.get("fattura_id")
+        if not old_fid:
+            continue
+        await db["invoices"].update_one(
+            filtro_id(old_fid), {"$pull": {"assegni_collegati": {"assegno_id": assegno["id"]}}}
+        )
+        await ritira_dichiarazione_banca(db, old_fid, motivo="fatture collegate all'assegno modificate")
+        await _aggiorna_stato_intento_fattura(db, old_fid, now)
+
+    # 2) Applica i nuovi collegamenti
+    fatture_collegate = []
+    for f in body.fatture:
+        quota = round(f.quota, 2)
+        fatture_collegate.append({
+            "fattura_id": f.fattura_id,
+            "quota": quota,
+            "data_collegamento": now,
+        })
+        inv = fatture_map[f.fattura_id]
+        original_method = inv.get("metodo_pagamento") or inv.get("payment_method")
+        await db["invoices"].update_one(
+            filtro_id(f.fattura_id),
+            {
+                "$set": {
+                    "metodo_pagamento_fornitore_originale": original_method,
+                    "metodo_pagamento": "assegno",
+                    "metodo_pagamento_previsto": "assegno",
+                    "metodo_pagamento_override_source": "assegno_compilato",
+                    "pagamento_specifico_prevale_su_fornitore": True,
+                    "stato_finanziario": "in_attesa_estratto_conto",
+                    "updated_at": now,
+                },
+                "$addToSet": {"assegni_collegati": {
+                    "assegno_id": assegno["id"],
+                    "numero": assegno.get("numero"),
+                    "quota": quota,
+                    "data_collegamento": now,
+                    "match_auto": False,
+                    "banca_confermata": False,
+                }},
+            },
+        )
+        # Solo le quote positive (fatture normali) generano un movimento banca:
+        # una nota di credito (quota negativa, Caso F) netta l'importo dovuto
+        # ma non è di per sé un'uscita di denaro.
+        # Il titolare, compilando l'assegno, dichiara la fattura pagata: entra
+        # subito in Prima Nota Banca `dichiarato_titolare` e attende solo il
+        # riscontro dell'estratto conto (stesso motore del report «Fatture
+        # ricevute», `pagamenti_dichiarati_titolare.py`). Se l'assegno e' gia'
+        # confermato in banca il ramo qui sotto scrive la riga vera: qui non
+        # si duplica.
+        if quota > 0 and not assegno.get("incassato_confermato_banca"):
+            from app.services.pagamenti_dichiarati_titolare import dichiara_pagamento_banca
+
+            await dichiara_pagamento_banca(
+                db, inv, metodo="assegno",
+                data=assegno.get("data_emissione") or now[:10],
+                assegno_numero=assegno.get("numero"),
+                source="assegno_compilato",
+            )
+
+    fornitore_piva = next(iter(piva_set), None)
+    first_inv = next(iter(fatture_map.values()), None)
+    fornitore_nome = (first_inv.get("supplier_name") or first_inv.get("cedente_denominazione")) if first_inv else None
+    data_fattura_collegata = (
+        first_inv.get("invoice_date")
+        or first_inv.get("data_fattura")
+        or first_inv.get("data_documento")
+    ) if first_inv and len(body.fatture) == 1 else None
+    numeri_fatture = ", ".join(
+        (fatture_map[f.fattura_id].get("invoice_number") or fatture_map[f.fattura_id].get("numero_fattura") or "")
+        for f in body.fatture
+    )
+
+    if fatture_collegate:
+        nuovo_stato = "assegnato" if abs(somma_quote - importo_assegno) <= TOLL else "parzialmente_assegnato"
+    else:
+        nuovo_stato = "compilato" if assegno.get("beneficiario") else "vuoto"
+
+    await db[COLLECTION_ASSEGNI].update_one(
+        {"id": assegno["id"]},
+        {"$set": {
+            "fatture_collegate": fatture_collegate,
+            "importo_assegnato": somma_quote,
+            "fornitore_piva": fornitore_piva or assegno.get("fornitore_piva"),
+            "fornitore_ragione_sociale": fornitore_nome or assegno.get("fornitore_ragione_sociale"),
+            "beneficiario": fornitore_nome or assegno.get("beneficiario"),
+            "numero_fattura": numeri_fatture if fatture_collegate else None,
+            "data_fattura": data_fattura_collegata,
+            "fattura_collegata": body.fatture[0].fattura_id if len(body.fatture) == 1 else None,
+            "stato": nuovo_stato,
+            "match_auto": False,
+            "metodo_pagamento_previsto": "assegno" if fatture_collegate else None,
+            "stato_finanziario": "in_attesa_estratto_conto" if fatture_collegate else None,
+            "pagamento_specifico_prevale_su_fornitore": bool(fatture_collegate),
+            "updated_at": now,
+        }}
+    )
+
+    riconciliazione = None
+    if fatture_collegate and assegno.get("incassato_confermato_banca"):
+        from app.services.assegni_estratto_conto import collega_assegno_riconciliato_a_fatture
+        try:
+            riconciliazione = await collega_assegno_riconciliato_a_fatture(
+                db,
+                {**assegno, "fatture_collegate": fatture_collegate},
+                [
+                    {"fattura": fatture_map[item.fattura_id], "quota": item.quota}
+                    for item in body.fatture
+                ],
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    return {
+        "success": True,
+        "assegno_id": assegno["id"],
+        "fatture_collegate": fatture_collegate,
+        "importo_assegnato": somma_quote,
+        "stato": nuovo_stato,
+        "riconciliazione_banca": riconciliazione,
+    }
+
+
+@router.post("/{assegno_id}/emetti")
+async def emetti_assegno(
+    assegno_id: str,
+    data_emissione: Optional[str] = Body(None)
+) -> Dict[str, str]:
+    """
+    Emette l'assegno (cambia stato a 'emesso').
+    """
+    db = Database.get_db()
+    
+    assegno = await db[COLLECTION_ASSEGNI].find_one(
+        {"$or": [{"id": assegno_id}, {"numero": assegno_id}]}
+    )
+    
+    if not assegno:
+        raise HTTPException(status_code=404, detail="Assegno non trovato")
+    
+    if assegno.get("stato") == "vuoto":
+        raise HTTPException(status_code=400, detail="Impossibile emettere un assegno vuoto. Compilarlo prima.")
+    
+    if not data_emissione:
+        data_emissione = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    
+    await db[COLLECTION_ASSEGNI].update_one(
+        {"_id": assegno["_id"]},
+        {"$set": {
+            "stato": "emesso",
+            "data_emissione": data_emissione,
+            "updated_at": datetime.now(timezone.utc).isoformat()
+        }}
+    )
+    
+    return {"message": "Assegno emesso: in attesa del riscontro nell'estratto conto"}
+
+
+@router.post("/{assegno_id}/incassa")
+async def incassa_assegno(
+    assegno_id: str,
+    data_incasso: Optional[str] = Body(None),
+    movimento_estratto_conto_id: Optional[str] = Body(None)
+) -> Dict[str, Any]:
+    """Segna assegno come incassato e propaga su fattura, scadenzario, prima nota."""
+    db = Database.get_db()
+    assegno = await db[COLLECTION_ASSEGNI].find_one(
+        {"$or": [{"id": assegno_id}, {"numero": assegno_id}]}
+    )
+    if not assegno:
+        raise HTTPException(status_code=404, detail="Assegno non trovato")
+    
+    if not movimento_estratto_conto_id:
+        await db[COLLECTION_ASSEGNI].update_one(
+            {"id": assegno["id"]},
+            {"$set": {
+                "stato": "emesso",
+                "incassato_confermato_banca": False,
+                "stato_finanziario": "in_attesa_estratto_conto",
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+            }},
+        )
+        return {
+            "message": "Assegno in attesa del movimento reale nell'estratto conto",
+            "fattura_chiusa": False,
+            "prima_nota_riconciliata": False,
+            "confermato_banca": False,
+        }
+
+    movimento_ec = await db["estratto_conto_movimenti"].find_one(
+        {"id": movimento_estratto_conto_id}, {"_id": 0}
+    )
+    if not movimento_ec:
+        raise HTTPException(status_code=404, detail="Movimento dell'estratto conto non trovato")
+    # Stessa regola del giro dell'estratto conto: numero e importo al
+    # centesimo. Un movimento di importo diverso non e' questo assegno.
+    if abs(to_cents(movimento_ec.get("importo"))) != abs(to_cents(assegno.get("importo"))):
+        raise HTTPException(status_code=409, detail={
+            "code": "IMPORTO_DIVERSO",
+            "message": "L'importo del movimento non coincide al centesimo con quello dell'assegno",
+            "details": {"assegno": _f(assegno.get("importo")), "movimento": _f(movimento_ec.get("importo"))},
+        })
+    data_incasso = (
+        movimento_ec.get("data") or movimento_ec.get("date") or data_incasso
+        or datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    )
+
+    # 1. Aggiorna stato assegno. "incassato_confermato_banca" distingue un
+    # riscontro reale (movimento_estratto_conto_id valorizzato) da un
+    # semplice "segna come incassato" manuale senza alcun movimento bancario
+    # collegato — prima il campo "incassato" non permetteva questa distinzione,
+    # dando l'impressione che ogni assegno incassato fosse verificato in banca.
+    set_data = {
+        "stato": "incassato",
+        "data_incasso": data_incasso,
+        "incassato_confermato_banca": True,
+        "stato_finanziario": "riconciliato",
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }
+    set_data["movimento_estratto_conto_id"] = movimento_estratto_conto_id
+    await db[COLLECTION_ASSEGNI].update_one(
+        {"id": assegno["id"]},
+        {"$set": set_data}
+    )
+    # 2. Prima nota banca → riconciliata
+    if assegno.get("prima_nota_banca_id"):
+        await db["prima_nota_banca"].update_one(
+            {"id": assegno["prima_nota_banca_id"]},
+            {"$set": {"riconciliato": True, "data_riconciliazione": data_incasso,
+                      "movimento_estratto_conto_id": movimento_estratto_conto_id,
+                      "updated_at": datetime.now(timezone.utc).isoformat()}}
+        )
+    # 3. Fattura → pagata
+    if assegno.get("fattura_collegata"):
+        fid = assegno["fattura_collegata"]
+        await db["invoices"].update_one(
+            filtro_id(fid),
+            {"$set": {"data_ultimo_incasso_assegno": data_incasso,
+                      "metodo_pagamento_effettivo": "assegno",
+                      "updated_at": datetime.now(timezone.utc).isoformat()}}
+        )
+        # 4. Scadenzario → chiuso
+        # --- EVENT BUS: propaga FATTURA_PAGATA (assegno incassato) ---
+        try:
+            from app.services.event_bus import propagate_event, EventTypes
+            await propagate_event(EventTypes.FATTURA_PAGATA, {
+                "fattura_id": fid,
+                "metodo_pagamento": "assegno",
+                "data_pagamento": data_incasso,
+                "importo": assegno.get("importo"),
+                "assegno_id": assegno["id"],
+                "assegno_numero": assegno.get("numero"),
+            }, db, source_module="assegni_incassa")
+        except Exception:
+            logger.exception("Errore propagazione fattura.pagata (incassa assegno)")
+    # 5. Estratto conto → riconciliato
+    await db["estratto_conto_movimenti"].update_one(
+        {"id": movimento_estratto_conto_id},
+        {"$set": {"riconciliato": True, "riconciliato_con": "assegno",
+                  "assegno_id": assegno["id"],
+                  "riconciliato_at": datetime.now(timezone.utc).isoformat()}}
+    )
+    return {"message": "Assegno incassato",
+            "fattura_chiusa": bool(assegno.get("fattura_collegata")),
+            "prima_nota_riconciliata": bool(assegno.get("prima_nota_banca_id")),
+            "confermato_banca": bool(movimento_estratto_conto_id)}
+
+
+class AnnulloAssegnoIn(BaseModel):
+    motivo: str = Field(..., min_length=3, max_length=500)
+
+
+@router.post("/{assegno_id}/annulla")
+async def annulla_assegno(assegno_id: str, body: AnnulloAssegnoIn) -> Dict[str, Any]:
+    """Annulla un assegno non passato in banca.
+
+    Il numero resta consumato (non torna disponibile), le fatture che pagava
+    tornano aperte e la scheda conserva quali erano. Un assegno gia' addebitato
+    non si annulla: si registra lo storno bancario.
+    """
+    db = Database.get_db()
+    assegno = await db[COLLECTION_ASSEGNI].find_one(
+        {"$or": [{"id": assegno_id}, {"numero": assegno_id}]}, {"_id": 0},
+    )
+    if not assegno:
+        raise HTTPException(status_code=404, detail="Assegno non trovato")
+    if assegno.get("incassato_confermato_banca"):
+        raise HTTPException(
+            status_code=409,
+            detail="Annullo bloccato: l'assegno e' gia' addebitato in banca. Serve lo storno della banca.",
+        )
+    if assegno.get("stato") == "annullato":
+        return {"success": True, "idempotent": True, "message": "Assegno gia annullato"}
+
+    now = datetime.now(timezone.utc).isoformat()
+    collegate = await _scollega_fatture(db, assegno, now, motivo=f"assegno annullato: {body.motivo.strip()}")
+    nuovo = {
+        "stato": "annullato", "stato_pre_annullo": assegno.get("stato"),
+        "motivo_annullo": body.motivo.strip(), "annullato_at": now,
+        "fatture_collegate": [], "fattura_collegata": None, "importo_assegnato": 0,
+        "stato_finanziario": None, "updated_at": now,
+    }
+    if collegate:
+        nuovo["fatture_prima_dell_annullo"] = collegate
+    await db[COLLECTION_ASSEGNI].update_one({"id": assegno["id"]}, {
+        "$set": nuovo,
+        "$push": {"storico": _voce_storico(assegno, nuovo, "annullo", now, body.motivo.strip())},
+    })
+    return {"success": True, "message": "Assegno annullato", "fatture_riaperte": len(collegate)}
+
+
+class StornoAssegnoIn(BaseModel):
+    motivo: str = Field(..., min_length=3, max_length=500)
+    data_storno: Optional[str] = None
+
+
+@router.post("/{assegno_id}/storna")
+async def storna_assegno(assegno_id: str, body: StornoAssegnoIn) -> Dict[str, Any]:
+    """Registra lo storno senza cancellare assegno, fatture o prova bancaria."""
+    db = Database.get_db()
+    assegno = await db[COLLECTION_ASSEGNI].find_one(
+        {"$or": [{"id": assegno_id}, {"numero": assegno_id}]}, {"_id": 0},
+    )
+    if not assegno:
+        raise HTTPException(status_code=404, detail="Assegno non trovato")
+    if assegno.get("incassato_confermato_banca"):
+        raise HTTPException(
+            status_code=409,
+            detail="Storno bloccato: l'assegno ha gia un riscontro nell'estratto conto. Correggere la prova bancaria senza cancellarla.",
+        )
+    if assegno.get("stato") == "stornato":
+        return {"success": True, "idempotent": True, "message": "Assegno gia stornato"}
+
+    now = datetime.now(timezone.utc).isoformat()
+    collegate = await _scollega_fatture(db, assegno, now, motivo=f"assegno stornato: {body.motivo.strip()}")
+    nuovo = {
+        "stato": "stornato",
+        "stato_pre_storno": assegno.get("stato"),
+        "motivo_storno": body.motivo.strip(),
+        "data_storno": body.data_storno or now[:10],
+        "stornato_at": now,
+        "stato_finanziario": "stornato_da_verificare",
+        "fatture_collegate": [], "fattura_collegata": None, "importo_assegnato": 0,
+        "updated_at": now,
+    }
+    if collegate:
+        nuovo["fatture_prima_dello_storno"] = collegate
+    await db[COLLECTION_ASSEGNI].update_one(
+        {"id": assegno["id"]},
+        {"$set": nuovo,
+         "$push": {"storico": _voce_storico(assegno, nuovo, "storno", now, body.motivo.strip())}},
+    )
+    return {"success": True, "message": "Assegno stornato: nessun pagamento e' stato creato",
+            "fatture_riaperte": len(collegate)}
+
+
+@router.delete("/clear-generated")
+async def clear_generated_assegni(stato: str = Query("vuoto")) -> Dict[str, Any]:
+    """
+    Elimina tutti gli assegni con un determinato stato.
+    Default: elimina solo quelli vuoti.
+    """
+    db = Database.get_db()
+
+    # Solo i moduli mai usati: un assegno compilato, emesso o annullato e' una
+    # prova e non si cancella in blocco per stato.
+    if stato != "vuoto":
+        raise HTTPException(
+            status_code=400,
+            detail="Si eliminano in blocco solo i moduli vuoti; gli altri si annullano uno per uno.",
+        )
+
+    # Regola 6: nessuna cancellazione con filtro, solo per id. E un modulo che
+    # porta un numero di movimento o una fattura non e' vuoto, qualunque cosa
+    # dica il suo stato.
+    moduli = await db[COLLECTION_ASSEGNI].find({"stato": "vuoto"}, {"_id": 0}).to_list(None)
+    eliminati = 0
+    for modulo in moduli:
+        if any(modulo.get(c) for c in (
+            "importo", "beneficiario", "movimento_id", "movimento_estratto_conto_id",
+            "fattura_collegata", "fatture_collegate", "prima_nota_banca_id",
+        )):
+            continue
+        eliminati += (await db[COLLECTION_ASSEGNI].delete_one({"id": modulo["id"]})).deleted_count
+
+    return {
+        "message": f"Eliminati {eliminati} moduli vuoti",
+        "deleted_count": eliminati,
+    }
+
+
+@router.delete("/{assegno_id}")
+async def delete_assegno(
+    assegno_id: str,
+    force: bool = Query(False, description="Forza eliminazione")
+) -> Dict[str, Any]:
+    """
+    Elimina un singolo assegno con validazione.
+    
+    **Regole:**
+    - Non può eliminare assegni emessi o incassati
+    - Non può eliminare assegni collegati a fatture
+    """
+    from app.services.business_rules import BusinessRules, EntityStatus
+    from datetime import timezone
+    
+    db = Database.get_db()
+    
+    assegno = await db[COLLECTION_ASSEGNI].find_one({"id": assegno_id})
+    if not assegno:
+        raise HTTPException(status_code=404, detail="Assegno non trovato")
+    
+    validation = BusinessRules.can_delete_assegno(assegno)
+    
+    if not validation.is_valid:
+        raise HTTPException(
+            status_code=400,
+            detail={"message": "Eliminazione non consentita", "errors": validation.errors}
+        )
+    
+    # Soft-delete
+    await db[COLLECTION_ASSEGNI].update_one(
+        {"id": assegno_id},
+        {"$set": {
+            "entity_status": EntityStatus.DELETED.value,
+            "deleted_at": datetime.now(timezone.utc).isoformat()
+        }}
+    )
+    
+    return {"success": True, "message": "Assegno eliminato"}
+
+
+@router.post("/sync-da-estratto-conto")
+async def sync_assegni_da_estratto_conto(
+    movimento_ids: Optional[List[str]] = None,
+) -> Dict[str, Any]:
+    """
+    Sincronizza gli assegni dall'estratto conto.
+    
+    Cerca movimenti con pattern "ASSEGNO" nella descrizione e li importa
+    come assegni nella collection dedicata.
+    
+    Pattern riconosciuti:
+    - VOSTRO ASSEGNO N. XXXXXXXXXX
+    - PRELIEVO ASSEGNO N. XXXXXXXXXX
+    - PAGAMENTO ASSEGNO
+    - VS. ASSEGNO
+    """
+    # La logica canonica vive nel service condiviso: la stessa funzione viene
+    # usata da upload manuale, Documenti/Import e ingest automatico Drive.
+    # Il vecchio codice qui sotto resta temporaneamente come riferimento di
+    # migrazione ma non viene piu eseguito.
+    from app.services.assegni_estratto_conto import sincronizza_assegni_da_estratto_conto
+    from app.services.assegni_fattura_intent import riprocessa_intenti_assegni
+
+    db = Database.get_db()
+    risultato = await sincronizza_assegni_da_estratto_conto(
+        db, movimento_ids=movimento_ids,
+    )
+    # L'EC puo' arrivare prima o dopo l'XML. Subito dopo il riscontro bancario
+    # riesaminiamo gli assegni compilati ancora aperti: se numero/fornitore e
+    # importo al centesimo identificano una sola fattura, completiamo l'intera
+    # catena senza chiedere all'utente di selezionarla.
+    risultato["riprocessamento_fatture"] = await riprocessa_intenti_assegni(db)
+    return risultato
+
+
+@router.post("/riprocessa-collegamenti")
+async def riprocessa_collegamenti_assegni(
+    anno: Optional[int] = Query(None),
+    limit: int = Query(10000, ge=1, le=50000),
+    conferma: bool = Query(False, description="Conferma esplicita delle mutazioni"),
+) -> Dict[str, Any]:
+    """Riprocessa in modo sicuro lo storico assegni -> EC -> fatture.
+
+    Non espone una scelta manuale: applica soltanto collegamenti univoci e
+    lascia gli ambigui in attesa di nuove evidenze (XML, beneficiario o numero
+    fattura). E' idempotente e puo' essere richiamato dopo ogni nuovo import.
+    """
+    from app.services.assegni_estratto_conto import sincronizza_assegni_da_estratto_conto
+    from app.services.assegni_fattura_intent import riprocessa_intenti_assegni
+
+    db = Database.get_db()
+    if conferma is not True:
+        # Il vecchio endpoint mutava subito dati storici dal primo click. La
+        # prima chiamata ora è sempre read-only; il client deve mostrare il
+        # riepilogo e ripetere la richiesta con conferma esplicita.
+        from app.routers.bank.assegni_auto_match import run_auto_match
+        anteprima = await run_auto_match(db, dry_run=True, anno=anno)
+        return {
+            "success": True,
+            "preview": True,
+            "conferma_richiesta": True,
+            "mutazioni": "collegamenti assegno -> estratto conto -> fatture univoche",
+            "anteprima": anteprima,
+            "message": "Anteprima pronta: nessun dato è stato modificato",
+        }
+    estratto = await sincronizza_assegni_da_estratto_conto(
+        db,
+        data_dal=f"{anno}-01-01" if anno else None,
+        # Azione amministrativa esplicitamente confermata: materializza nel
+        # registro anche gli assegni presenti negli export Excel operativi.
+        # Il livello di evidenza resta salvato sull'assegno e non viene
+        # trasformato in quietanza/PDF ufficiale.
+        include_provvisori=True,
+    )
+    fatture = await riprocessa_intenti_assegni(db, anno=anno, limit=limit)
+    return {
+        "success": bool(fatture.get("success", True)) and not estratto.get("errori"),
+        "estratto_conto": estratto,
+        "fatture": fatture,
+        "message": (
+            f"Riprocessati {fatture['analizzati']} assegni: "
+            f"{fatture['collegati']} collegati automaticamente, "
+            f"{fatture['ambigui']} ambigui lasciati in attesa"
+        ),
+    }
+
+
+@router.post("/ricostruisci-dati")
+async def ricostruisci_dati_assegni(
+    dry_run: bool = Query(True, description="Sola anteprima; nessuna modifica ai dati"),
+) -> Dict[str, Any]:
+    """
+    Anteprima prudenziale dei dati recuperabili per gli assegni incompleti.
+
+    Non applica mai associazioni: beneficiario e fattura devono essere confermati
+    con gli endpoint espliciti di auto-match/conferma. In particolare, l'importo
+    da solo non costituisce prova sufficiente per collegare una fattura.
+    """
+    import re
+    if not dry_run:
+        raise HTTPException(
+            status_code=400,
+            detail="Ricostruzione diretta disabilitata: usa auto-match e conferma una proposta esplicita",
+        )
+    db = Database.get_db()
+    
+    risultati = {
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "assegni_processati": 0,
+        "beneficiari_trovati": 0,
+        "fatture_associate": 0,
+        "errori": [],
+        "dry_run": True,
+        "nessuna_modifica_applicata": True,
+    }
+    
+    # 1. Carica assegni con dati mancanti
+    assegni = await db[COLLECTION_ASSEGNI].find({
+        "$or": [
+            {"beneficiario": {"$in": [None, "", "-"]}},
+            {"numero_fattura": {"$exists": False}},
+            {"numero_fattura": None}
+        ]
+    }, {"_id": 0}).to_list(10000)
+    
+    if not assegni:
+        return {"message": "Tutti gli assegni hanno già i dati completi", **risultati}
+    
+    risultati["assegni_processati"] = len(assegni)
+    
+    # 2. Carica dati di supporto
+    fatture = await db.invoices.find({}, {
+        "_id": 0, "id": 1, "invoice_number": 1, "numero_documento": 1,
+        "supplier_name": 1, "fornitore_ragione_sociale": 1,
+        "supplier_vat": 1, "fornitore_partita_iva": 1,
+        "total_amount": 1, "importo_totale": 1, "pagato": 1
+    }).to_list(10000)
+    
+    fornitori = await db["fornitori"].find({}, {
+        "_id": 0, "denominazione": 1, "ragione_sociale": 1, "partita_iva": 1
+    }).to_list(10000)
+    
+    movimenti = await db.estratto_conto_movimenti.find({}, {
+        "_id": 0, "id": 1, "descrizione": 1, "descrizione_originale": 1,
+        "beneficiario": 1, "controparte": 1
+    }).to_list(10000)
+    
+    def normalizza_importo_match(valore: Any) -> float:
+        try:
+            return round(float(valore or 0), 2)
+        except (TypeError, ValueError):
+            return 0.0
+
+    # 3. Crea indici
+    # Indice fatture per importo
+    fatture_per_importo = {}
+    for f in fatture:
+        imp = normalizza_importo_match(f.get("total_amount") or f.get("importo_totale"))
+        if imp > 0:
+            if imp not in fatture_per_importo:
+                fatture_per_importo[imp] = []
+            fatture_per_importo[imp].append(f)
+    
+    # Indice fornitori per nome
+    fornitori_nomi = {(f.get("denominazione") or f.get("ragione_sociale") or "").upper()[:20]: f for f in fornitori if f.get("denominazione") or f.get("ragione_sociale")}
+    
+    # Indice movimenti per id
+    movimenti_idx = {m.get("id"): m for m in movimenti}
+
+    def normalizza_nome_match(valore: Any) -> str:
+        return re.sub(r"[^A-Z0-9]", "", str(valore or "").upper())
+    
+    # 4. Pattern per estrarre beneficiario
+    def estrai_beneficiario(testo):
+        if not testo:
+            return None
+        testo = testo.upper()
+        
+        # Pattern comuni nei movimenti bancari italiani
+        patterns = [
+            r"BEN[:\s]+([A-Z][A-Z0-9\s\.\&\'-]+?)(?:\s+(?:CRO|TRN|DATA|IBAN|$))",
+            r"VERS[OA]?\s+([A-Z][A-Z0-9\s\.\&\'-]+?)(?:\s+(?:CRO|DATA|$))",
+            r"BONIFICO\s+(?:A\s+)?([A-Z][A-Z0-9\s\.\&\'-]+?)(?:\s+(?:CRO|DATA|$))",
+            r"PAGAMENTO\s+([A-Z][A-Z0-9\s\.\&\'-]+?)(?:\s+(?:FATT|N\.|$))",
+        ]
+        
+        for p in patterns:
+            match = re.search(p, testo)
+            if match:
+                nome = match.group(1).strip()
+                if len(nome) > 3:
+                    return nome
+        
+        # Cerca nomi fornitori noti
+        for nome_forn in fornitori_nomi.keys():
+            if nome_forn and len(nome_forn) > 5 and nome_forn in testo:
+                return fornitori_nomi[nome_forn].get("denominazione") or fornitori_nomi[nome_forn].get("ragione_sociale")
+        
+        return None
+    
+    # 5. Processa ogni assegno
+    for ass in assegni:
+        importo = normalizza_importo_match(ass.get("importo"))
+        descrizione = ass.get("descrizione", "")
+        beneficiario = ass.get("beneficiario")
+        mov_id = ass.get("movimento_estratto_conto_id") or ass.get("movimento_id")
+        
+        aggiornamenti = {}
+        
+        # a) Trova beneficiario se mancante
+        if not beneficiario or beneficiario in ["", "-", None]:
+            # Prima prova dalla descrizione assegno
+            ben = estrai_beneficiario(descrizione)
+            
+            # Se non trovato, cerca nel movimento originale
+            if not ben and mov_id and mov_id in movimenti_idx:
+                mov = movimenti_idx[mov_id]
+                ben = mov.get("beneficiario") or mov.get("controparte") or estrai_beneficiario(mov.get("descrizione") or mov.get("descrizione_originale"))
+            
+            if ben:
+                aggiornamenti["beneficiario"] = ben
+                risultati["beneficiari_trovati"] += 1
+        
+        # b) Trova fattura se mancante
+        beneficiario_effettivo = beneficiario or aggiornamenti.get("beneficiario")
+        if not ass.get("numero_fattura") and importo > 0 and beneficiario_effettivo:
+            if importo in fatture_per_importo:
+                candidates = fatture_per_importo[importo]
+                ben_search = normalizza_nome_match(beneficiario_effettivo)
+                candidates_nome = [
+                    fatt for fatt in candidates
+                    if ben_search and (
+                        ben_search in normalizza_nome_match(
+                            fatt.get("supplier_name") or fatt.get("fornitore_ragione_sociale") or ""
+                        )
+                        or normalizza_nome_match(
+                            fatt.get("supplier_name") or fatt.get("fornitore_ragione_sociale") or ""
+                        ) in ben_search
+                    )
+                ]
+
+                # L'importo conta soltanto insieme a un beneficiario coerente e
+                # a una singola fattura candidata.
+                if len(candidates_nome) == 1:
+                    fatt = candidates_nome[0]
+                    aggiornamenti["fattura_id"] = fatt.get("id")
+                    aggiornamenti["numero_fattura"] = fatt.get("invoice_number") or fatt.get("numero_documento")
+                    aggiornamenti["fornitore_fattura"] = fatt.get("supplier_name") or fatt.get("fornitore_ragione_sociale")
+                    risultati["fatture_associate"] += 1
+
+        # Nessun update: gli aggiornamenti restano una simulazione in memoria.
+    
+    return risultati

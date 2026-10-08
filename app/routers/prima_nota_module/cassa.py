@@ -1,0 +1,546 @@
+"""
+Prima Nota Module - Operazioni Prima Nota Cassa.
+CRUD e operazioni per movimenti di cassa.
+"""
+from fastapi import HTTPException, Query, Body
+from typing import Dict, Any, Optional
+from datetime import datetime, timezone
+import uuid
+import logging
+
+from app.database import Database, Collections
+from app.services.scritture_contabili import ScritturaNonValida, scrivi_movimento
+from . import registro
+from .common import (
+    COLLECTION_PRIMA_NOTA_CASSA, TIPO_MOVIMENTO, aggrega_saldo_prima_nota,
+    arricchisci_movimenti_fattura, filtro_saldo_prima_nota,
+)
+
+logger = logging.getLogger(__name__)
+
+
+_KEYWORDS_BANCARIE_CASSA = (
+    'INC.POS CARTE CREDIT', 'INCAS. TRAMITE P.O.S', 'INC.POS',
+    'BONIFICO', 'BONIF.', 'BON.DA', 'BONIF. VS.',
+    'SEPA', 'SDD', 'RID', 'ADDEBITO DIRETTO', 'ACCREDITO', 'GIROCONTO',
+    'NUMIA', 'NEXI', 'WORLDLINE', 'PRELIEVO ATM', 'PRELIEVO BANCOMAT',
+    'STIPENDI', 'EMOLUMENTI', 'F24', 'DELEGA UNICA', 'MOD.F24',
+    'CANONE MENSILE', 'COMMISSIONI', 'COMPETENZE E SPESE', 'IMPOSTA BOLLO',
+)
+
+
+def _fattura_con_evidenza_cassa(movimento: Dict[str, Any]) -> bool:
+    """Vero solo per una fattura collegata esplicitamente a un pagamento cash."""
+    metodo = str(
+        movimento.get("metodo_pagamento_effettivo")
+        or movimento.get("metodo_pagamento")
+        or ""
+    ).strip().lower()
+    collegata = bool(
+        movimento.get("fattura_id")
+        or movimento.get("fattura_collegata")
+        or str(movimento.get("riferimento") or "").upper().startswith("FATT-")
+    )
+    return collegata and metodo in {"cassa", "contanti", "cash"}
+
+
+def _movimento_e_bancario_errato_in_cassa(movimento: Dict[str, Any]) -> bool:
+    """Classificazione fail-closed: il testo generico non sostituisce l'evidenza."""
+    if _fattura_con_evidenza_cassa(movimento):
+        return False
+
+    desc_upper = str(movimento.get("descrizione") or "").upper()
+    categoria = str(movimento.get("categoria") or "")
+    source = movimento.get("source")
+
+    if categoria == "Corrispettivi" or source == "corrispettivi_sync":
+        return False
+    if categoria in {"POS", "Versamento", "Finanziamento", "Finanziamento soci"} and source in (None, "", "manual", "user"):
+        return False
+
+    keyword_bancaria = any(keyword in desc_upper for keyword in _KEYWORDS_BANCARIE_CASSA)
+    if source == "csv_import":
+        return keyword_bancaria
+    if source in (None, "", "manual", "user"):
+        return keyword_bancaria
+    if source == "sync_fatture":
+        # Una fattura priva di prova esplicita del mezzo di pagamento resta
+        # DA_VERIFICARE: non viene cancellata automaticamente.
+        return keyword_bancaria
+    return keyword_bancaria
+
+
+async def list_prima_nota_cassa(
+    skip: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=10000),
+    anno: Optional[int] = Query(None, description="Anno (es. 2024, 2025)"),
+    data_da: Optional[str] = Query(None, description="Data inizio (YYYY-MM-DD)"),
+    data_a: Optional[str] = Query(None, description="Data fine (YYYY-MM-DD)"),
+    tipo: Optional[str] = Query(None, description="entrata o uscita"),
+    categoria: Optional[str] = Query(None),
+    mese: Optional[int] = None,
+    filtro_categoria: Optional[str] = None,
+    filtro_tipo: Optional[str] = None,
+    cerca: Optional[str] = None,
+    numero_fattura: Optional[str] = None,
+    fornitore: Optional[str] = None,
+    data_fattura: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Lista movimenti prima nota cassa con saldo separato per anno.
+
+    ``tipo``/``categoria`` restringono anche saldo ed entrate/uscite; i filtri
+    di consultazione (``mese``, ``filtro_*``, ``cerca``, numero/data/fornitore
+    della fattura) scelgono solo le righe della pagina (``registro.py``).
+    ``totale`` e' il numero di righe che passano i filtri, ``count`` quelle
+    della pagina.
+    """
+    db = Database.get_db()
+    
+    query = filtro_saldo_prima_nota(COLLECTION_PRIMA_NOTA_CASSA)
+    
+    if anno:
+        date_start = f"{anno}-01-01"
+        date_end = f"{anno}-12-31"
+        # Gestisce sia doc con campo 'anno' che doc con sola 'data' stringa (YYYY-MM-DD)
+        query["$or"] = [
+            {"anno": anno},
+            {"anno": {"$in": [None, ""]}, "data": {"$gte": date_start, "$lte": date_end}},
+            {"anno": {"$exists": False}, "data": {"$gte": date_start, "$lte": date_end}}
+        ]
+    
+    if data_da:
+        query.setdefault("data", {})["$gte"] = data_da
+    if data_a:
+        query.setdefault("data", {})["$lte"] = data_a
+    if tipo:
+        query["tipo"] = tipo
+    if categoria:
+        esclusione_categorie = query.pop("categoria", None)
+        query.setdefault("$and", [])
+        if esclusione_categorie:
+            query["$and"].append({"categoria": esclusione_categorie})
+        query["$and"].append({"categoria": categoria})
+    
+    tutti = await db[COLLECTION_PRIMA_NOTA_CASSA].find(query, {"_id": 0}).sort("data", -1).to_list(None)
+    filtri = {
+        "mese": mese, "categoria": filtro_categoria, "tipo": filtro_tipo,
+        "cerca": cerca, "numero_fattura": numero_fattura,
+        "fornitore": fornitore, "data_fattura": data_fattura,
+    }
+    # Numero, data e fornitore della fattura servono a filtrare solo se
+    # richiesti: altrimenti si leggono per le sole righe della pagina.
+    fattura_su_tutti = registro.filtri_fattura_attivi(filtri)
+    if fattura_su_tutti:
+        await arricchisci_movimenti_fattura(db, tutti)
+
+    # §6.4: saldo tramite la funzione UNICA (segno/riporto/saldo finale uniformi)
+    saldi = await aggrega_saldo_prima_nota(db, COLLECTION_PRIMA_NOTA_CASSA, query, anno)
+
+    pagina = registro.impagina_registro(
+        tutti, riporto=saldi["saldo_precedente"], conto="cassa",
+        filtri=filtri, skip=skip, limit=limit,
+    )
+    movimenti = pagina["movimenti"]
+    if not fattura_su_tutti:
+        await arricchisci_movimenti_fattura(db, movimenti)
+
+    return {
+        "movimenti": movimenti,
+        "saldo": saldi["saldo"],
+        "saldo_anno": saldi["saldo_anno"],
+        "saldo_precedente": saldi["saldo_precedente"],
+        "saldo_iniziale_manuale": saldi.get("saldo_iniziale_manuale", False),
+        "totale_entrate": saldi["totale_entrate"],
+        "totale_uscite": saldi["totale_uscite"],
+        "count": len(movimenti),
+        "totale": pagina["totale"],
+        "skip": skip,
+        "limit": limit,
+        "categorie": pagina["categorie"],
+        "anno": anno,
+        "sumup_live": {
+            "stato": "conto_pos_separato",
+            "applicabile": False,
+            "delta": 0.0,
+        },
+    }
+
+
+async def create_prima_nota_cassa(data: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
+    """
+    Crea movimento prima nota cassa.
+    SOLO movimenti di denaro CONTANTE:
+    - Corrispettivi giornalieri
+    - nessun movimento POS: le chiusure aprono crediti verso i gestori
+    - Versamenti in banca
+    - Fatture pagate in contanti
+    - Finanziamenti soci in contanti
+    - Piccole spese contanti
+    """
+    db = Database.get_db()
+    
+    required = ["data", "tipo", "importo", "descrizione"]
+    for field in required:
+        if field not in data:
+            raise HTTPException(status_code=400, detail=f"Campo obbligatorio mancante: {field}")
+    
+    if data["tipo"] not in TIPO_MOVIMENTO:
+        raise HTTPException(status_code=400, detail="Tipo deve essere 'entrata' o 'uscita'")
+
+    importo = float(data.get("importo", 0))
+    if importo <= 0:
+        raise HTTPException(status_code=422, detail="importo deve essere > 0")
+    
+    # Validazione: rifiuta movimenti chiaramente bancari
+    desc_upper = (data.get("descrizione") or "").upper()
+    BANCARI_BLOCCO = ['BONIFICO', 'BONIF.', 'SEPA', 'SDD', 'RID', 'ADDEBITO DIRETTO',
+                      'INC.POS CARTE CREDIT', 'INCAS. TRAMITE P.O.S', 'NUMIA', 'NEXI',
+                      'F24', 'DELEGA UNICA', 'COMMISSIONI BANCARIE', 'IMPOSTA BOLLO']
+    if any(kw in desc_upper for kw in BANCARI_BLOCCO):
+        raise HTTPException(
+            status_code=400, 
+            detail="Questo movimento sembra bancario (bonifico, POS bancario, F24, ecc.). "
+                   "I movimenti bancari vanno nella Prima Nota Banca, non in Cassa. "
+                   "La Cassa registra solo movimenti in denaro contante."
+        )
+    
+    # Un movimento nasce da un'azione (corrispettivo/fattura) quando porta un
+    # collegamento esplicito (fattura_id) o una `source` d'azione nota. Altrimenti
+    # e' un inserimento MANUALE libero: consentito (scelta utente) ma marcato e
+    # tracciato in audit, cosi' resta distinguibile dai movimenti automatici.
+    _SOURCE_AZIONE = {"corrispettivo", "fattura", "paga_cassa", "riconciliazione",
+                      "anticipo_email", "quadratura"}
+    source = data.get("source")
+    da_azione = bool(data.get("fattura_id")) or (source in _SOURCE_AZIONE)
+    inserimento_manuale = not da_azione
+
+    now = datetime.now(timezone.utc).isoformat()
+    movimento = {
+        "id": str(uuid.uuid4()),
+        "data": data["data"],
+        "tipo": data["tipo"],
+        "importo": float(data["importo"]),
+        "descrizione": data["descrizione"],
+        "categoria": data.get("categoria", "Altro"),
+        "riferimento": data.get("riferimento"),
+        "fornitore_piva": data.get("fornitore_piva"),
+        "fattura_id": data.get("fattura_id"),
+        "note": data.get("note"),
+        "source": source or ("manuale" if inserimento_manuale else "azione"),
+        "inserimento_manuale": inserimento_manuale,
+        "origine": "manuale" if inserimento_manuale else (source or "azione"),
+        "created_at": now
+    }
+
+    try:
+        await scrivi_movimento(db, "cassa", movimento)
+    except ScritturaNonValida as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    # La registrazione manuale del versamento crea subito la gamba bancaria
+    # come ATTESA. Non e' ancora prova di accredito: solo l'estratto conto
+    # reale potra' renderla riconciliata.
+    if data["tipo"] == "uscita" and data.get("categoria") == "Versamento Banca":
+        attesa_id = str(uuid.uuid4())
+        await scrivi_movimento(db, "banca", {
+            "id": attesa_id,
+            "data": data["data"],
+            "tipo": "entrata",
+            "importo": importo,
+            "descrizione": f"Versamento contanti da cassa - {data['descrizione']}",
+            "categoria": "Versamento Banca",
+            "stato": "in_attesa_estratto_conto",
+            "provvisorio": True,
+            "riconciliato": False,
+            "prima_nota_cassa_id": movimento["id"],
+            "trasferimento_collegato_id": movimento["id"],
+            "source": "versamento_cassa_in_attesa",
+            "created_at": now,
+        })
+        await db[COLLECTION_PRIMA_NOTA_CASSA].update_one(
+            {"id": movimento["id"]},
+            {"$set": {
+                "trasferimento_collegato_id": attesa_id,
+                "riconciliato": False,
+                "in_attesa_estratto_conto": True,
+            }},
+        )
+
+    # Bug corretto 15/07/2026: un'uscita cassa collegata a una fattura
+    # (fattura_id) segnava il movimento ma non la fattura come pagata. Una
+    # riconciliazione bancaria successiva trovava ancora la fattura "da
+    # pagare" (filtro pagato!=True) e poteva creare un SECONDO movimento
+    # reale in Prima Nota Banca per lo stesso pagamento — doppio conteggio.
+    # Stesso aggiornamento già fatto dal flusso "Paga in Cassa"/Provvisori
+    # (registra_fattura_prima_nota, prima_nota_module/sync.py).
+    if data["tipo"] == "uscita" and data.get("fattura_id"):
+        await db[Collections.INVOICES].update_one(
+            {"id": data["fattura_id"]},
+            {"$set": {
+                "pagato": True,
+                "stato_pagamento": "pagata",
+                "data_pagamento": data["data"],
+                "metodo_pagamento": "cassa",
+                "prima_nota_cassa_id": movimento["id"],
+            }}
+        )
+
+    if inserimento_manuale:
+        try:
+            await db["audit_log"].insert_one({
+                "id": str(uuid.uuid4()),
+                "evento": "prima_nota_cassa_inserimento_manuale",
+                "movimento_id": movimento["id"],
+                "tipo": movimento["tipo"],
+                "importo": movimento["importo"],
+                "descrizione": movimento["descrizione"],
+                "created_at": now,
+            })
+        except Exception as exc:  # noqa: BLE001
+            # L'audit non deve bloccare la registrazione del movimento.
+            logger.warning(
+                "[PrimaNota cassa] evento dell'inserimento manuale non "
+                "registrato: %s", exc)
+
+    return {"message": "Movimento cassa creato", "id": movimento["id"],
+            "inserimento_manuale": inserimento_manuale}
+
+
+async def update_prima_nota_cassa(
+    movimento_id: str,
+    data: Dict[str, Any] = Body(...)
+) -> Dict[str, str]:
+    """Modifica movimento prima nota cassa."""
+    db = Database.get_db()
+    
+    update_data = {"updated_at": datetime.now(timezone.utc).isoformat()}
+
+    if "tipo" in data and data["tipo"] not in TIPO_MOVIMENTO:
+        raise HTTPException(status_code=400, detail="Tipo deve essere 'entrata' o 'uscita'")
+    if "importo" in data:
+        try:
+            importo = float(data["importo"])
+        except (TypeError, ValueError) as exc:
+            raise HTTPException(status_code=422, detail="importo non valido") from exc
+        if importo <= 0:
+            raise HTTPException(status_code=422, detail="importo deve essere > 0")
+
+    for field in ["data", "tipo", "importo", "descrizione", "categoria", "riferimento", "note", "fornitore"]:
+        if field in data:
+            update_data[field] = float(data[field]) if field == "importo" else data[field]
+    
+    result = await db[COLLECTION_PRIMA_NOTA_CASSA].update_one(
+        {"id": movimento_id},
+        {"$set": update_data}
+    )
+    
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Movimento non trovato")
+    
+    return {"message": "Movimento aggiornato", "id": movimento_id}
+
+
+async def delete_movimento_cassa(
+    movimento_id: str,
+    force: bool = Query(False, description="Forza eliminazione")
+) -> Dict[str, Any]:
+    """Elimina un singolo movimento cassa con validazione."""
+    from app.services.business_rules import BusinessRules, EntityStatus
+    
+    db = Database.get_db()
+    
+    mov = await db[COLLECTION_PRIMA_NOTA_CASSA].find_one({"id": movimento_id})
+    if not mov:
+        raise HTTPException(status_code=404, detail="Movimento non trovato")
+    
+    validation = BusinessRules.can_delete_movement(mov)
+    
+    if not validation.is_valid:
+        raise HTTPException(
+            status_code=400,
+            detail={"message": "Eliminazione non consentita", "errors": validation.errors}
+        )
+    
+    if validation.warnings and not force:
+        return {
+            "status": "warning",
+            "message": "Eliminazione richiede conferma",
+            "warnings": validation.warnings,
+            "require_force": True
+        }
+    
+    await db[COLLECTION_PRIMA_NOTA_CASSA].update_one(
+        {"id": movimento_id},
+        {"$set": {
+            "entity_status": EntityStatus.DELETED.value,
+            "status": "deleted",
+            "deleted_at": datetime.now(timezone.utc).isoformat()
+        }}
+    )
+
+    # Se il movimento saldava una fattura, la fattura torna "da pagare"
+    if mov.get("fattura_id"):
+        await db["invoices"].update_one(
+            {
+                "id": mov["fattura_id"],
+                "$or": [
+                    {"prima_nota_id": movimento_id},
+                    {"prima_nota_cassa_id": movimento_id},
+                ],
+            },
+            {"$set": {"stato_pagamento": "", "pagato": False, "paid": False},
+             "$unset": {"prima_nota_id": "", "prima_nota_tipo": "",
+                        "prima_nota_cassa_id": "", "data_pagamento": ""}}
+        )
+
+    return {"success": True, "message": "Movimento eliminato (archiviato)"}
+
+
+async def delete_all_prima_nota_cassa() -> Dict[str, Any]:
+    """Elimina TUTTI i movimenti dalla prima nota cassa."""
+    db = Database.get_db()
+    result = await db[COLLECTION_PRIMA_NOTA_CASSA].delete_many({})
+    return {"message": f"Eliminati {result.deleted_count} movimenti dalla cassa"}
+
+
+async def delete_cassa_by_source(source: str) -> Dict[str, Any]:
+    """Elimina movimenti cassa per source."""
+    db = Database.get_db()
+    result = await db[COLLECTION_PRIMA_NOTA_CASSA].delete_many({"source": source})
+    return {"message": f"Eliminati {result.deleted_count} movimenti con source={source}"}
+
+
+async def get_fattura_allegata_cassa(movimento_id: str) -> Dict[str, Any]:
+    """Recupera la fattura allegata a un movimento cassa."""
+    db = Database.get_db()
+    
+    mov = await db[COLLECTION_PRIMA_NOTA_CASSA].find_one({"id": movimento_id}, {"_id": 0})
+    if not mov:
+        raise HTTPException(status_code=404, detail="Movimento non trovato")
+    
+    fattura_id = mov.get("fattura_id")
+    if not fattura_id:
+        return {"movimento_id": movimento_id, "fattura": None, "message": "Nessuna fattura collegata"}
+    
+    fattura = await db["invoices"].find_one(
+        {"$or": [{"id": fattura_id}, {"invoice_key": fattura_id}]},
+        {"_id": 0}
+    )
+    
+    return {
+        "movimento_id": movimento_id,
+        "fattura": fattura,
+        "message": "Fattura trovata" if fattura else "Fattura non trovata nel DB"
+    }
+
+
+async def analisi_movimenti_bancari_errati_in_cassa() -> Dict[str, Any]:
+    """
+    Analizza i movimenti NON legittimi in Prima Nota Cassa.
+    
+    LEGITTIMI in cassa:
+    - Corrispettivi giornalieri (source: corrispettivi_sync, categoria: Corrispettivi)
+    - Fatture pagate IN CONTANTI (source: sync_fatture con metodo contanti/cassa)
+    - POS inseriti manualmente dall'utente (categoria: POS, source: manual/None)
+    - Versamenti in banca (categoria: Versamento, inseriti manualmente)
+    - Finanziamenti soci (categoria: Finanziamento)
+    - Movimenti manuali legittimi (source: null/manual/user)
+    
+    NON LEGITTIMI (= bancari finiti in cassa per errore):
+    - CSV import dell'estratto conto bancario (source: csv_import con keywords bancari)
+    - Qualsiasi movimento con descrizione chiaramente bancaria
+    """
+    db = Database.get_db()
+    
+    # Keywords che identificano movimenti BANCARI (NON di cassa)
+    # Carica TUTTI i movimenti in cassa (non solo csv_import)
+    tutti_movimenti = await db[COLLECTION_PRIMA_NOTA_CASSA].find(
+        {"status": {"$nin": ["deleted", "archived"]}},
+        {"_id": 0, "id": 1, "descrizione": 1, "importo": 1, "data": 1, "tipo": 1, 
+         "categoria": 1, "source": 1, "riferimento": 1, "fattura_id": 1,
+         "fattura_collegata": 1, "metodo_pagamento": 1,
+         "metodo_pagamento_effettivo": 1}
+    ).to_list(50000)
+    if len(tutti_movimenti) >= 50000:
+        logger.warning("analisi_movimenti_bancari_errati_in_cassa: raggiunto il tetto di 50000 documenti, possibile troncamento")
+
+    # Categorie SICURAMENTE legittime in cassa
+    
+    legittimi = []
+    bancari_errati = []
+    totale_bancari = 0
+    
+    for m in tutti_movimenti:
+        if _movimento_e_bancario_errato_in_cassa(m):
+            bancari_errati.append(m)
+            totale_bancari += abs(m.get('importo', 0))
+        else:
+            legittimi.append(m)
+    
+    return {
+        "totale_movimenti_cassa": len(tutti_movimenti),
+        "movimenti_bancari_errati": len(bancari_errati),
+        "movimenti_legittimi": len(legittimi),
+        "totale_importo_da_eliminare": round(totale_bancari, 2),
+        "campione_bancari": bancari_errati[:20],
+        "campione_legittimi": legittimi[:10],
+        "per_source": _count_by_field(bancari_errati, 'source'),
+        "per_categoria": _count_by_field(bancari_errati, 'categoria'),
+        "azione_consigliata": "DELETE /api/prima-nota/cassa/elimina-movimenti-bancari-errati"
+    }
+
+
+def _count_by_field(items, field):
+    counts = {}
+    for m in items:
+        val = m.get(field, 'N/A') or 'N/A'
+        counts[val] = counts.get(val, 0) + 1
+    return counts
+
+
+async def elimina_movimenti_bancari_da_cassa() -> Dict[str, Any]:
+    """
+    Elimina i movimenti bancari importati erroneamente in Prima Nota Cassa.
+    Usa la stessa logica di analisi per identificare i movimenti da eliminare.
+    """
+    db = Database.get_db()
+    
+    # Carica tutti i movimenti con _id per poter eliminare
+    tutti_movimenti = await db[COLLECTION_PRIMA_NOTA_CASSA].find(
+        {"status": {"$nin": ["deleted", "archived"]}},
+        {"_id": 1, "descrizione": 1, "categoria": 1, "source": 1,
+         "riferimento": 1, "fattura_id": 1, "fattura_collegata": 1,
+         "metodo_pagamento": 1, "metodo_pagamento_effettivo": 1}
+    ).to_list(50000)
+    if len(tutti_movimenti) >= 50000:
+        logger.warning("elimina_movimenti_bancari_da_cassa: raggiunto il tetto di 50000 documenti, possibile troncamento")
+
+    ids_da_eliminare = []
+    
+    for m in tutti_movimenti:
+        if _movimento_e_bancario_errato_in_cassa(m):
+            ids_da_eliminare.append(m['_id'])
+    
+    deleted_count = 0
+    if ids_da_eliminare:
+        result = await db[COLLECTION_PRIMA_NOTA_CASSA].update_many(
+            {"_id": {"$in": ids_da_eliminare}},
+            {"$set": {
+                "status": "archived", "deleted": True,
+                "archived_at": datetime.now(timezone.utc).isoformat(),
+                "archived_reason": "movimento_bancario_errato_in_cassa",
+            }},
+        )
+        deleted_count = result.modified_count
+    
+    remaining = await db[COLLECTION_PRIMA_NOTA_CASSA].count_documents(
+        {"status": {"$nin": ["deleted", "archived"]}}
+    )
+    
+    return {
+        "success": True,
+        "message": f"Archiviati {deleted_count} movimenti bancari errati da Prima Nota Cassa",
+        "movimenti_eliminati": deleted_count,
+        "movimenti_rimanenti_in_cassa": remaining,
+        "regola": "In cassa restano solo: corrispettivi, POS manuali, versamenti, finanziamenti soci, fatture contanti"
+    }

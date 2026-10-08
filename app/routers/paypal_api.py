@@ -1,0 +1,739 @@
+from fastapi import APIRouter, HTTPException, Body, Request, BackgroundTasks
+from fastapi.responses import FileResponse
+from datetime import datetime, time, timedelta, timezone
+from typing import Dict, Any, Optional
+import logging
+
+import httpx
+import os
+import re
+
+from app.database import Database
+from app.config import settings
+from app.services.paypal_api_sync import sync_paypal_incremental, sync_paypal_period
+from app.services.paypal_api_client import paypal_client
+from app.services.paypal_invoice_matching import business_name_matches
+
+router = APIRouter(tags=["PayPal API"])
+logger = logging.getLogger(__name__)
+
+
+async def _riconcilia_intervallo_paypal(db, start: datetime, end: datetime) -> Dict[str, Any]:
+    """Adapter delle API al motore PayPal condiviso dagli import PDF/Drive."""
+    from app.services.paypal_reconciliation_pipeline import riconcilia_paypal_importato
+
+    result = await riconcilia_paypal_importato(
+        db, start_date=start.date().isoformat(), end_date=end.date().isoformat(),
+    )
+    return {"collegamenti": result["collegamenti_prima"], **result}
+
+# Popolato al momento della creazione del webhook su developer.paypal.com
+# (Applicazioni e credenziali > Webhook in tempo reale > Aggiungi Webhook,
+# colonna "ID Webhook"). Se assente, il webhook viene comunque processato ma
+# SENZA verifica della firma: accettabile come fallback perché l'endpoint
+# non si fida mai del corpo della richiesta per i dati finanziari, si limita
+# a ri-sincronizzare dalla vera API Reporting per il giorno dell'evento —
+# ma con l'ID impostato la verifica evita di innescare sync su richieste
+# spoofate.
+PAYPAL_WEBHOOK_ID = os.environ.get("PAYPAL_WEBHOOK_ID", "")
+
+# Eventi che indicano un movimento di denaro reale — solo questi triggerano
+# una re-sync mirata; gli altri (es. CUSTOMER.DISPUTE.*, aggiornamenti di
+# stato senza importo) vengono solo loggati.
+EVENTI_PAGAMENTO = {
+    "PAYMENT.SALE.COMPLETED",
+    "PAYMENT.CAPTURE.COMPLETED",
+    "PAYMENT.CAPTURE.REFUNDED",
+    "CHECKOUT.ORDER.COMPLETED",
+    "INVOICING.INVOICE.PAID",
+}
+
+
+@router.post("/webhook")
+async def ricevi_webhook(request: Request):
+    """
+    Riceve le notifiche in tempo reale di PayPal (configurate su
+    developer.paypal.com > Applicazioni e credenziali > Webhook in tempo
+    reale). Non processa mai i dati finanziari letti dal corpo della
+    richiesta: per gli eventi di pagamento, ri-sincronizza dalla vera API
+    Reporting (stessa funzione usata da "Sync PayPal API") il giorno in cui
+    l'evento è avvenuto, così i dati salvati sono sempre quelli ufficiali.
+    """
+    body = await request.json()
+    event_type = body.get("event_type", "")
+    event_id = body.get("id", "")
+    create_time = body.get("create_time", "")
+    logger.info("[PayPal Webhook] %s (%s) create_time=%s", event_type, event_id, create_time)
+
+    verificato = None
+    if PAYPAL_WEBHOOK_ID:
+        try:
+            verificato = await paypal_client.verify_webhook_signature(
+                PAYPAL_WEBHOOK_ID, request.headers, body
+            )
+        except Exception:
+            logger.exception("[PayPal Webhook] Errore durante la verifica della firma")
+            verificato = False
+        if not verificato:
+            logger.warning("[PayPal Webhook] Firma non valida per evento %s, scartato", event_id)
+            raise HTTPException(status_code=400, detail="Firma webhook non valida")
+
+    db = Database.get_db()
+    await db["paypal_webhook_events"].update_one(
+        {"event_id": event_id},
+        {"$set": {
+            "event_id": event_id,
+            "event_type": event_type,
+            "create_time": create_time,
+            "resource_type": body.get("resource_type", ""),
+            "received_at": datetime.now(timezone.utc).isoformat(),
+            "firma_verificata": verificato,
+            "processed": False,
+        }},
+        upsert=True,
+    )
+
+    if event_type not in EVENTI_PAGAMENTO or not create_time:
+        return {"success": True, "processato": False, "motivo": "evento non di pagamento o senza data"}
+
+    try:
+        evento_dt = datetime.fromisoformat(create_time.replace("Z", "+00:00"))
+    except ValueError:
+        return {"success": True, "processato": False, "motivo": "create_time non parsabile"}
+
+    # Finestra di un giorno prima/dopo: copre eventuali disallineamenti di
+    # fuso orario tra il timestamp dell'evento e la data del movimento.
+    start = (evento_dt - timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+    end = (evento_dt + timedelta(days=1)).replace(hour=23, minute=59, second=59, microsecond=0)
+
+    result = await sync_paypal_period(db, start, end)
+    reconciliation = await _riconcilia_intervallo_paypal(db, start, end)
+    await db["paypal_webhook_events"].update_one(
+        {"event_id": event_id},
+        {"$set": {"processed": True, "sync_result": result, "reconciliation": reconciliation}},
+    )
+    return {"success": True, "processato": True, "sync": result,
+            "reconciliation_applied": True, "reconciliation": reconciliation}
+
+
+@router.post("/sync")
+async def sync_period(body: Dict[str, Any] = Body(...)):
+    try:
+        start_raw = str(body["start_date"])
+        end_raw = str(body["end_date"])
+        start = datetime.fromisoformat(start_raw.replace("Z", "+00:00"))
+        end = datetime.fromisoformat(end_raw.replace("Z", "+00:00"))
+        if "T" not in end_raw and " " not in end_raw:
+            end = datetime.combine(end.date(), time(23, 59, 59))
+        start = start.replace(tzinfo=timezone.utc) if start.tzinfo is None else start.astimezone(timezone.utc)
+        end = end.replace(tzinfo=timezone.utc) if end.tzinfo is None else end.astimezone(timezone.utc)
+        if end < start:
+            raise ValueError("intervallo invertito")
+    except (KeyError, ValueError) as e:
+        raise HTTPException(400, f"Formato data non valido: {e}") from e
+
+    db = Database.get_db()
+    result = await sync_paypal_period(db, start, end)
+    reconciliation = await _riconcilia_intervallo_paypal(db, start, end)
+    return {**result, "reconciliation_applied": True, "reconciliation": reconciliation}
+
+
+@router.post("/sync/month")
+async def sync_current_month():
+    from calendar import monthrange
+    now = datetime.now(timezone.utc)
+    last_day = monthrange(now.year, now.month)[1]
+    start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    end = now.replace(day=last_day, hour=23, minute=59, second=59)
+
+    db = Database.get_db()
+    result = await sync_paypal_period(db, start, end)
+    reconciliation = await _riconcilia_intervallo_paypal(db, start, end)
+    return {**result, "reconciliation_applied": True, "reconciliation": reconciliation}
+
+
+@router.post("/sync/incremental")
+async def sync_incremental():
+    """Sync automatica idempotente usata all'apertura della pagina PayPal."""
+    db = Database.get_db()
+    try:
+        result = await sync_paypal_incremental(db)
+    except httpx.HTTPError as exc:
+        # Errore di PayPal (HTTP 4xx/5xx o rete): il checkpoint e' gia' stato
+        # marcato "error" dalla sync; alla pagina serve un esito leggibile,
+        # non un 500 con traceback nei log.
+        logger.warning("PayPal sync incrementale non riuscita: %s", exc)
+        raise HTTPException(
+            status_code=502,
+            detail=f"PayPal non ha risposto correttamente: {exc}",
+        ) from exc
+    if result.get("status") == "updated" and result.get("period_start") and result.get("period_end"):
+        start = datetime.fromisoformat(result["period_start"])
+        end = datetime.fromisoformat(result["period_end"])
+        reconciliation = await _riconcilia_intervallo_paypal(db, start, end)
+        return {**result, "reconciliation_applied": True, "reconciliation": reconciliation}
+    return {**result, "reconciliation_applied": False}
+
+
+@router.get("/status")
+async def status():
+    db = Database.get_db()
+    total = await db["paypal_transactions"].count_documents({})
+    enriched = await db["paypal_transactions"].count_documents({"source": "paypal_api"})
+    pagopa = await db["paypal_transactions"].count_documents({"is_pagopa": True})
+
+    last = await db["paypal_transactions"].find_one(
+        {"source": "paypal_api"},
+        sort=[("enriched_at", -1)],
+        projection={"_id": 0, "enriched_at": 1},
+    )
+    return {
+        "total_transazioni": total,
+        "arricchite_da_api": enriched,
+        "identificate_pagopa": pagopa,
+        "ultimo_sync": last.get("enriched_at") if last else None,
+        "api_configurata": bool(settings.PAYPAL_CLIENT_ID and settings.PAYPAL_CLIENT_SECRET),
+        "webhook_configurato": bool(PAYPAL_WEBHOOK_ID),
+    }
+
+
+@router.post("/riconcilia")
+async def riconcilia_da_collection(
+    background_tasks: BackgroundTasks, body: Dict[str, Any] = Body(default={})
+):
+    """
+    FASE 2: riconciliazione unificata che processa in sequenza:
+    1. Multe PagoPA → verbali_noleggio
+    2. Fatture commerciali → invoices (match by paypal_account_id)
+    3. Allineamento paypal_transactions ↔ estratto_conto_movimenti
+    4. Fornitori rimasti senza fattura (tipicamente esteri, mai su Drive/PEC):
+       ricerca automatica in posta in background, nessun click richiesto —
+       vedi app/services/paypal_email_recovery.py
+    """
+    from app.services.paypal_riconciliazione import (
+        riconcilia_multe_pagopa,
+    )
+    from app.services.paypal_reconciliation_pipeline import riconcilia_paypal_importato
+    from app.services.paypal_email_recovery import recupera_fatture_mancanti_email
+
+    db = Database.get_db()
+    q: Dict[str, Any] = {"$or": [
+        {"importo": {"$lt": 0}},
+        {"lordo": {"$lt": 0}},
+        {"amount": {"$lt": 0}},
+    ]}
+    if body.get("start_date"):
+        q["initiation_date"] = {"$gte": body["start_date"]}
+    if body.get("end_date"):
+        q.setdefault("initiation_date", {})["$lte"] = body["end_date"] + "T23:59:59Z"
+
+    txs = await db["paypal_transactions"].find(q, {"_id": 0}).to_list(5000)
+    multe = [t for t in txs if t.get("is_pagopa")]
+    r_multe = await riconcilia_multe_pagopa(db, multe)
+    links = await riconcilia_paypal_importato(
+        db, start_date=body.get("start_date"), end_date=body.get("end_date"),
+    )
+
+    if body.get("recupera_email", True):
+        background_tasks.add_task(recupera_fatture_mancanti_email, db)
+
+    return {
+        "multe_pagopa": r_multe,
+        "fatture": links["collegamenti_prima"],
+        "banca": links["banca"],
+        "fatture_dopo": links["collegamenti_dopo"],
+        "recupero_email_avviato": bool(body.get("recupera_email", True)),
+    }
+
+
+@router.get("/ricevuta-pdf/{transaction_id}")
+async def scarica_ricevuta_pdf(transaction_id: str):
+    from app.services.paypal_pdf_fetcher import (
+        fetch_ricevuta_pagopa,
+        genera_pdf_transazione_paypal,
+    )
+    db = Database.get_db()
+    tx = await db["paypal_transactions"].find_one({"transaction_id": transaction_id})
+    if not tx:
+        raise HTTPException(404, "Transazione non trovata")
+    pdf_path = tx.get("pdf_ricevuta_path") or tx.get("pdf_generato_path")
+    if not pdf_path or not os.path.exists(pdf_path):
+        if tx.get("is_pagopa"):
+            r = await fetch_ricevuta_pagopa(
+                db, transaction_id,
+                abs(tx.get("importo", 0)),
+                tx.get("initiation_date", ""),
+            )
+            pdf_path = r["pdf_path"] if r else None
+        if not pdf_path:
+            pdf_path = await genera_pdf_transazione_paypal(db, transaction_id)
+    if not pdf_path or not os.path.exists(pdf_path):
+        raise HTTPException(404, "PDF non disponibile")
+    return FileResponse(
+        pdf_path,
+        media_type="application/pdf",
+        filename=f"ricevuta_paypal_{transaction_id}.pdf",
+    )
+
+
+@router.get("/account-ids-non-mappati")
+async def account_ids_non_mappati(anno: Optional[int] = None):
+    """
+    Ritorna lista di paypal_account_id presenti in paypal_transactions
+    ma NON ancora mappati a un fornitore. Per ciascun account_id aggrega:
+    - n. transazioni, importo totale, ultima data, lista transaction_subject/invoice_id
+    - fornitori candidati (per importo vicino + nome simile)
+
+    Rispetta il filtro anno globale (come dashboard/transactions/report):
+    prima non lo faceva affatto, quindi cambiare anno in UI non cambiava mai
+    questa lista.
+    """
+    from app.services.paypal_riconciliazione import normalize_string, match_fornitore  # noqa: F811
+
+    db = Database.get_db()
+
+    # Aggrega i paypal_account_id dalle transazioni.
+    # Solo importi in uscita: un incasso da cliente non è mai un fornitore da mappare.
+    # Il $sort precedente il $group mette le transazioni CON nome_controparte
+    # prima di quelle senza, così il $first del gruppo non prende un documento
+    # vuoto quando un'altra transazione dello stesso account il nome ce l'ha
+    # (PayPal non lo riporta su ogni singola transazione, es. eventi T0200).
+    match_stage: Dict[str, Any] = {
+        "paypal_account_id": {"$exists": True, "$nin": [None, ""]},
+        "importo": {"$lt": 0},
+    }
+    if anno:
+        match_stage["data"] = {"$regex": f"^{anno}"}
+
+    pipeline = [
+        {"$match": match_stage},
+        {"$sort": {"nome_controparte": -1}},
+        {"$group": {
+            "_id": "$paypal_account_id",
+            "n_tx": {"$sum": 1},
+            "importo_totale": {"$sum": "$importo"},
+            "ultima_data": {"$max": "$initiation_date"},
+            "subjects": {"$addToSet": "$transaction_subject"},
+            "invoice_ids": {"$addToSet": "$invoice_id_fornitore"},
+            "is_pagopa": {"$max": "$is_pagopa"},
+            "nome_controparte": {"$first": "$nome_controparte"},
+            "email_controparte": {"$first": "$email_controparte"},
+        }},
+        {"$sort": {"ultima_data": -1}},
+    ]
+    aggregates = await db["paypal_transactions"].aggregate(pipeline).to_list(500)
+
+    # Fornitori già mappati
+    mapped_ids = set()
+    async for f in db["fornitori"].find(
+        {"paypal_account_id": {"$ne": None}},
+        {"_id": 0, "paypal_account_id": 1}
+    ):
+        if f.get("paypal_account_id"):
+            mapped_ids.add(f["paypal_account_id"])
+
+    # Per le transazioni PagoPA il fornitore è un ente, non serve mapping
+    risultati = []
+    for agg in aggregates:
+        account_id = agg["_id"]
+        if account_id in mapped_ids:
+            continue
+        if agg.get("is_pagopa"):
+            continue
+
+        importo_medio = abs(agg["importo_totale"] / max(agg["n_tx"], 1))
+        subjects = [s for s in agg.get("subjects") or [] if s]
+        invoice_ids = [i for i in agg.get("invoice_ids") or [] if i]
+        nome_controparte = (agg.get("nome_controparte") or "").strip()
+
+        query_text = " ".join(subjects[:3])
+        candidati = []
+        suggested_forn_id = None  # pre-selezione UI se match certo
+        exact_name_candidate_ids = []
+
+        # STRATEGIA 1 (match certo): cerca fornitore con ragione_sociale che matcha nome_controparte
+        if nome_controparte:
+            # Prima parola significativa (es. "Gruppo Adam s.r.l." → "Gruppo Adam" o "Gruppo")
+            words = [w for w in nome_controparte.split() if len(w) >= 3
+                     and w.lower() not in ("spa", "srl", "s.r.l.", "s.p.a.", "s.r.l", "s.p.a",
+                                            "sas", "snc", "ltd", "gmbh", "ag", "sa", "ab")]
+            search_word = words[0] if words else nome_controparte.split()[0]
+
+            cursor_forn = db["fornitori"].find(
+                {"$or": [
+                    {"nome": {"$regex": re.escape(search_word), "$options": "i"}},
+                    {"ragione_sociale": {"$regex": re.escape(search_word), "$options": "i"}},
+                ]},
+                {"_id": 0, "id": 1, "nome": 1, "ragione_sociale": 1, "piva": 1}
+            )
+            async for forn in cursor_forn:
+                forn_nome = forn.get("ragione_sociale") or forn.get("nome") or ""
+                # Normalizza entrambi per match
+                norm_cp = normalize_string(nome_controparte)
+                norm_fn = normalize_string(forn_nome)
+                # Exact match (uguali dopo normalize) oppure uno contiene l'altro
+                if norm_cp == norm_fn:
+                    match_type = "exact"
+                    score = 1.0
+                elif norm_cp in norm_fn or norm_fn in norm_cp:
+                    match_type = "partial"
+                    score = 0.85
+                else:
+                    # Fuzzy score su nome
+                    score = match_fornitore(nome_controparte, forn_nome)
+                    match_type = "fuzzy" if score >= 0.6 else None
+                if match_type:
+                    candidato = {
+                        "fornitore_id": forn.get("id"),
+                        "nome": forn_nome,
+                        "piva": forn.get("piva") or "",
+                        "n_fatture_simili": 0,
+                        "score": round(score, 2),
+                        "source": f"nome_paypal_{match_type}",
+                    }
+                    candidati.append(candidato)
+                    if match_type == "exact" and forn.get("id"):
+                        exact_name_candidate_ids.append(forn["id"])
+
+        # La stessa denominazione puo' esistere piu' volte in anagrafica:
+        # in quel caso non esiste alcuna proposta univoca da pre-selezionare.
+        exact_name_candidate_ids = list(dict.fromkeys(exact_name_candidate_ids))
+        if len(exact_name_candidate_ids) == 1:
+            suggested_forn_id = exact_name_candidate_ids[0]
+
+        # STRATEGIA 2: fornitori con fatture di importo simile (fallback)
+        min_imp = importo_medio * 0.6
+        max_imp = importo_medio * 1.4
+        pipeline_forn = [
+            {"$match": {"total_amount": {"$gte": min_imp, "$lte": max_imp}}},
+            {"$group": {
+                "_id": "$supplier_vat",
+                "supplier_name": {"$first": "$supplier_name"},
+                "fornitore_denominazione": {"$first": "$fornitore_denominazione"},
+                "n_fatture": {"$sum": 1},
+            }},
+            {"$limit": 30},
+        ]
+        try:
+            forn_cursor = await db["invoices"].aggregate(pipeline_forn).to_list(30)
+        except Exception:
+            forn_cursor = []
+
+        seen_piva = {c["piva"] for c in candidati if c.get("piva")}
+        seen_ids = {c["fornitore_id"] for c in candidati}
+        for fc in forn_cursor:
+            piva = fc.get("_id")
+            if not piva or piva in seen_piva:
+                continue
+            seen_piva.add(piva)
+            nome = fc.get("supplier_name") or fc.get("fornitore_denominazione") or ""
+            score = match_fornitore(query_text or account_id, nome) if query_text else 0.0
+            # Boost se il nome matcha nome_controparte
+            if nome_controparte and nome:
+                cp_score = match_fornitore(nome_controparte, nome)
+                if cp_score > score:
+                    score = cp_score
+            # La coincidenza di importo non prova l'identita': proponi il
+            # fornitore solo se le due ragioni sociali sono coerenti.
+            if not nome_controparte or not business_name_matches(nome_controparte, nome):
+                continue
+            forn = await db["fornitori"].find_one(
+                {"$or": [{"piva": piva}, {"partita_iva": piva}, {"codice_fiscale": piva}]},
+                {"_id": 0, "id": 1, "nome": 1, "ragione_sociale": 1, "piva": 1}
+            )
+            if forn and forn.get("id") not in seen_ids:
+                seen_ids.add(forn.get("id"))
+                candidati.append({
+                    "fornitore_id": forn.get("id"),
+                    "nome": forn.get("ragione_sociale") or forn.get("nome") or nome,
+                    "piva": forn.get("piva") or piva,
+                    "n_fatture_simili": fc.get("n_fatture", 0),
+                    "score": round(score, 2),
+                    "source": "nome_e_fatture_coerenti",
+                })
+        # Ordina per score desc poi per n_fatture desc
+        candidati.sort(key=lambda c: (c["score"], c["n_fatture_simili"]), reverse=True)
+
+        risultati.append({
+            "paypal_account_id": account_id,
+            "nome_controparte": nome_controparte or None,
+            "email_controparte": agg.get("email_controparte") or None,
+            "n_tx": agg["n_tx"],
+            "importo_totale": round(abs(agg["importo_totale"]), 2),
+            "importo_medio": round(importo_medio, 2),
+            "ultima_data": agg["ultima_data"],
+            "subjects": subjects[:5],
+            "invoice_ids": invoice_ids[:5],
+            "candidati": candidati[:8],
+            "suggested_fornitore_id": suggested_forn_id,
+        })
+
+    return {
+        "totale_non_mappati": len(risultati),
+        "items": risultati,
+    }
+
+
+@router.post("/account/{paypal_account_id}/cerca-fattura-email")
+async def cerca_fattura_email_per_account(paypal_account_id: str) -> Dict[str, Any]:
+    """
+    Per i fornitori esteri/non SDI (per esempio un servizio SaaS): la fattura
+    non passa mai da Drive/PEC (quei canali leggono solo XML FatturaPA, che un
+    fornitore estero non emette mai), esiste SOLO come PDF nella posta. Cerca
+    e scarica quel PDF via email usando il nome controparte del PayPal account
+    come parola chiave, riusando la pipeline già esistente di
+    app/services/email_document_downloader.py (categorizzazione, dedup per
+    hash, parsing AI automatico) — stessa pipeline usata da Documenti Inbox.
+    """
+    from app.services.gmail_search import get_gmail_credentials
+    from app.services.email_document_downloader import download_documents_from_email
+
+    db = Database.get_db()
+
+    agg = await db["paypal_transactions"].aggregate([
+        {"$match": {"paypal_account_id": paypal_account_id}},
+        {"$sort": {"nome_controparte": -1}},
+        {"$group": {
+            "_id": "$paypal_account_id",
+            "nome_controparte": {"$first": "$nome_controparte"},
+            "email_controparte": {"$first": "$email_controparte"},
+        }},
+    ]).to_list(1)
+    if not agg:
+        raise HTTPException(404, "Nessuna transazione trovata per questo account PayPal")
+
+    nome_controparte = (agg[0].get("nome_controparte") or "").strip()
+    email_controparte = (agg[0].get("email_controparte") or "").strip()
+    if not nome_controparte and not email_controparte:
+        raise HTTPException(400, "Nessun nome o email controparte disponibile per la ricerca")
+
+    # Se il fornitore è già censito (fattura arrivata da Drive/PEC), basta
+    # collegarlo — cercare in posta sarebbe inutile e solo rumore.
+    from app.services.paypal_email_recovery import _mappa_da_fornitore_esistente
+    if await _mappa_da_fornitore_esistente(db, paypal_account_id, nome_controparte):
+        return {
+            "ok": True,
+            "paypal_account_id": paypal_account_id,
+            "nome_controparte": nome_controparte,
+            "fornitore_agganciato": True,
+            "fonte": "fornitore_gia_censito",
+            "documents": [],
+            "stats": {"emails_found": 0, "new_documents": 0},
+        }
+
+    parola_chiave = nome_controparte.split()[0] if nome_controparte else ""
+
+    user, pwd, _ = await get_gmail_credentials(db)
+    if not user or not pwd:
+        return {
+            "ok": False,
+            "paypal_account_id": paypal_account_id,
+            "nome_controparte": nome_controparte,
+            "cercato_per": parola_chiave or email_controparte,
+            "errore": "Nessun account Gmail configurato",
+            "azione": "Configura l'account in Admin → Email con una App Password",
+            "documents": [],
+            "stats": {"emails_found": 0, "new_documents": 0},
+        }
+
+    # NON passare allowed_senders insieme a search_keywords: se valorizzato,
+    # download_documents_from_email() ignora del tutto la ricerca per parola
+    # chiave e cerca solo FROM quell'indirizzo esatto — ma le fatture arrivano
+    # spesso da un indirizzo di sistema automatico diverso dalla persona di
+    # contatto salvata su PayPal (la fattura può arrivare da un sistema automatico, non
+    # dall'email del commerciale), quindi non trovava mai nulla.
+    try:
+        risultato = await download_documents_from_email(
+            db, user, pwd,
+            since_days=365,
+            search_keywords=[parola_chiave] if parola_chiave else None,
+            ignore_dict=True,
+        )
+    except Exception as exc:
+        logger.exception(
+            "Ricerca fattura PayPal in email fallita per account %s",
+            paypal_account_id,
+        )
+        return {
+            "ok": False,
+            "paypal_account_id": paypal_account_id,
+            "nome_controparte": nome_controparte,
+            "cercato_per": parola_chiave or email_controparte,
+            "errore": "Ricerca email non completata",
+            "azione": "Verifica account e App Password in Admin → Email, poi riprova",
+            "dettaglio_tecnico": type(exc).__name__,
+            "documents": [],
+            "stats": {"emails_found": 0, "new_documents": 0},
+        }
+
+    from app.services.paypal_email_recovery import _aggancia_documenti_trovati
+    aggancio = {"agganciati": 0}
+    if risultato.get("documents"):
+        aggancio = await _aggancia_documenti_trovati(
+            db, paypal_account_id, nome_controparte, risultato["documents"]
+        )
+
+    return {
+        "ok": True,
+        "paypal_account_id": paypal_account_id,
+        "nome_controparte": nome_controparte,
+        "email_controparte": email_controparte,
+        "cercato_per": parola_chiave or email_controparte,
+        "fornitore_agganciato": aggancio["agganciati"] > 0,
+        **risultato,
+    }
+
+
+@router.post("/mappa-fornitore")
+async def mappa_fornitore(body: Dict[str, Any] = Body(...)):
+    """Associa un paypal_account_id a un fornitore esistente."""
+    paypal_account_id = (body.get("paypal_account_id") or "").strip()
+    fornitore_id = (body.get("fornitore_id") or "").strip()
+    if not paypal_account_id or not fornitore_id:
+        raise HTTPException(400, "paypal_account_id e fornitore_id richiesti")
+
+    db = Database.get_db()
+    forn = await db["fornitori"].find_one({"id": fornitore_id}, {"_id": 0, "id": 1, "nome": 1, "ragione_sociale": 1})
+    if not forn:
+        raise HTTPException(404, "Fornitore non trovato")
+
+    # Verifica che l'account_id non sia già mappato a un altro fornitore
+    already = await db["fornitori"].find_one(
+        {"paypal_account_id": paypal_account_id, "id": {"$ne": fornitore_id}},
+        {"_id": 0, "id": 1, "nome": 1, "ragione_sociale": 1}
+    )
+    if already:
+        raise HTTPException(409, f"Account già mappato a: {already.get('ragione_sociale') or already.get('nome')}")
+
+    res = await db["fornitori"].update_one(
+        {"id": fornitore_id},
+        {"$set": {"paypal_account_id": paypal_account_id, "updated_at": datetime.now(timezone.utc).isoformat()}}
+    )
+    return {
+        "success": True,
+        "modified": res.modified_count,
+        "fornitore": forn.get("ragione_sociale") or forn.get("nome"),
+        "paypal_account_id": paypal_account_id,
+    }
+
+
+@router.post("/smappa-fornitore")
+async def smappa_fornitore(body: Dict[str, Any] = Body(...)):
+    """Rimuove mapping paypal_account_id da un fornitore (per correzioni)."""
+    fornitore_id = (body.get("fornitore_id") or "").strip()
+    if not fornitore_id:
+        raise HTTPException(400, "fornitore_id richiesto")
+    db = Database.get_db()
+    res = await db["fornitori"].update_one(
+        {"id": fornitore_id},
+        {"$unset": {"paypal_account_id": ""},
+         "$set": {"updated_at": datetime.now(timezone.utc).isoformat()}}
+    )
+    return {"success": True, "modified": res.modified_count}
+
+
+@router.post("/crea-fornitore-e-mappa")
+async def crea_fornitore_e_mappa(body: Dict[str, Any] = Body(...)):
+    """Crea un nuovo fornitore E lo mappa al paypal_account_id in un'unica operazione.
+
+    Body:
+        {
+            "paypal_account_id": "6QL6S5MMB8NA2",  # OBBLIGATORIO
+            "ragione_sociale":   "Fornitore SaaS Limited",  # OBBLIGATORIO
+            "piva":              "IE9952657T",       # opzionale
+            "nazione":           "IE",               # default "IT"
+            "metodo_pagamento":  "paypal",           # default "paypal" (è ovvio)
+            "esclude_magazzino": True,               # default True
+            "email":             "billing@vendor.example",  # opzionale
+            "note":              "Servizi cloud DB"
+        }
+
+    Comportamento:
+    - Verifica che il paypal_account_id non sia già mappato altrove (409)
+    - Verifica che la P.IVA non sia duplicata (409)
+    - Crea il fornitore con uuid + valori default sensati per fornitori PayPal
+      (esclude_magazzino=True perché tipicamente sono SaaS/servizi, non prodotti)
+    - Imposta automaticamente paypal_account_id sul nuovo record
+    """
+    import uuid
+
+    paypal_account_id = (body.get("paypal_account_id") or "").strip()
+    ragione_sociale = (body.get("ragione_sociale") or "").strip()
+    if not paypal_account_id:
+        raise HTTPException(400, "paypal_account_id richiesto")
+    if not ragione_sociale:
+        raise HTTPException(400, "ragione_sociale richiesta")
+
+    db = Database.get_db()
+
+    # Anti-duplicazione 1: paypal_account_id già mappato?
+    already_mapped = await db["fornitori"].find_one(
+        {"paypal_account_id": paypal_account_id},
+        {"_id": 0, "id": 1, "nome": 1, "ragione_sociale": 1}
+    )
+    if already_mapped:
+        raise HTTPException(
+            409,
+            f"Account PayPal già mappato a fornitore: "
+            f"{already_mapped.get('ragione_sociale') or already_mapped.get('nome')}"
+        )
+
+    # Anti-duplicazione 2: P.IVA già esistente?
+    piva = (body.get("piva") or "").strip().upper()
+    if piva:
+        existing_by_piva = await db["fornitori"].find_one(
+            {"piva": piva},
+            {"_id": 0, "id": 1, "nome": 1, "ragione_sociale": 1}
+        )
+        if existing_by_piva:
+            raise HTTPException(
+                409,
+                f"P.IVA già presente per: "
+                f"{existing_by_piva.get('ragione_sociale') or existing_by_piva.get('nome')}. "
+                f"Usa /mappa-fornitore con fornitore_id={existing_by_piva.get('id')}"
+            )
+
+    now_iso = datetime.now(timezone.utc).isoformat()
+    fornitore_id = str(uuid.uuid4())
+
+    fornitore = {
+        "id": fornitore_id,
+        "nome": ragione_sociale,
+        "ragione_sociale": ragione_sociale,
+        "piva": piva,
+        "codice_fiscale": (body.get("codice_fiscale") or "").upper().strip(),
+        "email": (body.get("email") or "").strip(),
+        "telefono": (body.get("telefono") or "").strip(),
+        "indirizzo": (body.get("indirizzo") or "").strip(),
+        "cap": (body.get("cap") or "").strip(),
+        "comune": (body.get("comune") or "").strip(),
+        "provincia": (body.get("provincia") or "").strip(),
+        "nazione": (body.get("nazione") or "IT").upper().strip(),
+        "iban": "",  # PayPal non usa IBAN
+        "iban_lista": [],
+        "metodo_pagamento": body.get("metodo_pagamento") or "paypal",
+        "esclude_magazzino": bool(body.get("esclude_magazzino", True)),
+        # Campo letto dall'app esterna collegata allo stesso DB — non rimuovere.
+        "escludi_da_tracciabilita": bool(body.get("escludi_da_tracciabilita", False)),
+        "paypal_account_id": paypal_account_id,
+        "note": (body.get("note") or "").strip() or "Creato da mapping PayPal",
+        "source": "paypal_mapping",
+        "created_at": now_iso,
+        "updated_at": now_iso,
+    }
+    await db["fornitori"].insert_one(fornitore.copy())
+    fornitore.pop("_id", None)
+
+    # Conta transazioni che ora avranno il fornitore mappato
+    n_tx = await db["paypal_transactions"].count_documents(
+        {"paypal_account_id": paypal_account_id}
+    )
+
+    return {
+        "success": True,
+        "fornitore_id": fornitore_id,
+        "ragione_sociale": ragione_sociale,
+        "paypal_account_id": paypal_account_id,
+        "n_transazioni_collegabili": n_tx,
+        "fornitore": fornitore,
+    }

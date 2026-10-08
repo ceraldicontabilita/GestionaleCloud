@@ -1,0 +1,175 @@
+/* ================================================================
+   CERALDI ERP — TOP NAVIGATION (uniformata con palette globale)
+   ================================================================ */
+
+:root {
+  --ceraldi-primary:       #c15f3c;
+  --ceraldi-primary-dark:  #8f4128;
+  --ceraldi-primary-light: #a94f30;
+  --ceraldi-secondary:     #a94f30;
+  --ceraldi-bg:            #f2f0e9;
+  --ceraldi-text:          #141413;
+  --ceraldi-text-muted:    #7a776e;
+  --ceraldi-text-nav:      #ffffff;
+  --ceraldi-border:        #e6e3d9;
+  --ceraldi-border-light:  #f2f0e9;
+  --ceraldi-success:       #2f7a4f;
+  --ceraldi-warning:       #8a6410;
+  --ceraldi-error:         #b0362b;
+  --ceraldi-error-light:   #ef4444;
+
+  --topnav-height: 54px;
+}
+
+/* Base container */
+.topnav-layout {
+  min-height: 100vh;
+  background: var(--ceraldi-bg);
+  color: var(--ceraldi-text);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
+  font-size: 13px;
+}
+
+/* Margini del contenuto (colonna a sinistra, spazio per l'assistente):
+   stanno in index.css, in un posto solo. */
+
+/* ─── TOP NAV PRIMARY ─── */
+.topnav-primary {
+  background: var(--ceraldi-primary);
+  border-bottom: 1px solid var(--ceraldi-primary-dark);
+  height: var(--topnav-height);
+  display: flex;
+  align-items: center;
+  padding: 0 16px;
+  gap: 8px;
+  position: fixed !important;
+  top: 0; left: 0; right: 0;
+  z-index: 1000;
+  box-shadow: 0 2px 8px rgba(20, 20, 19, 0.18);
+}
+
+.topnav-brand {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin-right: 20px;
+  text-decoration: none;
+}
+
+.brand-square {
+  width: 32px;
+  height: 32px;
+  background: rgba(255, 255, 255, 0.10);
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-weight: 800;
+  font-size: 13px;
+  letter-spacing: 0.5px;
+}
+
+.brand-name {
+  font-weight: 800;
+  font-size: 15px;
+  color: #fff;
+  letter-spacing: -0.3px;
+  white-space: nowrap;
+}
+
+/* Nav items */
+.topnav-items {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex: 1;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.topnav-items::-webkit-scrollbar { display: none; }
+
+.topnav-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 7px;
+  font-size: 13px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.82);
+  cursor: pointer;
+  transition: background 140ms ease, color 140ms ease;
+  white-space: nowrap;
+  text-decoration: none;
+  background: transparent;
+  border: 1px solid transparent;
+}
+.topnav-item:hover {
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+}
+.topnav-item.active {
+  background: rgba(255, 255, 255, 0.18);
+  color: #fff;
+  font-weight: 700;
+  border-color: rgba(255, 255, 255, 0.25);
+}
+
+.topnav-icon { font-size: 14px; }
+.topnav-label { font-size: 13px; }
+
+/* Hover helpers */
+.topnav-link:hover {
+  background: rgba(255, 255, 255, 0.12) !important;
+  color: #fff !important;
+}
+.topnav-drop-item:hover {
+  background: rgba(20, 20, 19, 0.06) !important;
+}
+
+.topnav-items-scroll::-webkit-scrollbar { display: none; }
+
+/* ─── SECONDARY TABS (if any) ─── */
+.secondary-tabs {
+  background: #fff;
+  border-bottom: 1px solid var(--ceraldi-border);
+  padding: 6px 24px;
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  position: fixed;
+  top: var(--topnav-height);
+  left: 0; right: 0;
+  z-index: 990;
+  scrollbar-width: none;
+}
+.secondary-tabs::-webkit-scrollbar { display: none; }
+
+.secondary-tab {
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  color: var(--ceraldi-text-muted);
+  background: transparent;
+  border: 1px solid transparent;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 140ms ease;
+}
+.secondary-tab:hover {
+  color: var(--ceraldi-primary);
+  background: var(--ceraldi-border-light);
+}
+.secondary-tab.active {
+  background: var(--ceraldi-primary);
+  color: #fff;
+  font-weight: 700;
+}
+
+/* ─── DROPDOWN (Altro) ─── */
+@keyframes navDropIn {
+  from { opacity: 0; transform: translateY(-6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}

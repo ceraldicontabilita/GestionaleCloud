@@ -1,0 +1,1243 @@
+"""
+Fiscalità Italiana Completa per SRL
+====================================
+
+1. AGEVOLAZIONI E DETRAZIONI FISCALI SRL
+   - Crediti d'imposta
+   - Super/Iper ammortamento
+   - Patent Box
+   - ACE (Aiuto Crescita Economica)
+   - Bonus investimenti
+   - Credito R&D
+
+2. CALENDARIO FISCALE COMPLETO
+   - Scadenze IVA (liquidazioni, dichiarazione)
+   - F24 (versamenti)
+   - Dichiarazioni (Redditi, IRAP, 770)
+   - IMU/TASI
+   - Bilancio e assemblee
+   - Tutti gli adempimenti societari
+
+3. CHIUSURA/APERTURA ESERCIZIO
+   - Epilogo conti
+   - Determinazione utile/perdita
+   - Riapertura conti
+
+4. GESTIONE F24
+   - Registrazione versamenti
+   - Compensazioni
+   - Ravvedimento operoso
+"""
+
+import logging
+import uuid
+from datetime import datetime, timezone, timedelta
+from typing import Any, Dict, List, Optional
+from decimal import Decimal, ROUND_HALF_UP
+
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from pydantic import BaseModel
+
+from app.database import Database
+from app.utils.dependencies import get_current_admin_user
+
+logger = logging.getLogger(__name__)
+router = APIRouter()
+
+
+# ============================================
+# AGEVOLAZIONI FISCALI SRL 2025
+# ============================================
+
+AGEVOLAZIONI_FISCALI_SRL = [
+    # === CREDITI D'IMPOSTA ===
+    {
+        "id": "credito_ricerca_sviluppo",
+        "nome": "Credito d'imposta Ricerca e Sviluppo",
+        "categoria": "credito_imposta",
+        "descrizione": "Credito per attività di R&S, innovazione tecnologica, design",
+        "aliquota": 10,  # % sul costo
+        "massimale": 5000000,
+        "requisiti": [
+            "Attività di ricerca fondamentale, industriale o sviluppo sperimentale",
+            "Personale qualificato impiegato in R&S",
+            "Documentazione tecnica e contabile"
+        ],
+        "normativa": "Art. 1, commi 198-209, L. 160/2019 - Legge di Bilancio 2020",
+        "scadenza_fruizione": "Compensazione in 3 quote annuali",
+        "codice_tributo_f24": "6938",
+        "anno_validita": 2025,
+        "attivo": True
+    },
+    {
+        "id": "credito_innovazione_tecnologica",
+        "nome": "Credito Innovazione Tecnologica",
+        "categoria": "credito_imposta",
+        "descrizione": "Per innovazione tecnologica finalizzata a prodotti/processi nuovi",
+        "aliquota": 10,
+        "massimale": 2000000,
+        "requisiti": [
+            "Progetti di innovazione tecnologica",
+            "Obiettivi di transizione ecologica o digitale 4.0"
+        ],
+        "normativa": "Art. 1, commi 198-209, L. 160/2019",
+        "codice_tributo_f24": "6939",
+        "anno_validita": 2025,
+        "attivo": True
+    },
+    {
+        "id": "credito_formazione_40",
+        "nome": "Credito Formazione 4.0",
+        "categoria": "credito_imposta",
+        "descrizione": "Per formazione del personale su tecnologie 4.0",
+        "aliquota": 50,  # Piccole imprese
+        "aliquota_medie": 40,
+        "aliquota_grandi": 30,
+        "massimale": 300000,
+        "requisiti": [
+            "Formazione su tecnologie Industry 4.0",
+            "Accordo sindacale o contratto collettivo",
+            "Certificazione delle competenze acquisite"
+        ],
+        "normativa": "Art. 1, commi 46-56, L. 205/2017",
+        "codice_tributo_f24": "6897",
+        "anno_validita": 2025,
+        "attivo": True
+    },
+    {
+        "id": "credito_investimenti_mezzogiorno",
+        "nome": "Credito Investimenti Sud",
+        "categoria": "credito_imposta",
+        "descrizione": "Per investimenti in beni strumentali nel Mezzogiorno",
+        "aliquota": 45,  # Piccole imprese
+        "aliquota_medie": 35,
+        "aliquota_grandi": 25,
+        "regioni": ["Campania", "Puglia", "Basilicata", "Calabria", "Sicilia", "Sardegna", "Molise", "Abruzzo"],
+        "requisiti": [
+            "Investimenti in macchinari, impianti, attrezzature",
+            "Struttura produttiva nel Mezzogiorno"
+        ],
+        "normativa": "Art. 1, commi 98-108, L. 208/2015",
+        "codice_tributo_f24": "6869",
+        "anno_validita": 2025,
+        "attivo": True
+    },
+    {
+        "id": "credito_beni_strumentali",
+        "nome": "Credito Beni Strumentali 4.0",
+        "categoria": "credito_imposta",
+        "descrizione": "Ex Super/Iper ammortamento - beni materiali e immateriali 4.0",
+        "aliquota_materiali_40": 20,  # Fino a 2,5M
+        "aliquota_materiali_41": 10,  # Da 2,5M a 10M
+        "aliquota_materiali_42": 5,   # Da 10M a 20M
+        "aliquota_immateriali": 20,
+        "massimale_materiali": 20000000,
+        "massimale_immateriali": 1000000,
+        "requisiti": [
+            "Beni inclusi in Allegato A o B L. 232/2016",
+            "Interconnessione al sistema aziendale",
+            "Perizia tecnica per beni > €300.000"
+        ],
+        "normativa": "Art. 1, commi 1051-1063, L. 178/2020",
+        "codice_tributo_f24": "6936",
+        "anno_validita": 2025,
+        "attivo": True
+    },
+    
+    # === AGEVOLAZIONI IRES/IRAP ===
+    {
+        "id": "ace",
+        "nome": "ACE - Aiuto alla Crescita Economica",
+        "categoria": "deduzione_ires",
+        "descrizione": "Deduzione dal reddito del rendimento nozionale del capitale proprio",
+        "coefficiente_rendimento": 1.3,  # % 2025
+        "requisiti": [
+            "Incrementi di capitale proprio",
+            "Utili non distribuiti",
+            "Conferimenti in denaro"
+        ],
+        "normativa": "Art. 1, D.L. 201/2011",
+        "anno_validita": 2025,
+        "attivo": True
+    },
+    {
+        "id": "patent_box",
+        "nome": "Patent Box",
+        "categoria": "deduzione_ires",
+        "descrizione": "Esclusione dal reddito del 50% dei proventi da beni immateriali",
+        "esclusione_percentuale": 110,  # Super deduzione 110%
+        "beni_agevolabili": ["Software", "Brevetti", "Disegni e modelli", "Know-how"],
+        "requisiti": [
+            "Attività di R&S sui beni immateriali",
+            "Documentazione idonea",
+            "Opzione irrevocabile 5 anni"
+        ],
+        "normativa": "Art. 6, D.L. 146/2021",
+        "anno_validita": 2025,
+        "attivo": True
+    },
+    {
+        "id": "deduzione_irap_personale",
+        "nome": "Deduzione IRAP Costo Lavoro",
+        "categoria": "deduzione_irap",
+        "descrizione": "Deduzione integrale del costo del lavoro dipendente",
+        "deduzione_percentuale": 100,
+        "requisiti": ["Contratti di lavoro dipendente a tempo indeterminato"],
+        "normativa": "Art. 11, D.Lgs. 446/1997",
+        "anno_validita": 2025,
+        "attivo": True
+    },
+    
+    # === STARTUP E PMI INNOVATIVE ===
+    {
+        "id": "startup_innovative",
+        "nome": "Agevolazioni Startup Innovative",
+        "categoria": "startup",
+        "descrizione": "Pacchetto agevolazioni per startup innovative",
+        "benefici": [
+            "Esonero diritti camerali e bolli",
+            "Deroghe diritto societario",
+            "Incentivi fiscali per investitori (30% detrazione IRPEF/deduzione IRES)",
+            "Accesso semplificato al Fondo Garanzia PMI",
+            "Credito d'imposta R&S maggiorato"
+        ],
+        "requisiti": [
+            "Iscrizione sezione speciale Registro Imprese",
+            "Costituita da meno di 5 anni",
+            "Fatturato < €5M",
+            "Oggetto sociale innovativo"
+        ],
+        "normativa": "D.L. 179/2012 e successive modifiche",
+        "anno_validita": 2025,
+        "attivo": True
+    },
+    {
+        "id": "pmi_innovative",
+        "nome": "Agevolazioni PMI Innovative",
+        "categoria": "pmi",
+        "descrizione": "Agevolazioni per PMI innovative",
+        "benefici": [
+            "Incentivi fiscali investitori",
+            "Equity crowdfunding",
+            "Accesso Fondo Garanzia",
+            "Remunerazione in equity"
+        ],
+        "requisiti": [
+            "PMI con bilancio certificato",
+            "Requisiti di innovazione",
+            "Iscrizione sezione speciale"
+        ],
+        "normativa": "D.L. 3/2015",
+        "anno_validita": 2025,
+        "attivo": True
+    },
+    
+    # === CREDITI PER ENERGIA E AMBIENTE ===
+    {
+        "id": "credito_energia",
+        "nome": "Credito Energia e Gas",
+        "categoria": "credito_imposta",
+        "descrizione": "Credito per imprese energivore e gasivore",
+        "aliquota_energivore": 45,
+        "aliquota_non_energivore": 35,
+        "aliquota_gas": 45,
+        "requisiti": [
+            "Incremento costi energia >30% rispetto 2019",
+            "Contatori di energia"
+        ],
+        "normativa": "D.L. 17/2022 e successive proroghe",
+        "codice_tributo_f24": "6968",
+        "anno_validita": 2025,
+        "attivo": True
+    },
+    {
+        "id": "credito_transizione_ecologica",
+        "nome": "Credito Transizione 5.0",
+        "categoria": "credito_imposta",
+        "descrizione": "Per investimenti in transizione ecologica e digitale",
+        "aliquota": 45,  # Max per piccole imprese
+        "massimale": 50000000,
+        "requisiti": [
+            "Investimenti in beni 4.0",
+            "Riduzione consumi energetici certificata",
+            "Autoproduzione energia rinnovabile"
+        ],
+        "normativa": "D.L. 19/2024 - Piano Transizione 5.0",
+        "anno_validita": 2025,
+        "attivo": True
+    },
+    
+    # === ZES E ZONE SPECIALI ===
+    {
+        "id": "zes_unica",
+        "nome": "ZES Unica Mezzogiorno",
+        "categoria": "credito_imposta",
+        "descrizione": "Credito per investimenti nella ZES Unica",
+        "aliquota": 60,  # Piccole imprese
+        "aliquota_medie": 50,
+        "aliquota_grandi": 40,
+        "massimale": 100000000,
+        "regioni": ["Abruzzo", "Basilicata", "Calabria", "Campania", "Molise", "Puglia", "Sardegna", "Sicilia"],
+        "requisiti": [
+            "Investimenti in immobili strumentali",
+            "Macchinari e attrezzature",
+            "Struttura produttiva nella ZES"
+        ],
+        "normativa": "D.L. 124/2023",
+        "codice_tributo_f24": "7034",
+        "anno_validita": 2025,
+        "attivo": True
+    }
+]
+
+
+# ============================================
+# CALENDARIO FISCALE COMPLETO SRL
+# ============================================
+
+FONTE_SCADENZARIO_AE = "https://www1.agenziaentrate.gov.it/servizi/scadenzario/main.php?lang=it"
+
+
+def _sposta_da_weekend(data_iso: str) -> str:
+    """Sposta sabato/domenica al primo giorno lavorativo successivo."""
+    data = datetime.strptime(data_iso, "%Y-%m-%d")
+    while data.weekday() >= 5:
+        data += timedelta(days=1)
+    return data.strftime("%Y-%m-%d")
+
+
+def _scadenza_mese_successivo(anno: int, mese: int) -> str:
+    """Termine del 16 del mese successivo; in agosto il termine e' il 20."""
+    mese_scadenza = mese + 1
+    anno_scadenza = anno
+    if mese_scadenza == 13:
+        mese_scadenza = 1
+        anno_scadenza += 1
+    giorno = 20 if mese_scadenza == 8 else 16
+    return _sposta_da_weekend(f"{anno_scadenza}-{mese_scadenza:02d}-{giorno:02d}")
+
+def genera_scadenze_anno(anno: int) -> List[Dict]:
+    """Genera tutte le scadenze fiscali per l'anno"""
+    
+    scadenze = []
+    
+    # === IVA ===
+    # Liquidazioni mensili (contribuenti con volume affari > €400.000)
+    for mese in range(1, 13):
+        scadenze.append({
+            "id": f"iva_liq_{anno}_{mese:02d}",
+            "tipo": "IVA",
+            "descrizione": f"Liquidazione IVA {mese:02d}/{anno}",
+            "data": _scadenza_mese_successivo(anno, mese),
+            "periodicita": "mensile",
+            "codice_tributo": "6001" if mese == 1 else f"60{mese:02d}",
+            "note": "Versamento IVA mese precedente",
+            "categoria": "versamento",
+            "fonte_ufficiale": FONTE_SCADENZARIO_AE,
+        })
+    
+    # Acconto IVA
+    scadenze.append({
+        "id": f"iva_acconto_{anno}",
+        "tipo": "IVA",
+        "descrizione": f"Acconto IVA {anno}",
+        "data": f"{anno}-12-27",
+        "codice_tributo": "6013",
+        "note": "Acconto annuale: importo da verificare sul modello F24 del commercialista",
+        "categoria": "versamento"
+    })
+    
+    # Dichiarazione IVA annuale
+    scadenze.append({
+        "id": f"dich_iva_{anno}",
+        "tipo": "IVA",
+        "descrizione": f"Dichiarazione IVA annuale {anno}",
+        "data": f"{anno+1}-04-30",
+        "note": "Termine presentazione dichiarazione IVA",
+        "categoria": "dichiarazione"
+    })
+    
+    # Comunicazione LIPE
+    scadenze_lipe = [
+        (f"{anno}-05-31", "1° trimestre"),
+        (f"{anno}-09-30", "2° trimestre"),
+        (f"{anno}-11-30", "3° trimestre"),
+        (f"{anno+1}-02-28", "4° trimestre"),
+    ]
+    for data, periodo in scadenze_lipe:
+        scadenze.append({
+            "id": f"lipe_{anno}_{periodo[:1]}",
+            "tipo": "LIPE",
+            "descrizione": f"Comunicazione LIPE {periodo} {anno}",
+            "data": data,
+            "categoria": "comunicazione"
+        })
+    
+    # === IMPOSTE DIRETTE ===
+    # Saldo + acconto IRES/IRAP
+    scadenze.append({
+        "id": f"ires_saldo_{anno-1}",
+        "tipo": "IRES",
+        "descrizione": f"Saldo IRES {anno-1} + 1° acconto {anno}",
+        "data": f"{anno}-06-30",
+        "codice_tributo": "2003",
+        "note": "Saldo anno precedente + 40% acconto anno corrente",
+        "categoria": "versamento"
+    })
+    
+    scadenze.append({
+        "id": f"irap_saldo_{anno-1}",
+        "tipo": "IRAP",
+        "descrizione": f"Saldo IRAP {anno-1} + 1° acconto {anno}",
+        "data": f"{anno}-06-30",
+        "codice_tributo": "3800",
+        "categoria": "versamento"
+    })
+    
+    # Secondo acconto
+    scadenze.append({
+        "id": f"ires_acconto2_{anno}",
+        "tipo": "IRES",
+        "descrizione": f"2° acconto IRES {anno}",
+        "data": f"{anno}-11-30",
+        "codice_tributo": "2002",
+        "note": "60% dell'acconto totale",
+        "categoria": "versamento"
+    })
+    
+    scadenze.append({
+        "id": f"irap_acconto2_{anno}",
+        "tipo": "IRAP",
+        "descrizione": f"2° acconto IRAP {anno}",
+        "data": f"{anno}-11-30",
+        "codice_tributo": "3813",
+        "categoria": "versamento"
+    })
+    
+    # Dichiarazione Redditi SC
+    scadenze.append({
+        "id": f"redditi_sc_{anno-1}",
+        "tipo": "REDDITI",
+        "descrizione": f"Dichiarazione Redditi SC {anno-1}",
+        "data": f"{anno}-10-31",
+        "note": "Modello Redditi Società di Capitali",
+        "categoria": "dichiarazione"
+    })
+    
+    # === RITENUTE E 770 ===
+    # Versamento ritenute mensili
+    for mese in range(1, 13):
+        scadenze.append({
+            "id": f"ritenute_{anno}_{mese:02d}",
+            "tipo": "RITENUTE",
+            "descrizione": f"Versamento ritenute {mese:02d}/{anno}",
+            "data": _scadenza_mese_successivo(anno, mese),
+            "codice_tributo": "1040",  # Lavoro dipendente
+            "note": "Ritenute su lavoro dipendente, autonomo, provvigioni",
+            "categoria": "versamento"
+        })
+    
+    # Modello 770
+    scadenze.append({
+        "id": f"mod_770_{anno-1}",
+        "tipo": "770",
+        "descrizione": f"Dichiarazione 770/{anno} (anno {anno-1})",
+        "data": f"{anno}-10-31",
+        "categoria": "dichiarazione"
+    })
+    
+    # CU - Certificazione Unica
+    scadenze.append({
+        "id": f"cu_{anno-1}",
+        "tipo": "CU",
+        "descrizione": f"Certificazione Unica {anno} (redditi {anno-1})",
+        "data": f"{anno}-03-16",
+        "note": "Invio telematico all'Agenzia Entrate",
+        "categoria": "dichiarazione"
+    })
+    
+    scadenze.append({
+        "id": f"cu_consegna_{anno-1}",
+        "tipo": "CU",
+        "descrizione": "Consegna CU ai percipienti",
+        "data": f"{anno}-03-16",
+        "categoria": "adempimento"
+    })
+    
+    # === IMU ===
+    scadenze.append({
+        "id": f"imu_acconto_{anno}",
+        "tipo": "IMU",
+        "descrizione": f"Acconto IMU {anno}",
+        "data": f"{anno}-06-16",
+        "codice_tributo": "3918",  # Fabbricati D
+        "note": "50% dell'imposta annua",
+        "categoria": "versamento"
+    })
+    
+    scadenze.append({
+        "id": f"imu_saldo_{anno}",
+        "tipo": "IMU",
+        "descrizione": f"Saldo IMU {anno}",
+        "data": f"{anno}-12-16",
+        "codice_tributo": "3918",
+        "categoria": "versamento"
+    })
+    
+    # === CONTRIBUTI INPS ===
+    for mese in range(1, 13):
+        scadenze.append({
+            "id": f"inps_{anno}_{mese:02d}",
+            "tipo": "INPS",
+            "descrizione": f"Contributi INPS dipendenti {mese:02d}/{anno}",
+            "data": _scadenza_mese_successivo(anno, mese),
+            "note": "Contributi mese precedente",
+            "categoria": "versamento"
+        })
+    
+    # === BILANCIO E ASSEMBLEE ===
+    scadenze.append({
+        "id": f"bilancio_approv_{anno-1}",
+        "tipo": "BILANCIO",
+        "descrizione": f"Approvazione bilancio {anno-1}",
+        "data": f"{anno}-04-30",
+        "note": "Entro 120 giorni dalla chiusura esercizio (prorogabile a 180)",
+        "categoria": "assemblea"
+    })
+    
+    scadenze.append({
+        "id": f"bilancio_deposito_{anno-1}",
+        "tipo": "BILANCIO",
+        "descrizione": f"Deposito bilancio {anno-1} al Registro Imprese",
+        "data": f"{anno}-05-30",
+        "note": "Entro 30 giorni dall'approvazione",
+        "categoria": "adempimento"
+    })
+    
+    # === INTRASTAT ===
+    for mese in range(1, 13):
+        scadenze.append({
+            "id": f"intrastat_{anno}_{mese:02d}",
+            "tipo": "INTRASTAT",
+            "descrizione": f"Intrastat {mese:02d}/{anno}",
+            "data": f"{anno}-{mese:02d}-25",
+            "note": "Operazioni intracomunitarie mese precedente",
+            "categoria": "comunicazione"
+        })
+    
+    # === ALTRI ADEMPIMENTI ===
+    # Libro inventari
+    scadenze.append({
+        "id": f"libro_inventari_{anno-1}",
+        "tipo": "INVENTARI",
+        "descrizione": f"Stampa/archiviazione libro inventari {anno-1}",
+        "data": f"{anno}-12-31",
+        "note": "Entro 3 mesi dal termine dichiarazione",
+        "categoria": "adempimento"
+    })
+    
+    # Conservazione documenti
+    scadenze.append({
+        "id": f"conservazione_{anno-1}",
+        "tipo": "CONSERVAZIONE",
+        "descrizione": f"Conservazione digitale documenti {anno-1}",
+        "data": f"{anno}-12-31",
+        "note": "Entro 3 mesi dal termine dichiarazione",
+        "categoria": "adempimento"
+    })
+    
+    # Diritto annuale CCIAA
+    scadenze.append({
+        "id": f"cciaa_{anno}",
+        "tipo": "CCIAA",
+        "descrizione": f"Diritto annuale Camera di Commercio {anno}",
+        "data": f"{anno}-06-30",
+        "categoria": "versamento"
+    })
+    
+    # Vidimazione libri sociali
+    scadenze.append({
+        "id": f"vidimazione_{anno}",
+        "tipo": "LIBRI_SOCIALI",
+        "descrizione": f"Vidimazione libri sociali {anno}",
+        "data": f"{anno}-03-16",
+        "note": "Tassa annuale vidimazione libri €309,87 (o €516,46)",
+        "codice_tributo": "7085",
+        "categoria": "versamento"
+    })
+    
+    # Le scadenze annuali possono essere prorogate o dipendere dalla posizione
+    # concreta dell'azienda. Il calendario e' quindi un promemoria operativo,
+    # non una prova di adempimento. Ogni riga espone la fonte e segnala quando
+    # l'applicabilita' deve essere confermata con il commercialista.
+    tipi_condizionali = {
+        "IMU", "INTRASTAT", "CCIAA", "LIBRI_SOCIALI", "INVENTARI",
+        "CONSERVAZIONE",
+    }
+    regole_periodiche = {"IVA", "RITENUTE", "INPS"}
+    for scadenza in scadenze:
+        scadenza["data"] = _sposta_da_weekend(scadenza["data"])
+        scadenza.setdefault("fonte_ufficiale", FONTE_SCADENZARIO_AE)
+        scadenza["applicabilita"] = (
+            "da_verificare" if scadenza.get("tipo") in tipi_condizionali else "ordinaria"
+        )
+        scadenza["stato_data"] = (
+            "regola_periodica"
+            if scadenza.get("tipo") in regole_periodiche
+            else "verificare_su_scadenzario"
+        )
+
+    return scadenze
+
+
+# ============================================
+# MODELLI PYDANTIC
+# ============================================
+
+class F24Create(BaseModel):
+    """Registrazione F24"""
+    data_versamento: str
+    data_scadenza: str
+    tributi: List[Dict[str, Any]]  # [{codice_tributo, importo, periodo_riferimento, anno}]
+    crediti_compensati: Optional[List[Dict[str, Any]]] = None
+    totale_versato: float
+    modalita: str = "telematico"  # telematico, banca
+    note: Optional[str] = None
+
+
+# ============================================
+# HELPER
+# ============================================
+
+def round_currency(amount: float) -> float:
+    return float(Decimal(str(amount)).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP))
+
+
+# `crea_scrittura` e' stata rimossa il 19/09/2026 (audit sui sistemi paralleli).
+# Era una SECONDA partita doppia, con schema inglese (`debit`/`credit`/
+# `account_code`/`state: posted`), che scriveva in `scritture_partita_doppia` e
+# `prima_nota_righe`. Nessuna delle due esiste nel database — zero righe — e la
+# funzione non era chiamata da nessuna parte. Il libro giornale vero e'
+# `movimenti_contabili` (1.069 righe), scritto da
+# `app/routers/accounting/contabilita_gestionale.py`.
+
+
+# ============================================
+# ENDPOINTS AGEVOLAZIONI
+# ============================================
+
+@router.get("/agevolazioni")
+async def lista_agevolazioni(
+    categoria: str = Query(None),
+    attivo: bool = Query(True)
+) -> Dict[str, Any]:
+    """Lista tutte le agevolazioni fiscali per SRL"""
+    db = Database.get_db()
+    
+    # Carica da database se presenti, altrimenti usa default
+    agevolazioni = await db["agevolazioni_fiscali"].find(
+        {"attivo": attivo} if attivo else {},
+        {"_id": 0}
+    ).to_list(100)
+    
+    if not agevolazioni:
+        # Inizializza database con copie dei dati default
+        for ag in AGEVOLAZIONI_FISCALI_SRL:
+            ag_copy = dict(ag)  # Copia per evitare mutazione con _id
+            ag_copy["created_at"] = datetime.now(timezone.utc).isoformat()
+            await db["agevolazioni_fiscali"].insert_one(ag_copy)
+        # Ricarica dal database senza _id
+        agevolazioni = await db["agevolazioni_fiscali"].find({}, {"_id": 0}).to_list(100)
+    
+    if categoria:
+        agevolazioni = [a for a in agevolazioni if a.get("categoria") == categoria]
+    
+    return {
+        "success": True,
+        "totale": len(agevolazioni),
+        "categorie": list(set(a.get("categoria") for a in agevolazioni)),
+        "agevolazioni": agevolazioni
+    }
+
+
+@router.get("/agevolazioni/{agevolazione_id}")
+async def dettaglio_agevolazione(agevolazione_id: str) -> Dict[str, Any]:
+    """Dettaglio singola agevolazione"""
+    db = Database.get_db()
+    
+    ag = await db["agevolazioni_fiscali"].find_one({"id": agevolazione_id}, {"_id": 0})
+    if not ag:
+        # Cerca nei default
+        ag = next((a for a in AGEVOLAZIONI_FISCALI_SRL if a["id"] == agevolazione_id), None)
+    
+    if not ag:
+        raise HTTPException(status_code=404, detail="Agevolazione non trovata")
+    
+    return {"success": True, "agevolazione": ag}
+
+
+@router.post("/agevolazioni/simula")
+async def simula_agevolazione(
+    agevolazione_id: str = Query(...),
+    importo_investimento: float = Query(...),
+    dimensione_impresa: str = Query("piccola")  # piccola, media, grande
+) -> Dict[str, Any]:
+    """Simula il beneficio di un'agevolazione"""
+    db = Database.get_db()
+    
+    ag = await db["agevolazioni_fiscali"].find_one({"id": agevolazione_id}, {"_id": 0})
+    if not ag:
+        ag = next((a for a in AGEVOLAZIONI_FISCALI_SRL if a["id"] == agevolazione_id), None)
+    
+    if not ag:
+        raise HTTPException(status_code=404, detail="Agevolazione non trovata")
+    
+    # Determina aliquota
+    if dimensione_impresa == "piccola":
+        aliquota = ag.get("aliquota", 0)
+    elif dimensione_impresa == "media":
+        aliquota = ag.get("aliquota_medie", ag.get("aliquota", 0))
+    else:
+        aliquota = ag.get("aliquota_grandi", ag.get("aliquota", 0))
+    
+    # Calcola beneficio
+    beneficio_lordo = round_currency(importo_investimento * aliquota / 100)
+    
+    # Applica massimale
+    massimale = ag.get("massimale", float('inf'))
+    beneficio_netto = min(beneficio_lordo, massimale)
+    
+    return {
+        "success": True,
+        "agevolazione": ag["nome"],
+        "importo_investimento": importo_investimento,
+        "dimensione_impresa": dimensione_impresa,
+        "aliquota_applicata": aliquota,
+        "beneficio_lordo": beneficio_lordo,
+        "massimale": massimale,
+        "beneficio_netto": beneficio_netto,
+        "codice_tributo": ag.get("codice_tributo_f24"),
+        "note": ag.get("note", "")
+    }
+
+
+# ============================================
+# ENDPOINTS CALENDARIO FISCALE
+# ============================================
+
+_CAMPI_STATO_CALENDARIO = {
+    "completato",
+    "data_completamento",
+    "note_completamento",
+    "completato_da",
+    "quietanza_id",
+    "f24_id",
+    "created_at",
+    "updated_at",
+}
+
+
+def _scegli_stato_persistito(record: Dict[str, Any]) -> tuple:
+    """Ordina i duplicati legacy preferendo evidenza e stato completato."""
+    fonte = str(record.get("completato_da") or "")
+    return (
+        bool(record.get("completato")),
+        fonte == "quietanza_f24",
+        bool(record.get("quietanza_id") or record.get("f24_id")),
+        str(record.get("updated_at") or record.get("data_completamento") or ""),
+    )
+
+
+def _arricchisci_stato_scadenza(scadenza: Dict[str, Any]) -> Dict[str, Any]:
+    completata = bool(scadenza.get("completato"))
+    fonte = str(scadenza.get("completato_da") or "")
+    if not completata:
+        provenienza = "nessuna_evidenza"
+        evidenza = "nessuna"
+    elif fonte == "quietanza_f24":
+        provenienza = "quietanza_f24"
+        evidenza = "documentale"
+    elif fonte == "conferma_manuale":
+        provenienza = "conferma_manuale"
+        evidenza = "manuale"
+    else:
+        provenienza = "manuale_legacy_non_tracciata"
+        evidenza = "da_verificare"
+    return {
+        **scadenza,
+        "completato": completata,
+        "provenienza_stato": provenienza,
+        "livello_evidenza": evidenza,
+    }
+
+
+async def _leggi_calendario_anno(db, anno: int) -> List[Dict[str, Any]]:
+    """Compone template e stati persistiti senza scrivere nel database."""
+    generate = genera_scadenze_anno(anno)
+    persistite = await db["calendario_fiscale"].find(
+        {"anno": anno}, {"_id": 0}
+    ).to_list(1000)
+
+    per_id: Dict[str, Dict[str, Any]] = {}
+    extra_legacy: List[Dict[str, Any]] = []
+    for record in persistite:
+        sid = str(record.get("id") or "")
+        if not sid:
+            extra_legacy.append(record)
+            continue
+        precedente = per_id.get(sid)
+        if precedente is None or _scegli_stato_persistito(record) > _scegli_stato_persistito(precedente):
+            per_id[sid] = record
+
+    risultato: List[Dict[str, Any]] = []
+    ids_generati = set()
+    for template in generate:
+        sid = template["id"]
+        ids_generati.add(sid)
+        stato = per_id.get(sid, {})
+        campi_stato = {k: stato[k] for k in _CAMPI_STATO_CALENDARIO if k in stato}
+        risultato.append(_arricchisci_stato_scadenza({
+            **template,
+            "anno": anno,
+            **campi_stato,
+            "origine_regola": "template_gestionale",
+        }))
+
+    # I promemoria personalizzati/legacy restano visibili, ma non duplicano
+    # le righe generate con lo stesso id.
+    for sid, record in per_id.items():
+        if sid not in ids_generati:
+            risultato.append(_arricchisci_stato_scadenza({
+                **record,
+                "anno": anno,
+                "origine_regola": "record_personalizzato",
+                "applicabilita": record.get("applicabilita", "da_verificare"),
+                "stato_data": record.get("stato_data", "da_verificare"),
+            }))
+    for record in extra_legacy:
+        risultato.append(_arricchisci_stato_scadenza({
+            **record,
+            "anno": anno,
+            "origine_regola": "record_legacy_senza_id",
+            "applicabilita": "da_verificare",
+            "stato_data": "da_verificare",
+        }))
+
+    return risultato
+
+@router.get("/calendario/scadenze-imminenti")
+async def scadenze_imminenti(
+    giorni: int = Query(30, ge=1, le=366),
+    anno: int = Query(None),
+) -> Dict[str, Any]:
+    """Scadenze nei prossimi N giorni"""
+    try:
+        from datetime import datetime, timedelta
+        db = Database.get_db()
+        oggi = datetime.now()
+        anno = anno or oggi.year
+        oggi_str = oggi.strftime("%Y-%m-%d")
+        limite = (oggi + timedelta(days=giorni)).strftime("%Y-%m-%d")
+        tutte = await _leggi_calendario_anno(db, anno)
+        scadenze = sorted(
+            [
+                s for s in tutte
+                if oggi_str <= str(s.get("data") or "") <= limite
+                and not s.get("completato")
+            ],
+            key=lambda s: str(s.get("data") or ""),
+        )
+        urgenti, prossime, future = [], [], []
+        for s in scadenze:
+            try:
+                diff = (datetime.strptime(str(s.get("data",""))[:10], "%Y-%m-%d") - oggi).days
+                if diff <= 7: urgenti.append(s)
+                elif diff <= 14: prossime.append(s)
+                else: future.append(s)
+            except Exception:
+                future.append(s)
+        return {"success": True, "periodo": f"{oggi_str} - {limite}",
+                "urgenti_7_giorni": urgenti, "prossime_8_14_giorni": prossime,
+                "future_15_plus": future, "totale": len(scadenze)}
+    except Exception as e:
+        import traceback
+        return {"success": False, "error": str(e), "trace": traceback.format_exc()[-300:]}
+
+
+@router.get("/calendario/{anno}")
+async def calendario_fiscale(anno: int, request: Request) -> Dict[str, Any]:
+    """Legge il calendario fiscale senza modificare il database."""
+    db = Database.get_db()
+    from app.services.calendario_piano import collega_al_piano
+
+    existing = await _leggi_calendario_anno(db, anno)
+    # I codici attesi e le prove F24 del Piano tributi sono dati riservati all'admin (come il Piano).
+    # Il ruolo lo ha gia' deciso il middleware (token o cookie di sessione): non si rilegge il solo Bearer.
+    if getattr(request.state, "user_role", None) == "admin":
+        existing = await collega_al_piano(db, anno, existing)
+
+    # Raggruppa per mese
+    per_mese = {}
+    for s in existing:
+        mese = s["data"][5:7] if s.get("data") else "00"
+        if mese not in per_mese:
+            per_mese[mese] = []
+        per_mese[mese].append(s)
+    
+    # Ordina per data
+    for mese in per_mese:
+        per_mese[mese].sort(key=lambda x: x.get("data", ""))
+    
+    # Prossime scadenze
+    oggi = datetime.now().strftime("%Y-%m-%d")
+    prossime = [s for s in existing if s.get("data", "") >= oggi and not s.get("completato")]
+    prossime.sort(key=lambda x: x.get("data", ""))
+    limite_7 = (datetime.now() + timedelta(days=7)).strftime("%Y-%m-%d")
+    imminenti_7 = [s for s in prossime if s.get("data", "") <= limite_7]
+    
+    return {
+        "success": True,
+        "anno": anno,
+        "totale_scadenze": len(existing),
+        "completate": len([s for s in existing if s.get("completato")]),
+        "scadenze_per_mese": per_mese,
+        "prossime_5": prossime[:5],
+        "imminenti_7_giorni": imminenti_7,
+        "scadenze": existing,
+        "modalita_lettura": "sola_lettura",
+        "scritture_eseguite": 0,
+        "fonte_scadenze": FONTE_SCADENZARIO_AE,
+        "avvertenza": (
+            "Le date sono promemoria operativi: verificare applicabilita' e "
+            "proroghe sullo scadenzario ufficiale e con il commercialista."
+        ),
+    }
+
+
+@router.post("/calendario/completa/{scadenza_id}")
+async def completa_scadenza(
+    scadenza_id: str,
+    anno: int = Query(None),
+    note: str = Query(None, max_length=500),
+) -> Dict[str, Any]:
+    """Conferma manuale esplicita, tracciata e idempotente (writer unico in
+    ``calendario_conferme``, lo stesso della conferma massiva)."""
+    from app.services.calendario_conferme import conferma_scadenza
+
+    db = Database.get_db()
+
+    esistente = await db["calendario_fiscale"].find_one(
+        {"id": scadenza_id, **({"anno": anno} if anno else {})}, {"_id": 0}
+    )
+    if anno is None:
+        if not esistente:
+            raise HTTPException(
+                status_code=400,
+                detail="Specificare l'anno per confermare una scadenza non ancora persistita",
+            )
+        anno = int(esistente.get("anno"))
+
+    template = next(
+        (s for s in genera_scadenze_anno(anno) if s.get("id") == scadenza_id),
+        None,
+    )
+    if not template and not esistente:
+        raise HTTPException(status_code=404, detail="Scadenza non trovata")
+    esito = await conferma_scadenza(db, anno=anno, scadenza_id=scadenza_id, note=note, template=template)
+    if esito.get("esito") == "gia_completata":
+        return {"success": True, "message": "Scadenza gia' completata", "idempotente": True}
+    if esito.get("esito") == "futura":
+        raise HTTPException(
+            status_code=409,
+            detail=f"La scadenza del {esito.get('data')} non e' ancora arrivata: non puo' risultare adempiuta",
+        )
+    if not esito.get("success"):
+        raise HTTPException(status_code=404, detail="Scadenza non trovata")
+    return {
+        "success": True,
+        "message": "Scadenza confermata manualmente",
+        "modificati": esito.get("modificati", 0),
+    }
+
+
+@router.post("/calendario/conferma-massiva")
+async def conferma_massiva_calendario(
+    dal: int = Query(..., ge=2000, le=2100),
+    al: int = Query(None, ge=2000, le=2100),
+    escludi: str = Query("INTRASTAT", description="Tipi da non confermare, separati da virgola"),
+    note: str = Query(None, max_length=500),
+    dry_run: bool = Query(True),
+    _admin: Dict[str, Any] = Depends(get_current_admin_user),
+) -> Dict[str, Any]:
+    """Conferma in blocco le scadenze passate degli anni indicati (titolare).
+
+    Con ``dry_run`` (predefinito) elenca cosa verrebbe confermato senza
+    scrivere. Le scadenze future, i tipi esclusi e quelle gia' completate
+    non si toccano.
+    """
+    from app.services.calendario_conferme import conferma_massiva
+
+    escludi_tipi = [t.strip() for t in (escludi or "").split(",") if t.strip()]
+    return await conferma_massiva(
+        Database.get_db(), dal=dal, al=al, escludi_tipi=escludi_tipi, note=note,
+        utente=str(_admin.get("user_id") or _admin.get("username") or "admin"), dry_run=dry_run,
+    )
+
+
+@router.post("/calendario/riapri/{scadenza_id}")
+async def riapri_scadenza(
+    scadenza_id: str,
+    anno: int = Query(...),
+    motivo: str = Query(..., min_length=3, max_length=500),
+) -> Dict[str, Any]:
+    """Annulla una conferma manuale; le evidenze F24 restano protette."""
+    db = Database.get_db()
+    esistente = await db["calendario_fiscale"].find_one(
+        {"anno": anno, "id": scadenza_id}, {"_id": 0}
+    )
+    if not esistente:
+        raise HTTPException(status_code=404, detail="Scadenza non trovata")
+    if esistente.get("completato_da") == "quietanza_f24":
+        raise HTTPException(
+            status_code=409,
+            detail="La scadenza deriva da una quietanza F24 e non puo' essere riaperta manualmente",
+        )
+    if not esistente.get("completato"):
+        return {"success": True, "message": "Scadenza gia' aperta", "idempotente": True}
+
+    now = datetime.now(timezone.utc).isoformat()
+    await db["calendario_fiscale"].update_one(
+        {"anno": anno, "id": scadenza_id},
+        {
+            "$set": {
+                "completato": False,
+                "riaperta_il": now,
+                "riaperta_da": "conferma_manuale",
+                "motivo_riapertura": motivo,
+                "updated_at": now,
+            },
+            "$unset": {
+                "data_completamento": "",
+                "note_completamento": "",
+                "completato_da": "",
+            },
+        },
+    )
+    from app.services.audit_logger import log_evento
+    await log_evento(
+        modulo="calendario_fiscale",
+        azione="scadenza_riaperta",
+        entita_id=scadenza_id,
+        entita_collection="calendario_fiscale",
+        vecchio_stato={"completato": True, "fonte": esistente.get("completato_da")},
+        nuovo_stato={"completato": False, "anno": anno, "motivo": motivo},
+        fonte="pagina_calendario_fiscale",
+        utente="utente_autenticato",
+        db=db,
+    )
+    return {"success": True, "message": "Scadenza riaperta"}
+
+
+@router.get("/notifiche-scadenze")
+async def get_notifiche_scadenze_imminenti(
+    giorni: int = Query(7, ge=1, le=30),
+    anno: int = Query(None)
+) -> Dict[str, Any]:
+    """Scadenze imminenti per notifiche."""
+    try:
+        from datetime import datetime, timedelta
+        db = Database.get_db()
+        anno = anno or datetime.now().year
+        oggi = datetime.now()
+        oggi_str = oggi.strftime("%Y-%m-%d")
+        limite_str = (oggi + timedelta(days=giorni)).strftime("%Y-%m-%d")
+        tutte = await _leggi_calendario_anno(db, anno)
+        scadenze = sorted(
+            [
+                s for s in tutte
+                if oggi_str <= str(s.get("data") or "") <= limite_str
+                and not s.get("completato")
+            ],
+            key=lambda s: str(s.get("data") or ""),
+        )[:50]
+        urgenti, prossime, normali = [], [], []
+        for s in scadenze:
+            try:
+                diff = (datetime.strptime(str(s.get("data",""))[:10], "%Y-%m-%d") - oggi).days
+                if diff <= 3: urgenti.append(s)
+                elif diff <= 7: prossime.append(s)
+                else: normali.append(s)
+            except Exception:
+                normali.append(s)
+        return {"success": True, "anno": anno, "giorni_analizzati": giorni,
+                "totale_imminenti": len(scadenze), "urgenti": urgenti,
+                "prossime": prossime, "pianificabili": normali,
+                "riepilogo": {"critiche": len(urgenti), "alta_priorita": len(prossime), "normali": len(normali)}}
+    except Exception as e:
+        import traceback
+        return {"success": False, "error": str(e), "trace": traceback.format_exc()[-300:]}
+
+
+@router.post("/notifiche-scadenze/invia")
+async def invia_notifica_scadenza(
+    scadenza_id: str = Query(...),
+    tipo_notifica: str = Query("dashboard", enum=["dashboard", "email"]),
+    anno: int = Query(None),
+) -> Dict[str, Any]:
+    """
+    Crea una notifica per una scadenza specifica.
+    
+    Tipi:
+    - dashboard: Notifica visibile in app
+    - email: Prepara email (richiede integrazione email)
+    """
+    db = Database.get_db()
+    
+    # Recupera scadenza
+    scadenza = await db["calendario_fiscale"].find_one(
+        {"id": scadenza_id, **({"anno": anno} if anno else {})}, {"_id": 0}
+    )
+    if not scadenza and anno:
+        scadenza = next(
+            (s for s in genera_scadenze_anno(anno) if s.get("id") == scadenza_id),
+            None,
+        )
+    if not scadenza:
+        raise HTTPException(status_code=404, detail="Scadenza non trovata")
+    
+    now = datetime.now(timezone.utc).isoformat()
+    
+    if tipo_notifica == "dashboard":
+        # Crea notifica in app
+        notifica = {
+            "id": str(uuid.uuid4()),
+            "tipo": "scadenza_fiscale",
+            "titolo": f"Scadenza: {scadenza.get('descrizione', 'N/A')}",
+            "messaggio": f"Scadenza il {scadenza.get('data', 'N/A')} - {scadenza.get('tipo', '').upper()}",
+            "data": scadenza.get("data"),
+            "scadenza_id": scadenza_id,
+            "letta": False,
+            "created_at": now
+        }
+        await db["notifications"].insert_one(notifica)
+        
+        return {
+            "success": True,
+            "tipo": "dashboard",
+            "notifica_id": notifica["id"],
+            "message": "Notifica creata in dashboard"
+        }
+    
+    elif tipo_notifica == "email":
+        # Prepara template email (non invia, serve integrazione)
+        email_data = {
+            "oggetto": f"[SCADENZA FISCALE] {scadenza.get('descrizione', '')}",
+            "corpo": f"""
+Promemoria scadenza fiscale:
+
+Descrizione: {scadenza.get('descrizione', 'N/A')}
+Data scadenza: {scadenza.get('data', 'N/A')}
+Tipo: {scadenza.get('tipo', 'N/A').upper()}
+Note: {scadenza.get('note', '-')}
+
+---
+Questo promemoria è stato generato automaticamente dal sistema.
+            """.strip(),
+            "scadenza": scadenza,
+            "prepared_at": now
+        }
+        
+        return {
+            "success": True,
+            "tipo": "email",
+            "email_data": email_data,
+            "message": "Email preparata (richiede integrazione email per invio)"
+        }
+    
+    return {"success": False, "error": "Tipo notifica non valido"}
+
+
+# ============================================
+# ENDPOINTS F24
+# ============================================
+
+@router.post("/f24/registra")
+async def registra_f24(f24: F24Create) -> Dict[str, Any]:
+    """
+    Restituisce una proposta contabile, senza registrare scritture.
+
+    Il vecchio endpoint trasformava una richiesta manuale in una scrittura
+    ``posted`` usando la sola data/importo del modello. Un F24 modello non e'
+    prova di pagamento: la registrazione richiede quietanza/ricevuta e
+    riconciliazione bancaria in un passaggio successivo.
+    """
+    def cents(value: Any) -> int:
+        text = str(value or "0").strip()
+        text = text.replace(".", "").replace(",", ".") if "," in text else text
+        try:
+            return int((Decimal(text) * 100).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+        except Exception:
+            return 0
+
+    rows = []
+    for tributo in f24.tributi:
+        rows.append({
+            "codice_tributo": tributo.get("codice_tributo", ""),
+            "periodo_riferimento": tributo.get("periodo_riferimento") or tributo.get("anno"),
+            "importo_debito_cents": cents(tributo.get("importo")),
+        })
+    for credito in f24.crediti_compensati or []:
+        rows.append({
+            "codice_tributo": credito.get("codice_tributo", ""),
+            "periodo_riferimento": credito.get("periodo_riferimento") or credito.get("anno"),
+            "importo_credito_cents": cents(credito.get("importo")),
+        })
+    document = {
+        "tipo_documento": "F24_MODELLO",
+        "dati_generali": {
+            "data_stampa": f24.data_versamento,
+            "data_compilazione": f24.data_versamento,
+            "scadenza_nominale": f24.data_scadenza,
+        },
+        "sezione_erario": rows,
+        "totali": {"saldo_netto_cents": cents(f24.totale_versato)},
+    }
+    from app.services.fiscal_accounting_policy import build_journal_proposal
+
+    proposal = build_journal_proposal(document, document_type="F24_MODELLO")
+    return {
+        "success": False,
+        "blocked": True,
+        "action": "JOURNAL_PROPOSAL_ONLY",
+        "message": "Nessuna scrittura registrata: modello F24 senza prova di pagamento",
+        "journal_proposal": proposal,
+    }
+
+
+@router.get("/f24/storico")
+async def storico_f24(anno: int = Query(None)) -> Dict[str, Any]:
+    """Storico F24 versati"""
+    db = Database.get_db()
+    
+    query = {}
+    if anno:
+        query["data_versamento"] = {"$regex": f"^{anno}"}
+    
+    f24s = await db["f24_unificato"].find(query, {"_id": 0}).sort("data_versamento", -1).to_list(500)
+    
+    totale_versato = sum(f.get("totale_versato", 0) for f in f24s)
+    totale_compensato = sum(f.get("totale_compensato", 0) for f in f24s)
+    
+    return {
+        "success": True,
+        "anno": anno,
+        "totale_f24": len(f24s),
+        "totale_versato": round_currency(totale_versato),
+        "totale_compensato": round_currency(totale_compensato),
+        "f24": f24s
+    }
+
+
+# NB: chiusura/apertura esercizio RIMOSSE (audit mappa lug 2026).
+# Flusso canonico usato dal frontend (ChiusuraEsercizio.jsx):
+# app/routers/chiusura_esercizio.py -> /api/chiusura-esercizio/*.

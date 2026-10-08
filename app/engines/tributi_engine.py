@@ -1,0 +1,665 @@
+"""
+Motore UNICO tributi F24 — classificazione, scadenze, ravvedimenti,
+associazione F24↔cedolini e anti-duplicazione DM10↔RC01.
+
+Implementa la "Specifica definitiva F24/Cedolini/IRES/IRAP/Chat"
+(la specifica del titolare (non è nel repository: vale il codice)), in particolare:
+  - §6-10: tabella normativa dei codici tributo e causali per ente;
+  - §11:  classificazione automatica di ogni riga (natura, ente,
+          deducibilità, motivazione);
+  - §3/12: le ritenute e le quote trattenute al lavoratore NON sono un
+          nuovo costo se la retribuzione lorda è già contabilizzata —
+          il saldo F24 non è mai automaticamente il costo deducibile;
+  - §15:  regole di associazione F24 ↔ cedolini con motivazione leggibile;
+  - §20:  scadenza naturale, giorni di ritardo, stato pagamento e tipo
+          versamento (ordinario / ravvedimento / regolarizzazione);
+  - §21/23: collegamento DM10 ↔ RC01 e rilevazione possibile doppio
+          pagamento.
+
+Tutte le funzioni sono PURE (nessun accesso al DB): lavorano sui
+documenti F24 così come sono salvati (sezione_erario, sezione_inps,
+sezione_regioni, sezione_tributi_locali, sezione_inail, dati_generali)
+e sono riusate da router, chat intelligente e pipeline quietanze.
+"""
+import re
+from datetime import date, datetime
+from typing import Any, Dict, List, Optional
+
+# ── Nature possibili di una riga (§11) ─────────────────────────────────────
+NATURE = ("costo", "ritenuta", "credito", "sanzione", "regolarizzazione", "pagamento")
+
+# ── Tabella normativa Erario (§6) ──────────────────────────────────────────
+# deducibilita: 'si' | 'no' | 'parziale' | 'da_verificare'
+TABELLA_ERARIO: Dict[str, Dict[str, str]] = {
+    "1001": {"descrizione": "Ritenute su retribuzioni", "natura": "ritenuta",
+             "ente": "Erario", "deducibilita": "no",
+             "nota": "Debito verso Erario: trattenuta al lavoratore, non nuovo costo"},
+    "1002": {"descrizione": "Ritenute su arretrati", "natura": "ritenuta",
+             "ente": "Erario", "deducibilita": "no",
+             "nota": "Debito verso Erario"},
+    "1012": {"descrizione": "Ritenute su cessazione/TFR", "natura": "ritenuta",
+             "ente": "Erario", "deducibilita": "no",
+             "nota": "Debito verso Erario"},
+    "1701": {"descrizione": "Credito trattamento integrativo", "natura": "credito",
+             "ente": "Erario", "deducibilita": "no",
+             "nota": "Credito compensabile, non costo"},
+    "8906": {"descrizione": "Sanzioni sostituto d'imposta", "natura": "sanzione",
+             "ente": "Erario", "deducibilita": "no",
+             "nota": "Sanzione: non è costo del personale"},
+    "6869": {"descrizione": "Credito investimenti Mezzogiorno", "natura": "credito",
+             "ente": "Erario", "deducibilita": "no",
+             "nota": "Credito fiscale compensato, non costo"},
+    # Addizionali (§7-8): ritenute del lavoratore, mai nuovo costo
+    "3802": {"descrizione": "Addizionale regionale IRPEF", "natura": "ritenuta",
+             "ente": "Regione", "deducibilita": "no",
+             "nota": "Trattenuta al lavoratore, debito verso la Regione"},
+    "3847": {"descrizione": "Addizionale comunale IRPEF — acconto", "natura": "ritenuta",
+             "ente": "Comune", "deducibilita": "no",
+             "nota": "Trattenuta al lavoratore, debito verso il Comune"},
+    "3848": {"descrizione": "Addizionale comunale IRPEF — saldo", "natura": "ritenuta",
+             "ente": "Comune", "deducibilita": "no",
+             "nota": "Trattenuta al lavoratore, debito verso il Comune"},
+}
+
+# Codici sanzioni/interessi da ravvedimento — fonte unica condivisa.
+from app.constants.codici_ravvedimento import CODICI_RAVVEDIMENTO
+
+# ── Causali INPS (§9) ──────────────────────────────────────────────────────
+CAUSALI_INPS: Dict[str, Dict[str, str]] = {
+    "DM10": {"descrizione": "Contributi correnti lavoratori dipendenti",
+             "natura": "costo", "ente": "INPS", "deducibilita": "parziale",
+             "nota": "Comprende quota datoriale (costo) E quota lavoratore "
+                     "(trattenuta): la quota di costo è quella datoriale dal "
+                     "prospetto paghe, mai l'intero totale F24"},
+    "CXX":  {"descrizione": "Gestione separata collaboratori",
+             "natura": "costo", "ente": "INPS", "deducibilita": "parziale",
+             "nota": "Quota committente = costo; quota collaboratore = trattenuta"},
+    "RC01": {"descrizione": "Regolarizzazione contributiva (ravvedimento)",
+             "natura": "regolarizzazione", "ente": "INPS", "deducibilita": "da_verificare",
+             "nota": "Riferita a un periodo PRECEDENTE: mai imputata come nuovo "
+                     "costo del mese di pagamento; collegare all'F24 originario"},
+}
+
+# ── Causali INAIL (§10) ────────────────────────────────────────────────────
+CAUSALI_INAIL: Dict[str, Dict[str, str]] = {
+    "P": {"descrizione": "Pagamento premi e accessori INAIL",
+          "natura": "costo", "ente": "INAIL", "deducibilita": "si",
+          "nota": "Premio a carico dell'impresa: deducibile per competenza"},
+}
+
+# Codici Regione noti (§7) e Comuni catastali rilevati (§8)
+CODICI_REGIONE = {"05": "Campania"}
+CODICI_COMUNE = {"F839": "Napoli", "B990": "Casoria"}
+
+
+def classifica_riga(sezione: str, codice: str) -> Dict[str, str]:
+    """Classificazione normativa di una riga F24 (§11).
+
+    Ritorna sempre un dict con natura/ente/deducibilita/descrizione/nota;
+    i codici non in tabella escono come 'da_verificare' con motivazione
+    esplicita (mai indovinare).
+    """
+    sez = (sezione or "").lower()
+    cod = (codice or "").strip().upper()
+
+    # Il registro ufficiale dell'Agenzia Entrate segnala il 1075 come
+    # inesistente. Non assegnare mai un conto o una natura contabile: la riga
+    # resta sospesa fino a verifica manuale dell'annualita'/fonte.
+    if cod == "1075":
+        return {
+            "codice": cod,
+            "sezione": sez or "erario",
+            "descrizione": "Codice tributo 1075 non validato dall'archivio ufficiale",
+            "natura": "non_validato",
+            "ente": "Erario",
+            "deducibilita": "da_verificare",
+            "nota": "Bloccato: verificare codice e annualita' con Agenzia Entrate/consulente",
+            "stato_codice": "INVALID_OFFICIAL_REGISTER",
+        }
+
+    if sez in ("inps", "sezione_inps"):
+        info = CAUSALI_INPS.get(cod)
+        if info:
+            return dict(info, codice=cod, sezione="INPS")
+        return {"codice": cod, "sezione": "INPS", "descrizione": f"Causale INPS {cod}",
+                "natura": "pagamento", "ente": "INPS", "deducibilita": "da_verificare",
+                "nota": "Causale non in tabella normativa: verificare col consulente"}
+
+    if sez in ("inail", "sezione_inail"):
+        info = CAUSALI_INAIL.get(cod)
+        if info:
+            return dict(info, codice=cod, sezione="INAIL")
+        return {"codice": cod, "sezione": "INAIL", "descrizione": f"Causale INAIL {cod}",
+                "natura": "pagamento", "ente": "INAIL", "deducibilita": "da_verificare",
+                "nota": "Causale non in tabella normativa: verificare col consulente"}
+
+    # Erario / Regioni / Tributi locali: tabella unica dei codici tributo
+    info = TABELLA_ERARIO.get(cod)
+    if info:
+        return dict(info, codice=cod, sezione=sez or "erario")
+    if cod in CODICI_RAVVEDIMENTO:
+        return {"codice": cod, "sezione": sez or "erario",
+                "descrizione": f"Sanzioni/interessi da ravvedimento ({cod})",
+                "natura": "sanzione", "ente": "Erario", "deducibilita": "no",
+                "nota": "Accessorio da ravvedimento: non è costo del personale"}
+    return {"codice": cod, "sezione": sez or "erario",
+            "descrizione": f"Codice tributo {cod}",
+            "natura": "pagamento", "ente": "Erario", "deducibilita": "da_verificare",
+            "nota": "Codice non in tabella normativa: verificare col consulente"}
+
+
+# ── Periodi e scadenze (§20) ───────────────────────────────────────────────
+
+def mese_da_rateazione(rateazione: Any) -> str:
+    """Mese di riferimento dal campo «rateazione/mese rif.» del modello F24.
+
+    Le istruzioni dell'Agenzia delle Entrate danno due forme allo stesso campo:
+    ``00MM`` e' il mese di riferimento, ``NNRR`` (NN diverso da 00) e' la rata
+    NN di RR. «0101» su un saldo IRAP, un acconto IRES o la TARI e' la rata
+    unica, non gennaio: un tributo annuale non ha mese e resta «00».
+    """
+    valore = re.sub(r"[\s/-]", "", str(rateazione or ""))
+    if re.fullmatch(r"00(0[1-9]|1[0-2])", valore):
+        return valore[2:4]
+    return "00"
+
+
+def e_rateazione(rateazione: Any) -> bool:
+    """Vero se il campo e' una rata ``NNRR`` (NN diverso da 00), non un mese."""
+    valore = re.sub(r"[\s/-]", "", str(rateazione or ""))
+    return bool(re.fullmatch(r"(0[1-9]|[1-9]\d)\d{2}", valore))
+
+
+def _parse_periodo(valore: Any) -> Optional[tuple]:
+    """(mese, anno) da 'MM/YYYY', 'MM-YYYY', 'YYYY-MM' o dal campo
+    rateazione/mese rif. con l'anno separato da spazio ('00/12 2024' →
+    dicembre 2024). None se ignoto.
+
+    '01/01 2022' e '03/03 2021' sono **rate** (rata 1 di 1, rata 3 di 3), non
+    mesi (``mese_da_rateazione``); il mese '00' indica un periodo annuale.
+    Entrambi restano senza mese → None, per non forzare associazioni a un mese
+    non reale (regole cardine F24)."""
+    if not valore:
+        return None
+    s = str(valore).strip()
+    # Rateazione/mese rif. con anno separato da spazio: 'NN/MM YYYY' o 'NNMM YYYY'
+    m = re.match(r"^(\d{2})[/-]?(\d{2})\s+(\d{4})$", s)
+    if m:
+        mese = int(mese_da_rateazione(m.group(1) + m.group(2)))
+        return (mese, int(m.group(3))) if 1 <= mese <= 12 else None
+    m = re.match(r"^(\d{1,2})[/-](\d{4})$", s)
+    if m:
+        mese, anno = int(m.group(1)), int(m.group(2))
+        return (mese, anno) if 1 <= mese <= 12 else None
+    m = re.match(r"^(\d{4})[/-](\d{1,2})$", s)
+    if m:
+        anno, mese = int(m.group(1)), int(m.group(2))
+        return (mese, anno) if 1 <= mese <= 12 else None
+    return None
+
+
+def riga_rateizzata(riga: Dict[str, Any]) -> bool:
+    """Vero se la riga porta una rata ``NNRR``, non un mese: nel campo
+    ``rateazione`` del modello o nel ``periodo_raw`` della quietanza
+    ('01/01 2022'). Le righe archiviate prima della correzione hanno ancora
+    il mese sbagliato in ``mese``/``periodo_riferimento``: questo le riconosce."""
+    if e_rateazione(riga.get("rateazione")):
+        return True
+    m = re.match(r"^(\d{2})[/-]?(\d{2})\s+\d{4}$", str(riga.get("periodo_raw") or "").strip())
+    return bool(m and e_rateazione(m.group(1) + m.group(2)))
+
+
+def _parse_data(valore: Any) -> Optional[date]:
+    if not valore:
+        return None
+    if isinstance(valore, datetime):
+        return valore.date()
+    if isinstance(valore, date):
+        return valore
+    s = str(valore).strip()[:10]
+    for fmt in ("%Y-%m-%d", "%d/%m/%Y", "%d-%m-%Y"):
+        try:
+            return datetime.strptime(s, fmt).date()
+        except ValueError:
+            continue
+    return None
+
+
+def scadenza_naturale(mese: int, anno: int) -> date:
+    """Scadenza ordinaria di ritenute/contributi del periodo: il 16 del
+    mese successivo (§20 — es. novembre 2022 → 16 dicembre 2022)."""
+    if mese == 12:
+        return date(anno + 1, 1, 16)
+    return date(anno, mese + 1, 16)
+
+
+def valuta_pagamento(mese: int, anno: int, data_pagamento: Any) -> Dict[str, Any]:
+    """Scadenza naturale, giorni di ritardo e stato pagamento (§20)."""
+    scadenza = scadenza_naturale(mese, anno)
+    pagato_il = _parse_data(data_pagamento)
+    if pagato_il is None:
+        stato = "in_scadenza" if date.today() <= scadenza else "non_pagato"
+        return {"scadenza_naturale": scadenza.isoformat(), "data_pagamento": None,
+                "giorni_ritardo": None, "stato": stato}
+    ritardo = (pagato_il - scadenza).days
+    return {
+        "scadenza_naturale": scadenza.isoformat(),
+        "data_pagamento": pagato_il.isoformat(),
+        "giorni_ritardo": max(0, ritardo),
+        "stato": "pagato_in_ritardo" if ritardo > 0 else "pagato_nei_termini",
+    }
+
+
+# Sezione del modello per ogni sezione della vista canonica (`normalize_f24_evidence_rows`).
+_SEZIONE_DA_VISTA = {
+    "ERARIO": "sezione_erario", "REGIONI": "sezione_regioni",
+    "TRIB.LOCALI": "sezione_tributi_locali", "IMU": "sezione_tributi_locali",
+    "INPS": "sezione_inps", "INAIL": "sezione_inail",
+}
+
+
+def _righe_f24(f24: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Tutte le righe del modello con sezione esplicita, dalla vista canonica.
+
+    La vista (`normalize_f24_evidence_rows`, la stessa di `f24_canonico`) rimette al suo
+    posto una riga INPS che un vecchio import aveva messo in Erario col codice = anno:
+    RC01, matricola e periodo si leggono uguali su un modello nuovo e su uno gia' in archivio.
+    """
+    from app.services.f24_fiscal_evidence import normalize_f24_evidence_rows
+
+    righe = []
+    for vista in normalize_f24_evidence_rows(f24 or {}):
+        sezione = _SEZIONE_DA_VISTA.get(vista["section"])
+        if not sezione:
+            continue
+        riga = {**vista["source_fields"], "_sezione": sezione, "_codice": vista["tax_code"]}
+        if sezione == "sezione_inps":
+            riga.update(
+                causale=vista["tax_code"], codice_sede=vista["entity_code"] or riga.get("codice_sede", ""),
+                matricola=vista.get("matricola") or riga.get("matricola", ""),
+                periodo_da=vista.get("periodo_da", ""), periodo_a=vista.get("periodo_a", ""),
+            )
+            if vista.get("riclassificata_da_erario"):
+                riga["periodo_riferimento"] = vista["periodo_da"]
+                riga["riclassificata_da_erario"] = True
+        righe.append(riga)
+    return righe
+
+
+def _righe_inps(f24: Dict[str, Any]) -> List[Dict[str, Any]]:
+    return [r for r in _righe_f24(f24) if r["_sezione"] == "sezione_inps"]
+
+
+def causali_inps(f24: Dict[str, Any]) -> List[str]:
+    return sorted({(r.get("causale") or "").strip().upper()
+                   for r in _righe_inps(f24) if r.get("causale")})
+
+
+def tipo_versamento(f24: Dict[str, Any]) -> str:
+    """'regolarizzazione' se compare RC01; 'ravvedimento' se ci sono codici
+    sanzioni/interessi; altrimenti 'ordinario' (§20)."""
+    if "RC01" in causali_inps(f24):
+        return "regolarizzazione"
+    for r in _righe_f24(f24):
+        if r["_codice"].upper() in CODICI_RAVVEDIMENTO:
+            return "ravvedimento"
+    return "ordinario"
+
+
+def periodo_prevalente(f24: Dict[str, Any]) -> Optional[tuple]:
+    """(mese, anno) più frequente tra le righe del modello."""
+    conteggio: Dict[tuple, int] = {}
+    for r in _righe_f24(f24):
+        if riga_rateizzata(r):
+            continue
+        p = _parse_periodo(r.get("periodo_riferimento") or r.get("periodo"))
+        if p:
+            conteggio[p] = conteggio.get(p, 0) + 1
+    if not conteggio:
+        # fallback dai dati generali
+        dg = f24.get("dati_generali", {}) or {}
+        return _parse_periodo(dg.get("periodo_riferimento") or dg.get("periodo"))
+    return max(conteggio, key=conteggio.get)
+
+
+def controlli_f24(f24: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Controlli della specifica §18 sul modello: cio' che il motore non sa dire con
+    certezza e che quindi resta «da_verificare», col codice mostrato (mai indovinato).
+
+    Un codice Regione o Comune che non e' in tabella non e' un errore: la tabella
+    conosce solo cio' che e' gia' comparso nei modelli. Ogni controllo porta tipo,
+    sezione, codice, natura ``da_verificare`` e il motivo scritto per esteso.
+    """
+    from app.services.codici_tributo_f24 import CAUSALI_INPS as CAUSALI_INPS_REGISTRO
+
+    controlli: List[Dict[str, Any]] = []
+
+    def aggiungi(tipo: str, sezione: str, codice: str, motivo: str, riga: Dict[str, Any]) -> None:
+        controlli.append({
+            "tipo": tipo, "sezione": sezione, "codice": codice,
+            "natura": "da_verificare", "motivo": motivo,
+            "testo_sorgente": riga.get("testo_sorgente") or riga.get("raw_text") or "",
+        })
+
+    for r in _righe_f24(f24):
+        sezione = r["_sezione"]
+        if sezione == "sezione_regioni":
+            regione = re.sub(r"\s", "", str(r.get("codice_regione") or ""))
+            regione = regione.zfill(2) if regione.isdigit() else regione.upper()
+            if not regione:
+                aggiungi("regione_assente", "REGIONI", "", f"Codice Regione assente sulla riga {r['_codice']}", r)
+            elif regione not in CODICI_REGIONE:
+                aggiungi("regione_non_in_tabella", "REGIONI", regione,
+                         f"Codice Regione {regione} non in tabella: verificare la Regione", r)
+        elif sezione == "sezione_tributi_locali":
+            comune = re.sub(r"\s", "", str(r.get("codice_comune") or r.get("codice_ente") or "")).upper()
+            if not comune:
+                aggiungi("comune_assente", "TRIB.LOCALI", "", f"Codice Comune assente sulla riga {r['_codice']}", r)
+            elif comune not in CODICI_COMUNE:
+                aggiungi("comune_non_in_tabella", "TRIB.LOCALI", comune,
+                         f"Codice Comune {comune} non in tabella: verificare il Comune", r)
+        elif sezione == "sezione_inps":
+            causale = str(r.get("causale") or "").strip().upper()
+            if not causale or (causale not in CAUSALI_INPS and causale not in CAUSALI_INPS_REGISTRO):
+                aggiungi("causale_inps_sconosciuta", "INPS", causale,
+                         f"Causale INPS {causale or 'assente'} non in tabella: verificare col consulente", r)
+        elif sezione == "sezione_inail" and r.get("incompleta"):
+            mancanti = ", ".join(r.get("campi_mancanti") or []) or "campi non indicati"
+            aggiungi("inail_incompleta", "INAIL", str(r.get("causale") or ""),
+                     f"Riga INAIL incompleta: mancano {mancanti}", r)
+    # Righe INAIL senza importo: il parser non le mette nella sezione, ma le dichiara.
+    for r in f24.get("righe_inail_incomplete") or []:
+        if isinstance(r, dict):
+            mancanti = ", ".join(r.get("campi_mancanti") or []) or "importo"
+            aggiungi("inail_incompleta", "INAIL", str(r.get("causale") or ""),
+                     f"Riga INAIL incompleta: mancano {mancanti}", r)
+    return controlli
+
+
+def classifica_f24(f24: Dict[str, Any]) -> Dict[str, Any]:
+    """Analisi completa del modello: righe classificate, totali per natura,
+    tipo versamento, periodo prevalente, scadenza/stato pagamento (§11+§20).
+
+    NB (§3): il saldo finale è un'uscita finanziaria ('pagamento'), MAI
+    automaticamente un costo deducibile.
+    """
+    righe_out: List[Dict[str, Any]] = []
+    totali: Dict[str, float] = {}
+    for r in _righe_f24(f24):
+        cls = classifica_riga(r["_sezione"], r["_codice"])
+        debito = float(r.get("importo_debito", 0) or r.get("importo", 0) or 0)
+        credito = float(r.get("importo_credito", 0) or 0)
+        cls_riga = {
+            **cls,
+            "periodo": r.get("periodo_riferimento") or r.get("periodo") or "",
+            "importo_debito": debito,
+            "importo_credito": credito,
+        }
+        righe_out.append(cls_riga)
+        natura = "credito" if credito and not debito else cls["natura"]
+        totali[natura] = round(totali.get(natura, 0) + (debito or credito), 2)
+
+    periodo = periodo_prevalente(f24)
+    dg = f24.get("dati_generali", {}) or {}
+    # La data stampata sul modello/quietanza non e' prova dell'addebito nel
+    # conto. Il vecchio codice usava data_pagamento_quietanza e ignorava
+    # data_pagamento_effettivo della banca: il significato risultava invertito.
+    from app.services.f24_payment_evidence import stato_evidenza_pagamento
+
+    evidenza = stato_evidenza_pagamento(f24)
+    data_pag = evidenza["data_pagamento"]
+    pagamento = (valuta_pagamento(periodo[0], periodo[1], data_pag)
+                 if periodo else {"scadenza_naturale": None, "data_pagamento": None,
+                                  "giorni_ritardo": None, "stato": "periodo_ignoto"})
+    if not evidenza["pagato"] and evidenza["quietanza_presente"]:
+        pagamento["stato"] = "quietanza_presente_da_verificare_banca"
+    elif not evidenza["pagato"] and f24.get("pagato_manualmente"):
+        pagamento["stato"] = "dichiarato_pagato_da_verificare_banca"
+
+    saldo = dg.get("saldo_delega") or (f24.get("totali", {}) or {}).get("saldo_netto", 0)
+    controlli = controlli_f24(f24)
+    return {
+        "righe": righe_out,
+        "controlli": controlli,
+        "controlli_da_verificare": len(controlli),
+        "totali_per_natura": totali,
+        "tipo_versamento": tipo_versamento(f24),
+        "causali_inps": causali_inps(f24),
+        "periodo_prevalente": f"{periodo[0]:02d}/{periodo[1]}" if periodo else None,
+        "saldo_finale": float(saldo or 0),
+        "nota_saldo": "Il saldo finale è l'uscita finanziaria netta: NON coincide "
+                      "col costo deducibile (ritenute e crediti compensati non sono costi)",
+        "evidenza_pagamento": evidenza,
+        **pagamento,
+    }
+
+
+# ── Associazione F24 ↔ cedolini (§15) ──────────────────────────────────────
+
+# Codici/causali tipici del versamento su lavoro dipendente (§15): ritenute
+# IRPEF dipendenti, addizionali, contributi INPS. Servono a verificare che il
+# modello sia coerente coi cedolini (non un F24 di sola IVA/IMU).
+CODICI_LAVORO_DIPENDENTE = {
+    "1001", "1004", "1012", "1305",           # ritenute IRPEF lavoro dipendente
+    "3802", "3847", "3848", "1601", "1701",    # addizionali regionali/comunali
+    "DM10", "DMRA", "RC01", "CF",              # INPS/contributi
+}
+
+
+def valuta_associazione_cedolini(
+    f24: Dict[str, Any], mese_cedolini: int, anno_cedolini: int,
+    codice_fiscale_azienda: Optional[str] = None,
+    matricole_cedolini: Optional[set] = None,
+) -> Dict[str, Any]:
+    """Verifica le condizioni della §15 e produce una motivazione leggibile
+    (usata anche dalla Chat intelligente per spiegare l'esito).
+
+    matricole_cedolini: se fornito (posizioni INPS dei cedolini), l'F24 deve
+    condividerne almeno una; altrimenti si tratta di posizioni diverse."""
+    motivi: List[str] = []
+    ok = True
+
+    # 1. stesso soggetto fiscale (se noto)
+    cf_f24 = ((f24.get("dati_generali", {}) or {}).get("codice_fiscale")
+              or f24.get("codice_fiscale") or "").strip().upper()
+    if codice_fiscale_azienda and cf_f24 and cf_f24 != codice_fiscale_azienda.strip().upper():
+        ok = False
+        motivi.append(f"soggetto fiscale diverso ({cf_f24} ≠ {codice_fiscale_azienda})")
+
+    # 3. coerenza causali: il modello deve contenere codici/causali di lavoro
+    #    dipendente (ritenute/addizionali/contributi), altrimenti non è
+    #    associabile ai cedolini (§15).
+    codici_modello = {r["_codice"].upper() for r in _righe_f24(f24) if r["_codice"]}
+    if codici_modello and codici_modello.isdisjoint(CODICI_LAVORO_DIPENDENTE):
+        ok = False
+        motivi.append("il modello non contiene causali di lavoro dipendente "
+                      "(ritenute/addizionali/contributi): non associabile ai cedolini")
+
+    # 4. posizione contributiva (matricola INPS), se nota dai cedolini
+    if matricole_cedolini:
+        mat_f24 = {str(r.get("matricola")).strip().upper()
+                   for r in _righe_inps(f24) if r.get("matricola")}
+        if mat_f24 and mat_f24.isdisjoint({str(m).strip().upper() for m in matricole_cedolini}):
+            ok = False
+            motivi.append("matricola INPS del modello diversa da quella dei cedolini")
+
+    # 2/6. periodo di riferimento coincidente col mese/anno dei cedolini
+    periodo = periodo_prevalente(f24)
+    if periodo is None:
+        ok = False
+        motivi.append("periodo di riferimento non determinabile dal modello")
+    elif periodo != (mese_cedolini, anno_cedolini):
+        ok = False
+        motivi.append(
+            f"periodo F24 {periodo[0]:02d}/{periodo[1]} diverso dal periodo "
+            f"cedolini {mese_cedolini:02d}/{anno_cedolini}"
+        )
+    else:
+        motivi.append(f"periodo coincidente ({mese_cedolini:02d}/{anno_cedolini})")
+
+    # 5. regolarizzazioni per periodi precedenti → gestione separata
+    if "RC01" in causali_inps(f24):
+        ok = False
+        motivi.append("presente causale RC01 (regolarizzazione di periodo "
+                      "precedente): associazione ai cedolini correnti vietata")
+
+    # 7. tolleranza SOLO sulla data di pagamento (di norma il mese successivo)
+    esito = valuta_pagamento(mese_cedolini, anno_cedolini,
+                             (f24.get("dati_generali", {}) or {}).get("data_pagamento")
+                             or f24.get("data_pagamento"))
+    if esito["data_pagamento"]:
+        motivi.append(
+            f"pagato il {esito['data_pagamento']} (scadenza naturale "
+            f"{esito['scadenza_naturale']}, "
+            + ("nei termini)" if esito["stato"] == "pagato_nei_termini"
+               else f"{esito['giorni_ritardo']} giorni di ritardo)")
+        )
+
+    spiegazione = (
+        ("Associazione consentita: " if ok else "Associazione NON consentita: ")
+        + "; ".join(motivi) + "."
+    )
+    return {"associabile": ok, "motivi": motivi, "spiegazione": spiegazione,
+            "periodo_f24": f"{periodo[0]:02d}/{periodo[1]}" if periodo else None,
+            "periodo_cedolini": f"{mese_cedolini:02d}/{anno_cedolini}"}
+
+
+# ── DM10 ↔ RC01 e doppio pagamento (§21 + §23) ────────────────────────────
+
+def _codici_principali(f24: Dict[str, Any]) -> set:
+    """Codici tributo del modello, esclusi sanzioni/interessi da ravvedimento."""
+    return {r["_codice"].upper() for r in _righe_f24(f24)
+            if r["_codice"] and r["_codice"].upper() not in CODICI_RAVVEDIMENTO}
+
+
+def confronta_dm10_rc01(f24_ordinario: Dict[str, Any], f24_rc01: Dict[str, Any]) -> Dict[str, Any]:
+    """Collegamento tra F24 ordinario (DM10) e F24 di regolarizzazione (RC01):
+    stesso soggetto + stesso periodo + tributi corrispondenti → NON sommare
+    due volte (§21). Il solo stesso mese NON basta: si confrontano i campi.
+    """
+    controlli: List[Dict[str, Any]] = []
+
+    def check(nome, a, b, obbligatorio=True):
+        uguali = bool(a) and bool(b) and str(a).strip().upper() == str(b).strip().upper()
+        controlli.append({"campo": nome, "ordinario": a, "rc01": b,
+                          "coincide": uguali, "obbligatorio": obbligatorio})
+        return uguali or not obbligatorio
+
+    dg_a = f24_ordinario.get("dati_generali", {}) or {}
+    dg_b = f24_rc01.get("dati_generali", {}) or {}
+    cf_ok = check("codice_fiscale", dg_a.get("codice_fiscale") or f24_ordinario.get("codice_fiscale"),
+                  dg_b.get("codice_fiscale") or f24_rc01.get("codice_fiscale"))
+
+    pa, pb = periodo_prevalente(f24_ordinario), periodo_prevalente(f24_rc01)
+    periodo_ok = pa is not None and pa == pb
+    controlli.append({"campo": "periodo", "ordinario": pa, "rc01": pb,
+                      "coincide": periodo_ok, "obbligatorio": True})
+
+    codici_a, codici_b = _codici_principali(f24_ordinario), _codici_principali(f24_rc01)
+    comuni = codici_a & codici_b - {"DM10", "RC01"}
+    # P1-A (§21): la coppia DM10 (debito INPS originario) ↔ RC01 (regolarizzazione)
+    # è di per sé un segnale di legame, anche senza altri codici erario comuni.
+    # Prima venivano esclusi entrambi e una regolarizzazione INPS "pura" non
+    # risultava mai collegata → il capitale INPS non entrava nel doppio pagamento.
+    coppia_dm10_rc01 = "DM10" in codici_a and "RC01" in codici_b
+    tributi_ok = len(comuni) > 0 or coppia_dm10_rc01
+    # I codici il cui capitale NON va contato due volte includono, nella
+    # regolarizzazione INPS, la causale RC01 stessa.
+    comuni_capitale = set(comuni)
+    if coppia_dm10_rc01:
+        comuni_capitale |= {"RC01", "DM10"}
+    controlli.append({"campo": "codici_tributo_comuni", "ordinario": sorted(codici_a),
+                      "rc01": sorted(codici_b), "coincide": tributi_ok,
+                      "obbligatorio": True, "comuni": sorted(comuni_capitale)})
+
+    # P1-B (§21 punti 3-4): matricola INPS e codice sede. Se entrambi i modelli
+    # dichiarano matricole INPS e non hanno alcuna matricola in comune, sono
+    # posizioni contributive diverse → NON collegare (evita falsi legami tra
+    # posizioni diverse dello stesso codice fiscale).
+    def _matricole(f24):
+        return {str(r.get("matricola")).strip().upper()
+                for r in _righe_inps(f24) if r.get("matricola")}
+    def _sedi(f24):
+        return {str(r.get("codice_sede")).strip().upper()
+                for r in _righe_inps(f24) if r.get("codice_sede")}
+    mat_a, mat_b = _matricole(f24_ordinario), _matricole(f24_rc01)
+    matricola_ok = True
+    if mat_a and mat_b:
+        matricola_ok = not mat_a.isdisjoint(mat_b)
+        controlli.append({"campo": "matricola_inps", "ordinario": sorted(mat_a),
+                          "rc01": sorted(mat_b), "coincide": matricola_ok, "obbligatorio": True})
+    sede_a, sede_b = _sedi(f24_ordinario), _sedi(f24_rc01)
+    if sede_a and sede_b:
+        controlli.append({"campo": "codice_sede", "ordinario": sorted(sede_a),
+                          "rc01": sorted(sede_b),
+                          "coincide": not sede_a.isdisjoint(sede_b), "obbligatorio": False})
+
+    collegati = cf_ok and periodo_ok and tributi_ok and matricola_ok
+    return {
+        "collegati": collegati,
+        "controlli": controlli,
+        "tributi_comuni": sorted(comuni_capitale),
+        "spiegazione": (
+            "RC01 riconosciuto come regolarizzazione del debito originario: le "
+            "righe comuni NON vanno registrate due volte in costi/debiti/pagamenti."
+            if collegati else
+            "Confronto insufficiente: lo stesso mese da solo non basta per "
+            "dichiarare il collegamento; verificare campo per campo."
+        ),
+    }
+
+
+def _risulta_pagato(f24: Dict[str, Any]) -> bool:
+    return bool(
+        f24.get("status") == "pagato" or f24.get("pagato")
+        or f24.get("quietanza_id") or f24.get("riconciliato_quietanza")
+        or (f24.get("dati_generali", {}) or {}).get("data_pagamento")
+        or f24.get("data_pagamento_quietanza")
+    )
+
+
+def rileva_doppio_pagamento(f24_ordinario: Dict[str, Any], f24_rc01: Dict[str, Any]) -> Dict[str, Any]:
+    """POSSIBILE DOPPIO PAGAMENTO (§23): entrambi pagati, stesso debito,
+    e il secondo non è chiaramente fatto di sole sanzioni/interessi."""
+    legame = confronta_dm10_rc01(f24_ordinario, f24_rc01)
+    if not legame["collegati"]:
+        return {"possibile_doppio_pagamento": False, "stato": "non_duplicato",
+                "dettaglio": legame}
+
+    entrambi_pagati = _risulta_pagato(f24_ordinario) and _risulta_pagato(f24_rc01)
+    if not entrambi_pagati:
+        return {"possibile_doppio_pagamento": False, "stato": "non_duplicato",
+                "motivo": "non risultano entrambi pagati", "dettaglio": legame}
+
+    # Quota del secondo modello riferibile ai tributi comuni (capitale) vs accessori
+    quota_capitale = 0.0
+    quota_accessori = 0.0
+    for r in _righe_f24(f24_rc01):
+        importo = float(r.get("importo_debito", 0) or r.get("importo", 0) or 0)
+        if r["_codice"].upper() in CODICI_RAVVEDIMENTO:
+            quota_accessori += importo
+        elif r["_codice"].upper() in legame["tributi_comuni"]:
+            quota_capitale += importo
+
+    solo_accessori = quota_capitale <= 0.01
+    return {
+        "possibile_doppio_pagamento": not solo_accessori,
+        "stato": "da_verificare" if not solo_accessori else "non_duplicato",
+        "quota_potenzialmente_duplicata": round(quota_capitale, 2),
+        "quota_sanzioni_interessi": round(quota_accessori, 2),
+        "messaggio": ("POSSIBILE DOPPIO PAGAMENTO: entrambi i modelli risultano "
+                      "pagati per lo stesso debito — verificare col consulente se "
+                      "il secondo versamento comprende solo sanzioni e interessi "
+                      "oppure se il capitale è stato versato due volte."
+                      if not solo_accessori else
+                      "Secondo versamento composto da soli accessori "
+                      "(sanzioni/interessi): nessuna duplicazione di capitale."),
+        "dettaglio": legame,
+    }
+
+
+# Stati ammessi per l'anomalia doppio pagamento (§23)
+STATI_ANOMALIA_DOPPIO_PAGAMENTO = (
+    "da_verificare", "confermato_doppio_pagamento",
+    "non_duplicato", "rimborsato_compensato", "chiuso_dal_consulente",
+)

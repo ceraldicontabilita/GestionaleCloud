@@ -1,0 +1,419 @@
+"""
+Router Email F24
+Gestisce il download automatico email, parsing allegati e inserimento nel sistema
+"""
+from fastapi import APIRouter, HTTPException, Query
+from typing import Dict, Any, Optional
+from datetime import datetime, timezone
+from app.database import Database
+from app.services.email_downloader import download_and_process_emails, get_mittenti_configurati
+from app.services.f24_parser import parse_quietanza_f24
+from app.services.codici_tributo_db import get_info_codice_tributo
+import logging
+from app.config import settings
+from app.services.f24_canonico import importa_modello_bytes, importa_quietanza
+
+router = APIRouter()
+logger = logging.getLogger(__name__)
+
+# Credenziali email - legge da Pydantic settings (che carica .env)
+EMAIL_ADDRESS = settings.EMAIL_ADDRESS or settings.IMAP_USER or settings.EMAIL_USER or "ceraldigroupsrl@gmail.com"
+EMAIL_PASSWORD = settings.EMAIL_PASSWORD or settings.IMAP_PASSWORD or settings.EMAIL_APP_PASSWORD or ""
+
+# Collections
+COLL_EMAIL_LOG = "email_download_log"
+COLL_ALLEGATI = "email_allegati"
+COLL_F24_COMMERCIALISTA = "f24_unificato"  # unificato 13/07/2026
+COLL_QUIETANZE = "quietanze_f24"
+
+
+@router.post("/scarica-email")
+async def scarica_email_allegati(
+    giorni: int = Query(30, description="Scarica email degli ultimi N giorni"),
+) -> Dict[str, Any]:
+    """
+    Scarica gli allegati PDF dalle email dei mittenti configurati.
+    - Commercialista (rosaria.marotta@email.it): F24 fiscali
+    - Consulenti lavoro (ferrantini): F24 contributivi
+    """
+    # Download email
+    result = await download_and_process_emails(
+        email_address=EMAIL_ADDRESS,
+        password=EMAIL_PASSWORD,
+        since_days=giorni
+    )
+
+    if not result.get("success"):
+        raise HTTPException(status_code=500, detail=result.get("errori", ["Errore sconosciuto"]))
+
+    # Il flusso attivo scrive direttamente nel Drive canonico. Il mittente
+    # configurato prova la provenienza del modello F24, mai il pagamento.
+    import asyncio
+    from app.services.drive_f24_email_import import import_downloaded_accountant_attachments
+
+    imported = await asyncio.to_thread(import_downloaded_accountant_attachments, result)
+    return {
+        **imported,
+        "message": (
+            f"Acquisiti {imported['imported_count']} modelli F24 nel Drive canonico; "
+            "pagamento in attesa di quietanza AdE"
+        ),
+    }
+
+
+@router.post("/processa-allegati")
+async def processa_allegati_f24() -> Dict[str, Any]:
+    """
+    Processa tutti gli allegati PDF scaricati.
+    Identifica se sono F24 o quietanze e li inserisce nel sistema appropriato.
+    """
+    db = Database.get_db()
+
+    # Trova allegati da processare
+    allegati = await db[COLL_ALLEGATI].find({
+        "processato": False,
+        "extension": ".pdf"
+    }, {"_id": 0}).to_list(100)
+
+    risultati = {
+        "processati": 0,
+        "f24_commercialista": 0,
+        "quietanze": 0,
+        "errori": 0,
+        "dettagli": []
+    }
+
+    for allegato in allegati:
+        # Architettura Drive/Supabase: usa pdf_data
+        pdf_data = allegato.get("pdf_data")
+        if not pdf_data:
+            risultati["errori"] += 1
+            risultati["dettagli"].append({
+                "file": allegato.get("original_filename"),
+                "errore": "PDF non disponibile in Drive/Supabase"
+            })
+            continue
+
+        try:
+            # Decodifica PDF da Base64
+            import base64
+            pdf_content = base64.b64decode(pdf_data)
+
+            # Determina il tipo di documento basato sul mittente
+            categoria = allegato.get("categoria_f24", "generico")
+            mittente_tipo = allegato.get("mittente_tipo", "sconosciuto")
+
+            # Prova a parsare come F24 commercialista (architettura Drive/Supabase: usa bytes)
+            parsed_quietanza_forte = parse_quietanza_f24(pdf_content=pdf_content)
+            dg_quietanza = parsed_quietanza_forte.get("dati_generali", {})
+            protocollo = str(dg_quietanza.get("protocollo_telematico") or "")
+            is_quietanza_forte = (
+                len(protocollo) == 17
+                and protocollo.isdigit()
+                and bool(dg_quietanza.get("data_pagamento") or dg_quietanza.get("abi"))
+            )
+            if is_quietanza_forte:
+                esito_quietanza = await importa_quietanza(
+                    db,
+                    pdf_content,
+                    allegato.get("original_filename") or "quietanza.pdf",
+                    source="email_f24",
+                )
+                if not esito_quietanza.get("success"):
+                    raise ValueError(esito_quietanza.get("error") or "Import quietanza fallito")
+                if not esito_quietanza.get("duplicate"):
+                    risultati["quietanze"] += 1
+                risultati["dettagli"].append({
+                    "file": allegato.get("original_filename"),
+                    "tipo": "Quietanza",
+                    "duplicato": bool(esito_quietanza.get("duplicate")),
+                    "importo": esito_quietanza.get("saldo", 0),
+                    "f24_matchati": len(esito_quietanza.get("f24_matchati") or []),
+                })
+                await db[COLL_ALLEGATI].update_one(
+                    {"id": allegato.get("id")},
+                    {"$set": {
+                        "processato": True,
+                        "processato_at": datetime.now(timezone.utc).isoformat(),
+                        "tipo_documento": "quietanza_f24",
+                    }},
+                )
+                risultati["processati"] += 1
+                continue
+
+            esito_modello = await importa_modello_bytes(
+                db, pdf_content, allegato.get("original_filename") or "f24.pdf",
+                source="email_f24",
+                source_metadata={
+                    "email_from": allegato.get("email_from"),
+                    "email_date": allegato.get("email_date"),
+                    "mittente_tipo": mittente_tipo,
+                    "categoria_f24": categoria,
+                    "attachment_id": allegato.get("id"),
+                },
+            )
+            if esito_modello.get("success"):
+                if not esito_modello.get("duplicate"):
+                    risultati["f24_commercialista"] += 1
+                risultati["dettagli"].append({
+                    "file": allegato.get("original_filename"),
+                    "tipo": "F24",
+                    "f24_id": esito_modello.get("f24_id"),
+                    "duplicato": bool(esito_modello.get("duplicate")),
+                    "categoria": categoria,
+                    "righe_tributo": esito_modello.get("righe_tributo"),
+                })
+            elif esito_modello.get("stato_modello") == "SENZA_RIGHE_TRIBUTO":
+                # Non e' un modello: prova come quietanza senza protocollo leggibile.
+                esito_fallback = await importa_quietanza(
+                    db,
+                    pdf_content,
+                    allegato.get("original_filename") or "quietanza.pdf",
+                    source="email_f24_fallback",
+                )
+                if esito_fallback.get("success"):
+                    if not esito_fallback.get("duplicate"):
+                        risultati["quietanze"] += 1
+                    risultati["dettagli"].append({
+                        "file": allegato.get("original_filename"),
+                        "tipo": "Quietanza",
+                        "duplicato": bool(esito_fallback.get("duplicate")),
+                        "importo": esito_fallback.get("saldo", 0),
+                    })
+                else:
+                    risultati["errori"] += 1
+                    risultati["dettagli"].append({
+                        "file": allegato.get("original_filename"),
+                        "tipo": "Non riconosciuto",
+                        "errore": esito_fallback.get("error") or "Impossibile identificare come F24 o quietanza",
+                    })
+            else:
+                # Un F24 che non quadra non si salva: l'errore dice saldo e righe lette.
+                raise ValueError(esito_modello.get("error") or "Import F24 fallito")
+
+            # Marca come processato
+            await db[COLL_ALLEGATI].update_one(
+                {"id": allegato.get("id")},
+                {"$set": {
+                    "processato": True,
+                    "processato_at": datetime.now(timezone.utc).isoformat()
+                }}
+            )
+            risultati["processati"] += 1
+
+        except Exception as e:
+            logger.error(f"Errore processing {allegato.get('original_filename')}: {e}")
+            risultati["errori"] += 1
+            risultati["dettagli"].append({
+                "file": allegato.get("original_filename"),
+                "errore": str(e)
+            })
+
+    # ── Anche i F24 finiti in documents_inbox (routing del monitor Gmail) ──
+    # Bug segnalato 18/07/2026: i PDF F24 della commercialista arrivati via
+    # monitor ("F24 rit. scad 16.07.pdf" di rosaria.marotta) venivano
+    # archiviati in documents_inbox ma MAI parsati in f24_unificato: la
+    # sezione Ritenute non trovava l'F24 col 1040 da associare.
+    import base64 as _b64
+    inbox_docs = await db["documents_inbox"].find(
+        {"pdf_data": {"$exists": True, "$nin": [None, ""]},
+         "f24_processato": {"$ne": True},
+         "$or": [{"category": "f24"}, {"tipo_documento": "f24"},
+                 {"filename": {"$regex": r"f\s*24", "$options": "i"}}]},
+        {"_id": 0, "id": 1, "filename": 1, "pdf_data": 1, "email_from": 1, "email_date": 1},
+    ).to_list(100)
+    for doc in inbox_docs:
+        try:
+            pdf_content = _b64.b64decode(doc["pdf_data"])
+            parsed_q = parse_quietanza_f24(pdf_content=pdf_content)
+            dg_q = parsed_q.get("dati_generali", {})
+            protocollo_q = str(dg_q.get("protocollo_telematico") or "")
+            if (
+                len(protocollo_q) == 17
+                and protocollo_q.isdigit()
+                and bool(dg_q.get("data_pagamento") or dg_q.get("abi"))
+            ):
+                esito_q = await importa_quietanza(
+                    db, pdf_content, doc.get("filename") or "quietanza.pdf",
+                    source="documents_inbox_email",
+                )
+                if not esito_q.get("success"):
+                    raise ValueError(esito_q.get("error") or "Import quietanza fallito")
+                if not esito_q.get("duplicate"):
+                    risultati["quietanze"] += 1
+                risultati["processati"] += 1
+                risultati["dettagli"].append({
+                    "file": doc.get("filename"),
+                    "tipo": "Quietanza (documents_inbox)",
+                    "duplicato": bool(esito_q.get("duplicate")),
+                    "f24_matchati": len(esito_q.get("f24_matchati") or []),
+                })
+                await db["documents_inbox"].update_one(
+                    {"id": doc["id"]},
+                    {"$set": {"f24_processato": True, "tipo_documento": "quietanza_f24"}},
+                )
+                continue
+
+            esito_modello = await importa_modello_bytes(
+                db, pdf_content, doc.get("filename") or "f24.pdf",
+                source="documents_inbox_email",
+                source_metadata={
+                    "email_from": doc.get("email_from"),
+                    "email_date": doc.get("email_date"),
+                    "source_document_id": doc["id"],
+                },
+            )
+            if esito_modello.get("success"):
+                if not esito_modello.get("duplicate"):
+                    risultati["f24_commercialista"] += 1
+                risultati["processati"] += 1
+                risultati["dettagli"].append({
+                    "file": doc.get("filename"), "tipo": "F24 (documents_inbox)",
+                    "f24_id": esito_modello.get("f24_id"),
+                    "duplicato": bool(esito_modello.get("duplicate")),
+                    "righe_tributo": esito_modello.get("righe_tributo"),
+                })
+                await db["documents_inbox"].update_one(
+                    {"id": doc["id"]}, {"$set": {"f24_processato": True, "f24_id": esito_modello.get("f24_id")}})
+            elif esito_modello.get("stato_modello") == "SENZA_RIGHE_TRIBUTO":
+                # lasciato riprovabile ma tracciato
+                risultati["dettagli"].append({
+                    "file": doc.get("filename"), "tipo": "inbox non riconosciuto come F24",
+                })
+                await db["documents_inbox"].update_one(
+                    {"id": doc["id"]},
+                    {"$set": {"f24_processato": True,
+                              "f24_esito": "non_riconosciuto_da_parser"}})
+            else:
+                raise ValueError(esito_modello.get("error") or "Import F24 fallito")
+        except Exception as e:
+            logger.error(f"Errore processing F24 inbox {doc.get('filename')}: {e}")
+            risultati["errori"] += 1
+            risultati["dettagli"].append({"file": doc.get("filename"), "errore": str(e)})
+
+    return {
+        "success": True,
+        "message": f"Processati {risultati['processati']} allegati",
+        "risultati": risultati
+    }
+
+
+@router.get("/mittenti")
+async def get_mittenti() -> Dict[str, Any]:
+    """Restituisce i mittenti email configurati."""
+    return {
+        "mittenti": get_mittenti_configurati(),
+        "email_destinatario": EMAIL_ADDRESS
+    }
+
+
+@router.get("/allegati")
+async def list_allegati(
+    processato: Optional[bool] = Query(None),
+    categoria: Optional[str] = Query(None),
+    limit: int = Query(50)
+) -> Dict[str, Any]:
+    """Lista allegati scaricati."""
+    db = Database.get_db()
+
+    query = {}
+    if processato is not None:
+        query["processato"] = processato
+    if categoria:
+        query["categoria_f24"] = categoria
+
+    allegati = await db[COLL_ALLEGATI].find(
+        query, {"_id": 0}
+    ).sort("downloaded_at", -1).limit(limit).to_list(limit)
+
+    return {
+        "allegati": allegati,
+        "totale": len(allegati)
+    }
+
+
+@router.get("/log-download")
+async def get_download_log(limit: int = Query(20)) -> Dict[str, Any]:
+    """Log degli ultimi download email."""
+    db = Database.get_db()
+
+    logs = await db[COLL_EMAIL_LOG].find(
+        {}, {"_id": 0}
+    ).sort("timestamp", -1).limit(limit).to_list(limit)
+
+    return {"logs": logs}
+
+
+@router.get("/codici-tributo")
+async def search_codici_tributo(
+    codice: Optional[str] = Query(None),
+    categoria: Optional[str] = Query(None),
+    fonte: Optional[str] = Query(None, description="commercialista o consulente_lavoro")
+) -> Dict[str, Any]:
+    """
+    Cerca informazioni sui codici tributo.
+    """
+    from app.services.codici_tributo_db import (
+        CODICI_TRIBUTO_ERARIO, CODICI_TRIBUTO_INPS,
+        get_codici_per_categoria, get_codici_per_fonte
+    )
+
+    if codice:
+        info = get_info_codice_tributo(codice)
+        return {"codice": codice, "info": info}
+
+    if categoria:
+        codici = get_codici_per_categoria(categoria)
+        return {"categoria": categoria, "codici": codici}
+
+    if fonte:
+        codici = get_codici_per_fonte(fonte)
+        return {"fonte": fonte, "codici": codici}
+
+    # Restituisci riepilogo
+    return {
+        "erario": {
+            "count": len(CODICI_TRIBUTO_ERARIO),
+            "categorie": list(set(v.get("categoria") for v in CODICI_TRIBUTO_ERARIO.values()))
+        },
+        "inps": {
+            "count": len(CODICI_TRIBUTO_INPS),
+            "codici": list(CODICI_TRIBUTO_INPS.keys())
+        }
+    }
+
+
+@router.post("/scarica-e-processa")
+async def scarica_e_processa(
+    giorni: int = Query(7, description="Ultimi N giorni")
+) -> Dict[str, Any]:
+    """
+    Flusso completo: scarica email → processa allegati → inserisce F24.
+    Ideale per esecuzione giornaliera automatica.
+    """
+    # Step 1: Scarica email
+    download_result = await scarica_email_allegati(giorni=giorni)
+
+    if not download_result.get("success"):
+        return {
+            "success": False,
+            "fase": "download",
+            "errore": download_result
+        }
+
+    # Step 2: Processa allegati
+    process_result = await processa_allegati_f24()
+
+    return {
+        "success": True,
+        "message": "Download e processamento completati",
+        "download": {
+            "email_trovate": download_result.get("statistiche", {}).get("email_trovate", 0),
+            "allegati_scaricati": download_result.get("statistiche", {}).get("allegati_totali", 0)
+        },
+        "processamento": {
+            "f24_inseriti": process_result.get("risultati", {}).get("f24_commercialista", 0),
+            "quietanze_inserite": process_result.get("risultati", {}).get("quietanze", 0),
+            "errori": process_result.get("risultati", {}).get("errori", 0)
+        }
+    }

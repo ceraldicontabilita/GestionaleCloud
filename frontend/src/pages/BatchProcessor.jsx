@@ -1,0 +1,699 @@
+/**
+ * BatchProcessor.jsx - Riprocessamento Automatico Documenti
+ *
+ * MIGLIORAMENTI:
+ * - Processo AUTOMATICO all'apertura della pagina
+ * - Design uniforme con il resto dell'app (STYLES, COLORS)
+ * - Progress tracking in tempo reale
+ * - Nessun click manuale richiesto
+ *
+ * @author Ceraldi ERP
+ * @version 2.0.0
+ */
+
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { PageLayout } from '../components/PageLayout';
+import api from '../api';
+import { STYLES, COLORS, BORDER_RADIUS, FONT } from '../lib/utils';
+import { Button, Card, StatCard } from '../components/ds';
+import {
+  RefreshCw,
+  Play,
+  CheckCircle,
+  XCircle,
+  Loader2,
+  FileText,
+  Mail,
+  AlertTriangle,
+  Clock,
+  Zap,
+  Upload,
+  Database,
+  Settings,
+  BarChart3,
+} from 'lucide-react';
+
+// ============================================================================
+// STILI COMPONENTE (Design System Ceraldi)
+// ============================================================================
+
+const styles = {
+  container: {
+    ...STYLES.page,
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 24,
+  },
+
+  header: {
+    ...STYLES.header,
+    marginBottom: 0,
+  },
+
+  headerTitle: {
+    fontSize: 24,
+    fontWeight: 700,
+    margin: 0,
+  },
+
+  headerSubtitle: {
+    fontSize: 14,
+    opacity: 0.9,
+    marginTop: 4,
+  },
+
+  statsGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+    gap: 16,
+  },
+
+  progressContainer: {
+    background: COLORS.bgAlt,
+    borderRadius: BORDER_RADIUS.md,
+    padding: 24,
+    marginBottom: 24,
+  },
+
+  progressBar: {
+    height: 12,
+    background: COLORS.border,
+    borderRadius: BORDER_RADIUS.sm,
+    overflow: 'hidden',
+    marginTop: 12,
+  },
+
+  progressFill: {
+    height: '100%',
+    background: `${COLORS.primary}`,
+    borderRadius: BORDER_RADIUS.sm,
+    transition: 'width 0.5s ease',
+  },
+
+  logContainer: {
+    // Sfondo chiaro con testo scuro: sul terracotta pieno i colori semantici dei
+    // messaggi (verde, rosso, ocra) non si leggevano.
+    background: COLORS.bgAlt,
+    border: `1px solid ${COLORS.border}`,
+    borderRadius: BORDER_RADIUS.md,
+    padding: 16,
+    maxHeight: 300,
+    overflowY: 'auto',
+    fontFamily: FONT.mono,
+    fontSize: 12,
+  },
+
+  logEntry: {
+    padding: '4px 0',
+    borderBottom: `1px solid ${COLORS.border}`,
+  },
+
+  logTime: {
+    color: COLORS.textMuted,
+    marginRight: 8,
+  },
+
+  logSuccess: {
+    color: COLORS.success,
+  },
+
+  logError: {
+    color: COLORS.danger,
+  },
+
+  logInfo: {
+    color: COLORS.info,
+  },
+
+  logWarning: {
+    color: COLORS.warning,
+  },
+
+  taskList: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 12,
+  },
+
+  taskItem: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 12,
+    padding: 16,
+    background: COLORS.bgAlt,
+    borderRadius: BORDER_RADIUS.lg,
+    border: `1px solid ${COLORS.border}`,
+  },
+
+  taskIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: BORDER_RADIUS.lg,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  taskInfo: {
+    flex: 1,
+  },
+
+  taskTitle: {
+    fontWeight: 600,
+    color: COLORS.primary,
+  },
+
+  taskSubtitle: {
+    fontSize: 13,
+    color: COLORS.textMuted,
+  },
+
+  taskStatus: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 6,
+    fontSize: 13,
+    fontWeight: 500,
+  },
+
+  autoModeIndicator: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+    padding: '8px 16px',
+    background: COLORS.bgAlt,
+    border: `1px solid ${COLORS.border}`,
+    borderRadius: BORDER_RADIUS.full,
+    fontSize: 13,
+    fontWeight: 500,
+    color: COLORS.textMuted,
+  },
+
+  pulseDot: {
+    width: 8,
+    height: 8,
+    borderRadius: BORDER_RADIUS.full,
+    background: COLORS.success,
+    animation: 'pulse 2s infinite',
+  },
+};
+
+// ============================================================================
+// CONFIGURAZIONE TASK AUTOMATICI
+// ============================================================================
+
+const AUTO_TASKS = [
+  {
+    id: 'email_download',
+    name: 'Download Email',
+    description: 'Scarica nuove email con allegati PDF',
+    icon: Mail,
+    color: COLORS.info,
+    endpoint: '/api/email-download/start-full-download?days_back=30',
+    method: 'POST',
+    autoRun: true,
+  },
+  {
+    id: 'ai_process',
+    name: 'Elaborazione AI',
+    description: 'Classifica e processa documenti con intelligenza artificiale',
+    icon: Zap,
+    color: COLORS.warning,
+    endpoint: '/api/ai-parser/process-email-batch?limit=20',
+    method: 'POST',
+    autoRun: true,
+  },
+  {
+    id: 'auto_associate',
+    name: 'Auto-Associazione',
+    description: 'Collega PDF a fatture, F24, cedolini esistenti',
+    icon: Database,
+    color: COLORS.bruno,
+    endpoint: '/api/email-download/auto-associa',
+    method: 'POST',
+    autoRun: true,
+  },
+  {
+    id: 'f24_reconcile',
+    name: 'Riconciliazione F24',
+    description: 'Associa F24 in banca con quietanze nel sistema',
+    icon: FileText,
+    color: COLORS.primary,
+    endpoint: '/api/f24-riconciliazione/riconcilia-tutto',
+    method: 'POST',
+    autoRun: true,
+  },
+  {
+    id: 'categorize',
+    name: 'Categorizzazione',
+    description: 'Classifica movimenti bancari (stipendi, fornitori, tributi)',
+    icon: BarChart3,
+    color: COLORS.bruno,
+    endpoint: '/api/estratto-conto-movimenti/ricategorizza-batch',
+    statoEndpoint: '/api/estratto-conto-movimenti/backfill-categorie/stato',
+    method: 'POST',
+    // 19/09/2026 (audit): prima di questa data l'endpoint scriveva su una
+    // collezione morta, quindi l'auto-avvio al mount era innocuo. Ora scrive
+    // davvero su estratto_conto_movimenti: niente più avvio silenzioso
+    // all'apertura della pagina, richiede un click esplicito qui sotto.
+    autoRun: false,
+  },
+];
+
+// ============================================================================
+// COMPONENTE PRINCIPALE
+// ============================================================================
+
+export default function BatchProcessor() {
+  // Stati
+  const [isRunning, setIsRunning] = useState(false);
+  const [autoMode, setAutoMode] = useState(true);
+  const [currentTask, setCurrentTask] = useState(null);
+  const [taskResults, setTaskResults] = useState({});
+  const [logs, setLogs] = useState([]);
+  const [stats, setStats] = useState({
+    totalProcessed: 0,
+    documentsCreated: 0,
+    errorsCount: 0,
+    lastRunTime: null,
+  });
+  const [progress, setProgress] = useState(0);
+
+  const hasRunRef = useRef(false);
+  const logContainerRef = useRef(null);
+
+  // Aggiungi log
+  const addLog = useCallback((message, type = 'info') => {
+    const timestamp = new Date().toLocaleTimeString('it-IT');
+    setLogs(prev => [...prev, { timestamp, message, type }].slice(-100));
+
+    // Auto-scroll
+    setTimeout(() => {
+      if (logContainerRef.current) {
+        logContainerRef.current.scrollTop = logContainerRef.current.scrollHeight;
+      }
+    }, 100);
+  }, []);
+
+  // Esegui singolo task
+  const executeTask = useCallback(
+    async task => {
+      setCurrentTask(task.id);
+      addLog(`Avvio: ${task.name}`, 'info');
+
+      try {
+        const response =
+          task.method === 'POST' ? await api.post(task.endpoint) : await api.get(task.endpoint);
+
+        const result = response.data;
+
+        setTaskResults(prev => ({
+          ...prev,
+          [task.id]: { success: true, data: result },
+        }));
+
+        // Aggiorna stats
+        setStats(prev => ({
+          ...prev,
+          totalProcessed:
+            prev.totalProcessed +
+            (result.processed || result.emails_processate || result.riconciliati || 0),
+          documentsCreated: prev.documentsCreated + (result.fatture_create || result.created || 0),
+          errorsCount: prev.errorsCount + (result.errors?.length || 0),
+        }));
+
+        addLog(`${task.name}: completato`, 'success');
+
+        // Log dettagli
+        if (result.processed) addLog(`  Processati: ${result.processed}`, 'info');
+        if (result.fatture_create)
+          addLog(`  Fatture create: ${result.fatture_create}`, 'success');
+        if (result.riconciliati) addLog(`  Riconciliati: ${result.riconciliati}`, 'success');
+        if (result.errors?.length) addLog(`  Errori: ${result?.errors?.length}`, 'warning');
+
+        return true;
+      } catch (error) {
+        // Nessuna risposta entro il tempo del browser (2 minuti): il server puo' stare
+        // ancora lavorando. Non e' un fallimento del task: si dice com'e' e si prosegue.
+        const nessunaRisposta = !error.response && /timeout|ECONNABORTED/i.test(`${error.code} ${error.message}`);
+        if (nessunaRisposta) {
+          setTaskResults(prev => ({ ...prev, [task.id]: { success: false, pending: true } }));
+          addLog(`${task.name}: il server non ha risposto entro 2 minuti e potrebbe stare ancora lavorando. Ricontrolla fra poco.`, 'warning');
+          return false;
+        }
+        const dettaglio = error.response?.data?.detail;
+        const errorMsg = (typeof dettaglio === 'string' ? dettaglio : dettaglio?.message)
+          || error.response?.data?.message || error.message;
+
+        setTaskResults(prev => ({
+          ...prev,
+          [task.id]: { success: false, error: errorMsg },
+        }));
+
+        addLog(`${task.name}: ${errorMsg}`, 'error');
+
+        setStats(prev => ({
+          ...prev,
+          errorsCount: prev.errorsCount + 1,
+        }));
+
+        return false;
+      }
+    },
+    [addLog]
+  );
+
+  // Esegui un task escluso dall'auto-avvio (richiede conferma esplicita
+  // dell'utente, es. "Categorizzazione": scrive davvero sui movimenti
+  // bancari reali) e mostra l'esito vero, non solo "completato" — il
+  // POST /backfill-categorie parte in background, il numero reale arriva
+  // da GET .../stato.
+  const eseguiTaskConfermato = useCallback(
+    async task => {
+      if (isRunning) return;
+      const conferma = window.confirm(
+        `Eseguire ora "${task.name}"?\n\n${task.description}\n\nScrive sui dati reali.`
+      );
+      if (!conferma) return;
+
+      setIsRunning(true);
+      setCurrentTask(task.id);
+      await executeTask(task);
+
+      if (task.statoEndpoint) {
+        addLog("In corso in background, verifico l'esito reale…", 'info');
+        for (let tentativo = 0; tentativo < 15; tentativo++) {
+          await new Promise(resolve => setTimeout(resolve, 2000));
+          try {
+            const { data: stato } = await api.get(task.statoEndpoint);
+            if (stato?.stato === 'completato') {
+              const risultato = stato.risultato || {};
+              const perCategoria = risultato.per_categoria
+                ? Object.entries(risultato.per_categoria)
+                    .map(([nome, n]) => `${nome}: ${n}`)
+                    .join(', ')
+                : '';
+              addLog(
+                `${task.name}: ${risultato.aggiornati ?? 0} movimenti categorizzati su ${risultato.movimenti_esaminati ?? '?'} esaminati${perCategoria ? ` (${perCategoria})` : ''}`,
+                'success'
+              );
+              setTaskResults(prev => ({ ...prev, [task.id]: { success: true, data: risultato } }));
+              break;
+            }
+            if (stato?.stato === 'errore') {
+              addLog(`${task.name}: ${stato.errore || 'errore sconosciuto'}`, 'error');
+              break;
+            }
+          } catch (e) {
+            addLog(`Impossibile leggere lo stato reale: ${e.message}`, 'warning');
+            break;
+          }
+        }
+      }
+
+      setCurrentTask(null);
+      setIsRunning(false);
+    },
+    [isRunning, executeTask, addLog]
+  );
+
+  // Esegui tutti i task in sequenza
+  const runAllTasks = useCallback(async () => {
+    if (isRunning) return;
+
+    setIsRunning(true);
+    setProgress(0);
+    setTaskResults({});
+    setLogs([]);
+
+    addLog('Avvio elaborazione batch automatica...', 'info');
+    addLog(`${AUTO_TASKS.length} task da eseguire`, 'info');
+
+    const tasksToRun = AUTO_TASKS.filter(t => t.autoRun);
+
+    for (let i = 0; i < tasksToRun.length; i++) {
+      const task = tasksToRun[i];
+      setProgress(Math.round((i / tasksToRun.length) * 100));
+
+      await executeTask(task);
+
+      // Pausa tra task per non sovraccaricare
+      await new Promise(resolve => setTimeout(resolve, 500));
+    }
+
+    setProgress(100);
+    setCurrentTask(null);
+    setIsRunning(false);
+
+    setStats(prev => ({
+      ...prev,
+      lastRunTime: new Date().toISOString(),
+    }));
+
+    addLog('Elaborazione batch completata!', 'success');
+  }, [isRunning, executeTask, addLog]);
+
+  // Auto-avvio al mount (solo una volta)
+  useEffect(() => {
+    if (autoMode && !hasRunRef.current) {
+      hasRunRef.current = true;
+      // Delay per permettere al componente di renderizzare
+      const timer = setTimeout(() => {
+        runAllTasks();
+      }, 1000);
+      return () => clearTimeout(timer);
+    }
+  }, [autoMode, runAllTasks]);
+
+  // Render status icon per task
+  const renderTaskStatus = taskId => {
+    if (currentTask === taskId) {
+      return (
+        <Loader2
+          style={{
+            width: 20,
+            height: 20,
+            color: COLORS.info,
+            animation: 'spin 1s linear infinite',
+          }}
+        />
+      );
+    }
+
+    const result = taskResults[taskId];
+    if (!result) {
+      return <Clock style={{ width: 20, height: 20, color: COLORS.textMuted }} />;
+    }
+
+    if (result.success) {
+      return <CheckCircle style={{ width: 20, height: 20, color: COLORS.success }} />;
+    }
+
+    // Nessuna risposta in tempo: il server puo' ancora lavorare, non e' un errore.
+    if (result.pending) {
+      return <Clock style={{ width: 20, height: 20, color: COLORS.warning }} />;
+    }
+
+    return <XCircle style={{ width: 20, height: 20, color: COLORS.danger }} />;
+  };
+
+  return (
+    <PageLayout
+      title="Elaborazione Batch Automatica"
+      subtitle="Sincronizzazione automatica email, fatture, F24 e documenti"
+    >
+      <div style={styles.container}>
+        {/* Header con controlli */}
+        <div style={styles.header}>
+          <div />
+          <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+            {/* Indicatore Auto Mode */}
+            <div style={styles.autoModeIndicator}>
+              <div style={styles.pulseDot} />
+              <span>Auto Mode {autoMode ? 'ON' : 'OFF'}</span>
+            </div>
+
+            {/* Pulsante Avvia/Stop */}
+            <Button
+              variant="primary"
+              onClick={runAllTasks}
+              disabled={isRunning}
+              iconLeft={
+                isRunning ? (
+                  <Loader2 style={{ width: 18, height: 18, animation: 'spin 1s linear infinite' }} />
+                ) : (
+                  <Play style={{ width: 18, height: 18 }} />
+                )
+              }
+            >
+              {isRunning ? 'Elaborazione in corso...' : 'Avvia Elaborazione'}
+            </Button>
+          </div>
+        </div>
+
+        {/* Progress Bar */}
+        {isRunning && (
+          <div style={styles.progressContainer}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ fontWeight: 600, color: COLORS.primary }}>
+                Elaborazione in corso...
+              </span>
+              <span style={{ fontWeight: 700, color: COLORS.primary }}>{progress}%</span>
+            </div>
+            <div style={styles.progressBar}>
+              <div style={{ ...styles.progressFill, width: `${progress}%` }} />
+            </div>
+          </div>
+        )}
+
+        {/* Statistiche */}
+        <div style={styles.statsGrid}>
+          <StatCard
+            label="Documenti Processati"
+            value={stats.totalProcessed}
+            accent="primary"
+          />
+          <StatCard
+            label="Documenti Creati"
+            value={stats.documentsCreated}
+            accent="success"
+          />
+          <StatCard
+            label="Errori"
+            value={stats.errorsCount}
+            accent="danger"
+          />
+          <StatCard
+            label="Ultimo Aggiornamento"
+            value={
+              stats.lastRunTime
+                ? new Date(stats.lastRunTime).toLocaleTimeString('it-IT')
+                : '--:--'
+            }
+            accent="info"
+          />
+        </div>
+
+        {/* Lista Task */}
+        <Card title="Task Automatici" icon={<Settings style={{ width: 20, height: 20 }} />}>
+          <div style={styles.taskList}>
+            {AUTO_TASKS.map(task => {
+              const Icon = task.icon;
+              const result = taskResults[task.id];
+
+              return (
+                <div
+                  key={task.id}
+                  style={{
+                    ...styles.taskItem,
+                    background:
+                      currentTask === task.id
+                        ? `${task.color}1f`
+                        : result?.success
+                          ? `${COLORS.success}08`
+                          : result?.error
+                            ? `${COLORS.danger}08`
+                            : COLORS.bgAlt,
+                  }}
+                >
+                  <div style={{ ...styles.taskIcon, background: `${task.color}15` }}>
+                    <Icon style={{ width: 20, height: 20, color: task.color }} />
+                  </div>
+
+                  <div style={styles.taskInfo}>
+                    <div style={styles.taskTitle}>{task.name}</div>
+                    <div style={styles.taskSubtitle}>{task.description}</div>
+                    {result?.data && (
+                      <div style={{ fontSize: 12, color: COLORS.textMuted, marginTop: 4 }}>
+                        {result.data.processed && `Processati: ${result.data.processed}`}
+                        {result?.data?.fatture_create && ` | Creati: ${result?.data?.fatture_create}`}
+                        {result?.data?.riconciliati && ` | Riconciliati: ${result?.data?.riconciliati}`}
+                      </div>
+                    )}
+                  </div>
+
+                  {task.autoRun === false && (
+                    <button
+                      type="button"
+                      onClick={() => eseguiTaskConfermato(task)}
+                      disabled={isRunning}
+                      style={{
+                        fontSize: 12,
+                        fontWeight: 700,
+                        padding: '8px 12px',
+                        minHeight: 36,
+                        borderRadius: 8,
+                        border: `1.5px solid ${task.color}`,
+                        background: '#fff',
+                        color: task.color,
+                        cursor: isRunning ? 'not-allowed' : 'pointer',
+                        marginRight: 8,
+                      }}
+                    >
+                      Esegui ora
+                    </button>
+                  )}
+
+                  <div style={styles.taskStatus}>{renderTaskStatus(task.id)}</div>
+                </div>
+              );
+            })}
+          </div>
+        </Card>
+
+        {/* Log Console */}
+        <Card
+          title="Log Elaborazione"
+          icon={<FileText style={{ width: 20, height: 20 }} />}
+          actions={
+            <Button variant="outline" size="sm" onClick={() => setLogs([])}>
+              Pulisci Log
+            </Button>
+          }
+        >
+          <div style={styles.logContainer} ref={logContainerRef}>
+            {logs.length === 0 ? (
+              <div style={{ color: COLORS.textMuted, textAlign: 'center', padding: 24 }}>
+                In attesa dell'avvio dell'elaborazione...
+              </div>
+            ) : (
+              logs.map((log, i) => (
+                <div key={i} style={styles.logEntry}>
+                  <span style={styles.logTime}>[{log.timestamp}]</span>
+                  <span aria-hidden style={{ display: 'inline-flex', marginRight: 6, verticalAlign: '-2px' }}>
+                    {log.type === 'success' ? <CheckCircle size={13} /> : log.type === 'error' ? <XCircle size={13} /> : log.type === 'warning' ? <AlertTriangle size={13} /> : <Clock size={13} />}
+                  </span>
+                  <span
+                    style={
+                      log.type === 'success'
+                        ? styles.logSuccess
+                        : log.type === 'error'
+                          ? styles.logError
+                          : log.type === 'warning'
+                            ? styles.logWarning
+                            : styles.logInfo
+                    }
+                  >
+                    {log.message}
+                  </span>
+                </div>
+              ))
+            )}
+          </div>
+        </Card>
+      </div>
+
+      {/* CSS per animazioni */}
+      <style>{`
+        @keyframes spin {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(360deg); }
+        }
+        @keyframes pulse {
+          0%, 100% { opacity: 1; }
+          50% { opacity: 0.5; }
+        }
+      `}</style>
+    </PageLayout>
+  );
+}

@@ -1,0 +1,9 @@
+<svg id="icon-no-allergens" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="30" height="30" viewBox="0 0 30 30">
+  <g id="Group_149" data-name="Group 149" transform="translate(1.252 1.252)">
+    <g id="Ellipse_1" data-name="Ellipse 1" transform="translate(7.748 7.925)" fill="none" stroke="#DBCCA5" stroke-width="3">
+      <circle cx="6" cy="6" r="6" stroke="none"/>
+      <circle cx="6" cy="6" r="7.5" fill="none"/>
+    </g>
+    <path id="Path_360" data-name="Path 360" d="M9.773,10.3l9.61,8.835" transform="translate(-0.83 -0.38)" fill="none" stroke="#DBCCA5" stroke-width="3"/>
+  </g>
+</svg>

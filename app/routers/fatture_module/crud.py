@@ -1,0 +1,1195 @@
+"""
+Fatture Module - CRUD e Visualizzazione fatture.
+"""
+from fastapi import HTTPException, Query
+from fastapi.responses import HTMLResponse
+from typing import Dict, Any, Optional
+from datetime import datetime, timezone
+import calendar
+import re
+
+from app.database import Database
+from app.utils.id_fattura import filtro_id
+from .common import COL_FORNITORI, COL_FATTURE_RICEVUTE, COL_DETTAGLIO_RIGHE, COL_ALLEGATI, logger
+from .helpers import generate_invoice_html
+from app.services.payment_allocation_validator import (
+    allocation_summary,
+    is_credit_note,
+)
+from app.services.fattura_attiva import FILTRO_FATTURA_ATTIVA
+from app.services.fatture_emesse import filtro_escludi_emesse
+from app.services.stato_pagamento_fattura import (
+    FILTRO_NON_PAGATE,
+    FILTRO_PAGATE,
+    e_pagata,
+)
+
+
+def _safe_year(value: Any) -> Optional[int]:
+    """Estrae l'anno (int) da una data in formato datetime/ISO/'YYYY-MM-DD'.
+    Ritorna None se il valore è vuoto o non parsabile."""
+    if not value:
+        return None
+    if hasattr(value, "year"):
+        try:
+            return int(value.year)
+        except Exception:
+            return None
+    s = str(value).strip()
+    if len(s) >= 4 and s[:4].isdigit():
+        try:
+            return int(s[:4])
+        except ValueError:
+            return None
+    return None
+
+
+def _metodo_reale(doc: dict) -> str:
+    """Come la fattura E' STATA pagata davvero, non come si prevedeva.
+
+    Segnalazione utente 07/08/2026: fattura registrata in Cassa, ma il PDF
+    esportato diceva "misto" — il metodo del piano di pagamento dell'XML, che
+    descrive un'intenzione, non un fatto. L'ordine qui e' dalla prova piu'
+    forte alla piu' debole:
+
+    1. il metodo effettivo scritto dalla conferma del pagamento;
+    2. la scrittura di Prima Nota (cassa e banca insieme = misto DAVVERO,
+       cioe' pagamento diviso, non etichetta del piano);
+    3. solo in assenza di tutto, il metodo previsto.
+    """
+    esplicito = str(doc.get("metodo_pagamento_effettivo") or "").strip()
+    if esplicito:
+        return esplicito
+    in_cassa = doc.get("prima_nota_tipo") == "cassa" or bool(doc.get("prima_nota_cassa_id"))
+    in_banca = doc.get("prima_nota_tipo") == "banca" or bool(doc.get("prima_nota_banca_id"))
+    if in_cassa and in_banca:
+        return "misto"
+    if in_cassa:
+        return "cassa"
+    if in_banca:
+        return "banca"
+    return doc.get("payment_method") or doc.get("metodo_pagamento") or ""
+
+
+def _data_documento_fattura(doc: dict):
+    """Restituisce la data documentale senza inventare valori mancanti.
+
+    Nel registro canonico convivono record storici che usano ``data_fattura``
+    e import piu recenti che usano ``invoice_date``/``data_documento``.
+    """
+    return (
+        doc.get("invoice_date")
+        or doc.get("data_documento")
+        or doc.get("data_fattura")
+        or doc.get("data")
+    )
+
+
+def _e_documento_trasporto(doc: dict) -> bool:
+    """I DDT sono prove di consegna, non fatture ricevute.
+
+    Il pregresso fotografico li ha importati in ``invoices`` con ``tipo=ddt``;
+    il fallback ``TD01`` dell'archivio li faceva poi apparire come fatture.
+    Li riconosciamo solo da campi espliciti, mai da numero/data/importo.
+    """
+    valori = (
+        doc.get("tipo"), doc.get("document_type"), doc.get("tipo_documento"),
+        doc.get("document_role"),
+    )
+    normalizzati = {
+        re.sub(r"[^a-z0-9]+", " ", str(valore or "").casefold()).strip()
+        for valore in valori
+    }
+    return bool(normalizzati & {"ddt", "documento di trasporto", "delivery note"})
+
+
+def _piva_senza_prefisso(valore: Any) -> str:
+    """P.IVA confrontabile: maiuscola, senza separatori e senza prefisso IT."""
+    piva = re.sub(r"[^A-Z0-9]", "", str(valore or "").upper())
+    return piva[2:] if piva.startswith("IT") and len(piva) == 13 else piva
+
+
+def _supplier_counter_key(fattura: dict) -> str:
+    """Identita' conservativa per il solo contatore dei fornitori.
+
+    La P.IVA resta la chiave preferita. Se manca, distinguiamo per nome
+    documentato normalizzato senza trasformarlo in identita' fiscale e senza
+    creare collegamenti tra fatture, anagrafiche o pagamenti.
+    """
+    piva = str(fattura.get("fornitore_partita_iva") or "").strip().upper()
+    if piva:
+        return f"piva:{re.sub(r'[^A-Z0-9]', '', piva)}"
+    name = str(fattura.get("fornitore_ragione_sociale") or "").strip().upper()
+    normalized_name = re.sub(r"[^A-Z0-9]", "", name)
+    return f"nome:{normalized_name}" if normalized_name else ""
+
+
+def _importo_letto(doc: dict, *campi: str) -> Optional[float]:
+    """Il primo importo non nullo fra i campi (i due schemi di `invoices`).
+
+    Zero se i campi presenti dicono tutti zero; None se nessuno c'e' o non si
+    legge: mai uno zero di comodo al posto di un dato che manca.
+    """
+    presente = False
+    for campo in campi:
+        valore = doc.get(campo)
+        if valore in (None, ""):
+            continue
+        try:
+            numero = float(valore)
+        except (ValueError, TypeError):
+            continue
+        presente = True
+        if numero:
+            return numero
+    return 0.0 if presente else None
+
+
+def _normalizza_da_invoices(doc: dict) -> dict:
+    """Mappa un documento della collection `invoices` nel formato unificato archivio.
+
+    NOTA: in `invoices` convivono due schemi — quello inglese (upload XML,
+    Drive: total_amount/invoice_number/...) e quello italiano scritto da
+    fatture_module/import_xml.py (importo_totale/numero_documento/...).
+    Ogni campo va letto con entrambi i nomi, altrimenti i documenti
+    dell'altro schema appaiono con importo 0 e colonne vuote."""
+    try:
+        importo_totale = float(doc.get("total_amount") or doc.get("importo_totale") or 0)
+    except (ValueError, TypeError):
+        importo_totale = 0.0
+    imponibile = _importo_letto(doc, "taxable_amount", "imponibile")
+    iva = _importo_letto(doc, "vat_amount", "iva")
+    # Un imponibile assente, o zero con un totale che zero non e', non si
+    # ricostruisce: `totale / 1.22` inventava un'aliquota al 22% e
+    # sovrascriveva l'IVA vera (una fattura al 10% o esente cambiava IVA).
+    # Resta vuoto, e la riga si dichiara da verificare.
+    importi_da_verificare = imponibile is None or (imponibile == 0 and importo_totale != 0)
+    if importi_da_verificare:
+        imponibile = None
+
+    # Nota di credito (TD04/TD08): riduce, quindi pesa in negativo. Il valore
+    # assoluto evita il doppio negativo delle note gia' scritte col meno.
+    if is_credit_note(doc):
+        importo_totale = -abs(importo_totale)
+        imponibile = -abs(imponibile) if imponibile is not None else None
+        iva = -abs(iva) if iva is not None else None
+
+    stato_raw = doc.get("stato") or doc.get("status") or "importata"
+    # «E' pagata?» si chiede in un posto solo.
+    pagato = e_pagata(doc)
+    created_at = doc.get("imported_at")
+    if hasattr(created_at, "isoformat"):
+        created_at = created_at.isoformat()
+
+    data_doc = _data_documento_fattura(doc)
+    return {
+        "id": doc.get("id", ""),
+        "numero_documento": doc.get("invoice_number") or doc.get("numero_documento"),
+        "tipo_documento": doc.get("tipo_documento") or doc.get("document_type") or "TD01",
+        "tipo_documento_desc": doc.get("tipo_documento_desc") or "",
+        "data_documento": data_doc,
+        "importo_totale": importo_totale,
+        "imponibile": imponibile,
+        "iva": iva,
+        "importi_da_verificare": importi_da_verificare,
+        "fornitore_ragione_sociale": (doc.get("supplier_name")
+                                      or doc.get("cedente_denominazione")
+                                      or doc.get("fornitore_ragione_sociale")),
+        "fornitore_partita_iva": doc.get("supplier_vat") or doc.get("fornitore_partita_iva"),
+        "stato": "pagata" if pagato else stato_raw,
+        "metodo_pagamento": doc.get("payment_method") or doc.get("metodo_pagamento"),
+        "metodo_pagamento_effettivo": _metodo_reale(doc),
+        "pagato": pagato,
+        "riconciliato": bool(
+            doc.get("riconciliato") or doc.get("paypal_riconciliato_banca")
+        ),
+        "prima_nota_cassa_id": doc.get("prima_nota_cassa_id"),
+        "prima_nota_banca_id": doc.get("prima_nota_banca_id"),
+        "has_pdf": False,
+        "email_associata": doc.get("email_from"),
+        "anno": doc.get("anno") or _safe_year(data_doc),
+        "created_at": created_at,
+        "data_pagamento": doc.get("data_pagamento"),
+        "fonte": doc.get("fonte", "aruba_pec"),
+        "document_role": "credit_note" if is_credit_note(doc) else "invoice",
+        **allocation_summary(doc),
+        "assegni_collegati": doc.get("assegni_collegati") or [],
+        "movimento_bancario_id": doc.get("movimento_bancario_id"),
+        "payment_evidence": doc.get("payment_evidence") or [],
+        "payment_document_ids": doc.get("payment_document_ids") or [],
+        "bonifico_ids": doc.get("bonifico_ids") or [],
+        "_xml_filename": doc.get("xml_filename"),   # usato solo per dedup
+    }
+
+
+async def get_archivio_fatture(
+    anno: Optional[int] = Query(None),
+    mese: Optional[int] = Query(None),
+    fornitore_piva: Optional[str] = Query(None),
+    fornitore_nome: Optional[str] = Query(None),
+    stato: Optional[str] = Query(None),
+    search: Optional[str] = Query(None),
+    limit: int = Query(default=200, le=6000),
+    skip: int = Query(default=0)
+) -> Dict[str, Any]:
+    """
+    Archivio Fatture Ricevute — legge da ENTRAMBE le collection:
+      - invoices (111 doc: fatture XML da Aruba PEC, schema inglese)
+      - fatture_passive (73 doc: formato gestionale, schema italiano)
+    I risultati vengono unificati, deduplicati per xml_filename e ordinati per data.
+    Gli insert/upsert da upload XML restano su fatture_passive (invariati).
+    """
+    db = Database.get_db()
+
+    # ── Costruisci filtri per `invoices` ─────────────────────────────────────
+    # Bug corretto 15/07/2026: una fattura "eliminata" da DELETE /api/fatture/{id}
+    # è di norma un soft-delete (CascadeOperations.delete_fattura_cascade imposta
+    # status/entity_status="deleted"), ma questa query non escludeva mai quello
+    # stato — una fattura "eliminata" poteva ricomparire qui nonostante il
+    # messaggio di conferma dicesse che l'eliminazione è irreversibile.
+    # Dal 27/09/2026 il filtro e' «fattura attiva» (un posto solo): ogni
+    # fattura 2026 esiste anche come copia `archived`, e 16 di quelle copie
+    # sopravvivevano alla deduplica — 8 erano fatture EMESSE da noi, elencate
+    # fra le ricevute. Le emesse (cedente = nostra P.IVA) stanno in
+    # `fatture_emesse`, mai qui.
+    q_inv: dict = {"$and": [dict(FILTRO_FATTURA_ATTIVA), filtro_escludi_emesse()]}
+    # Anno e mese vengono applicati DOPO la normalizzazione. Il filtro database
+    # storico escludeva i record con sola ``data_fattura`` e, su Supabase, le
+    # combinazioni annidate $and/$or non producevano la stessa vista del registro.
+    if fornitore_piva:
+        q_inv["supplier_vat"] = {"$regex": fornitore_piva.strip(), "$options": "i"}
+    if fornitore_nome:
+        q_inv["$or"] = [
+            {"supplier_name": {"$regex": fornitore_nome.strip(), "$options": "i"}},
+            {"cedente_denominazione": {"$regex": fornitore_nome.strip(), "$options": "i"}}
+        ]
+    if stato:
+        # «Pagate» e «Importate» (= non pagate) con il criterio unico, che
+        # legge tutti e cinque i campi di stato del pagamento.
+        if stato in ("pagata", "paid"):
+            q_inv["$and"].append(dict(FILTRO_PAGATE))
+        elif stato in ("importata", "imported"):
+            q_inv["$and"].append(dict(FILTRO_NON_PAGATE))
+        elif stato == "anomala":
+            q_inv["$and"].append({"$or": [
+                {"$and": [
+                    {"$or": [{"total_amount": {"$lte": 0}}, {"total_amount": {"$exists": False}}]},
+                    {"$or": [{"importo_totale": {"$lte": 0}}, {"importo_totale": {"$exists": False}}]},
+                ]},
+                {"$and": [
+                    {"invoice_number": {"$in": [None, ""]}},
+                    {"numero_documento": {"$in": [None, ""]}},
+                ]},
+            ]})
+        else:
+            q_inv["stato"] = stato
+    if search:
+        q_inv["$or"] = [
+            {"invoice_number": {"$regex": search, "$options": "i"}},
+            {"supplier_name": {"$regex": search, "$options": "i"}},
+            {"supplier_vat": {"$regex": search, "$options": "i"}},
+        ]
+
+    # ── Consolidamento §5.4: `fatture_passive` migrata in `invoices`. La lettura
+    #    a due sorgenti (con dedup runtime) è stata rimossa: si legge SOLO la
+    #    canonica `invoices`. I filtri q_fp restano solo per non rompere codice a
+    #    valle ma non vengono più usati per interrogare la legacy.
+    q_fp: dict = {}
+    if anno:
+        q_fp["anno"] = anno
+        if mese:
+            mese_str = str(mese).zfill(2)
+            last_day = calendar.monthrange(anno, mese)[1]
+            q_fp["data"] = {
+                "$gte": f"{anno}-{mese_str}-01",
+                "$lte": f"{anno}-{mese_str}-{last_day:02d}"
+            }
+    if fornitore_piva:
+        q_fp["fornitore_piva"] = {"$regex": fornitore_piva.strip(), "$options": "i"}
+    if fornitore_nome:
+        q_fp["fornitore_denominazione"] = {"$regex": fornitore_nome.strip(), "$options": "i"}
+    if stato:
+        q_fp["stato"] = stato
+    if search:
+        q_fp["$or"] = [
+            {"numero": {"$regex": search, "$options": "i"}},
+            {"fornitore_denominazione": {"$regex": search, "$options": "i"}},
+            {"fornitore_piva": {"$regex": search, "$options": "i"}},
+        ]
+
+    # ── Legge SOLO la collezione canonica `invoices` (§5.4) ──────────────────
+    docs_inv_raw = await db["invoices"].find(q_inv, {
+        "_id": 0,
+        "fattura_allegata": 0,
+        "document_original_ref": 0,
+        "xml_raw": 0,
+        "foto": 0,
+    }).sort("invoice_date", -1).to_list(20000)
+
+    # Deduplica esclusivamente per evidenza documentale (hash/ID sorgente).
+    # Numero, fornitore, data e importo identici restano collisioni visibili.
+    from app.routers.invoices.invoices_main import _dedupe_invoices
+    docs_inv_raw = _dedupe_invoices(docs_inv_raw)
+    # Il DDT fotografico resta nel suo archivio documentale, ma non e' una
+    # fattura e non deve ricevere il fallback TD01. Caso reale SAIMA 69011:
+    # la fattura canonica collegata e' 1/66288; mostrare entrambi raddoppiava
+    # documento, pagamento e potenzialmente contabilita'.
+    docs_inv_raw = [doc for doc in docs_inv_raw if not _e_documento_trasporto(doc)]
+
+    # ── Normalizza ────────────────────────────────────────────────────────────
+    normalized_inv = [_normalizza_da_invoices(d) for d in docs_inv_raw]
+    if anno:
+        normalized_inv = [
+            fattura for fattura in normalized_inv
+            if _safe_year(fattura.get("data_documento")) == anno
+            or str(fattura.get("anno") or "") == str(anno)
+        ]
+        if mese:
+            prefisso = f"{anno}-{mese:02d}"
+            normalized_inv = [
+                fattura for fattura in normalized_inv
+                if str(fattura.get("data_documento") or "")[:7] == prefisso
+            ]
+    normalized_fp = []  # nessuna seconda sorgente: fatture_passive è consolidata in invoices
+
+    # ── Unisci e ordina per data_documento decrescente ────────────────────────
+    all_fatture = normalized_inv + normalized_fp
+
+    all_fatture.sort(
+        key=lambda f: f.get("data_documento") or "",
+        reverse=True
+    )
+
+    # Rimuovi il campo interno di dedup prima di rispondere
+    for f in all_fatture:
+        f.pop("_xml_filename", None)
+
+    # Proiezione unica delle prove, sempre derivata dagli stessi collegamenti
+    # canonici usati da Banca/Prima Nota. È read-only e non tocca il database.
+    # Tre letture in blocco per tutte le fatture, non tre per fattura.
+    from app.services.payment_evidence_projection import project_payment_evidence_many
+    for f, prove in zip(all_fatture, await project_payment_evidence_many(db, all_fatture)):
+        f["payment_evidence"] = prove
+
+    # ── Arricchisci con metodo_pagamento DEL FORNITORE ────────────────────────
+    # Legge l'anagrafica fornitori per P.IVA e popola `fornitore_metodo_pagamento`.
+    # Così il frontend può decidere di mostrare un solo bottone (Cassa o Banca)
+    # quando il fornitore ha un metodo predefinito.
+    # NOTE: nel doc fattura il campo P.IVA è `supplier_vat` (campi standard
+    # FatturaPA importati). `fornitore_partita_iva` non esiste, era un bug.
+    pive = list({
+        (f.get("supplier_vat") or f.get("fornitore_partita_iva") or "").strip()
+        for f in all_fatture
+        if (f.get("supplier_vat") or f.get("fornitore_partita_iva"))
+    })
+    if pive:
+        fornitori_docs = await db["fornitori"].find(
+            {"$or": [
+                {"partita_iva": {"$in": pive}},
+                {"piva": {"$in": pive}},
+                {"vat_number": {"$in": pive}},
+            ]},
+            {"_id": 0, "partita_iva": 1, "piva": 1, "vat_number": 1,
+             "metodo_pagamento": 1, "metodo_pagamento_predefinito": 1, "ragione_sociale": 1}
+        ).to_list(len(pive) * 3 + 10)
+        # MOTORE UNICO: il metodo esposto al frontend è quello CANONICO
+        # (cassa/banca/misto) del motore prima nota — prima si mandava il
+        # valore grezzo (es. 'da_configurare' in metodo_pagamento_predefinito)
+        # e il badge in Fatture diceva "senza metodo" mentre Fornitori
+        # mostrava Banca: incoerenza segnalata dall'utente il 10/07.
+        from app.engines.prima_nota_engine import normalizza_metodo_pagamento
+        map_metodo = {}
+        map_nome = {}
+        for fdoc in fornitori_docs:
+            # `metodo_pagamento` è il valore canonico e modificabile dalla
+            # scheda Fornitori. Il campo `metodo_pagamento_predefinito` è
+            # legacy e deve essere usato soltanto come fallback: altrimenti
+            # un vecchio valore "cassa" continua a prevalere su "misto".
+            metodo = (
+                normalizza_metodo_pagamento(fdoc.get("metodo_pagamento"))
+                or normalizza_metodo_pagamento(fdoc.get("metodo_pagamento_predefinito"))
+                or ""
+            )
+            for key in (fdoc.get("partita_iva"), fdoc.get("piva"), fdoc.get("vat_number")):
+                piva = (key or "").strip()
+                if not piva:
+                    continue
+                # Un doppione del fornitore SENZA metodo non deve cancellare
+                # il metodo del record buono con la stessa P.IVA
+                if metodo or piva not in map_metodo:
+                    map_metodo[piva] = metodo
+                if fdoc.get("ragione_sociale") and piva not in map_nome:
+                    map_nome[piva] = fdoc["ragione_sociale"]
+        for f in all_fatture:
+            piva = (f.get("supplier_vat") or f.get("fornitore_partita_iva") or "").strip()
+            f["fornitore_metodo_pagamento"] = map_metodo.get(piva, "")
+            # Se il nome fornitore non era stato salvato sulla fattura (es. persona
+            # fisica non gestita dal vecchio parser), recuperalo dall'anagrafica.
+            if not (f.get("fornitore_ragione_sociale") or "").strip() and piva in map_nome:
+                f["fornitore_ragione_sociale"] = map_nome[piva]
+
+    total = len(all_fatture)
+
+    # Applica paginazione
+    paginated = all_fatture[skip: skip + limit]
+
+    return {"fatture": paginated, "total": total, "limit": limit, "skip": skip}
+
+
+# Il foglio ASSO è disegnato a larghezza FISSA (#fattura-elettronica ha
+# min-width:800px e le tabelle sono a 800px): un min-width vince su max-width,
+# quindi non si può "refloware" senza rompere il layout. Su mobile lo si fa
+# quindi rientrare dicendo al browser che la pagina è larga ~820px: il browser
+# la rimpicciolisce per farla stare nello schermo (adattivo a ogni telefono),
+# mantenendo intatto l'impaginato. Su desktop il viewport è ininfluente.
+_META_SCALE_TO_FIT = (
+    "<meta name='viewport' content='width=820'>"
+    "<style>html,body{margin:0!important;padding:0!important;min-width:820px!important;}"
+    "body{display:flex!important;justify-content:center!important;align-items:flex-start!important;}"
+    "#fattura-container,#fattura-elettronica{width:800px!important;max-width:800px!important;"
+    "margin-left:auto!important;margin-right:auto!important;flex:0 0 800px!important;}"
+    "img{max-width:100%;height:auto;}</style>"
+)
+
+# Per l'HTML di fallback (semplice, non a 800px fissi): reflow classico.
+_META_REFLOW = (
+    "<meta name='viewport' content='width=device-width, initial-scale=1, maximum-scale=5'>"
+    "<style>"
+    "html{-webkit-text-size-adjust:100%;}"
+    "*,*::before,*::after{box-sizing:border-box;}"
+    "body{margin:0!important;padding:10px!important;max-width:100%;overflow-x:auto;}"
+    "img{max-width:100%;height:auto;}"
+    "table{max-width:100%!important;border-collapse:collapse;}"
+    "td,th{word-break:break-word;overflow-wrap:anywhere;}"
+    "</style>"
+)
+
+
+def _rendi_fattura_responsive(html_str: str) -> str:
+    """Inserisce il viewport giusto nell'HTML della fattura perché stia nello
+    schermo del telefono. Se è il foglio ASSO a larghezza fissa (800px) usa lo
+    "scale-to-fit" (rimpicciolisce mantenendo il layout); altrimenti il reflow."""
+    if not html_str:
+        return html_str
+    lower = html_str.lower()
+    fisso_800 = ("fattura-elettronica" in lower
+                 or "min-width: 800px" in lower or "min-width:800px" in lower)
+    meta = _META_SCALE_TO_FIT if fisso_800 else _META_REFLOW
+
+    if "<head" in lower:
+        idx = lower.find("<head")
+        chiusura = html_str.find(">", idx)
+        if chiusura != -1:
+            return html_str[:chiusura + 1] + meta + html_str[chiusura + 1:]
+    if "<html" in lower:
+        idx = lower.find("<html")
+        chiusura = html_str.find(">", idx)
+        if chiusura != -1:
+            return (html_str[:chiusura + 1] + "<head>" + meta + "</head>"
+                    + html_str[chiusura + 1:])
+    return (
+        "<!DOCTYPE html><html><head><meta charset='UTF-8'>"
+        + meta + "</head><body>" + html_str + "</body></html>"
+    )
+
+
+async def storia_fattura(fattura_id: str) -> Dict[str, Any]:
+    """Storia cronologica della fattura: tutte le operazioni registrate dietro
+    di essa (importata, pagata, IVA, riconciliazioni, snapshot pre-azzeramento…)
+    e lo stato derivato corrente. Sopravvive all'azzeramento (chiave invoice_key)."""
+    from app.services import storia_fatture as _storia
+    db = Database.get_db()
+    fattura = await db["invoices"].find_one(filtro_id(fattura_id), {"_id": 0, "invoice_key": 1,
+                                                                 "invoice_number": 1})
+    if not fattura:
+        fattura = await db[COL_FATTURE_RICEVUTE].find_one(
+            filtro_id(fattura_id), {"_id": 0, "invoice_key": 1, "invoice_number": 1})
+    if not fattura:
+        raise HTTPException(status_code=404, detail="Fattura non trovata")
+    key = fattura.get("invoice_key")
+    st = await _storia.storia(db, key) if key else None
+    return {
+        "fattura_id": fattura_id,
+        "invoice_key": key,
+        "operazioni": (st or {}).get("operazioni", []),
+        "stato_corrente": (st or {}).get("stato_corrente", {}),
+        "ha_storia": bool(st),
+    }
+
+
+async def _trova_fattura_e_xml_originale(fattura_id: str) -> tuple[Optional[dict], Optional[bytes]]:
+    """Cerca la fattura e recupera l'XML FatturaPA originale (bytes, gia'
+    ripulito dall'eventuale busta .p7m), se disponibile. Punto UNICO usato
+    sia dalla vista renderizzata (view_fattura_assoinvoice) sia dal download
+    del file grezzo (servizio `originale_documento`, tipo `fattura`) — cosi' le due viste concordano
+    sempre su cosa sia "l'originale" di una fattura.
+
+    1. Cerca la fattura in `invoices` (poi fallback COL_FATTURE_RICEVUTE / _id)
+    2. Legge il file XML dal disco (gestisce .p7m estraendo l'XML interno)
+       oppure, se il file non e' su disco, usa xml_raw/xml_content salvato
+       nel record Drive/Supabase.
+    """
+    import os
+    from app.services.xml_invoice_processor import extract_xml_from_p7m
+
+    db = Database.get_db()
+
+    # ── Trova fattura ────────────────────────────────────────────────────────
+    fattura = await db["invoices"].find_one(filtro_id(fattura_id), {"_id": 0})
+    if not fattura:
+        fattura = await db[COL_FATTURE_RICEVUTE].find_one(filtro_id(fattura_id), {"_id": 0})
+    if not fattura:
+        # Compatibilita' con i link storici basati sull'ID interno del registro.
+        try:
+            fattura = await db["invoices"].find_one({"_id": fattura_id})
+            if fattura:
+                fattura.pop("_id", None)
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("[Fatture] ricerca per _id storico non riuscita: %s", exc)
+    if not fattura:
+        return None, None
+    if fattura.get("entity_status") == "deleted" or fattura.get("status") == "deleted":
+        # Stesso bug del 15/07/2026 già corretto in get_fattura_dettaglio:
+        # una fattura archiviata da DELETE /api/fatture/{id} deve comportarsi
+        # come inesistente, anche per la vista renderizzata e per il
+        # download dell'XML originale (bug reale, review Codex PR #71).
+        return None, None
+
+    xml_file_path = fattura.get("xml_file_path")
+    # stringa XML se già estratta — nomi diversi a seconda della pipeline di import
+    xml_raw_content = fattura.get("xml_raw") or fattura.get("xml_content")
+
+    xml_bytes: bytes | None = None
+
+    # ── Prova a leggere XML dal disco ────────────────────────────────────────
+    if xml_file_path and os.path.exists(xml_file_path):
+        with open(xml_file_path, "rb") as f:
+            raw = f.read()
+
+        filename = xml_file_path.lower()
+        if filename.endswith(".p7m"):
+            # Estrattore CMS/PKCS#7 condiviso con l'import (gestisce anche i P7M
+            # binari DER, non solo quelli con XML embedded trovabile a byte-search).
+            # Ritorna None se l'estrazione fallisce davvero — MAI la busta P7M
+            # grezza come se fosse XML (bug reale: prima veniva servita come
+            # download "fattura.xml" un blob binario illeggibile).
+            xml_bytes = extract_xml_from_p7m(raw)
+        else:
+            xml_bytes = raw
+
+    elif xml_raw_content:
+        if isinstance(xml_raw_content, str):
+            # xml_raw è salvato come stringa Python già decodificata in fase
+            # di import (può provenire da un file non-UTF-8, es. ISO-8859-1
+            # — vedi i tentativi di decodifica in process_xml_bytes). Qui
+            # viene sempre ri-codificato in UTF-8 per la risposta HTTP: se
+            # il testo contiene ancora la dichiarazione XML originale
+            # (<?xml ... encoding="ISO-8859-1"?>), bytes e dichiarazione
+            # non concorderebbero più — un lettore XML che si fida della
+            # dichiarazione userebbe il codec sbagliato sui bytes UTF-8
+            # (mojibake/rifiuto del file). Normalizza la dichiarazione a
+            # UTF-8 prima di servire (bug reale, review Codex PR #71).
+            xml_raw_content = re.sub(
+                r'encoding\s*=\s*(["\'])[^"\']*\1', 'encoding="UTF-8"', xml_raw_content, count=1
+            )
+            xml_bytes = xml_raw_content.encode("utf-8")
+        else:
+            xml_bytes = xml_raw_content
+
+    return fattura, xml_bytes
+
+
+def html_fattura_da_xml(xml_bytes: bytes, indice: int = 0, etichetta: str = "") -> Optional[str]:
+    """La fattura leggibile dal suo XML col foglio ASSO Software, oppure
+    ``None`` se la trasformazione non riesce. Un solo punto per fatture
+    ricevute ed emesse."""
+    import os
+    from lxml import etree as LET
+
+    try:
+        xsl_path = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+            "static", "FoglioStileAssoSoftware.xsl",
+        )
+        transform = LET.XSLT(LET.parse(xsl_path))
+        xml_doc = LET.fromstring(xml_bytes)
+        # File multi-body: FoglioStileAssoSoftware.xsl itera TUTTI i
+        # <FatturaElettronicaBody> del file — se xml_raw è quello
+        # dell'intero file raggruppato (condiviso da più fatture, vedi
+        # xml_body_index), aprire questa fattura renderizzerebbe anche
+        # le altre fatture dello stesso file insieme a questa. Isola
+        # SOLO il body di questa fattura prima di trasformare (bug
+        # reale, review Codex PR #71).
+        corpi = [el for el in xml_doc.iter()
+                 if (el.tag.split('}')[-1] if '}' in el.tag else el.tag) == 'FatturaElettronicaBody']
+        if len(corpi) > 1:
+            if not (0 <= indice < len(corpi)):
+                indice = 0
+            for i, corpo in enumerate(corpi):
+                if i != indice:
+                    corpo.getparent().remove(corpo)
+        html_str = LET.tostring(transform(xml_doc), pretty_print=True, encoding="unicode")
+        # Adatta l'HTML allo schermo (viewport + CSS responsive), sia che
+        # l'XSL emetta <html> sia che no.
+        return _rendi_fattura_responsive(html_str)
+    except Exception as xsl_err:  # noqa: BLE001 - il chiamante ha il suo ripiego
+        logger.warning("Errore XSLT per %s: %s: %s — fallback HTML generico",
+                       etichetta, type(xsl_err).__name__, xsl_err)
+        return None
+
+
+async def view_fattura_assoinvoice(fattura_id: str) -> HTMLResponse:
+    """
+    Visualizza fattura nel formato ASSO Software (FoglioStileAssoSoftware.xsl).
+    1. Cerca la fattura in `invoices` (poi fallback `indice_documenti`)
+    2. Legge il file XML dal disco (gestisce .p7m estraendo l'XML interno)
+    3. Applica la trasformazione XSLT con il foglio ASSO
+    4. Restituisce l'HTML trasformato
+    """
+    fattura, xml_bytes = await _trova_fattura_e_xml_originale(fattura_id)
+    if fattura is None:
+        raise HTTPException(status_code=404, detail="Fattura non trovata")
+
+    # ── Applica ASSO XSL se abbiamo l'XML ────────────────────────────────────
+    if xml_bytes:
+        html_str = html_fattura_da_xml(xml_bytes, fattura.get("xml_body_index", 0), fattura_id)
+        if html_str:
+            return HTMLResponse(content=html_str)
+
+    # ── Fallback: HTML generico se XML non disponibile ────────────────────────
+    # ATTENZIONE (richiesta utente 19/07/2026): questo NON è il documento
+    # originale, è un riepilogo ricostruito con un sottoinsieme di campi —
+    # generate_invoice_html() lo segnala esplicitamente nell'HTML, cosi'
+    # l'utente sa sempre quando NON sta vedendo l'originale.
+    db = Database.get_db()
+    righe = await db[COL_DETTAGLIO_RIGHE].find({"fattura_id": fattura_id}, {"_id": 0}).to_list(1000)
+    if not righe and fattura.get("linee"):
+        righe = fattura.get("linee", [])
+    html = generate_invoice_html(fattura, righe)
+    return HTMLResponse(content=_rendi_fattura_responsive(html))
+
+
+_MIME_ALLEGATO = {
+    "PDF": "application/pdf", "XML": "application/xml", "TXT": "text/plain",
+    "JPG": "image/jpeg", "JPEG": "image/jpeg", "PNG": "image/png",
+    "ZIP": "application/zip", "HTML": "text/html", "HTM": "text/html",
+}
+
+
+def allegati_da_xml(xml_bytes: bytes) -> list:
+    """Gli allegati (<Allegati>) dentro l'XML della fattura, nell'ordine.
+
+    Stanno solo li': la vecchia collezione ``allegati_fatture`` non e' mai
+    stata riempita, e il PDF di cortesia di 184 fatture 2026 non si vedeva.
+    """
+    from lxml import etree as LET
+
+    try:
+        radice = LET.fromstring(xml_bytes, parser=LET.XMLParser(huge_tree=True, recover=True))
+    except (LET.XMLSyntaxError, ValueError):
+        return []
+    if radice is None:
+        return []
+    risultato = []
+    for nodo in radice.iter():
+        if not isinstance(nodo.tag, str) or LET.QName(nodo).localname != "Allegati":
+            continue
+        campi = {LET.QName(f).localname: (f.text or "").strip()
+                 for f in nodo if isinstance(f.tag, str)}
+        if not campi.get("Attachment"):
+            continue
+        risultato.append({
+            "indice": len(risultato),
+            "nome": campi.get("NomeAttachment") or f"allegato_{len(risultato) + 1}",
+            "formato": (campi.get("FormatoAttachment") or "").upper(),
+            "descrizione": campi.get("DescrizioneAttachment") or "",
+            "size_kb": round(len(campi["Attachment"]) * 3 / 4 / 1024, 1),
+            "_base64": campi["Attachment"],
+        })
+    return risultato
+
+
+async def elenca_allegati_fattura(fattura_id: str) -> Dict[str, Any]:
+    """Elenco degli allegati contenuti nell'XML originale della fattura."""
+    fattura, xml_bytes = await _trova_fattura_e_xml_originale(fattura_id)
+    if fattura is None:
+        raise HTTPException(status_code=404, detail="Fattura non trovata")
+    allegati = allegati_da_xml(xml_bytes) if xml_bytes else []
+    return {"allegati": [{k: v for k, v in a.items() if k != "_base64"} for a in allegati]}
+
+
+async def get_fattura_dettaglio(fattura_id: str) -> Dict[str, Any]:
+    """Dettaglio singola fattura con righe e allegati."""
+    db = Database.get_db()
+
+    fattura = await db[COL_FATTURE_RICEVUTE].find_one(filtro_id(fattura_id), {"_id": 0})
+    if not fattura:
+        fattura = await db["invoices"].find_one(filtro_id(fattura_id), {"_id": 0})
+    if not fattura:
+        try:
+            fattura = await db["invoices"].find_one({"_id": fattura_id})
+            if fattura:
+                fattura.pop("_id", None)
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("[Fatture] ricerca per _id storico non riuscita: %s", exc)
+    if not fattura:
+        raise HTTPException(status_code=404, detail="Fattura non trovata")
+    if fattura.get("entity_status") == "deleted" or fattura.get("status") == "deleted":
+        # Stesso bug del 15/07/2026: una fattura archiviata da DELETE
+        # /api/fatture/{id} deve comportarsi come inesistente per l'utente,
+        # non ricomparire nel dettaglio.
+        raise HTTPException(status_code=404, detail="Fattura non trovata")
+
+    righe = await db[COL_DETTAGLIO_RIGHE].find({"fattura_id": fattura_id}, {"_id": 0}).to_list(1000)
+    allegati = await db[COL_ALLEGATI].find({"fattura_id": fattura_id}, {"_id": 0, "base64_data": 0}).to_list(10)
+
+    return {"fattura": fattura, "righe": righe, "allegati": allegati}
+
+
+async def get_documenti_pagamento_fattura(fattura_id: str) -> Dict[str, Any]:
+    """Elenca le prove di pagamento senza duplicare i PDF nella fattura."""
+    db = Database.get_db()
+    from app.services.payment_document_links import documenti_pagamento_fattura
+
+    documenti = await documenti_pagamento_fattura(db, fattura_id)
+    return {"fattura_id": fattura_id, "documenti": documenti, "count": len(documenti)}
+
+
+async def update_fattura(fattura_id: str, data: Dict[str, Any]) -> Dict[str, Any]:
+    """Aggiorna una fattura."""
+    db = Database.get_db()
+
+    fattura = await db[COL_FATTURE_RICEVUTE].find_one(filtro_id(fattura_id))
+    if not fattura:
+        raise HTTPException(status_code=404, detail="Fattura non trovata")
+
+    update_fields = {}
+    for field in ["pagato", "data_pagamento", "metodo_pagamento", "riconciliato", "note"]:
+        if field in data:
+            update_fields[field] = data[field]
+
+    if update_fields:
+        update_fields["updated_at"] = datetime.now(timezone.utc).isoformat()
+        await db[COL_FATTURE_RICEVUTE].update_one(filtro_id(fattura_id), {"$set": update_fields})
+
+    return {"success": True, "updated": list(update_fields.keys())}
+
+
+async def get_fornitori(
+    search: Optional[str] = Query(None),
+    con_fatture: bool = Query(default=False),
+    limit: int = Query(default=100, le=500)
+) -> Dict[str, Any]:
+    """Lista fornitori con filtri."""
+    db = Database.get_db()
+
+    query = {}
+    if search:
+        query["$or"] = [
+            {"ragione_sociale": {"$regex": search, "$options": "i"}},
+            {"partita_iva": {"$regex": search, "$options": "i"}}
+        ]
+    if con_fatture:
+        # «Ha fatture» si ricava dalle fatture attive (la stessa vista del
+        # contatore della pagina), non dal contatore salvato `fatture_count`,
+        # che solo 22 fornitori su 202 portavano.
+        attive = await db["invoices"].find(
+            {"$and": [dict(FILTRO_FATTURA_ATTIVA), filtro_escludi_emesse()]},
+            {"_id": 0, "supplier_vat": 1, "cedente_piva": 1},
+        ).to_list(20000)
+        con_piva = {
+            _piva_senza_prefisso(f.get(campo))
+            for f in attive for campo in ("supplier_vat", "cedente_piva")
+        } - {""}
+        elenco = await db[COL_FORNITORI].find(query, {"_id": 0}).sort("ragione_sociale", 1).to_list(5000)
+        fornitori = [
+            f for f in elenco
+            if _piva_senza_prefisso(f.get("partita_iva")) in con_piva
+        ][:limit]
+        return {"items": fornitori, "total": len(fornitori)}
+
+    fornitori = await db[COL_FORNITORI].find(query, {"_id": 0}).sort("ragione_sociale", 1).limit(limit).to_list(limit)
+    return {"items": fornitori, "total": len(fornitori)}
+
+
+async def get_statistiche(anno: Optional[int] = Query(None)) -> Dict[str, Any]:
+    """
+    Statistiche fatture ricevute — legge da `invoices` (collection principale).
+    Tutti i 73 doc di fatture_passive sono già presenti in invoices (stesso xml_filename),
+    quindi invoices è la fonte unica per evitare duplicati.
+    """
+    db = Database.get_db()
+
+    # Carica la vista attiva e applica l'anno dopo la normalizzazione: i record
+    # storici possono usare data_fattura/data_documento o anno come stringa.
+    query: dict = {"$and": [dict(FILTRO_FATTURA_ATTIVA), filtro_escludi_emesse()]}
+
+    # La statistica usa la stessa vista documentale della lista: una chiave
+    # contabile coincidente non nasconde una collisione senza hash/ID comune.
+    from app.routers.invoices.invoices_main import _dedupe_invoices
+    documenti = await db["invoices"].find(query, {
+        "_id": 0,
+        "fattura_allegata": 0,
+        "document_original_ref": 0,
+        "xml_raw": 0,
+        "foto": 0,
+    }).to_list(20000)
+    fatture_uniche = [
+        _normalizza_da_invoices(documento)
+        for documento in _dedupe_invoices(documenti)
+    ]
+    if anno:
+        fatture_uniche = [
+            fattura for fattura in fatture_uniche
+            if _safe_year(fattura.get("data_documento")) == anno
+            or str(fattura.get("anno") or "") == str(anno)
+        ]
+    stats = {
+        "totale_fatture": len(fatture_uniche),
+        "importo_totale": round(sum(
+            float(fattura.get("importo_totale") or 0)
+            for fattura in fatture_uniche
+        ), 2),
+        # Il conteggio non deve diventare zero quando una fattura storica ha
+        # il nome documentato ma non la P.IVA. Il nome serve solo al contatore:
+        # non crea alcuna associazione fiscale o contabile.
+        "fornitori_unici": sorted({
+            _supplier_counter_key(fattura)
+            for fattura in fatture_uniche
+            if _supplier_counter_key(fattura)
+        }),
+        "pagate": sum(bool(fattura.get("pagato")) for fattura in fatture_uniche),
+        "importo_pagato": round(sum(
+            float(fattura.get("importo_totale") or 0)
+            for fattura in fatture_uniche if fattura.get("pagato")
+        ), 2),
+    }
+
+    # Anomale REALI (prima era 0 hardcoded): importo assente, numero mancante
+    # o imponibile da verificare. Una nota di credito e' negativa di suo: non
+    # e' un'anomalia.
+    anomale = sum(
+        float(fattura.get("importo_totale") or 0) == 0
+        or not str(fattura.get("numero_documento") or "").strip()
+        or bool(fattura.get("importi_da_verificare"))
+        for fattura in fatture_uniche
+    )
+
+    totale = stats.get("totale_fatture", 0)
+    importo = round(stats.get("importo_totale", 0), 2)
+    fornitori = len([p for p in stats.get("fornitori_unici", []) if p])
+    pagate = stats.get("pagate", 0)
+    importo_pagato = round(stats.get("importo_pagato", 0), 2)
+    da_pagare = totale - pagate
+    importo_da_pagare = round(importo - importo_pagato, 2)
+
+    return {
+        "totale_fatture": totale,
+        "importo_totale": importo,
+        "totale_importo": importo,
+        "pagate": pagate,
+        "importo_pagato": importo_pagato,
+        "da_pagare": da_pagare,
+        "importo_da_pagare": importo_da_pagare,
+        "fornitori_unici": fornitori,
+        "fatture_anomale": anomale,
+        "anno": anno,
+    }
+
+
+async def _chiudi_collisione(db, tenuta: Optional[Dict[str, Any]], doppione_id: str) -> bool:
+    """La copia tenuta era entrata come «collisione di identita'» con il
+    doppione appena archiviato: ora che il doppione e' provato uguale, la
+    collisione e' chiusa e la fattura torna attiva (derivati da ricalcolare).
+    Non tocca nulla se la collisione era con un'altra fattura ancora attiva."""
+    if not tenuta or not tenuta.get("id"):
+        return False
+    collisioni = [str(i) for i in (tenuta.get("identity_collision_with_ids") or []) if i]
+    if str(doppione_id) not in collisioni:
+        return False
+    restanti = [i for i in collisioni if i != str(doppione_id)]
+    patch: Dict[str, Any] = {"identity_collision_with_ids": restanti}
+    if not restanti:
+        patch["duplicate_review_required"] = False
+        if tenuta.get("status") == "da_verificare":
+            patch["status"] = "imported"
+        if tenuta.get("stato_import") == "collisione_identita_da_verificare":
+            patch["stato_import"] = "attivo"
+        if tenuta.get("stato_derivati") == "bloccato_collisione_identita":
+            patch["stato_derivati"] = "da_ricalcolare"
+    try:
+        await db["invoices"].update_one({"id": tenuta["id"]}, {"$set": patch})
+    except Exception as exc:  # noqa: BLE001 - un timeout non ferma il giro
+        logger.error("Chiusura collisione su %s fallita: %s", tenuta["id"], exc)
+        return False
+    tenuta["identity_collision_with_ids"] = restanti
+    if restanti:
+        return False
+    # l'avviso «identita' da verificare» era stato aperto sulla copia entrata
+    # per seconda: puo' essere questa o il doppione appena archiviato
+    try:
+        from app.services.alert_engine import risolvi_alert
+        for entita_id in (tenuta["id"], str(doppione_id)):
+            await risolvi_alert("FATTURA_IDENTITA_DA_VERIFICARE", entita_id, db,
+                                resolved_by="dedup_impronta_contenuto")
+    except Exception as exc:  # noqa: BLE001
+        logger.error("Chiusura alert collisione su %s fallita: %s", tenuta["id"], exc)
+    return True
+
+
+async def pulisci_duplicati_invoices() -> Dict[str, Any]:
+    """Archivia reversibilmente solo duplicati provati dall'originale.
+
+    Numero, P.IVA, data e importo formano soltanto un gruppo candidato. Un
+    record viene archiviato esclusivamente se condivide hash o ID sorgente con
+    quello canonico. Originali e scritture non vengono mai cancellati.
+    """
+    db = Database.get_db()
+    docs = await db["invoices"].find(
+        {"status": {"$nin": ["deleted", "archived"]}},
+        {"_id": 0, "id": 1, "invoice_number": 1, "numero_documento": 1,
+         "supplier_vat": 1, "cedente_piva": 1,
+         "invoice_date": 1, "data_documento": 1,
+         "total_amount": 1, "importo_totale": 1,
+         "prima_nota_id": 1, "prima_nota_cassa_id": 1, "prima_nota_banca_id": 1,
+         "pagato": 1, "stato_pagamento": 1, "created_at": 1,
+         "content_hash": 1, "file_hash": 1, "source_hash": 1, "sha256": 1,
+         "content_hash_canonico": 1,
+         "source_document_id": 1, "drive_file_id": 1,
+         "documents_inbox_id": 1, "source_documents": 1,
+         "registrata_contabilita": 1, "movimento_contabile_id": 1,
+         "centro_costo_id": 1, "status": 1, "stato_import": 1,
+         "stato_derivati": 1, "identity_collision_with_ids": 1},
+    ).to_list(20000)
+
+    gruppi: Dict[tuple, list] = {}
+    for d in docs:
+        numero = str(d.get("invoice_number") or d.get("numero_documento") or "").strip().upper()
+        piva = str(d.get("supplier_vat") or d.get("cedente_piva") or "").strip()
+        data = str(d.get("invoice_date") or d.get("data_documento") or "")[:10]
+        try:
+            imp = round(float(d.get("total_amount") or d.get("importo_totale") or 0), 2)
+        except (ValueError, TypeError):
+            imp = 0.0
+        if not numero or not piva or not d.get("id"):
+            continue
+        gruppi.setdefault((numero, piva, data, imp), []).append(d)
+
+    def _score(d: dict) -> tuple:
+        ha_pn = bool(d.get("prima_nota_id") or d.get("prima_nota_cassa_id")
+                     or d.get("prima_nota_banca_id"))
+        pagata = bool(d.get("pagato") or d.get("stato_pagamento") == "pagata")
+        # 17/09/2026: la copia che resta e' quella gia' nel libro giornale
+        # (la scrittura punta a lei), poi quella con la classificazione
+        # fiscale; prima nota e pagamento vengono dopo. Niente campi payload
+        # nel confronto: la lettura resta leggera (senza XML).
+        registrata = bool(d.get("registrata_contabilita") and d.get("movimento_contabile_id"))
+        classificata = bool(d.get("centro_costo_id"))
+        # score più alto = da tenere; a parità vince il più vecchio
+        return (int(registrata), int(classificata), int(ha_pn), int(pagata),
+                -(len(str(d.get("created_at") or "")) and 0))
+
+    from app.routers.invoices.invoices_main import _same_original
+
+    coppie_da_archiviare = []
+    gruppi_duplicati = 0
+    for k, gruppo in gruppi.items():
+        if len(gruppo) < 2:
+            continue
+        # Costruisce componenti solo tra record con prova comune. Una
+        # collisione priva di prova non puo' diventare il "canonico" del
+        # gruppo e impedire il riconoscimento di due veri duplicati.
+        componenti = []
+        non_visitati = set(range(len(gruppo)))
+        while non_visitati:
+            frontiera = [non_visitati.pop()]
+            componente = []
+            while frontiera:
+                indice = frontiera.pop()
+                componente.append(gruppo[indice])
+                collegati = {
+                    altro for altro in non_visitati
+                    if _same_original(gruppo[indice], gruppo[altro])
+                }
+                non_visitati -= collegati
+                frontiera.extend(collegati)
+            componenti.append(componente)
+
+        gruppo_con_prova = False
+        for componente in componenti:
+            if len(componente) < 2:
+                continue
+            gruppo_con_prova = True
+            componente.sort(
+                key=lambda d: (_score(d), str(d.get("created_at") or "")),
+                reverse=True,
+            )
+            tenuta = componente[0]
+            for doppione in componente[1:]:
+                coppie_da_archiviare.append((doppione["id"], tenuta["id"]))
+        if gruppo_con_prova:
+            gruppi_duplicati += 1
+
+    now = datetime.now(timezone.utc).isoformat()
+    movimenti_archiviati = 0
+    scritture_stornate = 0
+    registrati = {d["id"]: bool(d.get("registrata_contabilita")) for d in docs if d.get("id")}
+    per_id = {d["id"]: d for d in docs if d.get("id")}
+    from app.services.registrazione_contabile import storna_registrazione_fattura
+    archiviazioni_fallite = 0
+    collisioni_chiuse = 0
+    for doppione_id, canonico_id in coppie_da_archiviare:
+        try:
+            await db["invoices"].update_one(
+                {"id": doppione_id},
+                {"$set": {
+                    "status": "archived", "entity_status": "archived",
+                    "duplicate_of": canonico_id,
+                    "deleted_reason": "duplicato_provato_da_hash_o_id_origine",
+                    "archived_at": now,
+                }},
+            )
+        except Exception as exc:  # noqa: BLE001 - 17/09: un timeout Supabase fermava tutto il giro
+            archiviazioni_fallite += 1
+            logger.error("Archiviazione doppione %s fallita: %s", doppione_id, exc)
+            continue
+        if registrati.get(doppione_id):
+            # Lo stesso documento non puo' stare due volte nel libro
+            # giornale: la scrittura del doppione viene stornata (mai
+            # cancellata), quella della copia canonica resta.
+            try:
+                r = await storna_registrazione_fattura(
+                    db, doppione_id, f"duplicato della fattura {canonico_id}")
+                if r.get("stato") == "stornato":
+                    scritture_stornate += 1
+            except Exception as exc:  # noqa: BLE001
+                logger.error("Storno doppione %s fallito: %s", doppione_id, exc)
+        for collezione in ("prima_nota_cassa", "prima_nota_banca", "scadenziario_fornitori"):
+            try:
+                risultato = await db[collezione].update_many(
+                    {"fattura_id": doppione_id,
+                     "status": {"$nin": ["deleted", "archived"]}},
+                    {"$set": {
+                        "status": "archived", "entity_status": "archived",
+                        "duplicate_of": canonico_id,
+                        "deleted_reason": "derivato_da_fattura_duplicata_provata",
+                        "archived_at": now,
+                    }},
+                )
+            except Exception as exc:  # noqa: BLE001
+                logger.error("Archiviazione derivati di %s in %s fallita: %s", doppione_id, collezione, exc)
+                continue
+            movimenti_archiviati += int(getattr(risultato, "modified_count", 0) or 0)
+        # 17/09/2026: se la copia tenuta era stata importata come «collisione
+        # di identita'» proprio con il doppione appena archiviato (42 coppie
+        # legacy↔Drive con l'XML diverso di un byte), la collisione e' chiusa:
+        # via il blocco dei derivati e la revisione, la fattura torna attiva.
+        if await _chiudi_collisione(db, per_id.get(canonico_id), doppione_id):
+            collisioni_chiuse += 1
+
+    return {
+        "success": True,
+        "gruppi_duplicati": gruppi_duplicati,
+        "fatture_archiviate": len(coppie_da_archiviare) - archiviazioni_fallite,
+        "archiviazioni_fallite": archiviazioni_fallite,
+        "collisioni_chiuse": collisioni_chiuse,
+        "fatture_eliminate": 0,
+        "movimenti_archiviati": movimenti_archiviati,
+        "scritture_stornate": scritture_stornate,
+        "movimenti_prima_nota_eliminati": 0,
+    }
+
+
+async def elimina_fatture_guscio_vuoto(
+    dry_run: bool = Query(True, description="Solo conteggio"),
+) -> Dict[str, Any]:
+    """Segnalazione utente 18/07/2026: nell'anno 2024 restano '8 fatture'
+    vuote (nessun numero, nessun fornitore, spesso senza campo id: per
+    questo né l'eliminazione di massa né la selezione le agganciava).
+    Sono gusci senza contenuto: si eliminano per _id."""
+    db = Database.get_db()
+    docs = await db["invoices"].find(
+        {"$and": [
+            {"$or": [{"invoice_number": {"$in": [None, ""]}},
+                     {"invoice_number": {"$exists": False}}]},
+            {"$or": [{"supplier_name": {"$in": [None, ""]}},
+                     {"supplier_name": {"$exists": False}}]},
+            {"$or": [{"xml_raw": {"$in": [None, ""]}},
+                     {"xml_raw": {"$exists": False}}]},
+            {"status": {"$nin": ["deleted", "archived"]}},
+        ]},
+        {"id": 1, "invoice_date": 1, "total_amount": 1},
+    ).to_list(2000)
+
+    esempi = [{"data": d.get("invoice_date"), "importo": d.get("total_amount"),
+               "ha_id": bool(d.get("id"))} for d in docs[:10]]
+    if not dry_run and docs:
+        from datetime import datetime as _dt, timezone as _tz
+        now = _dt.now(_tz.utc).isoformat()
+        for d in docs:
+            await db["invoices"].update_one(
+                {"_id": d["_id"]},
+                {"$set": {"status": "deleted", "deleted": True,
+                          "deleted_reason": "guscio_vuoto_senza_dati",
+                          "deleted_at": now}})
+    return {"dry_run": dry_run,
+            "eliminate" if not dry_run else "da_eliminare": len(docs),
+            "esempi": esempi}
+
+
+async def elimina_fatture_anni_vecchi(
+    dry_run: bool = Query(True, description="Solo conteggio"),
+    anni: str = Query("2023,2024,2025", description="Anni da eliminare, separati da virgola"),
+    definitivo: bool = Query(False, description="Elimina FISICAMENTE dal database (con backup)"),
+) -> Dict[str, Any]:
+    """Ordine utente (17-18/07/2026, ribadito): le fatture 2023/24/25 vanno
+    eliminate TUTTE — 'dal database', non nascoste. Copre ogni schema
+    (invoice_date, data_fattura legacy, campo anno) e con definitivo=true
+    le rimuove fisicamente (incluse quelle già soft-delete, che le card
+    dell'archivio continuavano a contare), dopo backup in una collection
+    invoices_backup_*."""
+    db = Database.get_db()
+    lista_anni = [a.strip() for a in anni.split(",") if a.strip()]
+    condizioni = []
+    for a in lista_anni:
+        condizioni += [{"invoice_date": {"$regex": f"^{a}"}},
+                       {"data_fattura": {"$regex": f"^{a}"}},
+                       {"anno": int(a)}]
+    query: Dict[str, Any] = {"$or": condizioni}
+    if not definitivo:
+        query["status"] = {"$nin": ["deleted", "archived"]}
+
+    docs = await db["invoices"].find(
+        query,
+        {"invoice_number": 1, "numero_fattura": 1, "supplier_name": 1,
+         "fornitore_nome": 1, "invoice_date": 1, "data_fattura": 1, "status": 1},
+    ).to_list(20000)
+
+    esempi = [{"numero": d.get("invoice_number") or d.get("numero_fattura"),
+               "fornitore": (d.get("supplier_name") or d.get("fornitore_nome") or "")[:30],
+               "data": d.get("invoice_date") or d.get("data_fattura"),
+               "gia_nascosta": d.get("status") == "deleted"} for d in docs[:10]]
+    backup_collection = None
+    if not dry_run and docs:
+        from datetime import datetime as _dt, timezone as _tz
+        now = _dt.now(_tz.utc).isoformat()
+        if definitivo:
+            # backup completo, poi delete fisico
+            backup_collection = f"invoices_backup_anni_vecchi_{_dt.now(_tz.utc).strftime('%Y%m%d_%H%M%S')}"
+            completi = await db["invoices"].find(query).to_list(20000)
+            if completi:
+                for c in completi:
+                    c["_backup_at"] = now
+                await db[backup_collection].insert_many(completi)
+            await db["invoices"].delete_many(query)
+        else:
+            for d in docs:
+                await db["invoices"].update_one(
+                    {"_id": d["_id"]},
+                    {"$set": {"status": "deleted", "deleted": True,
+                              "deleted_reason": "anno_vecchio_ordine_utente",
+                              "deleted_at": now}})
+    return {"dry_run": dry_run, "anni": lista_anni, "definitivo": definitivo,
+            "eliminate" if not dry_run else "da_eliminare": len(docs),
+            "backup_collection": backup_collection,
+            "esempi": esempi}

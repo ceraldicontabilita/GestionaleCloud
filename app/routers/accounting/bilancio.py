@@ -1,0 +1,1367 @@
+"""
+Bilancio Router - Stato Patrimoniale e Conto Economico
+
+================================================================================
+LOGICA CONTABILE ITALIANA - REGOLE FONDAMENTALI
+================================================================================
+
+STRUTTURA DATABASE (Sistema NON multi-utente):
+---------------------------------------------
+1. CORRISPETTIVI: Vendite al pubblico (scontrini/ricevute fiscali)
+   - Rappresentano l'UNICA fonte di RICAVI
+   - Contengono: totale, totale_imponibile, totale_iva
+   - P.IVA azienda: 04523831214
+
+2. INVOICES: TUTTE fatture RICEVUTE da fornitori (ciclo passivo)
+   - Rappresentano i COSTI (acquisti)
+   - Tipi documento: TD01 (ordinaria), TD24 (differita), TD04/TD08 (note credito)
+   - Hanno sempre 'supplier_name' (fornitore) e 'supplier_vat'
+
+3. FATTURE EMESSE A CLIENTI (quando caricate):
+   - NON sono ricavi aggiuntivi!
+   - Sono fatture che SOSTITUISCONO uno scontrino già emesso
+   - L'importo è GIÀ CONTEGGIATO nei corrispettivi
+   - Servono solo per il cliente che vuole detrarre l'IVA
+   - NON calcolare l'IVA sulle fatture emesse (già nei corrispettivi!)
+
+CONTO ECONOMICO (per competenza):
+---------------------------------
+RICAVI = Solo Corrispettivi (totale_imponibile)
+         - Le fatture emesse NON sono ricavi aggiuntivi
+         
+COSTI = Fatture Ricevute (imponibile) - Note Credito (TD04, TD08)
+
+UTILE/PERDITA = RICAVI - COSTI
+
+LIQUIDAZIONE IVA:
+-----------------
+IVA DEBITO = IVA da corrispettivi (totale_iva)
+             - NON include IVA da fatture emesse (sarebbe doppio!)
+             
+IVA CREDITO = IVA da fatture ricevute (iva)
+              - Meno IVA da note di credito
+
+IVA DA VERSARE = IVA DEBITO - IVA CREDITO
+                 (se negativo = credito da riportare)
+
+================================================================================
+"""
+from fastapi import APIRouter, Query, HTTPException
+from fastapi.responses import StreamingResponse
+from typing import Dict, Any
+from datetime import datetime
+from app.database import Database, Collections
+from io import BytesIO
+import logging
+
+from app.routers.prima_nota_module.common import filtro_saldo_prima_nota, saldi_banca_per_conto
+from app.utils.error_handler import handle_errors
+from app.services.conto_economico_gestionale import costo_personale, ricavi_corrispettivi
+from app.services.fatture_report_ae import FILTRO_FATTURE_ATTIVE
+from app.services.stato_pagamento_fattura import FILTRO_NON_PAGATE
+
+# Esclude movimenti soft-deleted (status deleted/archived) e i duplicati POS
+# già identificati — stesso filtro già applicato a tutte le altre query di
+# riepilogo prima nota (finanziaria.py, prima_nota_module/cassa.py, banca.py,
+# sync.py). Prima mancava qui: cancellare un movimento da Prima Nota non lo
+# toglieva dal Totale Attivo del Bilancio, che restava quindi gonfiato.
+logger = logging.getLogger(__name__)
+router = APIRouter()
+
+COLLECTION_PRIMA_NOTA_CASSA = "prima_nota_cassa"
+COLLECTION_PRIMA_NOTA_BANCA = "prima_nota_banca"
+
+# P.IVA dell'azienda (per identificare fatture emesse vs ricevute)
+PIVA_AZIENDA = "04523831214"
+
+
+@router.get("/stato-patrimoniale")
+@handle_errors
+async def get_stato_patrimoniale(
+    anno: int = Query(None, description="Anno di riferimento"),
+    mese: int = Query(None, description="Mese di riferimento (1-12)"),
+    data_a: str = Query(None, description="Data fine (YYYY-MM-DD)")
+) -> Dict[str, Any]:
+    """
+    Genera lo Stato Patrimoniale.
+
+    ATTIVO:
+    - Cassa (saldo prima nota cassa)
+    - Banca (saldo prima nota banca)
+    - Crediti vs clienti (fatture emesse non pagate)
+
+    PASSIVO:
+    - Debiti vs fornitori (fatture ricevute non pagate)
+    - Capitale e riserve
+    """
+    db = Database.get_db()
+
+    if not anno:
+        anno = datetime.now().year
+
+    if data_a:
+        data_fine = data_a
+    elif mese:
+        import calendar
+        ultimo_giorno = calendar.monthrange(anno, mese)[1]
+        data_fine = f"{anno}-{mese:02d}-{ultimo_giorno:02d}"
+    else:
+        data_fine = f"{anno}-12-31"
+    data_inizio = f"{anno}-01-01"
+    
+    # === ATTIVO ===
+
+    # Cassa e Banca: FUNZIONE UNICA di saldo (§6.4) — stessa formula della
+    # Prima Nota, incluso il riporto iniziale impostato a mano dall'utente
+    # (prima il bilancio sommava solo i movimenti e ignorava il riporto:
+    # appena impostato, SP e Prima Nota mostravano due saldi diversi).
+    from app.routers.prima_nota_module.common import aggrega_saldo_prima_nota
+
+    intervallo = {"$gte": data_inizio, "$lte": data_fine}
+    query_cassa = filtro_saldo_prima_nota(COLLECTION_PRIMA_NOTA_CASSA, data=intervallo)
+    saldi_cassa = await aggrega_saldo_prima_nota(
+        db, COLLECTION_PRIMA_NOTA_CASSA, query_cassa, anno)
+    saldo_cassa = saldi_cassa["saldo"]
+    # «Banca» fondeva BPM 19.01.01, le righe senza conto e la Mastercard
+    # SumUp 19.01.05 in un saldo solo: si separano come in
+    # get_prima_nota_stats. Sono saldi di Prima Nota, non dell'estratto conto.
+    saldi_banca = await saldi_banca_per_conto(db, intervallo, anno)
+    saldo_banca_bpm = saldi_banca["bpm"]["saldo"]
+    saldo_sumup = saldi_banca["sumup"]["saldo"]
+    saldo_altri_conti = saldi_banca["altri"]["saldo"]
+    saldo_banca = saldi_banca["totale"]
+
+    # Crediti (fatture emesse non pagate - dalla collection fatture_emesse)
+    # NOTA: La collection 'invoices' contiene solo fatture RICEVUTE (da fornitori = DEBITI)
+    # I crediti vs clienti derivano da fatture EMESSE (vendite a credito)
+    try:
+        crediti = await db["fatture_emesse"].aggregate([
+            {"$match": {
+                "status": {"$nin": ["deleted", "archived"]},
+                **FILTRO_NON_PAGATE,
+                "$or": [
+                    {"data_emissione": {"$lte": data_fine}},
+                    {"invoice_date": {"$lte": data_fine}}
+                ]
+            }},
+            {"$group": {"_id": None, "totale": {"$sum": {"$ifNull": ["$total_amount", {"$ifNull": ["$importo_totale", 0]}]}}}}
+        ]).to_list(1)
+        totale_crediti = crediti[0]["totale"] if crediti else 0
+    except Exception:
+        totale_crediti = 0
+
+    # Immobilizzazioni (Bug corretto 15/07/2026: lo Stato Patrimoniale non
+    # includeva MAI questa voce dell'attivo). Due componenti additive, mai
+    # sovrapposte: i cespiti tracciati automaticamente da GestioneCespiti
+    # (registro con ammortamenti, valore_residuo già al netto del fondo) e
+    # le voci inserite a mano in voci_bilancio_manuali (saldi di apertura,
+    # avviamento o altre immobilizzazioni che il sistema non deriva da una
+    # fattura XML/cespite). I cespiti acquistati dopo data_fine non sono
+    # ancora in bilancio a quella data.
+    cespiti_attivi = await db["cespiti"].find(
+        {"stato": "attivo", "data_acquisto": {"$lte": data_fine}},
+        {"_id": 0, "valore_residuo": 1}
+    ).to_list(5000)
+    totale_immobilizzazioni_cespiti = sum(c.get("valore_residuo", 0) for c in cespiti_attivi)
+
+    voci_manuali = await db["voci_bilancio_manuali"].find({"anno": anno}, {"_id": 0}).to_list(500)
+    totale_immobilizzazioni_manuali = sum(
+        v["importo"] for v in voci_manuali if v["codice_cee"][:2] in ("03", "05", "07")
+    )
+    totale_immobilizzazioni = totale_immobilizzazioni_cespiti + totale_immobilizzazioni_manuali
+
+    # Capitale e riserve inserite a mano (informativo): mostrate a confronto
+    # col patrimonio netto calcolato per differenza (plug) più sotto, MAI
+    # sommate nel totale — sommarle romperebbe l'uguaglianza attivo=passivo
+    # se non coincidono esattamente col plug (es. utile/perdita dell'anno in
+    # corso non ancora chiuso).
+    totale_capitale_riserve_manuale = sum(
+        v["importo"] for v in voci_manuali if v["codice_cee"][:2] in ("23", "25")
+    )
+
+    # === PASSIVO ===
+    
+    # Debiti (fatture ricevute non pagate)
+    # NOTA: Tutte le fatture in 'invoices' sono RICEVUTE (da fornitori)
+    # Il filtro esclude le note di credito (TD04, TD08) e le fatture
+    # eliminate (cascade_operations.py le marca status="deleted") — prima
+    # mancava, una fattura cancellata restava sommata nei Debiti.
+    debiti = await db[Collections.INVOICES].aggregate([
+        {"$match": {
+            "tipo_documento": {"$nin": ["TD04", "TD08"]},
+            "status": {"$nin": ["deleted", "archived"]},
+            **FILTRO_NON_PAGATE,
+            "$or": [
+                {"invoice_date": {"$lte": data_fine}},
+                {"data_ricezione": {"$lte": data_fine}}
+            ]
+        }},
+        {"$group": {"_id": None, "totale": {"$sum": {"$ifNull": ["$total_amount", {"$ifNull": ["$importo_totale", 0]}]}}}}
+    ]).to_list(1)
+    totale_debiti = debiti[0]["totale"] if debiti else 0
+
+    # Fondo TFR (Bug corretto 15/07/2026: mancava, pur essendo un debito
+    # reale verso i dipendenti). Somma tfr_accantonamenti fino a data_fine
+    # (entrambi gli schemi/canali: "quota" mensile del canale cedolini,
+    # "quota_annuale" dell'import manuale LUL — mai valorizzati insieme
+    # sullo stesso record, sommarli è sicuro).
+    anno_fine = int(data_fine[:4])
+    mese_fine = int(data_fine[5:7])
+    fondo_tfr_agg = await db["tfr_accantonamenti"].aggregate([
+        {"$match": {"$or": [
+            {"anno": {"$lt": anno_fine}},
+            {"anno": anno_fine, "mese": {"$lte": mese_fine}},
+            {"anno": anno_fine, "mese": {"$exists": False}},
+        ]}},
+        {"$group": {"_id": None, "totale": {"$sum": {"$add": [
+            {"$ifNull": ["$quota", 0]},
+            {"$ifNull": ["$quota_annuale", 0]},
+        ]}}}}
+    ]).to_list(1)
+    totale_fondo_tfr = fondo_tfr_agg[0]["totale"] if fondo_tfr_agg else 0
+
+    # Calcoli
+    totale_attivo = saldo_cassa + saldo_banca + totale_crediti + totale_immobilizzazioni
+    totale_passivo = totale_debiti + totale_fondo_tfr
+    patrimonio_netto = totale_attivo - totale_passivo
+
+    return {
+        "anno": anno,
+        "data_riferimento": data_fine,
+        "attivo": {
+            "disponibilita_liquide": {
+                "cassa": round(saldo_cassa, 2),
+                # Solo Banca BPM (19.01.01 e righe storiche senza conto).
+                "banca": round(saldo_banca_bpm, 2),
+                "mastercard_sumup": round(saldo_sumup, 2),
+                "altri_conti_banca": round(saldo_altri_conti, 2),
+                "totale": round(saldo_cassa + saldo_banca, 2),
+                "fonte": "saldi_prima_nota",
+                "nota": (
+                    "Saldi di Prima Nota Cassa/Banca, non saldi certificati "
+                    "dall'estratto conto."
+                ),
+            },
+            "crediti": {
+                "crediti_vs_clienti": round(totale_crediti, 2),
+                "totale": round(totale_crediti, 2)
+            },
+            "immobilizzazioni": {
+                "da_cespiti": round(totale_immobilizzazioni_cespiti, 2),
+                "da_voci_manuali": round(totale_immobilizzazioni_manuali, 2),
+                "totale": round(totale_immobilizzazioni, 2)
+            },
+            "totale_attivo": round(totale_attivo, 2)
+        },
+        "passivo": {
+            "debiti": {
+                "debiti_vs_fornitori": round(totale_debiti, 2),
+                "totale": round(totale_debiti, 2)
+            },
+            "fondo_tfr": round(totale_fondo_tfr, 2),
+            "patrimonio_netto": round(patrimonio_netto, 2),
+            "patrimonio_netto_dettaglio_manuale": round(totale_capitale_riserve_manuale, 2),
+            "totale_passivo": round(totale_passivo + patrimonio_netto, 2)
+        }
+    }
+
+
+@router.get("/conto-economico")
+@handle_errors
+async def get_conto_economico(
+    anno: int = Query(None, description="Anno di riferimento"),
+    mese: int = Query(None, description="Mese (1-12)")
+) -> Dict[str, Any]:
+    """
+    Genera il Conto Economico secondo principi contabili italiani.
+    
+    STRUTTURA DATABASE:
+    - 'corrispettivi': Vendite al pubblico (scontrini/ricevute) = RICAVI
+    - 'invoices': TUTTE fatture RICEVUTE da fornitori = COSTI
+      - TD01, TD24, TD02, TD06, TD27, null = Fatture acquisto
+      - TD04, TD08 = Note di Credito (riducono i costi)
+    
+    RICAVI (per competenza):
+    - Corrispettivi: dalla collezione 'corrispettivi' (totale_imponibile)
+    - (Non esistono fatture emesse a clienti in questo sistema)
+    
+    COSTI (per competenza):
+    - Acquisti: TUTTE le fatture ricevute (escluse NC)
+    - Note di Credito: TD04, TD08 sottratte dai costi
+    """
+    db = Database.get_db()
+    
+    if not anno:
+        anno = datetime.now().year
+    
+    # Periodo
+    if mese:
+        data_inizio = f"{anno}-{mese:02d}-01"
+        if mese == 12:
+            data_fine = f"{anno}-12-31"
+        else:
+            import calendar
+            ultimo_giorno = calendar.monthrange(anno, mese)[1]
+            data_fine = f"{anno}-{mese:02d}-{ultimo_giorno}"
+    else:
+        data_inizio = f"{anno}-01-01"
+        data_fine = f"{anno}-12-31"
+    
+    # === RICAVI ===
+    # I ricavi derivano ESCLUSIVAMENTE dai corrispettivi (vendite al pubblico)
+    # Non esistono "fatture emesse" a clienti in questo sistema
+    
+    # Corrispettivi validi e imponibile con un criterio solo
+    # (services/conto_economico_gestionale.py): fuori anche le righe con
+    # ``status`` deleted/archived/archiviata, e ``imponibile`` quando manca
+    # ``totale_imponibile`` (19 righe di agosto sparivano dai ricavi).
+    ricavi_rt = await ricavi_corrispettivi(db, {"$gte": data_inizio, "$lte": data_fine})
+    totale_corrispettivi = ricavi_rt["imponibile"]
+    iva_vendite = ricavi_rt["iva"]
+    num_corrispettivi = ricavi_rt["documenti"]
+    totale_lordo_corrispettivi = ricavi_rt["lordo"]
+
+    # === COSTI ===
+
+    # 1. TUTTE le Fatture Ricevute (acquisti) - ESCLUSE le Note Credito (TD04,
+    # TD08) e le fatture eliminate (status="deleted", vedi
+    # cascade_operations.py) — quest'ultimo filtro mancava del tutto: una
+    # fattura cancellata restava interamente sommata nei Costi.
+    # La collezione 'invoices' contiene SOLO fatture RICEVUTE da fornitori
+    fatture_ricevute = await db[Collections.INVOICES].aggregate([
+        {"$match": {
+            **FILTRO_FATTURE_ATTIVE,
+            "tipo_documento": {"$nin": ["TD04", "TD08"]},  # Escludi solo Note Credito
+            "$or": [
+                {"invoice_date": {"$gte": data_inizio, "$lte": data_fine}},
+                {"data_ricezione": {"$gte": data_inizio, "$lte": data_fine}}
+            ]
+        }},
+        {"$group": {
+            "_id": None,
+            "totale_imponibile": {"$sum": {"$ifNull": ["$imponibile", {"$subtract": ["$total_amount", {"$ifNull": ["$iva", 0]}]}]}},
+            "totale_iva": {"$sum": {"$ifNull": ["$iva_detraibile", 0]}},
+            "totale_lordo": {"$sum": "$total_amount"},
+            "count": {"$sum": 1}
+        }}
+    ]).to_list(1)
+    
+    totale_acquisti = fatture_ricevute[0]["totale_imponibile"] if fatture_ricevute else 0
+    iva_acquisti = fatture_ricevute[0]["totale_iva"] if fatture_ricevute else 0
+    num_fatture = fatture_ricevute[0]["count"] if fatture_ricevute else 0
+    
+    # 2. Note di Credito RICEVUTE (riducono i costi) - TD04, TD08
+    note_credito = await db[Collections.INVOICES].aggregate([
+        {"$match": {
+            **FILTRO_FATTURE_ATTIVE,
+            "tipo_documento": {"$in": ["TD04", "TD08"]},
+            "$or": [
+                {"invoice_date": {"$gte": data_inizio, "$lte": data_fine}},
+                {"data_ricezione": {"$gte": data_inizio, "$lte": data_fine}}
+            ]
+        }},
+        {"$group": {
+            "_id": None,
+            "totale_imponibile": {"$sum": {"$ifNull": ["$imponibile", {"$subtract": ["$total_amount", {"$ifNull": ["$iva", 0]}]}]}},
+            "totale_iva": {"$sum": {"$ifNull": ["$iva_detraibile", 0]}},
+            "count": {"$sum": 1}
+        }}
+    ]).to_list(1)
+
+    totale_note_credito = note_credito[0]["totale_imponibile"] if note_credito else 0
+    iva_note_credito = note_credito[0]["totale_iva"] if note_credito else 0
+    num_note_credito = note_credito[0]["count"] if note_credito else 0
+
+    # ``iva_detraibile`` assente vuol dire «non deciso», non zero: finche'
+    # una fattura del periodo non e' classificata l'IVA a credito non si
+    # conosce, e nemmeno il saldo.
+    iva_da_classificare = await db[Collections.INVOICES].count_documents({
+        **FILTRO_FATTURE_ATTIVE,
+        "iva_detraibile": None,
+        "$or": [
+            {"invoice_date": {"$gte": data_inizio, "$lte": data_fine}},
+            {"data_ricezione": {"$gte": data_inizio, "$lte": data_fine}}
+        ],
+    })
+
+    # 3. Costo del personale: lordo delle buste del periodo, stesso calcolo
+    # della Dashboard (services/conto_economico_gestionale.py). Mancava del
+    # tutto e il conto economico dichiarava un UTILE che non c'era.
+    personale = await costo_personale(db, anno, mese)
+    totale_personale = personale["lordo"]
+
+    # === CALCOLI FINALI ===
+    # REGOLA CONTABILE ITALIANA:
+    # - Ricavi = SOLO Corrispettivi (vendite al pubblico)
+    # - Le fatture emesse a clienti NON sono ricavi aggiuntivi (già nei corrispettivi)
+    # - Costi = Fatture Ricevute da fornitori - Note Credito
+    
+    # Ricavi = Solo Corrispettivi (imponibile)
+    totale_ricavi = totale_corrispettivi
+    
+    # Costi = Acquisti - Note Credito + Personale. Senza il personale il
+    # totale non si conosce: None, e con lui il risultato.
+    costi_netti = totale_acquisti - totale_note_credito
+    totale_costi = None if totale_personale is None else costi_netti + totale_personale
+
+    # Risultato
+    utile_perdita = None if totale_costi is None else totale_ricavi - totale_costi
+
+    # Margine percentuale
+    margine_pct = (
+        round((utile_perdita / totale_ricavi * 100), 1)
+        if utile_perdita is not None and totale_ricavi > 0 else None
+    )
+    iva_acquisti_netta = (
+        None if iva_da_classificare else iva_acquisti - iva_note_credito
+    )
+
+    return {
+        "anno": anno,
+        "mese": mese,
+        "periodo": {
+            "da": data_inizio,
+            "a": data_fine
+        },
+        "ricavi": {
+            "corrispettivi": round(totale_corrispettivi, 2),
+            "corrispettivi_lordi": round(totale_lordo_corrispettivi, 2),
+            "totale_ricavi": round(totale_ricavi, 2),
+            # NOTA: Le fatture emesse NON compaiono qui perché l'importo è già nei corrispettivi
+        },
+        "costi": {
+            "acquisti": round(totale_acquisti, 2),
+            "note_credito": round(totale_note_credito, 2),
+            # Fatture ricevute al netto delle note di credito.
+            "costi_netti": round(costi_netti, 2),
+            "personale": _arrotonda(totale_personale),
+            "personale_contributi": None,
+            "personale_contributi_motivo": personale["contributi_motivo"],
+            "personale_incompleto": personale["incompleto"],
+            "personale_motivo": personale["motivo"],
+            "personale_buste": personale["buste"],
+            "totale_costi": _arrotonda(totale_costi),
+        },
+        "risultato": {
+            "utile_perdita": _arrotonda(utile_perdita),
+            "margine_percentuale": margine_pct,
+            "tipo": _tipo_risultato(utile_perdita),
+            # Senza contributi datoriali il risultato e' sovrastimato.
+            "incompleto": personale["incompleto"],
+        },
+        "dettaglio_iva": {
+            "iva_vendite": round(iva_vendite, 2),  # Solo da corrispettivi (NON da fatture emesse)
+            "iva_acquisti": _arrotonda(iva_acquisti_netta),
+            "iva_netta": (
+                None if iva_acquisti_netta is None
+                else round(iva_vendite - iva_acquisti_netta, 2)
+            ),
+            "fatture_iva_da_classificare": iva_da_classificare,
+            "stato": (
+                f"Da classificare ({iva_da_classificare} fatture senza IVA detraibile)"
+                if iva_da_classificare else "Classificata"
+            ),
+        },
+        "statistiche": {
+            "num_corrispettivi": num_corrispettivi,
+            "num_fatture_ricevute": num_fatture,
+            "num_note_credito": num_note_credito
+        },
+        "note": (
+            "Ricavi = Corrispettivi (vendite al pubblico). Costi = Fatture ricevute - "
+            "Note credito + lordo delle buste paga (contributi datoriali non disponibili)."
+        )
+    }
+
+
+def _arrotonda(valore):
+    return None if valore is None else round(valore, 2)
+
+
+def _tipo_risultato(valore):
+    if valore is None:
+        return "non_determinabile"
+    return "utile" if valore >= 0 else "perdita"
+
+
+@router.get("/riepilogo")
+@handle_errors
+async def get_riepilogo_bilancio(anno: int = Query(None)) -> Dict[str, Any]:
+    """Riepilogo completo bilancio: stato patrimoniale + conto economico."""
+    if not anno:
+        anno = datetime.now().year
+    
+    # Use helper functions to avoid Query parameter issues
+    stato_patrimoniale = await _get_stato_patrimoniale_data(anno)
+    conto_economico = await _get_conto_economico_data(anno)
+    
+    return {
+        "anno": anno,
+        "stato_patrimoniale": stato_patrimoniale,
+        "conto_economico": conto_economico
+    }
+
+
+@router.get("/conto-economico-dettagliato")
+@handle_errors
+async def get_conto_economico_dettagliato(
+    anno: int = Query(None, description="Anno di riferimento"),
+    mese: int = Query(None, description="Mese (1-12)")
+) -> Dict[str, Any]:
+    """
+    Conto Economico DETTAGLIATO secondo schema civilistico art. 2425 c.c.
+    
+    Classifica automaticamente i costi per natura con regole di:
+    - Deducibilità ai fini IRES/IRPEF
+    - Detraibilità IVA
+    
+    VOCI PRINCIPALI:
+    - B6: Acquisti materie prime e merci
+    - B7: Costi per servizi (energia, telefonia, consulenze, manutenzioni, ecc.)
+    - B8: Godimento beni terzi (affitti, noleggio auto con limite €3.615,20)
+    - B9: Costi del personale (stipendi, contributi, TFR)
+    - C17: Interessi passivi (mutui, commissioni bancarie)
+    """
+    from app.services.classificazione_costi import classifica_fornitore
+    
+    db = Database.get_db()
+    
+    if not anno:
+        anno = datetime.now().year
+    
+    # Periodo
+    if mese:
+        data_inizio = f"{anno}-{mese:02d}-01"
+        import calendar
+        ultimo_giorno = calendar.monthrange(anno, mese)[1]
+        data_fine = f"{anno}-{mese:02d}-{ultimo_giorno}"
+    else:
+        data_inizio = f"{anno}-01-01"
+        data_fine = f"{anno}-12-31"
+    
+    # === A) RICAVI ===
+    # A1: Ricavi delle vendite (Corrispettivi)
+    ricavi_rt = await ricavi_corrispettivi(db, {"$gte": data_inizio, "$lte": data_fine})
+    ricavi_vendite = ricavi_rt["imponibile"]
+    iva_vendite = ricavi_rt["iva"]
+
+    # === B) COSTI DELLA PRODUZIONE ===
+    # Recupera tutte le fatture e classifica per categoria
+    fatture = await db[Collections.INVOICES].find({
+        **FILTRO_FATTURE_ATTIVE,
+        "tipo_documento": {"$nin": ["TD04", "TD08"]},
+        "$or": [
+            {"invoice_date": {"$gte": data_inizio, "$lte": data_fine}},
+            {"data_ricezione": {"$gte": data_inizio, "$lte": data_fine}}
+        ]
+    }).to_list(5000)
+    
+    # Classifica ogni fattura
+    costi_per_categoria = {}
+    for fatt in fatture:
+        supplier = fatt.get("supplier_name", "")
+        descrizione = fatt.get("descrizione", "")
+        categoria = classifica_fornitore(supplier, descrizione)
+        
+        imponibile = fatt.get("imponibile") or (fatt.get("total_amount", 0) - fatt.get("iva", 0))
+        iva = fatt.get("iva", 0)
+        
+        if categoria not in costi_per_categoria:
+            costi_per_categoria[categoria] = {
+                "imponibile": 0,
+                "iva": 0,
+                "count": 0
+            }
+        
+        costi_per_categoria[categoria]["imponibile"] += imponibile
+        costi_per_categoria[categoria]["iva"] += iva
+        costi_per_categoria[categoria]["count"] += 1
+    
+    # Note di credito
+    note_credito = await db[Collections.INVOICES].aggregate([
+        {"$match": {
+            **FILTRO_FATTURE_ATTIVE,
+            "tipo_documento": {"$in": ["TD04", "TD08"]},
+            "$or": [
+                {"invoice_date": {"$gte": data_inizio, "$lte": data_fine}},
+                {"data_ricezione": {"$gte": data_inizio, "$lte": data_fine}}
+            ]
+        }},
+        {"$group": {
+            "_id": None,
+            "totale": {"$sum": {"$ifNull": ["$imponibile", {"$subtract": ["$total_amount", {"$ifNull": ["$iva", 0]}]}]}},
+            "iva": {"$sum": {"$ifNull": ["$iva", 0]}}
+        }}
+    ]).to_list(1)
+    
+    totale_nc = note_credito[0]["totale"] if note_credito else 0
+    
+    # === B9) COSTI DEL PERSONALE ===
+    # Lordo delle buste, stesso calcolo del conto economico sintetico
+    # (services/conto_economico_gestionale.py), piu' la quota TFR quando la
+    # busta la riporta (``tfr_mese``). Gli oneri sociali a carico azienda non
+    # esistono sulle buste: prima si stimavano al 30% del lordo (e il TFR al
+    # 6,91%), numeri inventati. Ora sono None, dichiarati.
+    personale = await costo_personale(db, anno, mese)
+    costo_personale_b9 = {
+        "B9a_salari_stipendi": personale["lordo"],
+        "B9b_oneri_sociali": None,
+        "B9c_tfr": personale["tfr"],
+        "totale": (
+            None if personale["lordo"] is None
+            else personale["lordo"] + (personale["tfr"] or 0)
+        ),
+        "num_cedolini": personale["buste"],
+        "incompleto": personale["incompleto"],
+        "note": personale["contributi_motivo"],
+    }
+
+    # === Costruisci il Conto Economico dettagliato ===
+    # Organizza per macrocategoria
+    B6_merci = costi_per_categoria.get("B6_MATERIE_PRIME", {"imponibile": 0, "iva": 0, "count": 0})
+    
+    B7_servizi = {
+        "energia": costi_per_categoria.get("B7_UTENZE_ENERGIA", {"imponibile": 0, "iva": 0, "count": 0}),
+        "acqua": costi_per_categoria.get("B7_UTENZE_ACQUA", {"imponibile": 0, "iva": 0, "count": 0}),
+        "telefonia": costi_per_categoria.get("B7_TELEFONIA", {"imponibile": 0, "iva": 0, "count": 0}),
+        "consulenze": costi_per_categoria.get("B7_CONSULENZE", {"imponibile": 0, "iva": 0, "count": 0}),
+        "manutenzioni": costi_per_categoria.get("B7_MANUTENZIONI", {"imponibile": 0, "iva": 0, "count": 0}),
+        "assicurazioni": costi_per_categoria.get("B7_ASSICURAZIONI", {"imponibile": 0, "iva": 0, "count": 0}),
+        "trasporti": costi_per_categoria.get("B7_TRASPORTI", {"imponibile": 0, "iva": 0, "count": 0}),
+        "pubblicita": costi_per_categoria.get("B7_PUBBLICITA", {"imponibile": 0, "iva": 0, "count": 0}),
+        "altri_servizi": costi_per_categoria.get("B7_SERVIZI", {"imponibile": 0, "iva": 0, "count": 0}),
+    }
+    totale_B7 = sum(v["imponibile"] for v in B7_servizi.values())
+    
+    B8_godimento = {
+        "affitti": costi_per_categoria.get("B8_GODIMENTO_AFFITTI", {"imponibile": 0, "iva": 0, "count": 0}),
+        "noleggio_auto": costi_per_categoria.get("B8_NOLEGGIO_AUTO", {"imponibile": 0, "iva": 0, "count": 0}),
+        "leasing": costi_per_categoria.get("B8_LEASING", {"imponibile": 0, "iva": 0, "count": 0}),
+    }
+    totale_B8 = sum(v["imponibile"] for v in B8_godimento.values())
+    
+    # Costi auto (carburante, manutenzione auto)
+    costi_auto = {
+        "carburante": costi_per_categoria.get("AUTO_CARBURANTE", {"imponibile": 0, "iva": 0, "count": 0}),
+        "manutenzione_auto": costi_per_categoria.get("AUTO_MANUTENZIONE", {"imponibile": 0, "iva": 0, "count": 0}),
+    }
+    totale_costi_auto = sum(v["imponibile"] for v in costi_auto.values())
+    
+    # Oneri finanziari
+    C17_finanziari = {
+        "commissioni_bancarie": costi_per_categoria.get("C17_COMMISSIONI_BANCARIE", {"imponibile": 0, "iva": 0, "count": 0}),
+    }
+    totale_C17 = sum(v["imponibile"] for v in C17_finanziari.values())
+    
+    # Altri costi (B14)
+    B14_altri = costi_per_categoria.get("B14_ONERI_DIVERSI", {"imponibile": 0, "iva": 0, "count": 0})
+    
+    # === CALCOLI DEDUCIBILITÀ ===
+    # Telefonia: deducibile 80%
+    tel_deducibile = B7_servizi["telefonia"]["imponibile"] * 0.80
+    tel_indeducibile = B7_servizi["telefonia"]["imponibile"] * 0.20
+    
+    # Noleggio auto: deducibile 20%, max €3.615,20/anno
+    noleggio_imponibile = B8_godimento["noleggio_auto"]["imponibile"]
+    noleggio_limitato = min(noleggio_imponibile, 3615.20)
+    noleggio_deducibile = noleggio_limitato * 0.20
+    noleggio_indeducibile = noleggio_imponibile - noleggio_deducibile
+    
+    # Carburante auto: 20%
+    carburante_deducibile = costi_auto["carburante"]["imponibile"] * 0.20
+    carburante_indeducibile = costi_auto["carburante"]["imponibile"] * 0.80
+    
+    # TOTALI
+    totale_costi_produzione = (
+        B6_merci["imponibile"] +
+        totale_B7 +
+        totale_B8 +
+        (costo_personale_b9["totale"] or 0) +
+        totale_costi_auto +
+        B14_altri["imponibile"] -
+        totale_nc
+    )
+    if costo_personale_b9["totale"] is None:
+        # Senza il personale il totale dei costi non si conosce.
+        totale_costi_produzione = None
+
+    # RISULTATO
+    risultato_operativo = (
+        None if totale_costi_produzione is None
+        else ricavi_vendite - totale_costi_produzione
+    )
+    risultato_ante_imposte = (
+        None if risultato_operativo is None else risultato_operativo - totale_C17
+    )
+
+    # Calcolo costi indeducibili totali
+    totale_indeducibile = tel_indeducibile + noleggio_indeducibile + carburante_indeducibile
+    
+    return {
+        "anno": anno,
+        "mese": mese,
+        "periodo": {"da": data_inizio, "a": data_fine},
+        
+        "A_RICAVI": {
+            "A1_vendite": {
+                "corrispettivi": round(ricavi_vendite, 2),
+                "corrispettivi_lordi": round(ricavi_rt["lordo"], 2),
+                "iva_vendite": round(iva_vendite, 2),
+                "note": "UNICA fonte ricavi - Le fatture emesse sono già incluse"
+            },
+            "totale_ricavi": round(ricavi_vendite, 2)
+        },
+        
+        "B_COSTI_PRODUZIONE": {
+            "B6_materie_prime_merci": {
+                "imponibile": round(B6_merci["imponibile"], 2),
+                "iva": round(B6_merci["iva"], 2),
+                "num_fatture": B6_merci["count"],
+                "deducibilita": "100%",
+                "detraibilita_iva": "100%"
+            },
+            "B7_servizi": {
+                "dettaglio": {
+                    "energia_elettrica_gas": {
+                        "imponibile": round(B7_servizi["energia"]["imponibile"], 2),
+                        "deducibilita": "100%",
+                        "detraibilita_iva": "100%"
+                    },
+                    "acqua": {
+                        "imponibile": round(B7_servizi["acqua"]["imponibile"], 2),
+                        "deducibilita": "100%",
+                        "detraibilita_iva": "100%"
+                    },
+                    "telefonia": {
+                        "imponibile": round(B7_servizi["telefonia"]["imponibile"], 2),
+                        "deducibile": round(tel_deducibile, 2),
+                        "indeducibile": round(tel_indeducibile, 2),
+                        "deducibilita": "80%",
+                        "detraibilita_iva": "50%",
+                        "note": "Art. 102 TUIR"
+                    },
+                    "consulenze": {
+                        "imponibile": round(B7_servizi["consulenze"]["imponibile"], 2),
+                        "deducibilita": "100%"
+                    },
+                    "manutenzioni": {
+                        "imponibile": round(B7_servizi["manutenzioni"]["imponibile"], 2),
+                        "deducibilita": "100%",
+                        "note": "Limite 5% beni ammortizzabili"
+                    },
+                    "assicurazioni": {
+                        "imponibile": round(B7_servizi["assicurazioni"]["imponibile"], 2),
+                        "deducibilita": "100%",
+                        "detraibilita_iva": "Esente art. 10"
+                    },
+                    "trasporti": {
+                        "imponibile": round(B7_servizi["trasporti"]["imponibile"], 2),
+                        "deducibilita": "100%"
+                    },
+                    "pubblicita": {
+                        "imponibile": round(B7_servizi["pubblicita"]["imponibile"], 2),
+                        "deducibilita": "100%"
+                    },
+                    "altri_servizi": {
+                        "imponibile": round(B7_servizi["altri_servizi"]["imponibile"], 2)
+                    }
+                },
+                "totale": round(totale_B7, 2)
+            },
+            "B7_auto_aziendali": {
+                "carburante": {
+                    "imponibile": round(costi_auto["carburante"]["imponibile"], 2),
+                    "deducibile": round(carburante_deducibile, 2),
+                    "indeducibile": round(carburante_indeducibile, 2),
+                    "deducibilita": "20% (70% se assegnata)",
+                    "detraibilita_iva": "40%",
+                    "note": "Art. 164 TUIR"
+                },
+                "manutenzione": {
+                    "imponibile": round(costi_auto["manutenzione_auto"]["imponibile"], 2),
+                    "deducibilita": "20%",
+                    "detraibilita_iva": "40%"
+                },
+                "totale": round(totale_costi_auto, 2)
+            },
+            "B8_godimento_beni_terzi": {
+                "affitti_locazioni": {
+                    "imponibile": round(B8_godimento["affitti"]["imponibile"], 2),
+                    "deducibilita": "100%",
+                    "detraibilita_iva": "Spesso esente immobili"
+                },
+                "noleggio_auto": {
+                    "imponibile": round(noleggio_imponibile, 2),
+                    "importo_limitato": round(noleggio_limitato, 2),
+                    "deducibile": round(noleggio_deducibile, 2),
+                    "indeducibile": round(noleggio_indeducibile, 2),
+                    "deducibilita": "20% su max €3.615,20/anno",
+                    "detraibilita_iva": "40%",
+                    "note": "Art. 164 TUIR - 70% se assegnata a dipendente"
+                },
+                "leasing": {
+                    "imponibile": round(B8_godimento["leasing"]["imponibile"], 2)
+                },
+                "totale": round(totale_B8, 2)
+            },
+            "B9_costo_personale": {
+                "B9a_salari_stipendi": _arrotonda(costo_personale_b9["B9a_salari_stipendi"]),
+                "B9b_oneri_sociali": None,
+                "B9c_tfr": _arrotonda(costo_personale_b9["B9c_tfr"]),
+                "totale": _arrotonda(costo_personale_b9["totale"]),
+                "num_cedolini": costo_personale_b9["num_cedolini"],
+                "incompleto": costo_personale_b9["incompleto"],
+                "deducibilita": "100%",
+                "note": "Fuori campo IVA. " + costo_personale_b9["note"]
+            },
+            "B14_oneri_diversi": {
+                "imponibile": round(B14_altri["imponibile"], 2),
+                "num_fatture": B14_altri["count"]
+            },
+            "note_credito_ricevute": {
+                "totale": round(totale_nc, 2),
+                "note": "Riducono i costi"
+            },
+            "totale_costi_produzione": _arrotonda(totale_costi_produzione)
+        },
+        
+        "C_PROVENTI_ONERI_FINANZIARI": {
+            "C17_interessi_oneri": {
+                "commissioni_bancarie": {
+                    "imponibile": round(C17_finanziari["commissioni_bancarie"]["imponibile"], 2),
+                    "deducibilita": "100%",
+                    "detraibilita_iva": "Esente art. 10"
+                },
+                "interessi_passivi_mutui": {
+                    "imponibile": 0,  # Da implementare con collezione mutui
+                    "deducibilita": "Limite ROL 30%",
+                    "note": "Art. 96 TUIR",
+                    "stima": True,
+                    "avviso": "Valore non ancora calcolato dai mutui: NON è un dato reale.",
+                }
+            },
+            "totale_oneri_finanziari": round(totale_C17, 2)
+        },
+        
+        "RISULTATO": {
+            "risultato_operativo": _arrotonda(risultato_operativo),
+            "risultato_ante_imposte": _arrotonda(risultato_ante_imposte),
+            "tipo": _tipo_risultato(risultato_ante_imposte),
+            "margine_percentuale": (
+                round((risultato_ante_imposte / ricavi_vendite * 100), 1)
+                if risultato_ante_imposte is not None and ricavi_vendite > 0 else None
+            )
+        },
+        
+        "FISCALE": {
+            "totale_costi_indeducibili": round(totale_indeducibile, 2),
+            "dettaglio_indeducibili": {
+                "telefonia_20%": round(tel_indeducibile, 2),
+                "noleggio_auto_80%": round(noleggio_indeducibile, 2),
+                "carburante_80%": round(carburante_indeducibile, 2)
+            },
+            "reddito_fiscale_stimato": (
+                None if risultato_ante_imposte is None
+                else round(risultato_ante_imposte + totale_indeducibile, 2)
+            ),
+            "note": "Il reddito fiscale va calcolato con variazioni in aumento/diminuzione"
+        },
+        
+        "STATISTICHE": {
+            "totale_fatture_classificate": len(fatture),
+            "categorie_riconosciute": len(costi_per_categoria)
+        }
+    }
+
+
+@router.get("/export-pdf")
+@handle_errors
+async def export_bilancio_pdf(anno: int = Query(None), mese: int = Query(None, description="Mese (1-12), opzionale")):
+    """Esporta Bilancio in PDF. Con `mese` il PDF rispecchia il filtro mensile
+    della pagina (fotografia a fine mese e flussi del mese)."""
+    try:
+        from reportlab.lib import colors
+        from reportlab.lib.pagesizes import A4
+        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+        from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+        from reportlab.lib.units import cm
+    except ImportError as exc:
+        raise HTTPException(status_code=500, detail="reportlab non installato") from exc
+
+    if not anno:
+        anno = datetime.now().year
+
+    # Usa gli stessi calcolatori canonici della pagina. In passato il PDF
+    # richiamava una seconda aggregazione storica che classificava le fatture
+    # ricevute TD01/TD24 come crediti e ometteva immobilizzazioni e Fondo TFR.
+    # Il documento esportato deve essere una rappresentazione della pagina,
+    # non un secondo bilancio con regole proprie.
+    stato_patrimoniale = await _get_stato_patrimoniale_data(anno, mese)
+    conto_economico = await _get_conto_economico_data(anno, mese)
+    
+    # Crea PDF
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=A4, topMargin=2*cm, bottomMargin=2*cm)
+    
+    styles = getSampleStyleSheet()
+    title_style = ParagraphStyle('Title', parent=styles['Heading1'], fontSize=18, alignment=1, spaceAfter=20)
+    section_style = ParagraphStyle('Section', parent=styles['Heading2'], fontSize=14, spaceAfter=10, spaceBefore=15)
+    
+    elements = []
+    
+    # Titolo
+    _MESI = ["", "Gennaio", "Febbraio", "Marzo", "Aprile", "Maggio", "Giugno",
+             "Luglio", "Agosto", "Settembre", "Ottobre", "Novembre", "Dicembre"]
+    _titolo = f"BILANCIO {_MESI[mese]} {anno}" if mese and 1 <= mese <= 12 else f"BILANCIO {anno}"
+    elements.append(Paragraph(_titolo, title_style))
+    elements.append(Paragraph(f"Generato il {datetime.now().strftime('%d-%m-%Y')}", styles['Normal']))
+    elements.append(Spacer(1, 20))
+
+    def fmt_eur(valore) -> str:
+        """Formato italiano stabile anche nel PDF generato lato server."""
+        if valore is None:
+            return "Dato non disponibile"
+        return f"€ {valore:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+    
+    # === STATO PATRIMONIALE ===
+    elements.append(Paragraph("STATO PATRIMONIALE", section_style))
+    
+    sp = stato_patrimoniale
+    totale_passivo = sp['passivo']['totale_passivo']
+    sp_data = [
+        ['ATTIVO', '', 'PASSIVO', ''],
+        ['Cassa', fmt_eur(sp['attivo']['disponibilita_liquide']['cassa']),
+         'Debiti vs Fornitori', fmt_eur(sp['passivo']['debiti']['totale'])],
+        ['Banca BPM (Prima Nota)', fmt_eur(sp['attivo']['disponibilita_liquide']['banca']),
+         'Fondo TFR', fmt_eur(sp['passivo']['fondo_tfr'])],
+        ['Mastercard SumUp (Prima Nota)', fmt_eur(sp['attivo']['disponibilita_liquide']['mastercard_sumup']),
+         'Patrimonio Netto', fmt_eur(sp['passivo']['patrimonio_netto'])],
+        ['Crediti vs Clienti', fmt_eur(sp['attivo']['crediti']['totale']), '', ''],
+        ['Immobilizzazioni', fmt_eur(sp['attivo']['immobilizzazioni']['totale']), '', ''],
+        ['TOTALE ATTIVO', fmt_eur(sp['attivo']['totale_attivo']),
+         'TOTALE PASSIVO', fmt_eur(totale_passivo)]
+    ]
+    
+    sp_table = Table(sp_data, colWidths=[5*cm, 4*cm, 5*cm, 4*cm])
+    sp_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (1, 0), colors.HexColor('#dcfce7')),
+        ('BACKGROUND', (2, 0), (3, 0), colors.HexColor('#fee2e2')),
+        ('BACKGROUND', (0, -1), (1, -1), colors.HexColor('#22c55e')),
+        ('BACKGROUND', (2, -1), (3, -1), colors.HexColor('#ef4444')),
+        ('TEXTCOLOR', (0, -1), (-1, -1), colors.white),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
+        ('ALIGN', (1, 0), (1, -1), 'RIGHT'),
+        ('ALIGN', (3, 0), (3, -1), 'RIGHT'),
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.gray),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('PADDING', (0, 0), (-1, -1), 8),
+    ]))
+    elements.append(sp_table)
+    elements.append(Spacer(1, 30))
+    
+    # === CONTO ECONOMICO ===
+    elements.append(Paragraph("CONTO ECONOMICO", section_style))
+    
+    ce = conto_economico
+    # NOTA: I ricavi derivano SOLO dai corrispettivi (vendite al pubblico)
+    # I costi derivano dalle fatture ricevute - note credito
+    utile_perdita = ce['risultato']['utile_perdita']
+    ce_data = [
+        ['RICAVI', ''],
+        ['Corrispettivi (Vendite al Pubblico)', fmt_eur(ce['ricavi']['corrispettivi'])],
+        ['TOTALE RICAVI', fmt_eur(ce['ricavi']['totale_ricavi'])],
+        ['', ''],
+        ['COSTI', ''],
+        ['Acquisti (Fatture Ricevute)', fmt_eur(ce['costi']['acquisti'])],
+        ['Note di Credito Ricevute', f"-{fmt_eur(ce['costi']['note_credito'])}"],
+        ['Personale (lordo buste, senza contributi)', fmt_eur(ce['costi']['personale'])],
+        ['TOTALE COSTI (Netto)', fmt_eur(ce['costi']['totale_costi'])],
+        ['', ''],
+        ['RISULTATO', fmt_eur(utile_perdita)]
+    ]
+    
+    ce_table = Table(ce_data, colWidths=[10*cm, 6*cm])
+    # Table rows: 0=RICAVI header, 1=Corrispettivi, 2=TOTALE RICAVI, 3=empty,
+    #             4=COSTI header, 5=Acquisti, 6=Note Credito, 7=Personale,
+    #             8=TOTALE COSTI, 9=empty, 10=RISULTATO
+    ce_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#dcfce7')),  # RICAVI header
+        ('BACKGROUND', (0, 2), (-1, 2), colors.HexColor('#22c55e')),  # TOTALE RICAVI
+        ('BACKGROUND', (0, 4), (-1, 4), colors.HexColor('#fee2e2')),  # COSTI header
+        ('BACKGROUND', (0, 8), (-1, 8), colors.HexColor('#ef4444')),  # TOTALE COSTI
+        ('BACKGROUND', (0, 10), (-1, 10), colors.HexColor('#2a3329') if (utile_perdita or 0) >= 0 else colors.HexColor('#dc2626')),  # RISULTATO
+        ('TEXTCOLOR', (0, 2), (-1, 2), colors.white),
+        ('TEXTCOLOR', (0, 8), (-1, 8), colors.white),
+        ('TEXTCOLOR', (0, 10), (-1, 10), colors.white),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTNAME', (0, 2), (-1, 2), 'Helvetica-Bold'),
+        ('FONTNAME', (0, 4), (-1, 4), 'Helvetica-Bold'),
+        ('FONTNAME', (0, 8), (-1, 8), 'Helvetica-Bold'),
+        ('FONTNAME', (0, 10), (-1, 10), 'Helvetica-Bold'),
+        ('ALIGN', (1, 0), (1, -1), 'RIGHT'),
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.gray),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('PADDING', (0, 0), (-1, -1), 8),
+    ]))
+    elements.append(ce_table)
+    
+    # Build PDF
+    doc.build(elements)
+    buffer.seek(0)
+    
+    periodo_filename = f"_{mese:02d}" if mese and 1 <= mese <= 12 else ""
+    return StreamingResponse(
+        buffer,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f"attachment; filename=bilancio_{anno}{periodo_filename}.pdf"}
+    )
+
+
+
+@router.get("/confronto-annuale")
+@handle_errors
+async def get_confronto_annuale(
+    anno_corrente: int = Query(..., description="Anno corrente"),
+    anno_precedente: int = Query(None, description="Anno precedente (default: anno_corrente - 1)")
+) -> Dict[str, Any]:
+    """
+    Confronto anno su anno del Conto Economico.
+    Mostra variazioni assolute e percentuali tra due anni.
+    """
+    if not anno_precedente:
+        anno_precedente = anno_corrente - 1
+    
+    # Ottieni dati per entrambi gli anni usando le funzioni helper
+    ce_corrente = await _get_conto_economico_data(anno_corrente)
+    ce_precedente = await _get_conto_economico_data(anno_precedente)
+    
+    sp_corrente = await _get_stato_patrimoniale_data(anno_corrente)
+    sp_precedente = await _get_stato_patrimoniale_data(anno_precedente)
+    
+    def calc_variazione(attuale: float, precedente: float) -> Dict[str, Any]:
+        """Calcola variazione assoluta e percentuale.
+
+        Un valore che non si conosce (None) non si confronta: nessuna
+        variazione inventata.
+        """
+        if attuale is None or precedente is None:
+            return {
+                "attuale": _arrotonda(attuale),
+                "precedente": _arrotonda(precedente),
+                "variazione": None,
+                "variazione_pct": None,
+                "trend": "non_determinabile",
+            }
+        variazione_abs = attuale - precedente
+        variazione_pct = ((attuale - precedente) / precedente * 100) if precedente != 0 else 0
+        return {
+            "attuale": round(attuale, 2),
+            "precedente": round(precedente, 2),
+            "variazione": round(variazione_abs, 2),
+            "variazione_pct": round(variazione_pct, 1),
+            "trend": "up" if variazione_abs > 0 else ("down" if variazione_abs < 0 else "stable")
+        }
+    
+    # Confronto Conto Economico
+    # NOTA: I ricavi derivano SOLO dai corrispettivi (vendite al pubblico)
+    # I costi derivano dalle fatture ricevute - note credito
+    confronto_ce = {
+        "ricavi": {
+            "corrispettivi": calc_variazione(
+                ce_corrente["ricavi"]["corrispettivi"],
+                ce_precedente["ricavi"]["corrispettivi"]
+            ),
+            "totale_ricavi": calc_variazione(
+                ce_corrente["ricavi"]["totale_ricavi"],
+                ce_precedente["ricavi"]["totale_ricavi"]
+            )
+        },
+        "costi": {
+            "acquisti": calc_variazione(
+                ce_corrente["costi"]["acquisti"],
+                ce_precedente["costi"]["acquisti"]
+            ),
+            "note_credito": calc_variazione(
+                ce_corrente["costi"]["note_credito"],
+                ce_precedente["costi"]["note_credito"]
+            ),
+            "totale_costi": calc_variazione(
+                ce_corrente["costi"]["totale_costi"],
+                ce_precedente["costi"]["totale_costi"]
+            )
+        },
+        "risultato": {
+            "utile_perdita": calc_variazione(
+                ce_corrente["risultato"]["utile_perdita"],
+                ce_precedente["risultato"]["utile_perdita"]
+            )
+        }
+    }
+    
+    # Confronto Stato Patrimoniale
+    confronto_sp = {
+        "attivo": {
+            "cassa": calc_variazione(
+                sp_corrente["attivo"]["disponibilita_liquide"]["cassa"],
+                sp_precedente["attivo"]["disponibilita_liquide"]["cassa"]
+            ),
+            "banca": calc_variazione(
+                sp_corrente["attivo"]["disponibilita_liquide"]["banca"],
+                sp_precedente["attivo"]["disponibilita_liquide"]["banca"]
+            ),
+            "crediti": calc_variazione(
+                sp_corrente["attivo"]["crediti"]["totale"],
+                sp_precedente["attivo"]["crediti"]["totale"]
+            ),
+            "immobilizzazioni": calc_variazione(
+                sp_corrente["attivo"]["immobilizzazioni"]["totale"],
+                sp_precedente["attivo"]["immobilizzazioni"]["totale"]
+            ),
+            "totale_attivo": calc_variazione(
+                sp_corrente["attivo"]["totale_attivo"],
+                sp_precedente["attivo"]["totale_attivo"]
+            )
+        },
+        "passivo": {
+            "debiti": calc_variazione(
+                sp_corrente["passivo"]["debiti"]["totale"],
+                sp_precedente["passivo"]["debiti"]["totale"]
+            ),
+            "fondo_tfr": calc_variazione(
+                sp_corrente["passivo"]["fondo_tfr"],
+                sp_precedente["passivo"]["fondo_tfr"]
+            ),
+            "patrimonio_netto": calc_variazione(
+                sp_corrente["passivo"]["patrimonio_netto"],
+                sp_precedente["passivo"]["patrimonio_netto"]
+            ),
+            "totale_passivo": calc_variazione(
+                sp_corrente["passivo"]["totale_passivo"],
+                sp_precedente["passivo"]["totale_passivo"]
+            )
+        }
+    }
+    
+    # Indicatori descrittivi calcolati soltanto sui dati effettivi disponibili.
+    # Non applichiamo aliquote IRES/IRAP forfettarie e non chiamiamo ROI un
+    # rapporto che non dispone del capitale investito operativo.
+    risultato_corrente = ce_corrente["risultato"]["utile_perdita"]
+    risultato_precedente = ce_precedente["risultato"]["utile_perdita"]
+    ricavi_corrente = ce_corrente["ricavi"]["totale_ricavi"]
+    ricavi_precedente = ce_precedente["ricavi"]["totale_ricavi"]
+    attivo_corrente = sp_corrente["attivo"]["totale_attivo"]
+    attivo_precedente = sp_precedente["attivo"]["totale_attivo"]
+
+    def _percentuale(num, den):
+        if num is None or den is None or den <= 0:
+            return None
+        return num / den * 100
+
+    margine_risultato_corrente = _percentuale(risultato_corrente, ricavi_corrente)
+    margine_risultato_precedente = _percentuale(risultato_precedente, ricavi_precedente)
+    risultato_su_attivo_corrente = _percentuale(risultato_corrente, attivo_corrente)
+    risultato_su_attivo_precedente = _percentuale(risultato_precedente, attivo_precedente)
+
+    kpi = {
+        "margine_risultato_pct": calc_variazione(margine_risultato_corrente, margine_risultato_precedente),
+        "risultato_su_attivo_pct": calc_variazione(risultato_su_attivo_corrente, risultato_su_attivo_precedente),
+        "crescita_ricavi_pct": confronto_ce["ricavi"]["totale_ricavi"]["variazione_pct"],
+        "crescita_costi_pct": confronto_ce["costi"]["totale_costi"]["variazione_pct"],
+    }
+    
+    return {
+        "anno_corrente": anno_corrente,
+        "anno_precedente": anno_precedente,
+        "conto_economico": confronto_ce,
+        "stato_patrimoniale": confronto_sp,
+        "kpi": kpi,
+        "sintesi": {
+            "ricavi_trend": "📈 In crescita" if confronto_ce["ricavi"]["totale_ricavi"]["trend"] == "up" else ("📉 In calo" if confronto_ce["ricavi"]["totale_ricavi"]["trend"] == "down" else "➡️ Stabile"),
+            "utile_trend": (
+                "Dato non disponibile"
+                if confronto_ce["risultato"]["utile_perdita"]["trend"] == "non_determinabile"
+                else "📈 In crescita" if confronto_ce["risultato"]["utile_perdita"]["trend"] == "up"
+                else ("📉 In calo" if confronto_ce["risultato"]["utile_perdita"]["trend"] == "down" else "➡️ Stabile")
+            ),
+            "liquidita_trend": "📈 In crescita" if confronto_sp["attivo"]["totale_attivo"]["trend"] == "up" else ("📉 In calo" if confronto_sp["attivo"]["totale_attivo"]["trend"] == "down" else "➡️ Stabile")
+        }
+    }
+
+
+# Helper functions per evitare problemi con Query params
+async def _get_stato_patrimoniale_data(anno: int, mese: int = None) -> Dict[str, Any]:
+    """Restituisce esattamente lo Stato Patrimoniale usato dalla pagina.
+
+    Export e confronti non devono mantenere aggregazioni parallele: ogni nuova
+    componente contabile (per esempio cespiti o Fondo TFR) entra qui tramite il
+    calcolatore canonico e non può divergere silenziosamente.
+    """
+    return await get_stato_patrimoniale(anno=anno, mese=mese, data_a=None)
+
+
+async def _get_conto_economico_data(anno: int, mese: int = None) -> Dict[str, Any]:
+    """Restituisce esattamente il Conto Economico usato dalla pagina."""
+    return await get_conto_economico(anno=anno, mese=mese)
+
+
+
+
+@router.get("/export/pdf/confronto")
+@handle_errors
+async def export_confronto_pdf(
+    anno_corrente: int = Query(...),
+    anno_precedente: int = Query(None)
+) -> StreamingResponse:
+    """
+    Esporta il bilancio comparativo anno su anno in PDF.
+    """
+    if not anno_precedente:
+        anno_precedente = anno_corrente - 1
+    
+    try:
+        from reportlab.lib.pagesizes import A4
+        from reportlab.lib import colors
+        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+        from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+        from reportlab.lib.units import cm
+    except ImportError as exc:
+        raise HTTPException(status_code=500, detail="reportlab non installato") from exc
+    
+    # Ottieni dati confronto
+    confronto = await get_confronto_annuale(anno_corrente=anno_corrente, anno_precedente=anno_precedente)
+    
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=A4, topMargin=2*cm, bottomMargin=2*cm, leftMargin=1.5*cm, rightMargin=1.5*cm)
+    elements = []
+    styles = getSampleStyleSheet()
+    
+    # Custom styles
+    title_style = ParagraphStyle('Title', parent=styles['Heading1'], fontSize=20, textColor=colors.HexColor('#1e40af'), spaceAfter=20)
+    subtitle_style = ParagraphStyle('Subtitle', parent=styles['Heading2'], fontSize=14, textColor=colors.HexColor('#374151'), spaceAfter=10)
+    
+    # Titolo
+    elements.append(Paragraph("📊 Bilancio Comparativo", title_style))
+    elements.append(Paragraph(f"<b>{anno_precedente}</b> vs <b>{anno_corrente}</b>", subtitle_style))
+    elements.append(Spacer(1, 20))
+    
+    # Helper per formattare
+    def fmt_eur(val):
+        if val is None:
+            return "n.d."
+        return f"€ {val:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+
+    def fmt_pct(val):
+        if val is None:
+            return "n.d."
+        return f"{val:+.1f}%"
+    
+    def get_trend_symbol(trend):
+        if trend == "up": return "▲"
+        if trend == "down": return "▼"
+        return "="
+    
+    # CONTO ECONOMICO
+    elements.append(Paragraph("📈 CONTO ECONOMICO", subtitle_style))
+    
+    ce = confronto["conto_economico"]
+    # NOTA: I ricavi derivano SOLO dai corrispettivi (vendite al pubblico)
+    ce_data = [
+        ["Voce", f"{anno_precedente}", f"{anno_corrente}", "Variazione", "%"],
+        ["RICAVI", "", "", "", ""],
+        ["  Corrispettivi", fmt_eur(ce["ricavi"]["corrispettivi"]["precedente"]), fmt_eur(ce["ricavi"]["corrispettivi"]["attuale"]), fmt_eur(ce["ricavi"]["corrispettivi"]["variazione"]), fmt_pct(ce["ricavi"]["corrispettivi"]["variazione_pct"])],
+        ["  TOTALE RICAVI", fmt_eur(ce["ricavi"]["totale_ricavi"]["precedente"]), fmt_eur(ce["ricavi"]["totale_ricavi"]["attuale"]), fmt_eur(ce["ricavi"]["totale_ricavi"]["variazione"]), fmt_pct(ce["ricavi"]["totale_ricavi"]["variazione_pct"])],
+        ["COSTI", "", "", "", ""],
+        ["  Acquisti", fmt_eur(ce["costi"]["acquisti"]["precedente"]), fmt_eur(ce["costi"]["acquisti"]["attuale"]), fmt_eur(ce["costi"]["acquisti"]["variazione"]), fmt_pct(ce["costi"]["acquisti"]["variazione_pct"])],
+        ["  Note Credito", fmt_eur(ce["costi"]["note_credito"]["precedente"]), fmt_eur(ce["costi"]["note_credito"]["attuale"]), fmt_eur(ce["costi"]["note_credito"]["variazione"]), fmt_pct(ce["costi"]["note_credito"]["variazione_pct"])],
+        ["  TOTALE COSTI", fmt_eur(ce["costi"]["totale_costi"]["precedente"]), fmt_eur(ce["costi"]["totale_costi"]["attuale"]), fmt_eur(ce["costi"]["totale_costi"]["variazione"]), fmt_pct(ce["costi"]["totale_costi"]["variazione_pct"])],
+        ["RISULTATO", "", "", "", ""],
+        ["  Risultato gestionale prima delle imposte", fmt_eur(ce["risultato"]["utile_perdita"]["precedente"]), fmt_eur(ce["risultato"]["utile_perdita"]["attuale"]), fmt_eur(ce["risultato"]["utile_perdita"]["variazione"]), fmt_pct(ce["risultato"]["utile_perdita"]["variazione_pct"])],
+    ]
+    
+    ce_table = Table(ce_data, colWidths=[5*cm, 3.5*cm, 3.5*cm, 3*cm, 2*cm])
+    ce_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1e40af')),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, -1), 9),
+        ('ALIGN', (1, 0), (-1, -1), 'RIGHT'),
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#e5e7eb')),
+        ('BACKGROUND', (0, 1), (-1, 1), colors.HexColor('#eef3ef')),
+        ('BACKGROUND', (0, 4), (-1, 4), colors.HexColor('#fef2f2')),
+        ('BACKGROUND', (0, 8), (-1, 8), colors.HexColor('#f0fdf4')),
+        ('FONTNAME', (0, 3), (-1, 3), 'Helvetica-Bold'),
+        ('FONTNAME', (0, 7), (-1, 7), 'Helvetica-Bold'),
+        ('FONTNAME', (0, 9), (-1, 9), 'Helvetica-Bold'),
+    ]))
+    elements.append(ce_table)
+    elements.append(Spacer(1, 30))
+    
+    # STATO PATRIMONIALE
+    elements.append(Paragraph("🏦 STATO PATRIMONIALE", subtitle_style))
+    
+    sp = confronto["stato_patrimoniale"]
+    sp_data = [
+        ["Voce", f"{anno_precedente}", f"{anno_corrente}", "Variazione", "%"],
+        ["ATTIVO", "", "", "", ""],
+        ["  Cassa", fmt_eur(sp["attivo"]["cassa"]["precedente"]), fmt_eur(sp["attivo"]["cassa"]["attuale"]), fmt_eur(sp["attivo"]["cassa"]["variazione"]), fmt_pct(sp["attivo"]["cassa"]["variazione_pct"])],
+        ["  Banca", fmt_eur(sp["attivo"]["banca"]["precedente"]), fmt_eur(sp["attivo"]["banca"]["attuale"]), fmt_eur(sp["attivo"]["banca"]["variazione"]), fmt_pct(sp["attivo"]["banca"]["variazione_pct"])],
+        ["  Crediti", fmt_eur(sp["attivo"]["crediti"]["precedente"]), fmt_eur(sp["attivo"]["crediti"]["attuale"]), fmt_eur(sp["attivo"]["crediti"]["variazione"]), fmt_pct(sp["attivo"]["crediti"]["variazione_pct"])],
+        ["  Immobilizzazioni", fmt_eur(sp["attivo"]["immobilizzazioni"]["precedente"]), fmt_eur(sp["attivo"]["immobilizzazioni"]["attuale"]), fmt_eur(sp["attivo"]["immobilizzazioni"]["variazione"]), fmt_pct(sp["attivo"]["immobilizzazioni"]["variazione_pct"])],
+        ["  TOTALE ATTIVO", fmt_eur(sp["attivo"]["totale_attivo"]["precedente"]), fmt_eur(sp["attivo"]["totale_attivo"]["attuale"]), fmt_eur(sp["attivo"]["totale_attivo"]["variazione"]), fmt_pct(sp["attivo"]["totale_attivo"]["variazione_pct"])],
+        ["PASSIVO", "", "", "", ""],
+        ["  Debiti", fmt_eur(sp["passivo"]["debiti"]["precedente"]), fmt_eur(sp["passivo"]["debiti"]["attuale"]), fmt_eur(sp["passivo"]["debiti"]["variazione"]), fmt_pct(sp["passivo"]["debiti"]["variazione_pct"])],
+        ["  Fondo TFR", fmt_eur(sp["passivo"]["fondo_tfr"]["precedente"]), fmt_eur(sp["passivo"]["fondo_tfr"]["attuale"]), fmt_eur(sp["passivo"]["fondo_tfr"]["variazione"]), fmt_pct(sp["passivo"]["fondo_tfr"]["variazione_pct"])],
+        ["  Patrimonio netto", fmt_eur(sp["passivo"]["patrimonio_netto"]["precedente"]), fmt_eur(sp["passivo"]["patrimonio_netto"]["attuale"]), fmt_eur(sp["passivo"]["patrimonio_netto"]["variazione"]), fmt_pct(sp["passivo"]["patrimonio_netto"]["variazione_pct"])],
+        ["  TOTALE PASSIVO", fmt_eur(sp["passivo"]["totale_passivo"]["precedente"]), fmt_eur(sp["passivo"]["totale_passivo"]["attuale"]), fmt_eur(sp["passivo"]["totale_passivo"]["variazione"]), fmt_pct(sp["passivo"]["totale_passivo"]["variazione_pct"])],
+    ]
+    
+    sp_table = Table(sp_data, colWidths=[5*cm, 3.5*cm, 3.5*cm, 3*cm, 2*cm])
+    sp_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#059669')),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, -1), 9),
+        ('ALIGN', (1, 0), (-1, -1), 'RIGHT'),
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#e5e7eb')),
+        ('BACKGROUND', (0, 1), (-1, 1), colors.HexColor('#f0fdf4')),
+        ('BACKGROUND', (0, 7), (-1, 7), colors.HexColor('#fef2f2')),
+        ('FONTNAME', (0, 6), (-1, 6), 'Helvetica-Bold'),
+        ('FONTNAME', (0, 11), (-1, 11), 'Helvetica-Bold'),
+    ]))
+    elements.append(sp_table)
+    elements.append(Spacer(1, 30))
+    
+    # KPI
+    elements.append(Paragraph("📊 INDICATORI DI PERFORMANCE", subtitle_style))
+    
+    kpi = confronto["kpi"]
+    sintesi = confronto["sintesi"]
+    
+    kpi_text = f"""
+    <b>Risultato / Ricavi:</b> {kpi['margine_risultato_pct']['attuale']:.1f}% ({fmt_pct(kpi['margine_risultato_pct']['variazione_pct'])} vs anno prec.)<br/>
+    <b>Risultato / Totale attivo:</b> {kpi['risultato_su_attivo_pct']['attuale']:.1f}% ({fmt_pct(kpi['risultato_su_attivo_pct']['variazione_pct'])} vs anno prec.)<br/>
+    <b>Crescita Ricavi:</b> {fmt_pct(kpi['crescita_ricavi_pct'])}<br/>
+    <b>Crescita Costi:</b> {fmt_pct(kpi['crescita_costi_pct'])}<br/><br/>
+    <b>Sintesi:</b><br/>
+    • Ricavi: {sintesi['ricavi_trend']}<br/>
+    • Utile: {sintesi['utile_trend']}<br/>
+    • Liquidità: {sintesi['liquidita_trend']}
+    """
+    
+    elements.append(Paragraph(kpi_text, styles['Normal']))
+    
+    # Footer
+    elements.append(Spacer(1, 40))
+    footer_style = ParagraphStyle('Footer', parent=styles['Normal'], fontSize=9, textColor=colors.gray)
+    elements.append(Paragraph(f"Documento generato il {datetime.now().strftime('%d-%m-%Y %H:%M')} - Azienda Semplice ERP", footer_style))
+    
+    doc.build(elements)
+    buffer.seek(0)
+    
+    filename = f"Bilancio_Comparativo_{anno_precedente}_vs_{anno_corrente}.pdf"
+    return StreamingResponse(
+        buffer,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f"attachment; filename={filename}"}
+    )

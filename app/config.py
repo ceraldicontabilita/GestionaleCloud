@@ -1,0 +1,428 @@
+"""
+Application configuration using Pydantic Settings.
+FIX: path .env corretto
+"""
+from pydantic import PrivateAttr
+from pydantic_settings import BaseSettings, SettingsConfigDict, PydanticBaseSettingsSource
+from typing import Optional, Type, Tuple
+from pathlib import Path
+import os
+
+
+class Settings(BaseSettings):
+    """Application settings with environment variable validation."""
+
+    # Application
+    APP_NAME: str = "Azienda in Cloud ERP"
+    APP_VERSION: str = "2.0.0"
+    DEBUG: bool = False
+    ENVIRONMENT: str = "production"
+    # Google Drive conserva soltanto gli originali documentali; Supabase e'
+    # l'unico registro operativo strutturato, senza eccezioni.
+    DATA_BACKEND: str = "supabase"
+    # Credenziali server-to-server del runtime Supabase. La publishable key non
+    # concede da sola accesso ai dati; ogni RPC richiede anche il secret
+    # applicativo separato conservato esclusivamente nel secret store Render.
+    SUPABASE_URL: Optional[str] = None
+    SUPABASE_PUBLISHABLE_KEY: Optional[str] = None
+    SUPABASE_RUNTIME_SECRET: Optional[str] = None
+
+    # Server
+    HOST: str = "0.0.0.0"
+    PORT: int = 8000
+    RELOAD: bool = False
+
+    # Nome logico del registro esposto tramite l'interfaccia database.
+    DB_NAME: str = "Gestionale"
+    # Le riparazioni dati e migrazioni all'avvio restano disabilitate per default.
+    RUN_STARTUP_DATA_REPAIRS: bool = False
+    RUN_STARTUP_INDEX_MIGRATIONS: bool = False
+    RUN_STARTUP_SEED_DATA: bool = False
+    # Perimetro fiscale esplicito. Ogni nuovo record del sottosistema fiscale
+    # porta questa chiave e ogni query la filtra: non si deduce mai l'azienda
+    # dal nome di un file o di una cartella Drive.
+    FISCAL_COMPANY_ID: str = "04523831214"
+    ADER_MICRO_RESIDUAL_THRESHOLD_CENTS: int = 500
+    # I processi periodici sono spenti per default. Si riattivano soltanto con
+    # una scelta esplicita nell'ambiente dopo aver verificato il singolo job.
+    ENABLE_SCHEDULER: bool = False
+    SCHEDULER_LEASE_SECONDS: int = 21600
+
+    # Security
+    SECRET_KEY: Optional[str] = None
+    ALGORITHM: str = "HS256"
+    # REGOLA UTENTE (10-07-2026): dati sensibili → la sessione scade dopo
+    # 1 ORA DI INATTIVITÀ. Il token dura 60 minuti ma viene rinnovato in
+    # automatico a ogni richiesta (sessione scorrevole, vedi
+    # AuthenticationMiddleware): finché lavori non scade mai; se lasci
+    # l'app ferma un'ora, al collegamento successivo richiede il PIN.
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
+    # Canale macchina-a-macchina limitato ai due endpoint Render documentali.
+    # Non sostituisce il JWT utente e non deve essere riusato da altri servizi.
+    RENDER_INGEST_SHARED_SECRET: Optional[str] = None
+
+    # CORS
+    # Origin consentiti in produzione: impostare col dominio reale del
+    # gestionale, es. CORS_ALLOWED_ORIGINS="https://gestionale.esempio.it"
+    # (più domini separati da virgola). Se valorizzato, chiude l'accesso a
+    # ogni altro sito; se vuoto e le credenziali sono abilitate, resta
+    # consentito soltanto il traffico same-origin (vedi get_cors_origins).
+    CORS_ALLOWED_ORIGINS: str = ""
+    CORS_ORIGINS: str = "*"
+    ALLOWED_ORIGINS: str = "*"
+    ALLOW_CREDENTIALS: bool = True
+    ALLOWED_METHODS: str = "*"
+    ALLOWED_HEADERS: str = "*"
+
+    # File Upload
+    MAX_UPLOAD_SIZE_MB: int = 50
+    UPLOAD_FOLDER: Path = Path("uploads")
+    ALLOWED_EXTENSIONS: str = ".xml,.xlsx,.xls,.pdf,.csv"
+
+    # Email SMTP
+    SMTP_ENABLED: bool = False
+    SMTP_HOST: Optional[str] = None
+    SMTP_PORT: Optional[int] = 587
+    SMTP_USER: Optional[str] = None
+    SMTP_USERNAME: Optional[str] = None
+    SMTP_PASSWORD: Optional[str] = None
+    SMTP_FROM_EMAIL: Optional[str] = None
+    FROM_EMAIL: Optional[str] = None
+    ADMIN_EMAIL: Optional[str] = None
+
+    # Gmail IMAP
+    GMAIL_IMAP_ENABLED: bool = False
+    GMAIL_EMAIL: Optional[str] = None
+    GMAIL_APP_PASSWORD: Optional[str] = None
+    # Alias effettivi presenti nell'ambiente operativo Ceraldi. Restano
+    # separati per non obbligare a rinominare o duplicare segreti su Render.
+    GMAIL_ACCOUNT_AMMINISTRATIVO: Optional[str] = None
+    GMAIL_APP_PASSWORD_AMMINISTRATIVO: Optional[str] = None
+    EMAIL_USER: Optional[str] = None
+    EMAIL_PASSWORD: Optional[str] = None
+    EMAIL_APP_PASSWORD: Optional[str] = None
+    EMAIL_ADDRESS: Optional[str] = None
+    IMAP_HOST: str = "imap.gmail.com"
+    IMAP_SERVER: Optional[str] = None
+    IMAP_USER: Optional[str] = None
+    IMAP_PASSWORD: Optional[str] = None
+    IMAP_PORT: int = 993
+
+    # OpenAI
+    OPENAI_API_KEY: Optional[str] = None
+
+    # Google APIs
+    GEMINI_API_KEY: Optional[str] = None
+    GOOGLE_API_KEY: Optional[str] = None
+
+    # Google OAuth
+    GOOGLE_CLIENT_ID: Optional[str] = None
+    GOOGLE_CLIENT_SECRET: Optional[str] = None
+    GOOGLE_REDIRECT_URI: str = "/api/auth/google/callback"
+
+    # Google Drive: un solo service account per tutto il Drive (JSON inline
+    # o file). Le cartelle e le credenziali per sezione sono uscite con i
+    # canali (DRV-16): i documenti entrano dalla cartella unica
+    # GOOGLE_DRIVE_DATI_FOLDER_ID (app/services/drive_cartella_unica.py).
+    GOOGLE_DRIVE_SA_FILE: Optional[str] = None            # path al JSON del service account
+    GOOGLE_DRIVE_SA_JSON: Optional[str] = None            # oppure il JSON inline (alternativa al file)
+
+    # Archivio documentale esterno: il gestionale legge esclusivamente
+    # l'indice Excel e lascia i file originali su Google Drive.
+    DRIVE_DOCUMENT_INDEX_ROOT_FOLDER_ID: str = "1tmVu6fl7qhJbLcGCHT3wEQzrvFAElc9h"
+    # Protocollo-indice vivo (14/09/2026): radice GESTIONALE su Drive da
+    # percorrere per intero e cartella di quarantena dei duplicati certi.
+    # Gli ID stanno su Render; senza radice il giro non parte e lo dice.
+    GOOGLE_DRIVE_GESTIONALE_ROOT_FOLDER_ID: Optional[str] = None
+    GOOGLE_DRIVE_QUARANTENA_FOLDER_ID: Optional[str] = None
+    PROTOCOLLO_DRIVE_ENABLED: bool = True
+    # Giro INCREMENTALE del protocollo (01/10/2026): registra solo i file nuovi o
+    # modificati dall'ultimo giro riuscito, a memoria costante (una pagina alla
+    # volta). Indipendente dal giro completo sopra, che resta spento per la RAM:
+    # senza di lui ogni file arrivato dopo il 17/09 risultava `senza_origine`.
+    # Interruttore di emergenza: PROTOCOLLO_DRIVE_INCREMENTALE=false.
+    PROTOCOLLO_DRIVE_INCREMENTALE: bool = True
+    GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON: Optional[str] = None
+
+    # Canali EMAIL F24 e Verbali: ACCESI su scelta esplicita dell'utente
+    # (13/07/2026). Interruttore dedicato per poterli spegnere senza toccare
+    # le credenziali IMAP. NB: il parser F24 email non è ancora validato su
+    # F24 reali — controllare i primi risultati prima di fidarsi.
+    ENABLE_EMAIL_F24_SYNC: bool = True
+    ENABLE_EMAIL_CEDOLINI_SYNC: bool = True
+    ENABLE_EMAIL_VERBALI_SYNC: bool = True
+    # Ora locale Europe/Rome del controllo giornaliero verbali.
+    VERBALI_EMAIL_SCAN_HOUR: int = 6
+
+    # Telegram
+    TELEGRAM_BOT_TOKEN: Optional[str] = None
+    TELEGRAM_CHAT_ID: Optional[str] = None
+
+    # PayPal Reporting API
+    PAYPAL_CLIENT_ID: str = ""
+    PAYPAL_CLIENT_SECRET: str = ""
+
+    # SumUp — secondo gestore POS accanto a Nexi.
+    # Chiave statica del nostro stesso conto commerciante: niente OAuth.
+    SUMUP_API_KEY: str = ""
+    SUMUP_MERCHANT_CODE: str = ""
+    SUMUP_API_BASE: str = "https://api.sumup.com"
+
+    # Inviti recensione Colazioni B&B via WhatsApp Cloud API. Il token resta
+    # soltanto nelle variabili Render; senza configurazione la coda resta in
+    # attesa e nessun messaggio parte.
+    COLAZIONI_PUBLIC_URL: str = "https://impresasemplice.online/convenzioni/"
+    WHATSAPP_CLOUD_API_BASE: str = "https://graph.facebook.com/v23.0"
+    WHATSAPP_CLOUD_PHONE_NUMBER_ID: str = ""
+    WHATSAPP_CLOUD_ACCESS_TOKEN: str = ""
+    WHATSAPP_REVIEW_TEMPLATE_NAME: str = "ceraldi_review_invite"
+    WHATSAPP_REVIEW_TEMPLATE_LANGUAGE: str = "it"
+
+    # OpenAPI.it
+    OPENAPI_IT_KEY: Optional[str] = None
+    OPENAPI_IT_ENV: str = "production"
+    OPENAPI_IMPRESE_TOKEN: Optional[str] = None
+
+    # Feature Flags
+    ENABLE_SMTP_EMAIL: bool = False
+    # Interruttore maestro della scansione email (Gmail IMAP). Default acceso
+    # (13/07/2026): coerente con i canali email attivi (cedolini/F24/verbali).
+    # Metterlo a False ferma TUTTA l'ingestione email dallo scheduler.
+    ENABLE_GMAIL_IMAP: bool = True
+    ENABLE_DOCUMENT_AI: bool = False
+    ENABLE_ASYNC_IMPORTS: bool = True
+    ENABLE_CACHING: bool = True
+
+    # Logging
+    LOG_LEVEL: str = "INFO"
+    LOG_FORMAT: str = "json"
+    LOG_FILE: Optional[Path] = None
+
+    # Performance
+    REQUEST_TIMEOUT_SECONDS: int = 300
+    CACHE_TTL_SECONDS: int = 3600
+    MAX_CONCURRENT_IMPORTS: int = 5
+
+    # Business Logic
+    DEFAULT_USER_ID: str = "admin"
+    DEFAULT_USER_EMAIL: str = "admin@ceraldi.it"
+    IVA_ALIQUOTE: list[float] = [4.0, 5.0, 10.0, 22.0]
+
+    # Frontend
+    FRONTEND_URL: Optional[str] = None
+
+    # Paths
+    STATIC_FILES_DIR: Path = Path("static")
+    TEMPLATES_DIR: Path = Path("templates")
+    FONTS_DIR: Path = Path("fonts")
+
+    # Stato runtime, escluso dalle variabili e dalla serializzazione. La
+    # La configurazione non apre connessioni durante l'import; il segreto
+    # condiviso viene inizializzato dal lifecycle asincrono.
+    _auth_secret_source: str = PrivateAttr(default="unset")
+
+    model_config = SettingsConfigDict(
+        env_file=(None if os.environ.get("ENVIRONMENT", "").strip().lower() == "test"
+                  else "/app/backend/.env"),
+        env_file_encoding="utf-8",
+        case_sensitive=True,
+        extra="ignore"
+    )
+
+    @classmethod
+    def settings_customise_sources(
+        cls,
+        settings_cls: Type[BaseSettings],
+        init_settings: PydanticBaseSettingsSource,
+        env_settings: PydanticBaseSettingsSource,
+        dotenv_settings: PydanticBaseSettingsSource,
+        file_secret_settings: PydanticBaseSettingsSource,
+    ) -> Tuple[PydanticBaseSettingsSource, ...]:
+        # Le variabili iniettate da Render devono prevalere su un file .env
+        # dell'immagine potenzialmente obsoleto.
+        if os.environ.get("ENVIRONMENT", "").strip().lower() == "test":
+            # Il runner rimuove le credenziali ereditate: un file .env o un
+            # secrets_dir non deve reintrodurle dopo lo scrub.
+            return (init_settings, env_settings)
+        return (init_settings, env_settings, dotenv_settings, file_secret_settings)
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        if self.SECRET_KEY:
+            self._auth_secret_source = "configured"
+        else:
+            # Mantiene importabili i moduli e isolati i test, senza I/O di
+            # rete. In produzione SECRET_KEY deve arrivare dal secret store.
+            import secrets
+            self.SECRET_KEY = secrets.token_urlsafe(64)
+            self._auth_secret_source = "ephemeral"
+
+    @property
+    def auth_secret_source(self) -> str:
+        return self._auth_secret_source
+
+    def set_runtime_auth_secret(self, value: str, *, source: str) -> None:
+        if not value or len(value) < 32:
+            raise ValueError("SECRET_KEY deve contenere almeno 32 caratteri")
+        self.SECRET_KEY = value
+        self._auth_secret_source = source
+
+    def get_cors_origins(self) -> list[str]:
+        """Origin CORS consentiti.
+
+        Sicurezza (audit 13/07/2026): con autenticazione via cookie
+        (`ALLOW_CREDENTIALS=True`) NON è mai lecito rispondere con wildcard
+        `*` — il browser rifletterebbe qualunque Origin, permettendo a un
+        sito terzo di usare la sessione dell'utente. Quindi:
+
+        - Se sono elencati origin espliciti in `CORS_ALLOWED_ORIGINS`
+          (o `CORS_ORIGINS`/`ALLOWED_ORIGINS`/`FRONTEND_URL`), usa quelli.
+        - Se non c'è nulla di esplicito e le credenziali sono attive,
+          NON aprire a `*`: restituisci lista vuota (nessun sito esterno
+          autorizzato) e logga un warning, cosi l'app resta chiusa finché
+          non si imposta il dominio reale.
+        - `*` è concesso solo quando le credenziali sono disattivate.
+
+        Dominio da impostare in produzione: variabile d'ambiente
+        `CORS_ALLOWED_ORIGINS` (o `FRONTEND_URL`), es.
+        `CORS_ALLOWED_ORIGINS="https://gestionale.esempio.it"`.
+        Più domini separati da virgola.
+        """
+        import logging
+        esplicite = (
+            getattr(self, "CORS_ALLOWED_ORIGINS", "")
+            or self.CORS_ORIGINS
+            or self.ALLOWED_ORIGINS
+            or ""
+        )
+        esplicite = esplicite.strip()
+
+        if esplicite and esplicite != "*":
+            lista = [o.strip() for o in esplicite.split(",") if o.strip() and o.strip() != "*"]
+            if lista:
+                return lista
+
+        # Nessun origin esplicito valido: fallback su FRONTEND_URL se presente.
+        if self.FRONTEND_URL:
+            return [self.FRONTEND_URL]
+
+        # Niente di esplicito. Il frontend di produzione e' same-origin:
+        # con cookie attivi si chiude ogni accesso cross-site finche' il
+        # dominio esterno non viene autorizzato esplicitamente.
+        if self.ALLOW_CREDENTIALS:
+            logging.getLogger(__name__).warning(
+                "CORS cross-site disabilitato: ALLOW_CREDENTIALS=True senza "
+                "origin esplicito. Imposta CORS_ALLOWED_ORIGINS soltanto per "
+                "i domini esterni autorizzati."
+            )
+        # Il frontend di produzione e' same-origin. Con cookie abilitati il
+        # fallback sicuro e' quindi nessun origin cross-site; le integrazioni
+        # esterne devono essere autorizzate esplicitamente.
+        return [] if self.ALLOW_CREDENTIALS else ["*"]
+
+    def get_allowed_extensions(self) -> set[str]:
+        """Parse allowed file extensions."""
+        return set(ext.strip() for ext in self.ALLOWED_EXTENSIONS.split(","))
+
+    @property
+    def is_development(self) -> bool:
+        return self.ENVIRONMENT == "development"
+
+    @property
+    def is_production(self) -> bool:
+        return self.ENVIRONMENT == "production"
+
+    def validate_required_secrets(self) -> dict[str, bool]:
+        """Validate required and optional secrets.
+
+        Supabase e' l'unico backend supportato: le verifiche qui riguardano
+        soltanto ciò che serve per connettersi al registro operativo.
+        """
+        return {
+            'database': bool(
+                self.SUPABASE_URL
+                and self.SUPABASE_PUBLISHABLE_KEY
+                and self.SUPABASE_RUNTIME_SECRET
+            ),
+            'auth': bool(self.SECRET_KEY),
+            'google_oauth': bool(self.GOOGLE_CLIENT_ID and self.GOOGLE_CLIENT_SECRET),
+            'openai': bool(self.OPENAI_API_KEY),
+            'telegram': bool(self.TELEGRAM_BOT_TOKEN),
+        }
+
+    def validate_startup(self) -> None:
+        """Validate critical configuration at startup.
+
+        In produzione, se FAIL_FAST_SECRETS=true è attivo, l'applicazione
+        fallisce l'avvio se mancano SECRET_KEY o la configurazione Supabase.
+        """
+        import logging
+        logger = logging.getLogger(__name__)
+
+        fail_fast = self.is_production and os.getenv("FAIL_FAST_SECRETS", "").lower() in ("true", "1", "yes")
+        errors: list[str] = []
+
+        # Una chiave effimera rende i token diversi tra worker e li invalida
+        # a ogni deploy; in modalita' fail-fast una sorgente effimera e' fatale.
+        if self.auth_secret_source == "ephemeral":
+            msg = (
+                "SECRET_KEY effimera: configurare SECRET_KEY nel secret store "
+                "prima dell'avvio."
+            )
+            if fail_fast:
+                errors.append(msg)
+            else:
+                logger.warning(f"⚠️ {msg}")
+
+        backend = self.DATA_BACKEND.strip().lower()
+        # Supabase e' l'unico backend supportato dal runtime. Qualunque altro
+        # valore diverso da supabase resta invalido.
+        if backend != "supabase":
+            errors.append("DATA_BACKEND non supportato: il runtime corrente supporta esclusivamente 'supabase' (Postgres).")
+
+        if backend == "supabase" and not all(
+            str(value or "").strip()
+            for value in (
+                self.SUPABASE_URL,
+                self.SUPABASE_PUBLISHABLE_KEY,
+                self.SUPABASE_RUNTIME_SECRET,
+            )
+        ):
+            msg = (
+                "DATA_BACKEND=supabase richiede SUPABASE_URL, "
+                "SUPABASE_PUBLISHABLE_KEY e SUPABASE_RUNTIME_SECRET; "
+                "non esiste fallback di persistenza."
+            )
+            if fail_fast:
+                errors.append(msg)
+            else:
+                logger.error(msg)
+
+        # Senza origin espliciti ``get_cors_origins`` restituisce [] e mantiene
+        # il frontend same-origin: e' una configurazione sicura. L'unico caso
+        # da rifiutare e' una wildcard esplicita insieme alle credenziali.
+        cors_raw = (self.CORS_ALLOWED_ORIGINS or "").strip()
+        if self.is_production and self.ALLOW_CREDENTIALS and "*" in {
+            value.strip() for value in cors_raw.split(",") if value.strip()
+        }:
+            msg = (
+                "CORS wildcard non consentito con ALLOW_CREDENTIALS=true: "
+                "usa origini esplicite oppure il fallback same-origin."
+            )
+            if fail_fast:
+                errors.append(msg)
+            else:
+                logger.error(f"❌ ERROR: {msg}")
+
+        if errors:
+            raise RuntimeError(
+                "Fail-fast produzione: configurazione mancante. "
+                + " | ".join(errors)
+            )
+
+
+settings = Settings()
+FEATURES = settings.validate_required_secrets()
+
+def get_settings() -> Settings:
+    return settings

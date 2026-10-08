@@ -1,0 +1,278 @@
+"""
+Prima Nota Module - Gestione Prima Nota Cassa, Banca e Salari.
+Modulo suddiviso per funzionalità:
+- cassa: CRUD e operazioni Prima Nota Cassa
+- banca: CRUD e operazioni Prima Nota Banca
+- salari: Gestione Prima Nota Salari
+- stats: Statistiche e Export
+- sync: Sincronizzazione corrispettivi, fatture, import batch
+- manutenzione: Fix, cleanup, verifica
+"""
+from fastapi import APIRouter, Depends
+from app.middleware.performance import istantanea
+
+from app.utils.dependencies import get_current_admin_user
+
+router = APIRouter()
+
+# Import functions from modules
+from .stats import (
+    get_anni_disponibili, get_prima_nota_stats, get_saldo_finale, export_prima_nota_excel,
+    get_saldi_iniziali, set_saldo_iniziale, delete_saldo_iniziale,
+    get_saldi_finanziari,
+)
+from .cassa import (
+    list_prima_nota_cassa, create_prima_nota_cassa, update_prima_nota_cassa,
+    delete_movimento_cassa, delete_all_prima_nota_cassa, delete_cassa_by_source,
+    get_fattura_allegata_cassa, analisi_movimenti_bancari_errati_in_cassa,
+    elimina_movimenti_bancari_da_cassa
+)
+from .banca import (
+    list_prima_nota_banca, create_prima_nota_banca, update_prima_nota_banca,
+    delete_movimento_banca, delete_all_prima_nota_banca, delete_banca_by_source,
+    get_fattura_allegata_banca, movimenti_in_attesa_documento,
+    analisi_righe_grezze_storiche, candidati_banca_per_fattura,
+    list_prima_nota_sumup,
+)
+from .salari import (
+    get_prima_nota_salari, create_prima_nota_salari, delete_prima_nota_salari, get_salari_stats
+)
+from .sync import (
+    registra_fattura_prima_nota, sync_corrispettivi_to_prima_nota,
+    sync_corrispettivi_anno, sync_fatture_pagate, get_corrispettivi_sync_status,
+    import_prima_nota_batch, create_movimento_generico, collega_fatture_movimenti,
+    sync_estratto_conto_to_banca, get_fatture_provvisorie, get_conteggi_fatture_provvisorie, conferma_fattura_provvisoria,
+    imposta_fattura_in_attesa_banca, riporta_fattura_da_decidere,
+    segnala_dubbio_pagamento,
+    proponi_assegni_fattura, associa_assegno_fattura_provvisoria,
+    conferma_provvisorie_multiple,
+    imposta_metodo_fornitore_provvisoria,
+    conferma_divisione_provvisoria,
+    sposta_scrittura_prima_nota,
+    annulla_auto_conferma,
+    crea_entrata_cassa_da_corrispettivo,
+)
+from .manutenzione import (
+    fix_tipo_movimento_fatture, recalculate_all_balances, cleanup_orphan_movements,
+    regenerate_from_invoices, fix_versamenti_duplicati, fix_categories_and_duplicates,
+    sposta_movimento, verifica_metodo_fattura, verifica_entrate_corrispettivi,
+    fix_corrispettivi_importo, fix_date_formato_italiano, pulizia_dati_pre_anno, migrazione_pulisci_bancari_da_cassa,
+    unifica_categorie, ripristina_provvisori_metodo_errato, collega_corrispettivi_prima_nota,
+    arricchisci_pagamenti_banca,
+    dedup_fatture_prima_nota, diagnostica_corrispettivi_vs_cassa,
+    lista_movimenti_ec_non_in_prima_nota,
+    diagnostica_metodi_discordanti,
+    annulla_associazione_fattura_banca,
+)
+from .controllo_mensile import riepilogo_controllo_mensile
+from .operation_index import (
+    list_manual_operation_candidates,
+    list_manual_operation_index,
+    list_manual_operation_similar,
+    save_manual_operation_decision,
+)
+
+# === ROTTE STATICHE (devono venire PRIMA delle dinamiche) ===
+
+# Stats e globali
+@istantanea(ttl=300)
+async def stato_fonti_contabili():
+    """Da quanti giorni ogni fonte non porta piu' documenti, e quanta banca
+    dell'anno resta senza categoria.
+
+    18/09/2026: la pagina mostrava un saldo progressivo su una prima nota
+    ferma al 24/08 senza dirlo. Questo endpoint da' alla pagina il dato per
+    avvisare invece di far credere che il conto sia a -186.866,90.
+
+    19/09/2026: una fonte ferma e un movimento senza categoria sono due
+    problemi diversi — l'estratto conto puo' arrivare puntuale e i suoi
+    movimenti restare comunque senza causale nota, quindi fuori da Prima
+    Nota Banca. `copertura_categoria_banca` copre il secondo caso.
+    """
+    from app.database import Database
+    from app.services.fonti_ferme import copertura_categoria_banca, stato_fonti
+
+    db = Database.get_db()
+    righe = await stato_fonti(db)
+    copertura = await copertura_categoria_banca(db)
+    return {"fonti": righe, "ferme": [r for r in righe if r["ferma"]],
+            "copertura_categoria_banca": copertura}
+
+
+router.add_api_route("/anni-disponibili", get_anni_disponibili, methods=["GET"])
+router.add_api_route("/stats", get_prima_nota_stats, methods=["GET"])
+router.add_api_route("/stato-fonti", stato_fonti_contabili, methods=["GET"])
+# Controllo mensile: totali di Cassa e corrispettivi XML per mese o per giorno.
+router.add_api_route(
+    "/controllo-mensile", istantanea(ttl=60)(riepilogo_controllo_mensile), methods=["GET"],
+)
+router.add_api_route("/saldo-finale", get_saldo_finale, methods=["GET"])
+router.add_api_route("/saldi-finanziari", get_saldi_finanziari, methods=["GET"])
+router.add_api_route("/saldo-iniziale", get_saldi_iniziali, methods=["GET"])
+router.add_api_route("/saldo-iniziale", set_saldo_iniziale, methods=["PUT"])
+router.add_api_route("/saldo-iniziale/{tipo}/{anno}", delete_saldo_iniziale, methods=["DELETE"])
+router.add_api_route("/export/excel", export_prima_nota_excel, methods=["GET"])
+
+# Cassa - Statiche
+router.add_api_route("/cassa", list_prima_nota_cassa, methods=["GET"])
+router.add_api_route("/cassa", create_prima_nota_cassa, methods=["POST"])
+router.add_api_route("/cassa/delete-all", delete_all_prima_nota_cassa, methods=["DELETE"], dependencies=[Depends(get_current_admin_user)])
+router.add_api_route("/cassa/analisi-movimenti-bancari-errati", analisi_movimenti_bancari_errati_in_cassa, methods=["GET"])
+router.add_api_route("/cassa/elimina-movimenti-bancari-errati", elimina_movimenti_bancari_da_cassa, methods=["DELETE"])
+router.add_api_route("/cassa/sync-corrispettivi", sync_corrispettivi_anno, methods=["POST"])
+router.add_api_route("/cassa/sync-fatture-pagate", sync_fatture_pagate, methods=["POST"])
+router.add_api_route("/cassa/verifica-entrate-corrispettivi", verifica_entrate_corrispettivi, methods=["GET"])
+router.add_api_route("/cassa/fix-corrispettivi-importo", fix_corrispettivi_importo, methods=["POST"])
+# rebuild-da-corrispettivi rimosso
+
+# Banca - Statiche
+router.add_api_route("/banca", list_prima_nota_banca, methods=["GET"])
+router.add_api_route("/sumup", list_prima_nota_sumup, methods=["GET"])
+router.add_api_route("/banca/in-attesa-documento", movimenti_in_attesa_documento, methods=["GET"])
+router.add_api_route("/banca/analisi-righe-grezze", analisi_righe_grezze_storiche, methods=["GET"])
+router.add_api_route("/banca/candidati-per-fattura", candidati_banca_per_fattura, methods=["GET"])
+router.add_api_route("/banca", create_prima_nota_banca, methods=["POST"])
+router.add_api_route("/banca/delete-all", delete_all_prima_nota_banca, methods=["DELETE"], dependencies=[Depends(get_current_admin_user)])
+
+# Salari
+router.add_api_route("/salari", get_prima_nota_salari, methods=["GET"])
+router.add_api_route("/salari", create_prima_nota_salari, methods=["POST"])
+router.add_api_route("/salari/stats", get_salari_stats, methods=["GET"])
+
+# Sync e Import
+router.add_api_route("/sync-corrispettivi", sync_corrispettivi_to_prima_nota, methods=["POST"])
+router.add_api_route("/corrispettivi-status", get_corrispettivi_sync_status, methods=["GET"])
+router.add_api_route("/import-batch", import_prima_nota_batch, methods=["POST"])
+router.add_api_route("/movimento", create_movimento_generico, methods=["POST"])
+router.add_api_route("/collega-fatture", collega_fatture_movimenti, methods=["POST"])
+router.add_api_route("/registra-fattura", registra_fattura_prima_nota, methods=["POST"])
+router.add_api_route("/provvisori/conteggi", get_conteggi_fatture_provvisorie, methods=["GET"])
+
+# Manutenzione
+router.add_api_route("/fix-tipo-movimento", fix_tipo_movimento_fatture, methods=["POST"])
+router.add_api_route("/recalculate-balances", recalculate_all_balances, methods=["POST"])
+router.add_api_route("/cleanup-orphan-movements", cleanup_orphan_movements, methods=["POST"])
+router.add_api_route("/regenerate-from-invoices", regenerate_from_invoices, methods=["POST"])
+router.add_api_route("/fix-versamenti-duplicati", fix_versamenti_duplicati, methods=["POST"])
+router.add_api_route("/fix-date-formato-italiano", fix_date_formato_italiano, methods=["POST"])
+router.add_api_route("/pulizia-pre-anno", pulizia_dati_pre_anno, methods=["POST"])
+router.add_api_route("/unifica-categorie", unifica_categorie, methods=["POST"])
+router.add_api_route("/ripristina-provvisori-metodo-errato", ripristina_provvisori_metodo_errato, methods=["POST"])
+from .manutenzione import collega_banca_a_estratto_conto, ripristina_fatture_con_movimento_cancellato, dedup_righe_stesso_estratto_conto
+router.add_api_route("/collega-banca-estratto-conto", collega_banca_a_estratto_conto, methods=["POST"])
+router.add_api_route("/ripristina-fatture-movimento-cancellato", ripristina_fatture_con_movimento_cancellato, methods=["POST"])
+router.add_api_route("/dedup-righe-estratto-conto", dedup_righe_stesso_estratto_conto, methods=["POST"])
+from .manutenzione import migra_pos_accrediti_reali
+router.add_api_route("/migra-pos-accrediti-reali", migra_pos_accrediti_reali, methods=["POST"])
+router.add_api_route("/collega-corrispettivi", collega_corrispettivi_prima_nota, methods=["POST"])
+router.add_api_route("/arricchisci-pagamenti-banca", arricchisci_pagamenti_banca, methods=["POST"])
+router.add_api_route("/fix-categories-and-duplicates", fix_categories_and_duplicates, methods=["POST"])
+router.add_api_route("/sposta-movimento", sposta_movimento, methods=["POST"])
+router.add_api_route("/migrazione-pulisci-bancari-cassa", migrazione_pulisci_bancari_da_cassa, methods=["POST"])
+router.add_api_route("/dedup-fatture", dedup_fatture_prima_nota, methods=["POST"])
+router.add_api_route("/diagnostica-corrispettivi", diagnostica_corrispettivi_vs_cassa, methods=["GET"])
+router.add_api_route("/diagnostica-metodi", diagnostica_metodi_discordanti, methods=["GET"])
+router.add_api_route("/movimenti-ec-non-in-prima-nota", lista_movimenti_ec_non_in_prima_nota, methods=["GET"])
+router.add_api_route("/indice-operazioni", list_manual_operation_index, methods=["GET"])
+router.add_api_route(
+    "/indice-operazioni/{movement_id}/candidati",
+    list_manual_operation_candidates,
+    methods=["GET"],
+)
+router.add_api_route(
+    "/indice-operazioni/{movement_id}/simili",
+    list_manual_operation_similar,
+    methods=["GET"],
+)
+router.add_api_route(
+    "/indice-operazioni/{movement_id}",
+    save_manual_operation_decision,
+    methods=["PUT"],
+)
+router.add_api_route(
+    "/annulla-associazione-fattura-banca",
+    annulla_associazione_fattura_banca,
+    methods=["POST"],
+    dependencies=[Depends(get_current_admin_user)],
+)
+
+# === ROTTE DINAMICHE (devono venire DOPO le statiche) ===
+
+# Cassa - Dinamiche
+router.add_api_route("/cassa/delete-by-source/{source}", delete_cassa_by_source, methods=["DELETE"], dependencies=[Depends(get_current_admin_user)])
+router.add_api_route("/cassa/{movimento_id}", update_prima_nota_cassa, methods=["PUT"])
+router.add_api_route("/cassa/{movimento_id}", delete_movimento_cassa, methods=["DELETE"])
+router.add_api_route("/cassa/{movimento_id}/fattura", get_fattura_allegata_cassa, methods=["GET"])
+
+# Banca - Dinamiche
+
+# Provvisori - Fatture da confermare
+router.add_api_route("/provvisori", get_fatture_provvisorie, methods=["GET"])
+router.add_api_route("/provvisori/conferma", conferma_fattura_provvisoria, methods=["POST"])
+router.add_api_route("/provvisori/attendi-banca", imposta_fattura_in_attesa_banca, methods=["POST"])
+router.add_api_route("/provvisori/conferma-multipla", conferma_provvisorie_multiple, methods=["POST"])
+router.add_api_route("/provvisori/imposta-metodo-fornitore", imposta_metodo_fornitore_provvisoria, methods=["POST"])
+router.add_api_route("/provvisori/da-decidere", riporta_fattura_da_decidere, methods=["POST"])
+router.add_api_route("/provvisori/segnala-dubbio", segnala_dubbio_pagamento, methods=["POST"])
+router.add_api_route("/provvisori/assegni-proposti", proponi_assegni_fattura, methods=["GET"])
+router.add_api_route("/provvisori/associa-assegno", associa_assegno_fattura_provvisoria, methods=["POST"])
+from .sync import sposta_fatture_cassa_pagate_in_banca
+router.add_api_route("/sposta-cassa-pagate-in-banca", sposta_fatture_cassa_pagate_in_banca, methods=["POST"])
+router.add_api_route("/provvisori/conferma-divisione", conferma_divisione_provvisoria, methods=["POST"])
+router.add_api_route("/provvisori/annulla-auto-conferma", annulla_auto_conferma, methods=["POST"])
+router.add_api_route("/cassa/crea-entrata-da-corrispettivo", crea_entrata_cassa_da_corrispettivo, methods=["POST"])
+router.add_api_route("/sposta-scrittura", sposta_scrittura_prima_nota, methods=["POST"])
+
+# Banca - Sync estratto conto
+router.add_api_route("/banca/sync-estratto-conto", sync_estratto_conto_to_banca, methods=["POST"])
+router.add_api_route("/banca/delete-by-source/{source}", delete_banca_by_source, methods=["DELETE"], dependencies=[Depends(get_current_admin_user)])
+router.add_api_route("/banca/{movimento_id}", update_prima_nota_banca, methods=["PUT"])
+router.add_api_route("/banca/{movimento_id}", delete_movimento_banca, methods=["DELETE"])
+router.add_api_route("/banca/{movimento_id}/fattura", get_fattura_allegata_banca, methods=["GET"])
+
+# Salari - Dinamiche
+router.add_api_route("/salari/{movimento_id}", delete_prima_nota_salari, methods=["DELETE"])
+
+
+# Salari - Auto ricostruisci dati
+async def _auto_ricostruisci_salari():
+    """Ricalcola progressivi e corregge dati salari."""
+    from app.database import Database
+    db = Database.get_db()
+    # Ricalcola progressivi
+    salari = await db["prima_nota_salari"].find({}, {"_id": 0}).sort("data", 1).to_list(10000)
+    righe_pulite = 0
+    correzioni = 0
+    for s in salari:
+        update = {}
+        netto = float(s.get("netto", 0) or 0)
+        lordo = float(s.get("lordo", 0) or 0)
+        if netto > 0 and lordo == 0:
+            update["lordo"] = netto
+            correzioni += 1
+        if update:
+            await db["prima_nota_salari"].update_one({"id": s["id"]}, {"$set": update})
+            righe_pulite += 1
+    return {"righe_pulite": righe_pulite, "correzioni": correzioni, "totale_salari": len(salari)}
+
+# Il ricalcolo salari non e piu esposto come mutazione automatica: le righe
+# vengono corrette tramite import/revisione guidata e conferma operatore.
+
+
+# Template CSV per import
+async def _template_csv_cassa():
+    from fastapi.responses import Response
+    csv = "data,descrizione,importo,tipo,fornitore,categoria\n2025-01-01,Esempio spesa,100.00,uscita,Fornitore SRL,merci\n"
+    return Response(content=csv, media_type="text/csv", headers={"Content-Disposition": "attachment; filename=template_cassa.csv"})
+
+async def _template_csv_banca():
+    from fastapi.responses import Response
+    csv = "data,descrizione,importo,tipo,banca,categoria\n2025-01-01,Esempio bonifico,500.00,uscita,Banca Principale,fornitori\n"
+    return Response(content=csv, media_type="text/csv", headers={"Content-Disposition": "attachment; filename=template_banca.csv"})
+
+router.add_api_route("/cassa/template-csv", _template_csv_cassa, methods=["GET"])
+router.add_api_route("/banca/template-csv", _template_csv_banca, methods=["GET"])
+
+
+# Verifica
+router.add_api_route("/verifica-metodo-fattura/{fattura_id}", verifica_metodo_fattura, methods=["GET"])

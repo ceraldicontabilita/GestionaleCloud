@@ -1,0 +1,6 @@
+/* Ceraldi ERP Design System — entry point (token CSS variables).
+   Canonical navy + gold + system fonts. Imported last so it is authoritative. */
+@import './colors.css';
+@import './typography.css';
+@import './spacing.css';
+@import './effects.css';

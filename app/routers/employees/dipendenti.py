@@ -1,0 +1,1738 @@
+"""
+Gestione Dipendenti - Router API completo.
+Anagrafica, turni, libro unico, buste paga/cedolini, TFR.
+Gestione HR completa (contratti, libretti sanitari, ecc.) e' un gestionale
+esterno a questo programma: qui restano solo i dati contabili/fiscali.
+"""
+from fastapi import APIRouter, HTTPException, Query, Body
+from typing import Dict, Any, List, Optional
+from datetime import datetime, timedelta, timezone
+import uuid
+import logging
+import io
+
+from app.database import Database, Collections
+from app.utils.error_handler import handle_errors
+
+logger = logging.getLogger(__name__)
+router = APIRouter()
+
+# Costanti
+TURNI_TIPI = {
+    "mattina": {"label": "Mattina", "orario": "06:00 - 14:00", "color": "#4caf50"},
+    "pomeriggio": {"label": "Pomeriggio", "orario": "14:00 - 22:00", "color": "#2196f3"},
+    "sera": {"label": "Sera", "orario": "18:00 - 02:00", "color": "#9c27b0"},
+    "full": {"label": "Full Day", "orario": "10:00 - 22:00", "color": "#ff9800"},
+    "riposo": {"label": "Riposo", "orario": "-", "color": "#9e9e9e"},
+    "ferie": {"label": "Ferie", "orario": "-", "color": "#e91e63"},
+    "malattia": {"label": "Malattia", "orario": "-", "color": "#f44336"}
+}
+
+MANSIONI = [
+    "Cameriere", "Cuoco", "Aiuto Cuoco", "Barista", "Pizzaiolo", 
+    "Lavapiatti", "Cassiera", "Responsabile Sala", "Chef", "Sommelier"
+]
+
+
+@router.get("")
+@handle_errors
+async def list_dipendenti(
+    skip: int = Query(0, ge=0),
+    limit: int = Query(1000, ge=1, le=10000),
+    attivo: Optional[bool] = Query(None),
+    in_carico: Optional[bool] = Query(None, description="Se true solo in carico, false solo non in carico, null=tutti"),
+    include_merged: bool = Query(False, description="Includi record già unificati (merged_into)"),
+    mansione: Optional[str] = Query(None),
+    search: Optional[str] = Query(None)
+) -> List[Dict[str, Any]]:
+    """Lista dipendenti con filtri."""
+    db = Database.get_db()
+    
+    query: Dict[str, Any] = {}
+    if attivo is not None:
+        query["attivo"] = attivo
+    if in_carico is True:
+        # "in carico" = flag esplicito true OPPURE assente (default storico)
+        query["$and"] = query.get("$and", []) + [{"$or": [{"in_carico": True}, {"in_carico": {"$exists": False}}]}]
+    elif in_carico is False:
+        query["in_carico"] = False
+    if not include_merged:
+        query["merged_into"] = {"$exists": False}
+    if mansione:
+        query["mansione"] = mansione
+    if search:
+        import re as _re
+        safe_search = _re.escape(search)
+        query["$or"] = [
+            {"nome_completo": {"$regex": safe_search, "$options": "i"}},
+            {"codice_fiscale": {"$regex": safe_search, "$options": "i"}}
+        ]
+    
+    dipendenti_raw = await db[Collections.EMPLOYEES].find(query, {"_id": 0}).sort("nome_completo", 1).skip(skip).limit(limit).to_list(limit)
+    
+    # Deduplicazione per codice fiscale (prevenzione duplicati accidentali)
+    seen_cf = set()
+    dipendenti = []
+    for d in dipendenti_raw:
+        cf_key = (d.get("codice_fiscale") or "").upper().strip()
+        if cf_key and cf_key in seen_cf:
+            continue
+        if cf_key:
+            seen_cf.add(cf_key)
+        dipendenti.append(d)
+    
+    return dipendenti
+
+
+@router.get("/by-google-email")
+async def get_dipendente_by_google_email(email: str = Query(...)):
+    """Cerca dipendente associato a un Google email (per portale)."""
+    from fastapi import HTTPException
+    db = Database.get_db()
+    dip = await db[Collections.EMPLOYEES].find_one(
+        {"google_email": email.lower().strip()},
+        {"_id": 0, "nome_completo": 1, "mansione": 1, "data_inizio_contratto": 1, "id": 1}
+    )
+    if not dip:
+        raise HTTPException(status_code=404, detail="Dipendente non trovato")
+    return dip
+
+
+
+
+@router.get("/stats")
+@handle_errors
+async def get_dipendenti_stats() -> Dict[str, Any]:
+    """Statistiche dipendenti."""
+    db = Database.get_db()
+    
+    total = await db[Collections.EMPLOYEES].count_documents({})
+    attivi = await db[Collections.EMPLOYEES].count_documents({"attivo": {"$ne": False}})
+    
+    # Per mansione
+    pipeline = [
+        {"$group": {"_id": "$mansione", "count": {"$sum": 1}}}
+    ]
+    by_mansione = await db[Collections.EMPLOYEES].aggregate(pipeline).to_list(100)
+
+    return {
+        "totale": total,
+        "attivi": attivi,
+        "inattivi": total - attivi,
+        "per_mansione": {item["_id"] or "N/D": item["count"] for item in by_mansione}
+    }
+
+
+# La deduplica/merge dipendenti (era qui come app/services/dipendenti_dedupe.py)
+# e' stata rimossa il 19/09/2026 (audit): duplicava quasi byte per byte
+# app/hr/services/dipendenti_dedupe.py, che e' l'unico dei due a operare
+# sull'anagrafica canonica (hr.app_dipendenti — "L'anagrafica HR comanda",
+# vedi CLAUDE.md) tramite gli endpoint reali dell'app HR
+# (GET /dipendenti/duplicati, POST /dipendenti/duplicati/merge|auto-merge).
+# Questo router ERP serve solo anagrafica in lettura per flussi NON-HR del
+# gestionale (verbali noleggio, inserimento rapido, portale, vedi commento in
+# app/router_registry.py): un secondo merge, qui, operava su una copia
+# dell'anagrafica non canonica — un doppione da eliminare, non un secondo
+# flusso reale.
+
+
+@router.get("/report-ferie-permessi-tutti")
+@handle_errors
+async def genera_report_ferie_permessi_tutti(
+    anno: int = Query(None, description="Anno di riferimento")
+):
+    """
+    Genera report riepilogativo ferie/permessi per TUTTI i dipendenti.
+    Restituisce un PDF con tabella riassuntiva.
+    """
+    from fastapi.responses import Response
+    from reportlab.lib import colors
+    from reportlab.lib.pagesizes import A4, landscape
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib.units import cm
+    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+    from reportlab.lib.enums import TA_CENTER
+    
+    db = Database.get_db()
+    
+    if not anno:
+        anno = datetime.now().year
+    
+    # Recupera tutti i dipendenti con progressivi
+    dipendenti_raw = await db[Collections.EMPLOYEES].find(
+        {"progressivi": {"$exists": True}},
+        {"_id": 0, "nome_completo": 1, "name": 1, "cognome": 1, "nome": 1, "codice_fiscale": 1, "progressivi": 1, "attivo": 1}
+    ).sort("nome_completo", 1).to_list(100)
+    
+    # Deduplicazione per codice fiscale (prevenzione duplicati)
+    seen_cf = set()
+    dipendenti = []
+    for d in dipendenti_raw:
+        cf_key = d.get("codice_fiscale", "").upper().strip()
+        nome_key = (d.get("nome_completo") or d.get("name") or "").lower().strip()
+        dedup_key = cf_key if cf_key else nome_key
+        if dedup_key and dedup_key not in seen_cf:
+            seen_cf.add(dedup_key)
+            dipendenti.append(d)
+        elif not dedup_key:
+            dipendenti.append(d)
+    
+    if not dipendenti:
+        raise HTTPException(status_code=404, detail="Nessun dipendente con progressivi trovato")
+    
+    # Genera PDF landscape
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=landscape(A4), topMargin=1*cm, bottomMargin=1*cm)
+    
+    styles = getSampleStyleSheet()
+    title_style = ParagraphStyle('Title', parent=styles['Heading1'], fontSize=16, alignment=TA_CENTER, spaceAfter=15)
+    
+    elements = []
+    
+    # Intestazione
+    elements.append(Paragraph(f"RIEPILOGO FERIE E PERMESSI - ANNO {anno}", title_style))
+    elements.append(Paragraph(f"Data: {datetime.now().strftime('%d-%m-%Y')}", 
+                              ParagraphStyle('Date', parent=styles['Normal'], alignment=TA_CENTER)))
+    elements.append(Spacer(1, 15))
+    
+    # Tabella
+    data = [["Dipendente", "CF", "Ferie Mat.", "Ferie God.", "Ferie Res.", "Perm. Mat.", "Perm. God.", "Perm. Res.", "Stato"]]
+    
+    totali = {"ferie_mat": 0, "ferie_god": 0, "ferie_res": 0, "perm_mat": 0, "perm_god": 0, "perm_res": 0}
+    
+    for dip in dipendenti:
+        nome = dip.get("nome_completo") or dip.get("name") or f"{dip.get('cognome', '')} {dip.get('nome', '')}"
+        cf = dip.get("codice_fiscale", "")[:6] + "..." if dip.get("codice_fiscale") else ""
+        prog = dip.get("progressivi", {})
+        
+        ferie_mat = prog.get("ferie_maturate", 0) or 0
+        ferie_god = prog.get("ferie_godute", 0) or 0
+        ferie_res = prog.get("ferie_residue", 0) or 0
+        perm_mat = prog.get("permessi_maturati", 0) or 0
+        perm_god = prog.get("permessi_goduti", 0) or 0
+        perm_res = prog.get("permessi_residui", 0) or 0
+        stato = "Attivo" if dip.get("attivo", True) else "Inattivo"
+        
+        totali["ferie_mat"] += ferie_mat
+        totali["ferie_god"] += ferie_god
+        totali["ferie_res"] += ferie_res
+        totali["perm_mat"] += perm_mat
+        totali["perm_god"] += perm_god
+        totali["perm_res"] += perm_res
+        
+        data.append([
+            nome[:25],
+            cf,
+            f"{ferie_mat:.1f}",
+            f"{ferie_god:.1f}",
+            f"{ferie_res:.1f}",
+            f"{perm_mat:.0f}",
+            f"{perm_god:.0f}",
+            f"{perm_res:.0f}",
+            stato
+        ])
+    
+    # Riga totali
+    data.append([
+        "TOTALE",
+        "",
+        f"{totali['ferie_mat']:.1f}",
+        f"{totali['ferie_god']:.1f}",
+        f"{totali['ferie_res']:.1f}",
+        f"{totali['perm_mat']:.0f}",
+        f"{totali['perm_god']:.0f}",
+        f"{totali['perm_res']:.0f}",
+        f"{len(dipendenti)} dip."
+    ])
+    
+    col_widths = [5*cm, 2.5*cm, 2*cm, 2*cm, 2*cm, 2*cm, 2*cm, 2*cm, 2*cm]
+    table = Table(data, colWidths=col_widths)
+    table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#3f5a4e')),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+        ('BACKGROUND', (0, -1), (-1, -1), colors.HexColor('#e9ecef')),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('ALIGN', (0, 1), (0, -1), 'LEFT'),
+        ('FONTSIZE', (0, 0), (-1, -1), 8),
+        ('BOTTOMPADDING', (0, 0), (-1, 0), 8),
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#dee2e6')),
+        ('ROWBACKGROUNDS', (0, 1), (-1, -2), [colors.white, colors.HexColor('#f8f9fa')]),
+    ]))
+    elements.append(table)
+    
+    # Build PDF
+    doc.build(elements)
+    
+    pdf_bytes = buffer.getvalue()
+    buffer.close()
+    
+    filename = f"Riepilogo_Ferie_Permessi_{anno}.pdf"
+    
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'}
+    )
+
+
+@router.post("/sync-iban")
+@handle_errors
+async def sync_iban_field() -> Dict[str, Any]:
+    """
+    Sincronizza il campo 'iban' (singolo) con 'ibans' (array).
+    Per ogni dipendente con 'iban' popolato ma 'ibans' vuoto,
+    copia il valore in un array.
+    """
+    db = Database.get_db()
+    
+    # Trova dipendenti con iban ma senza ibans
+    dipendenti = await db[Collections.EMPLOYEES].find(
+        {
+            "iban": {"$exists": True, "$nin": [None, ""]},
+            "$or": [
+                {"ibans": {"$exists": False}},
+                {"ibans": None},
+                {"ibans": []},
+                {"ibans": {"$size": 0}}
+            ]
+        },
+        {"id": 1, "iban": 1, "_id": 0}
+    ).to_list(1000)
+    
+    aggiornati = 0
+    for dip in dipendenti:
+        iban = dip.get("iban", "").upper().replace(" ", "")
+        if iban:
+            await db[Collections.EMPLOYEES].update_one(
+                {"id": dip["id"]},
+                {"$set": {"ibans": [iban]}}
+            )
+            aggiornati += 1
+    
+    return {
+        "success": True,
+        "dipendenti_analizzati": len(dipendenti),
+        "dipendenti_aggiornati": aggiornati
+    }
+
+
+@router.get("/tipi-turno")
+@handle_errors
+async def get_tipi_turno() -> Dict[str, Any]:
+    """Ritorna i tipi di turno disponibili."""
+    return TURNI_TIPI
+
+
+@router.get("/mansioni")
+@handle_errors
+async def get_mansioni() -> List[str]:
+    """Ritorna le mansioni disponibili."""
+    return MANSIONI
+
+
+@router.post("/bulk-upsert", summary="Import/update massivo dipendenti (match su CF)")
+@handle_errors
+async def bulk_upsert_dipendenti(payload: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
+    """Importa o aggiorna dipendenti in massa, matchando su codice_fiscale.
+
+    Body atteso:
+        {
+            "dipendenti": [
+                {
+                    "cognome": "...",
+                    "nome": "...",
+                    "codice_fiscale": "...",  # OBBLIGATORIO per il match
+                    "data_nascita": "YYYY-MM-DD",
+                    "mansione": "...",
+                    "telefono": "...",
+                    "email": "...",
+                    "indirizzo": "...",
+                    # altri campi opzionali...
+                },
+                ...
+            ],
+            "overwrite_fields": true  # default false: se true sovrascrive
+                                      # i campi esistenti anche se valorizzati
+        }
+
+    Comportamento:
+    - Se esiste già un dipendente con stesso CF normalizzato → aggiorna.
+      I campi vengono aggiornati solo se non sono già popolati nel record
+      esistente, a meno che overwrite_fields=True (stile "merge conservativo").
+    - Se non esiste → crea nuovo con uuid + valori default.
+    - Restituisce un report per riga con esito: created / updated / skipped.
+    """
+    lista = payload.get("dipendenti") or []
+    overwrite = bool(payload.get("overwrite_fields", False))
+    if not isinstance(lista, list) or not lista:
+        raise HTTPException(
+            status_code=400,
+            detail="Lista 'dipendenti' vuota o non valida",
+        )
+
+    db = Database.get_db()
+    now_iso = datetime.now(timezone.utc).isoformat()
+
+    # Campi accettati dall'upsert (whitelist per evitare injection di campi strani)
+    CAMPI_AGGIORNABILI = {
+        "nome", "cognome", "nome_completo",
+        "data_nascita", "luogo_nascita",
+        "codice_fiscale_azienda", "sesso",
+        "regione_residenza", "provincia_residenza", "comune_residenza",
+        "regione_domicilio", "provincia_domicilio", "comune_domicilio",
+        "cittadinanza", "titolo_studio",
+        "mansione", "qualifica",
+        "email", "telefono", "indirizzo",
+        "data_assunzione",
+        "ore_settimanali", "giorni_lavoro",
+        "iban", "iban_cedolino",
+        "matricola", "codice_dipendente",
+        "note",
+    }
+
+    risultati: List[Dict[str, Any]] = []
+    creati = 0
+    aggiornati = 0
+    saltati = 0
+
+    for idx, raw in enumerate(lista):
+        cf = (raw.get("codice_fiscale") or "").upper().strip()
+        if not cf:
+            risultati.append({
+                "riga": idx + 1,
+                "esito": "skipped",
+                "motivo": "codice_fiscale mancante",
+                "nominativo": f"{raw.get('cognome','')} {raw.get('nome','')}".strip(),
+            })
+            saltati += 1
+            continue
+
+        # Normalizza nome_completo se manca
+        nome = (raw.get("nome") or "").strip()
+        cognome = (raw.get("cognome") or "").strip()
+        nome_completo = (raw.get("nome_completo") or "").strip()
+        if not nome_completo and (cognome or nome):
+            nome_completo = f"{cognome} {nome}".strip()
+
+        # Esiste già?
+        esistente = await db[Collections.EMPLOYEES].find_one(
+            {"codice_fiscale": cf}, {"_id": 0}
+        )
+
+        if esistente:
+            # Update conservativo: aggiorna solo campi non già popolati,
+            # salvo overwrite_fields=True
+            update_set: Dict[str, Any] = {}
+            for campo in CAMPI_AGGIORNABILI:
+                if campo not in raw:
+                    continue
+                nuovo = raw[campo]
+                if nuovo in (None, "", []):
+                    continue
+                vecchio = esistente.get(campo)
+                if overwrite or vecchio in (None, "", [], 0):
+                    update_set[campo] = nuovo
+            # nome_completo derivato, aggiungilo se abbiamo nome+cognome
+            if nome_completo and (overwrite or not esistente.get("nome_completo")):
+                update_set["nome_completo"] = nome_completo
+            if update_set:
+                update_set["updated_at"] = now_iso
+                await db[Collections.EMPLOYEES].update_one(
+                    {"codice_fiscale": cf}, {"$set": update_set}
+                )
+                risultati.append({
+                    "riga": idx + 1,
+                    "esito": "updated",
+                    "codice_fiscale": cf,
+                    "nominativo": nome_completo or cf,
+                    "campi_aggiornati": list(update_set.keys()),
+                })
+                aggiornati += 1
+            else:
+                risultati.append({
+                    "riga": idx + 1,
+                    "esito": "skipped",
+                    "motivo": "nessun campo da aggiornare",
+                    "codice_fiscale": cf,
+                    "nominativo": nome_completo or cf,
+                })
+                saltati += 1
+        else:
+            # Crea nuovo record con default
+            nuovo_doc = {
+                "id": str(uuid.uuid4()),
+                "codice_fiscale": cf,
+                "nome_completo": nome_completo,
+                "cognome": cognome,
+                "nome": nome,
+                "codice_dipendente": raw.get("codice_dipendente", ""),
+                "matricola": raw.get("matricola", ""),
+                "email": raw.get("email", ""),
+                "telefono": raw.get("telefono", ""),
+                "indirizzo": raw.get("indirizzo", ""),
+                "data_nascita": raw.get("data_nascita"),
+                "luogo_nascita": raw.get("luogo_nascita", ""),
+                "codice_fiscale_azienda": raw.get("codice_fiscale_azienda", ""),
+                "sesso": raw.get("sesso", ""),
+                "regione_residenza": raw.get("regione_residenza", ""),
+                "provincia_residenza": raw.get("provincia_residenza", ""),
+                "comune_residenza": raw.get("comune_residenza", ""),
+                "regione_domicilio": raw.get("regione_domicilio", ""),
+                "provincia_domicilio": raw.get("provincia_domicilio", ""),
+                "comune_domicilio": raw.get("comune_domicilio", ""),
+                "cittadinanza": raw.get("cittadinanza", ""),
+                "titolo_studio": raw.get("titolo_studio", ""),
+                "mansione": raw.get("mansione", ""),
+                "qualifica": raw.get("qualifica", ""),
+                "data_assunzione": raw.get("data_assunzione"),
+                "ore_settimanali": raw.get("ore_settimanali", 40),
+                "giorni_lavoro": raw.get("giorni_lavoro", ["lun", "mar", "mer", "gio", "ven", "sab"]),
+                "iban": raw.get("iban", ""),
+                "iban_cedolino": raw.get("iban_cedolino") or raw.get("iban", ""),
+                "ibans": raw.get("ibans", []),
+                "note": raw.get("note", ""),
+                "attivo": True,
+                "in_carico": True,
+                "source": "bulk_upsert",
+                "created_at": now_iso,
+                "updated_at": now_iso,
+            }
+            await db[Collections.EMPLOYEES].insert_one(nuovo_doc.copy())
+            try:
+                from app.services.event_bus import propagate_event, EventTypes
+                await propagate_event(EventTypes.DIPENDENTE_CREATED, {"dipendente_id": nuovo_doc["id"], "codice_fiscale": cf, "stato": "attivo"}, db, source_module="bulk_upsert")
+            except Exception:
+                logger.exception("Errore evento bulk dipendente.created")
+            risultati.append({
+                "riga": idx + 1,
+                "esito": "created",
+                "codice_fiscale": cf,
+                "nominativo": nome_completo or cf,
+                "id": nuovo_doc["id"],
+            })
+            creati += 1
+
+    return {
+        "totali": {
+            "input": len(lista),
+            "creati": creati,
+            "aggiornati": aggiornati,
+            "saltati": saltati,
+        },
+        "risultati": risultati,
+    }
+
+
+@router.post(
+    "/bulk-upsert/preview",
+    summary="Preview import massivo (dry-run): mostra cosa cambierebbe SENZA scrivere",
+)
+@handle_errors
+async def bulk_upsert_preview(payload: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
+    """Simulazione dell'import massivo: legge il DB ma non scrive nulla.
+
+    Stesso body di `/bulk-upsert`. Restituisce un report identico a quello
+    reale, ma:
+      - Nessun documento viene inserito o modificato nel DB
+      - Per ogni record "updated" è presente un campo `diff` con
+        {campo: {vecchio, nuovo}} per permettere alla UI di mostrare
+        un'anteprima riga per riga di cosa cambierà
+      - La risposta include `dry_run: true`
+
+    Utilizzo tipico:
+      1. UI chiama `/bulk-upsert/preview` con i dati dell'Excel/cedolini
+      2. Mostra all'utente l'elenco di creazioni/aggiornamenti/skip
+      3. Se utente conferma, UI chiama `/bulk-upsert` con stesso payload
+    """
+    lista = payload.get("dipendenti") or []
+    overwrite = bool(payload.get("overwrite_fields", False))
+    if not isinstance(lista, list) or not lista:
+        raise HTTPException(
+            status_code=400,
+            detail="Lista 'dipendenti' vuota o non valida",
+        )
+
+    db = Database.get_db()
+
+    # Stessa whitelist di bulk-upsert (tenuta in sync manualmente: se
+    # CAMPI_AGGIORNABILI cambia sopra, cambia anche qui)
+    CAMPI_AGGIORNABILI = {
+        "nome", "cognome", "nome_completo",
+        "data_nascita", "luogo_nascita",
+        "codice_fiscale_azienda", "sesso",
+        "regione_residenza", "provincia_residenza", "comune_residenza",
+        "regione_domicilio", "provincia_domicilio", "comune_domicilio",
+        "cittadinanza", "titolo_studio",
+        "mansione", "qualifica",
+        "email", "telefono", "indirizzo",
+        "data_assunzione",
+        "ore_settimanali", "giorni_lavoro",
+        "iban", "iban_cedolino",
+        "matricola", "codice_dipendente",
+        "note",
+    }
+
+    risultati: List[Dict[str, Any]] = []
+    creati = 0
+    aggiornati = 0
+    saltati = 0
+
+    for idx, raw in enumerate(lista):
+        cf = (raw.get("codice_fiscale") or "").upper().strip()
+        if not cf:
+            risultati.append({
+                "riga": idx + 1,
+                "esito": "skipped",
+                "motivo": "codice_fiscale mancante",
+                "nominativo": f"{raw.get('cognome','')} {raw.get('nome','')}".strip(),
+            })
+            saltati += 1
+            continue
+
+        nome = (raw.get("nome") or "").strip()
+        cognome = (raw.get("cognome") or "").strip()
+        nome_completo = (raw.get("nome_completo") or "").strip()
+        if not nome_completo and (cognome or nome):
+            nome_completo = f"{cognome} {nome}".strip()
+
+        # SOLO LETTURA per questo import bulk (non sovrascrive senza overwrite=True) —
+        # non si applica al resto del modulo, che ha CRUD completo. Vedi
+        # memoria/moduli/DIPENDENTI.md per la correzione di un'analisi precedente
+        # che aveva interpretato questo commento come riferito all'intero modulo.
+        esistente = await db[Collections.EMPLOYEES].find_one(
+            {"codice_fiscale": cf}, {"_id": 0}
+        )
+
+        if esistente:
+            update_set: Dict[str, Any] = {}
+            diff: Dict[str, Any] = {}
+            for campo in CAMPI_AGGIORNABILI:
+                if campo not in raw:
+                    continue
+                nuovo = raw[campo]
+                if nuovo in (None, "", []):
+                    continue
+                vecchio = esistente.get(campo)
+                if overwrite or vecchio in (None, "", [], 0):
+                    update_set[campo] = nuovo
+                    diff[campo] = {"vecchio": vecchio, "nuovo": nuovo}
+            if nome_completo and (overwrite or not esistente.get("nome_completo")):
+                if esistente.get("nome_completo") != nome_completo:
+                    update_set["nome_completo"] = nome_completo
+                    diff["nome_completo"] = {
+                        "vecchio": esistente.get("nome_completo"),
+                        "nuovo": nome_completo,
+                    }
+            if update_set:
+                risultati.append({
+                    "riga": idx + 1,
+                    "esito": "updated",
+                    "codice_fiscale": cf,
+                    "nominativo": nome_completo or cf,
+                    "campi_aggiornati": sorted(update_set.keys()),
+                    "diff": diff,
+                })
+                aggiornati += 1
+            else:
+                risultati.append({
+                    "riga": idx + 1,
+                    "esito": "skipped",
+                    "motivo": "nessun campo da aggiornare (tutti già popolati)",
+                    "codice_fiscale": cf,
+                    "nominativo": nome_completo or cf,
+                })
+                saltati += 1
+        else:
+            # Anteprima creazione: mostra i campi che verranno scritti
+            campi_nuovi = {
+                k: v for k, v in raw.items()
+                if k in CAMPI_AGGIORNABILI and v not in (None, "", [])
+            }
+            risultati.append({
+                "riga": idx + 1,
+                "esito": "created",
+                "codice_fiscale": cf,
+                "nominativo": nome_completo or cf,
+                "campi_nuovi": sorted(campi_nuovi.keys()),
+            })
+            creati += 1
+
+    return {
+        "dry_run": True,
+        "totali": {
+            "input": len(lista),
+            "creati": creati,
+            "aggiornati": aggiornati,
+            "saltati": saltati,
+        },
+        "risultati": risultati,
+    }
+
+
+@router.post("")
+@handle_errors
+async def create_dipendente(data: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
+    """Crea nuovo dipendente."""
+    db = Database.get_db()
+    
+    # Accetta nome+cognome separati O nome_completo
+    nome = data.get("nome", "")
+    cognome = data.get("cognome", "")
+    nome_completo = data.get("nome_completo", "")
+    
+    if not nome_completo and not (nome and cognome):
+        raise HTTPException(status_code=400, detail="Serve nome_completo oppure nome + cognome")
+    
+    # Se arriva nome_completo senza nome/cognome, NON splittare automaticamente
+    # (nomi come "De Luca" verrebbero rotti). Salva tutto in nome_completo.
+    if nome_completo and not nome and not cognome:
+        nome = ""
+        cognome = ""
+    elif nome and cognome and not nome_completo:
+        nome_completo = f"{cognome} {nome}".strip()
+    
+    # IBAN: accetta sia "iban" che "iban_cedolino", salva entrambi per compatibilità
+    iban_value = data.get("iban_cedolino") or data.get("iban", "")
+    
+    dipendente = {
+        "id": str(uuid.uuid4()),
+        "nome_completo": nome_completo,
+        "cognome": cognome,
+        "nome": nome,
+        "codice_fiscale": (data.get("codice_fiscale", "") or "").upper().strip(),
+        "codice_dipendente": data.get("codice_dipendente", ""),
+        "matricola": data.get("matricola", ""),
+        "email": data.get("email", ""),
+        "telefono": data.get("telefono", ""),
+        "indirizzo": data.get("indirizzo", ""),
+        "data_nascita": data.get("data_nascita"),
+        "luogo_nascita": data.get("luogo_nascita", ""),
+        "codice_fiscale_azienda": data.get("codice_fiscale_azienda", ""),
+        "sesso": data.get("sesso", ""),
+        "regione_residenza": data.get("regione_residenza", ""),
+        "provincia_residenza": data.get("provincia_residenza", ""),
+        "comune_residenza": data.get("comune_residenza", ""),
+        "regione_domicilio": data.get("regione_domicilio", ""),
+        "provincia_domicilio": data.get("provincia_domicilio", ""),
+        "comune_domicilio": data.get("comune_domicilio", ""),
+        "cittadinanza": data.get("cittadinanza", ""),
+        "titolo_studio": data.get("titolo_studio", ""),
+        "mansione": data.get("mansione", ""),
+        "qualifica": data.get("qualifica", ""),
+        "data_assunzione": data.get("data_assunzione"),
+        "ore_settimanali": data.get("ore_settimanali", 40),
+        "giorni_lavoro": data.get("giorni_lavoro", ["lun", "mar", "mer", "gio", "ven", "sab"]),
+        "iban": iban_value,
+        "iban_cedolino": iban_value,  # Campo canonico per matching stipendi
+        "ibans": data.get("ibans", []),
+        "paga_base": data.get("paga_base", 0),
+        "contingenza": data.get("contingenza", 0),
+        "stipendio_lordo": data.get("stipendio_lordo", 0),
+        "stipendio_orario": data.get("stipendio_orario", 0),
+        "agevolazioni": data.get("agevolazioni", []),
+        "progressivi": {
+            "tfr_accantonato": data.get("tfr_accantonato", 0),
+            "ferie_maturate": data.get("ferie_maturate", 0),
+            "ferie_godute": data.get("ferie_godute", 0),
+            "ferie_residue": data.get("ferie_residue", 0),
+            "permessi_maturati": data.get("permessi_maturati", 0),
+            "permessi_goduti": data.get("permessi_goduti", 0),
+            "permessi_residui": data.get("permessi_residui", 0),
+            "rol_maturati": data.get("rol_maturati", 0),
+            "rol_goduti": data.get("rol_goduti", 0),
+            "rol_residui": data.get("rol_residui", 0)
+        },
+        "acconti": data.get("acconti", []),
+        "portale_invitato": False,
+        "portale_registrato": False,
+        "portale_ultimo_accesso": None,
+        "bonifici_associati": data.get("bonifici_associati", []),
+        "attivo": True,
+        "in_carico": data.get("in_carico", True),
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "updated_at": datetime.now(timezone.utc).isoformat()
+    }
+    
+    # Verifica duplicato CF
+    if dipendente["codice_fiscale"]:
+        existing = await db[Collections.EMPLOYEES].find_one({"codice_fiscale": dipendente["codice_fiscale"]})
+        if existing:
+            raise HTTPException(status_code=409, detail="Dipendente con questo codice fiscale già esistente")
+    
+    await db[Collections.EMPLOYEES].insert_one(dipendente.copy())
+    dipendente.pop("_id", None)
+    
+    # Event bus: propaga evento per deduplica, alert IBAN/contratto, audit
+    try:
+        from app.services.event_bus import propagate_event, EventTypes
+        await propagate_event(EventTypes.DIPENDENTE_CREATED, {
+            "dipendente_id": dipendente["id"],
+            "nome": nome,
+            "cognome": cognome,
+            "codice_fiscale": dipendente["codice_fiscale"],
+            "iban_cedolino": iban_value,
+            "stato": "attivo",
+        }, db, source_module="dipendenti")
+    except Exception:
+        logger.exception("Errore propagazione evento dipendente.created")
+    
+    return dipendente
+
+
+# ============== BUSTE PAGA (must be before /{dipendente_id} to avoid route conflict) ==============
+
+@router.get("/buste-paga")
+@handle_errors
+async def get_buste_paga(
+    anno: int = Query(...),
+    mese: str = Query(...)
+) -> List[Dict[str, Any]]:
+    """
+    Ottiene le buste paga per un determinato mese.
+    Le buste paga vengono create automaticamente dai movimenti salari.
+    """
+    db = Database.get_db()
+    
+    periodo = f"{anno}-{mese}"
+    
+    # Cerca buste paga esistenti
+    from app.db_collections import COLL_CEDOLINI
+    from app.document_repository import metadata_projection
+
+    buste = await db[COLL_CEDOLINI].find(
+        {"periodo": periodo},
+        metadata_projection(COLL_CEDOLINI)
+    ).to_list(1000)
+    
+    return buste
+
+
+@router.post("/buste-paga")
+@handle_errors
+async def create_busta_paga(data: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
+    """Crea o aggiorna una busta paga."""
+    db = Database.get_db()
+    
+    required = ["dipendente_id", "periodo"]
+    for field in required:
+        if not data.get(field):
+            raise HTTPException(status_code=400, detail=f"Campo {field} obbligatorio")
+    
+    # Cerca busta esistente
+    existing = await db["cedolini"].find_one({
+        "dipendente_id": data["dipendente_id"],
+        "periodo": data["periodo"]
+    })
+    
+    busta = {
+        "dipendente_id": data["dipendente_id"],
+        "periodo": data["periodo"],
+        "lordo": float(data.get("lordo", 0) or 0),
+        "netto": float(data.get("netto", 0) or 0),
+        "contributi": float(data.get("contributi", 0) or 0),
+        "trattenute": float(data.get("trattenute", 0) or 0),
+        "pagata": bool(data.get("pagata", False)),
+        "data_pagamento": data.get("data_pagamento"),
+        "note": data.get("note", ""),
+        "updated_at": datetime.now(timezone.utc).isoformat()
+    }
+    
+    # Registro del gestionale (Prima Nota salari); l'archivio che gli utenti
+    # vedono e' l'app HR: la busta viene depositata in app_cedolini (sotto).
+    if existing:
+        await db["cedolini"].update_one(
+            {"id": existing["id"]},
+            {"$set": busta}
+        )
+        busta["id"] = existing["id"]
+    else:
+        busta["id"] = str(uuid.uuid4())
+        busta["created_at"] = datetime.now(timezone.utc).isoformat()
+        await db["cedolini"].insert_one(busta.copy())
+
+    try:
+        from app.services.hr_cedolini_deposito import deposita_cedolino_in_hr
+        # L'identita' HR e' il codice fiscale: letto dall'anagrafica del gestionale.
+        dip = await db["dipendenti"].find_one(
+            {"id": data["dipendente_id"]},
+            {"_id": 0, "codice_fiscale": 1, "nome_completo": 1, "nome": 1, "cognome": 1},
+        ) or {}
+        await deposita_cedolino_in_hr({
+            **busta,
+            "codice_fiscale": dip.get("codice_fiscale"),
+            "nome_dipendente": dip.get("nome_completo")
+            or f"{dip.get('cognome', '')} {dip.get('nome', '')}".strip(),
+        })
+    except Exception:
+        logger.exception("Deposito busta paga in HR fallito: flusso invariato")
+
+    if not existing:
+        # --- EVENT BUS: propaga evento cedolino importato (busta-paga creata) ---
+        # Solo per CREAZIONE, non per UPDATE (evita doppi alert su modifiche)
+        try:
+            from app.services.event_bus import propagate_event, EventTypes
+            # Parse mese/anno dal periodo "YYYY-MM"
+            periodo_parts = (busta.get("periodo", "") or "").split("-")
+            mese_int = int(periodo_parts[1]) if len(periodo_parts) >= 2 and periodo_parts[1].isdigit() else None
+            anno_int = int(periodo_parts[0]) if len(periodo_parts) >= 1 and periodo_parts[0].isdigit() else None
+            await propagate_event(EventTypes.CEDOLINO_IMPORTATO, {
+                "cedolino_id": busta["id"],
+                "dipendente_id": busta.get("dipendente_id"),
+                "dipendente_nome": None,  # handler cercherà in dipendenti
+                "netto": busta.get("netto"),
+                "lordo": busta.get("lordo"),
+                "mese": mese_int,
+                "anno": anno_int,
+                "tipo_cedolino": "mensile",
+            }, db, source_module="dipendenti_buste_paga")
+        except Exception:
+            logger.exception("Errore propagazione evento cedolino.importato (buste-paga)")
+
+    busta.pop("_id", None)
+    return busta
+
+
+# ============== NOTA: Sezione SALARI rimossa ==============
+# La gestione salari/prima nota è stata spostata in /app/app/routers/prima_nota_salari.py
+# Endpoints disponibili: /api/prima-nota-salari/*
+
+# ============== DIPENDENTE DETAIL (must be after specific routes) ==============
+
+@router.get("/{dipendente_id}")
+@handle_errors
+async def get_dipendente(dipendente_id: str) -> Dict[str, Any]:
+    """Dettaglio singolo dipendente."""
+    db = Database.get_db()
+    
+    dipendente = await db[Collections.EMPLOYEES].find_one(
+        {"$or": [{"id": dipendente_id}, {"codice_fiscale": dipendente_id}]},
+        {"_id": 0}
+    )
+    
+    if not dipendente:
+        raise HTTPException(status_code=404, detail="Dipendente non trovato")
+    
+    return dipendente
+
+
+@router.put("/{dipendente_id}")
+@handle_errors
+async def update_dipendente(dipendente_id: str, data: Dict[str, Any] = Body(...)) -> Dict[str, str]:
+    """Aggiorna dipendente e sincronizza IBAN nei bonifici associati."""
+    db = Database.get_db()
+    
+    # Rimuovi campi non modificabili
+    data.pop("id", None)
+    data.pop("created_at", None)
+    
+    data["updated_at"] = datetime.now(timezone.utc).isoformat()
+    
+    # Trova il dipendente prima dell'update
+    dipendente_old = await db[Collections.EMPLOYEES].find_one(
+        {"$or": [{"id": dipendente_id}, {"codice_fiscale": dipendente_id}]},
+        {"_id": 0}
+    )
+    
+    if not dipendente_old:
+        raise HTTPException(status_code=404, detail="Dipendente non trovato")
+    
+    # Sync nome_completo ↔ nome + cognome
+    if "nome" in data or "cognome" in data:
+        nome = data.get("nome", dipendente_old.get("nome", ""))
+        cognome = data.get("cognome", dipendente_old.get("cognome", ""))
+        if nome or cognome:
+            data["nome_completo"] = f"{cognome} {nome}".strip()
+    elif "nome_completo" in data and data["nome_completo"]:
+        # Non splittare automaticamente — lascia nome/cognome come sono
+        pass
+    
+    # Sync iban ↔ iban_cedolino (campo canonico per matching stipendi)
+    if "iban" in data:
+        data["iban_cedolino"] = data["iban"]
+    elif "iban_cedolino" in data:
+        data["iban"] = data["iban_cedolino"]
+    
+    # Normalizza CF
+    if "codice_fiscale" in data and data["codice_fiscale"]:
+        data["codice_fiscale"] = data["codice_fiscale"].upper().strip()
+
+    # TRANSIZIONE in_carico: se il valore cambia, sincronizza i campi correlati.
+    # Questo allinea il PUT alla logica del DELETE (soft-delete) in modo che
+    # spuntare "non in carico" nel form produca lo stesso effetto di chiamare DELETE:
+    #   - attivo viene messo a False
+    #   - data_cessazione impostata a oggi (solo se non già presente)
+    #   - viene propagato l'evento DIPENDENTE_CESSATO per innescare i flussi a
+    #     cascata (rimozione da presenze, cedolini correnti, alert, ecc.)
+    # Senza queste cascate il dipendente restava "non in carico" sulla scheda
+    # ma continuava a comparire nei flussi attivi (bug segnalato dall'utente).
+    cessazione_triggerata = False
+    if "in_carico" in data:
+        old_in_carico = dipendente_old.get("in_carico", True)
+        new_in_carico = data.get("in_carico")
+        if new_in_carico is False and old_in_carico is not False:
+            # Transizione ATTIVO → NON IN CARICO
+            data["attivo"] = False
+            if not dipendente_old.get("data_cessazione"):
+                data["data_cessazione"] = datetime.now(timezone.utc).isoformat()
+            cessazione_triggerata = True
+        elif new_in_carico is True and old_in_carico is False:
+            # Transizione NON IN CARICO → ATTIVO (riattivazione)
+            data["attivo"] = True
+            # Rimuovo data_cessazione con un $unset esplicito nell'update_one più sotto
+            data.pop("data_cessazione", None)
+
+    # Aggiorna il dipendente
+    # Prepara update_ops: $set con data; aggiunge $unset se c'è riattivazione
+    update_ops: Dict[str, Any] = {"$set": data}
+    riattivazione = (
+        "in_carico" in data
+        and data.get("in_carico") is True
+        and dipendente_old.get("in_carico") is False
+    )
+    if riattivazione and dipendente_old.get("data_cessazione"):
+        update_ops["$unset"] = {"data_cessazione": ""}
+
+    result = await db[Collections.EMPLOYEES].update_one(
+        {"$or": [{"id": dipendente_id}, {"codice_fiscale": dipendente_id}]},
+        update_ops
+    )
+    
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Dipendente non trovato")
+    
+    # SINCRONIZZAZIONE A CASCATA: Aggiorna IBAN nei bonifici associati
+    new_ibans = data.get("ibans", [])
+    new_iban = data.get("iban", "") or data.get("iban_cedolino", "")
+    dip_id = dipendente_old.get("id")
+    
+    if new_ibans or new_iban:
+        all_ibans = list(set([i for i in new_ibans if i] + ([new_iban] if new_iban else [])))
+        
+        await db.bonifici_transfers.update_many(
+            {"dipendente_id": dip_id},
+            {"$set": {
+                "dipendente_ibans": all_ibans,
+                "updated_at": datetime.now(timezone.utc).isoformat()
+            }}
+        )
+        
+        if all_ibans:
+            nome_completo = data.get("nome_completo") or dipendente_old.get("nome_completo") or \
+                f"{data.get('nome', dipendente_old.get('nome', ''))} {data.get('cognome', dipendente_old.get('cognome', ''))}".strip()
+            
+            for iban in all_ibans:
+                if iban and len(iban) >= 15:
+                    await db.bonifici_transfers.update_many(
+                        {
+                            "beneficiario.iban": iban,
+                            "dipendente_id": {"$exists": False}
+                        },
+                        {"$set": {
+                            "dipendente_id": dip_id,
+                            "dipendente_nome": nome_completo,
+                            "dipendente_ibans": all_ibans,
+                            "auto_match_iban": True,
+                            "updated_at": datetime.now(timezone.utc).isoformat()
+                        }}
+                    )
+    
+    # Event bus: propaga evento per risoluzione alert (IBAN, contratto, etc.)
+    try:
+        from app.services.event_bus import propagate_event, EventTypes
+        await propagate_event(EventTypes.DIPENDENTE_UPDATED, {
+            "dipendente_id": dip_id,
+            "iban_cedolino": new_iban,
+            "codice_fiscale": data.get("codice_fiscale", dipendente_old.get("codice_fiscale")),
+            "tipo_contratto": data.get("tipo_contratto", dipendente_old.get("tipo_contratto")),
+        }, db, source_module="dipendenti")
+    except Exception:
+        logger.exception("Errore propagazione evento dipendente.updated")
+
+    # Se è stata triggerata una cessazione durante questo PUT, propaga anche
+    # l'evento DIPENDENTE_CESSATO per innescare la pulizia dei flussi attivi
+    # (stesso comportamento del DELETE). Così la spunta "non in carico" nel
+    # form ha lo stesso effetto di cliccare "Cessa dipendente".
+    if cessazione_triggerata:
+        try:
+            from app.services.event_bus import propagate_event, EventTypes
+            await propagate_event(EventTypes.DIPENDENTE_CESSATO, {
+                "dipendente_id": dip_id,
+                "nome_completo": data.get("nome_completo") or dipendente_old.get("nome_completo", ""),
+            }, db, source_module="dipendenti")
+        except Exception:
+            logger.exception("Errore propagazione evento dipendente.cessato (da PUT)")
+
+    return {"message": "Dipendente aggiornato"}
+
+
+@router.delete("/{dipendente_id}")
+@handle_errors
+async def delete_dipendente(dipendente_id: str) -> Dict[str, str]:
+    """Cessa dipendente (soft delete). Il fascicolo resta consultabile."""
+    db = Database.get_db()
+    
+    # Soft delete: marca come non in carico, NON cancella fisicamente
+    result = await db[Collections.EMPLOYEES].update_one(
+        {"$or": [{"id": dipendente_id}, {"codice_fiscale": dipendente_id}]},
+        {"$set": {
+            "in_carico": False,
+            "attivo": False,
+            "data_cessazione": datetime.now(timezone.utc).isoformat(),
+            "updated_at": datetime.now(timezone.utc).isoformat()
+        }}
+    )
+    
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Dipendente non trovato")
+    
+    # Event bus: verifica flussi attivi per cessato
+    try:
+        dip = await db[Collections.EMPLOYEES].find_one(
+            {"$or": [{"id": dipendente_id}, {"codice_fiscale": dipendente_id}]},
+            {"_id": 0, "id": 1, "nome_completo": 1}
+        )
+        if dip:
+            from app.services.event_bus import propagate_event, EventTypes
+            await propagate_event(EventTypes.DIPENDENTE_CESSATO, {
+                "dipendente_id": dip.get("id", dipendente_id),
+                "nome_completo": dip.get("nome_completo", ""),
+            }, db, source_module="dipendenti")
+    except Exception:
+        logger.exception("Errore propagazione evento dipendente.cessato")
+    
+    return {"message": "Dipendente cessato (fascicolo conservato)"}
+
+
+# ============== TURNI ==============
+
+@router.get("/turni/settimana")
+@handle_errors
+async def get_turni_settimana(
+    data_inizio: str = Query(..., description="Data inizio settimana (YYYY-MM-DD)")
+) -> Dict[str, Any]:
+    """Ritorna i turni per una settimana."""
+    db = Database.get_db()
+    
+    # Calcola date settimana
+    start = datetime.strptime(data_inizio, "%Y-%m-%d")
+    dates = [(start + timedelta(days=i)).strftime("%Y-%m-%d") for i in range(7)]
+    
+    # Trova turni
+    turni = await db["turni_dipendenti"].find(
+        {"data": {"$in": dates}},
+        {"_id": 0}
+    ).to_list(1000)
+    
+    # Organizza per dipendente e data
+    turni_by_employee = {}
+    for t in turni:
+        emp_id = t.get("dipendente_id")
+        if emp_id not in turni_by_employee:
+            turni_by_employee[emp_id] = {}
+        turni_by_employee[emp_id][t.get("data")] = t.get("turno")
+    
+    # Carica dipendenti attivi
+    dipendenti = await db[Collections.EMPLOYEES].find(
+        {"attivo": {"$ne": False}},
+        {"_id": 0, "id": 1, "nome_completo": 1, "mansione": 1}
+    ).to_list(100)
+    
+    return {
+        "settimana": dates,
+        "dipendenti": dipendenti,
+        "turni": turni_by_employee
+    }
+
+
+@router.post("/turni/salva")
+@handle_errors
+async def salva_turni(data: Dict[str, Any] = Body(...)) -> Dict[str, str]:
+    """Salva turni per una settimana."""
+    db = Database.get_db()
+    
+    turni = data.get("turni", {})  # {dipendente_id: {data: turno}}
+    
+    for dip_id, turni_dip in turni.items():
+        for data_turno, tipo_turno in turni_dip.items():
+            await db["turni_dipendenti"].update_one(
+                {"dipendente_id": dip_id, "data": data_turno},
+                {"$set": {
+                    "dipendente_id": dip_id,
+                    "data": data_turno,
+                    "turno": tipo_turno,
+                    "updated_at": datetime.now(timezone.utc).isoformat()
+                }},
+                upsert=True
+            )
+    
+    return {"message": "Turni salvati"}
+
+
+# ============== PORTALE DIPENDENTI ==============
+
+@router.post("/{dipendente_id}/invita-portale")
+@handle_errors
+async def invita_portale(dipendente_id: str) -> Dict[str, str]:
+    """Segna dipendente come invitato al portale."""
+    db = Database.get_db()
+    
+    result = await db[Collections.EMPLOYEES].update_one(
+        {"$or": [{"id": dipendente_id}, {"codice_fiscale": dipendente_id}]},
+        {"$set": {
+            "portale_invitato": True,
+            "portale_data_invito": datetime.now(timezone.utc).isoformat(),
+            "updated_at": datetime.now(timezone.utc).isoformat()
+        }}
+    )
+    
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Dipendente non trovato")
+    
+    return {"message": "Invito inviato"}
+
+
+@router.post("/invita-multipli")
+@handle_errors
+async def invita_multipli(dipendenti_ids: List[str] = Body(...)) -> Dict[str, Any]:
+    """Invita multipli dipendenti al portale."""
+    db = Database.get_db()
+    
+    result = await db[Collections.EMPLOYEES].update_many(
+        {"id": {"$in": dipendenti_ids}},
+        {"$set": {
+            "portale_invitato": True,
+            "portale_data_invito": datetime.now(timezone.utc).isoformat(),
+            "updated_at": datetime.now(timezone.utc).isoformat()
+        }}
+    )
+    
+    return {"message": f"Invitati {result.modified_count} dipendenti"}
+
+
+# ============== LIBRO UNICO ==============
+
+# (§13.2, pulizia 2026-07-13 — scelta utente: rimossa la famiglia
+# /libro-unico/* (presenze, salaries GET/PUT/DELETE, upload, export-excel):
+# SECONDA implementazione parallela del Libro Unico con collection proprie
+# libro_unico_presenze/libro_unico_salaries, zero chiamanti (in FE restava solo
+# una query-key mai usata) e zero letture esterne delle collection. Il flusso
+# LUL canonico è import-libro-unico (upload-auto) + prima_nota_salari.)
+
+
+@router.get("/portale/stats")
+@handle_errors
+async def get_portale_stats() -> Dict[str, Any]:
+    """Statistiche portale dipendenti."""
+    db = Database.get_db()
+    
+    total = await db[Collections.EMPLOYEES].count_documents({"attivo": {"$ne": False}})
+    invitati = await db[Collections.EMPLOYEES].count_documents({"portale_invitato": True})
+    registrati = await db[Collections.EMPLOYEES].count_documents({"portale_registrato": True})
+    mai_invitati = await db[Collections.EMPLOYEES].count_documents({
+        "attivo": {"$ne": False},
+        "$or": [{"portale_invitato": False}, {"portale_invitato": {"$exists": False}}]
+    })
+    
+    return {
+        "totale": total,
+        "mai_invitati": mai_invitati,
+        "invitati": invitati,
+        "registrati": registrati
+    }
+
+
+# ============== IMPORT BUSTE PAGA ==============
+
+@router.get("/buste-paga/scan")
+@handle_errors
+async def scan_buste_paga_folders() -> Dict[str, Any]:
+    """
+    Scansiona le cartelle delle buste paga e restituisce i progressivi trovati.
+    """
+    import os
+    from app.utils.busta_paga_parser import scan_all_dipendenti
+    
+    base_path = "/tmp/documents/buste_paga"
+    
+    if not os.path.exists(base_path):
+        return {
+            "success": False,
+            "error": "Cartella buste paga non trovata",
+            "path": base_path
+        }
+    
+    # Scansiona tutte le cartelle
+    progressivi = scan_all_dipendenti(base_path)
+    
+    # Lista cartelle disponibili
+    cartelle = [d for d in os.listdir(base_path) if os.path.isdir(os.path.join(base_path, d))]
+    
+    return {
+        "success": True,
+        "cartelle_trovate": len(cartelle),
+        "dipendenti_con_progressivi": len(progressivi),
+        "cartelle": cartelle,
+        "progressivi": progressivi
+    }
+
+
+@router.post("/buste-paga/import")
+@handle_errors
+async def import_buste_paga_to_dipendenti(
+    match_mode: str = Query("cf", description="Modalità matching: cf (codice fiscale), nome (nome completo)"),
+    dry_run: bool = Query(True, description="Se true, mostra solo le corrispondenze senza aggiornare")
+) -> Dict[str, Any]:
+    """
+    Importa i progressivi dalle buste paga nei record dei dipendenti.
+    
+    - match_mode: "cf" per codice fiscale, "nome" per nome completo
+    - dry_run: se True, mostra solo le corrispondenze trovate senza aggiornare
+    """
+    from app.utils.busta_paga_parser import scan_all_dipendenti
+    
+    db = Database.get_db()
+    base_path = "/tmp/documents/buste_paga"
+    
+    # Carica tutti i dipendenti dal DB
+    dipendenti_db = await db[Collections.EMPLOYEES].find({}, {"_id": 0}).to_list(1000)
+    
+    # Scansiona le buste paga
+    progressivi_bp = scan_all_dipendenti(base_path)
+    
+    matches = []
+    no_matches = []
+    updates = []
+    errors = []
+    
+    for folder_name, progressivi in progressivi_bp.items():
+        nome_normalizzato = folder_name.lower().replace('_', ' ')
+        matched = False
+        
+        for dip in dipendenti_db:
+            dip_nome = (dip.get('nome_completo') or f"{dip.get('nome', '')} {dip.get('cognome', '')}").lower().strip()
+            dip_cf = (dip.get('codice_fiscale') or '').upper()
+            
+            # Match per nome
+            nome_match = False
+            if match_mode == "nome":
+                # Prova match esatto o parziale
+                nome_match = (nome_normalizzato == dip_nome or 
+                             nome_normalizzato in dip_nome or 
+                             dip_nome in nome_normalizzato)
+                
+                # Prova anche invertendo nome/cognome
+                if not nome_match:
+                    parts = nome_normalizzato.split()
+                    if len(parts) >= 2:
+                        inverted = f"{parts[-1]} {' '.join(parts[:-1])}"
+                        nome_match = inverted == dip_nome or inverted in dip_nome
+            
+            # Match per CF se disponibile
+            cf_match = False
+            if match_mode == "cf" and progressivi.get('codice_fiscale'):
+                cf_match = progressivi.get('codice_fiscale', '').upper() == dip_cf
+            
+            if nome_match or cf_match:
+                matched = True
+                match_info = {
+                    "cartella": folder_name,
+                    "dipendente_db": dip.get('nome_completo') or f"{dip.get('nome', '')} {dip.get('cognome', '')}",
+                    "dipendente_id": dip.get('id'),
+                    "match_type": "cf" if cf_match else "nome",
+                    "progressivi": progressivi
+                }
+                matches.append(match_info)
+                
+                if not dry_run:
+                    # Aggiorna il dipendente con i progressivi
+                    try:
+                        update_data = {
+                            "paga_base": progressivi.get('paga_base', 0),
+                            "contingenza": progressivi.get('contingenza', 0),
+                            "progressivi": {
+                                "tfr_accantonato": progressivi.get('tfr_accantonato', 0),
+                                "tfr_quota_anno": progressivi.get('tfr_quota_anno', 0),
+                                "ferie_maturate": progressivi.get('ferie_maturate', 0),
+                                "ferie_godute": progressivi.get('ferie_godute', 0),
+                                "ferie_residue": progressivi.get('ferie_residue', 0),
+                                "permessi_maturati": progressivi.get('permessi_maturati', 0),
+                                "permessi_goduti": progressivi.get('permessi_goduti', 0),
+                                "permessi_residui": progressivi.get('permessi_residui', 0),
+                                "rol_maturati": progressivi.get('rol_maturati', 0),
+                                "rol_goduti": progressivi.get('rol_goduti', 0),
+                                "rol_residui": progressivi.get('rol_residui', 0),
+                                "anno_riferimento": progressivi.get('anno_riferimento'),
+                                "mese_riferimento": progressivi.get('mese_riferimento'),
+                                "fonte_busta_paga": progressivi.get('fonte')
+                            },
+                            "updated_at": datetime.now(timezone.utc).isoformat(),
+                            "progressivi_importati_at": datetime.now(timezone.utc).isoformat()
+                        }
+                        
+                        await db[Collections.EMPLOYEES].update_one(
+                            {"id": dip.get('id')},
+                            {"$set": update_data}
+                        )
+                        updates.append(dip.get('id'))
+                    except Exception as e:
+                        errors.append({"id": dip.get('id'), "error": str(e)})
+                
+                break
+        
+        if not matched:
+            no_matches.append(folder_name)
+    
+    return {
+        "success": True,
+        "dry_run": dry_run,
+        "match_mode": match_mode,
+        "totale_cartelle": len(progressivi_bp),
+        "matches_trovati": len(matches),
+        "non_trovati": len(no_matches),
+        "aggiornati": len(updates) if not dry_run else 0,
+        "errori": len(errors),
+        "matches": matches,
+        "no_matches": no_matches,
+        "errors": errors if errors else None
+    }
+
+
+@router.get("/buste-paga/dipendente/{dipendente_id}")
+@handle_errors
+async def get_buste_paga_dipendente(dipendente_id: str) -> Dict[str, Any]:
+    """
+    Restituisce tutte le buste paga trovate per un dipendente specifico.
+    Cerca per nome o CF nelle cartelle delle buste paga.
+    """
+    import os
+    from app.utils.busta_paga_parser import scan_dipendente_folder
+    
+    db = Database.get_db()
+    
+    # Trova il dipendente nel DB
+    dipendente = await db[Collections.EMPLOYEES].find_one(
+        {"$or": [{"id": dipendente_id}, {"codice_fiscale": dipendente_id}]},
+        {"_id": 0}
+    )
+    
+    if not dipendente:
+        raise HTTPException(status_code=404, detail="Dipendente non trovato")
+    
+    nome_completo = dipendente.get('nome_completo') or f"{dipendente.get('nome', '')} {dipendente.get('cognome', '')}"
+    
+    # Cerca la cartella corrispondente
+    base_path = "/tmp/documents/buste_paga"
+    cartelle = os.listdir(base_path) if os.path.exists(base_path) else []
+    
+    cartella_trovata = None
+    for cartella in cartelle:
+        nome_cartella = cartella.lower().replace('_', ' ')
+        if nome_completo.lower() in nome_cartella or nome_cartella in nome_completo.lower():
+            cartella_trovata = cartella
+            break
+        # Prova anche invertendo
+        parts = nome_completo.lower().split()
+        if len(parts) >= 2:
+            inverted = f"{parts[-1]} {' '.join(parts[:-1])}"
+            if inverted in nome_cartella or nome_cartella in inverted:
+                cartella_trovata = cartella
+                break
+    
+    if not cartella_trovata:
+        return {
+            "success": False,
+            "dipendente": nome_completo,
+            "message": "Cartella buste paga non trovata per questo dipendente",
+            "cartelle_disponibili": cartelle[:20]
+        }
+    
+    # Scansiona la cartella
+    folder_path = os.path.join(base_path, cartella_trovata)
+    buste = scan_dipendente_folder(folder_path)
+    
+    return {
+        "success": True,
+        "dipendente": nome_completo,
+        "cartella": cartella_trovata,
+        "totale_buste": len(buste),
+        "buste": buste
+    }
+
+
+
+@router.post("/buste-paga/dipendente/{dipendente_id}/import")
+@handle_errors
+async def import_busta_paga_to_dipendente(dipendente_id: str) -> Dict[str, Any]:
+    """
+    Importa i progressivi dall'ultima busta paga trovata per un dipendente specifico.
+    Aggiorna il record del dipendente con TFR, ferie, permessi, paga base, contingenza.
+    """
+    import os
+    from app.utils.busta_paga_parser import get_latest_progressivi
+    
+    db = Database.get_db()
+    
+    # Trova il dipendente nel DB
+    dipendente = await db[Collections.EMPLOYEES].find_one(
+        {"$or": [{"id": dipendente_id}, {"codice_fiscale": dipendente_id}]},
+        {"_id": 0}
+    )
+    
+    if not dipendente:
+        raise HTTPException(status_code=404, detail="Dipendente non trovato")
+    
+    nome_completo = dipendente.get('nome_completo') or f"{dipendente.get('nome', '')} {dipendente.get('cognome', '')}"
+    
+    # Cerca la cartella corrispondente
+    base_path = "/tmp/documents/buste_paga"
+    cartelle = os.listdir(base_path) if os.path.exists(base_path) else []
+    
+    cartella_trovata = None
+    for cartella in cartelle:
+        nome_cartella = cartella.lower().replace('_', ' ')
+        if nome_completo.lower() in nome_cartella or nome_cartella in nome_completo.lower():
+            cartella_trovata = cartella
+            break
+        # Prova anche invertendo
+        parts = nome_completo.lower().split()
+        if len(parts) >= 2:
+            inverted = f"{parts[-1]} {' '.join(parts[:-1])}"
+            if inverted in nome_cartella or nome_cartella in inverted:
+                cartella_trovata = cartella
+                break
+    
+    if not cartella_trovata:
+        return {
+            "success": False,
+            "dipendente": nome_completo,
+            "message": "Cartella buste paga non trovata per questo dipendente"
+        }
+    
+    # Ottieni i progressivi
+    folder_path = os.path.join(base_path, cartella_trovata)
+    progressivi = get_latest_progressivi(folder_path)
+    
+    if not progressivi:
+        return {
+            "success": False,
+            "dipendente": nome_completo,
+            "cartella": cartella_trovata,
+            "message": "Nessun progressivo trovato nelle buste paga"
+        }
+    
+    # Aggiorna il dipendente
+    update_data = {
+        "paga_base": progressivi.get('paga_base', 0),
+        "contingenza": progressivi.get('contingenza', 0),
+        "progressivi": {
+            "tfr_accantonato": progressivi.get('tfr_accantonato', 0),
+            "tfr_quota_anno": progressivi.get('tfr_quota_anno', 0),
+            "ferie_maturate": progressivi.get('ferie_maturate', 0),
+            "ferie_godute": progressivi.get('ferie_godute', 0),
+            "ferie_residue": progressivi.get('ferie_residue', 0),
+            "permessi_maturati": progressivi.get('permessi_maturati', 0),
+            "permessi_goduti": progressivi.get('permessi_goduti', 0),
+            "permessi_residui": progressivi.get('permessi_residui', 0),
+            "rol_maturati": progressivi.get('rol_maturati', 0),
+            "rol_goduti": progressivi.get('rol_goduti', 0),
+            "rol_residui": progressivi.get('rol_residui', 0),
+            "anno_riferimento": progressivi.get('anno_riferimento'),
+            "mese_riferimento": progressivi.get('mese_riferimento'),
+            "fonte_busta_paga": progressivi.get('fonte')
+        },
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+        "progressivi_importati_at": datetime.now(timezone.utc).isoformat()
+    }
+    
+    await db[Collections.EMPLOYEES].update_one(
+        {"id": dipendente.get('id')},
+        {"$set": update_data}
+    )
+    
+    return {
+        "success": True,
+        "dipendente": nome_completo,
+        "cartella": cartella_trovata,
+        "progressivi_importati": update_data,
+        "fonte": progressivi.get('fonte')
+    }
+
+
+
+# ============== REPORT PDF FERIE/PERMESSI ==============
+
+@router.get("/{dipendente_id}/report-ferie-permessi")
+@handle_errors
+async def genera_report_ferie_permessi(
+    dipendente_id: str,
+    anno: int = Query(None, description="Anno di riferimento (default: anno corrente)")
+) -> Dict[str, Any]:
+    """
+    Genera report PDF annuale ferie e permessi per un dipendente.
+    Include: progressivi, storico mensile, riepilogo annuale.
+    """
+    from fastapi.responses import Response
+    from reportlab.lib import colors
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib.units import cm
+    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+    from reportlab.lib.enums import TA_CENTER
+    import io
+    
+    db = Database.get_db()
+    
+    if not anno:
+        anno = datetime.now().year
+    
+    # Trova dipendente
+    dipendente = await db[Collections.EMPLOYEES].find_one(
+        {"$or": [{"id": dipendente_id}, {"codice_fiscale": dipendente_id}]},
+        {"_id": 0}
+    )
+    
+    if not dipendente:
+        raise HTTPException(status_code=404, detail="Dipendente non trovato")
+    
+    nome = dipendente.get("nome_completo") or dipendente.get("name") or f"{dipendente.get('cognome', '')} {dipendente.get('nome', '')}"
+    cf = dipendente.get("codice_fiscale", "N/A")
+    progressivi = dipendente.get("progressivi", {})
+    
+    # Recupera cedolini dell'anno per storico mensile
+    from app.db_collections import COLL_CEDOLINI
+    from app.document_repository import metadata_projection
+
+    cedolini = await db[COLL_CEDOLINI].find({
+        "$or": [
+            {"dipendente_id": dipendente_id},
+            {"codice_fiscale": cf}
+        ],
+        "anno": anno
+    }, metadata_projection(COLL_CEDOLINI)).sort("mese", 1).to_list(12)
+    
+    # Prepara dati
+    ferie_maturate = progressivi.get("ferie_maturate", 0)
+    ferie_godute = progressivi.get("ferie_godute", 0)
+    ferie_residue = progressivi.get("ferie_residue", 0)
+    permessi_maturati = progressivi.get("permessi_maturati", 0)
+    permessi_goduti = progressivi.get("permessi_goduti", 0)
+    permessi_residui = progressivi.get("permessi_residui", 0)
+    rol_maturati = progressivi.get("rol_maturati", 0)
+    rol_goduti = progressivi.get("rol_goduti", 0)
+    rol_residui = progressivi.get("rol_residui", 0)
+    
+    # Genera PDF
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=A4, topMargin=1.5*cm, bottomMargin=1.5*cm)
+    
+    styles = getSampleStyleSheet()
+    title_style = ParagraphStyle('Title', parent=styles['Heading1'], fontSize=18, alignment=TA_CENTER, spaceAfter=20)
+    subtitle_style = ParagraphStyle('Subtitle', parent=styles['Heading2'], fontSize=14, alignment=TA_CENTER, spaceAfter=10)
+    normal_style = ParagraphStyle('Normal', parent=styles['Normal'], fontSize=10)
+    header_style = ParagraphStyle('Header', parent=styles['Normal'], fontSize=10, fontName='Helvetica-Bold')
+    
+    elements = []
+    
+    # Intestazione
+    elements.append(Paragraph(f"REPORT FERIE E PERMESSI {anno}", title_style))
+    elements.append(Paragraph(f"{nome}", subtitle_style))
+    elements.append(Paragraph(f"Codice Fiscale: {cf}", normal_style))
+    elements.append(Paragraph(f"Data generazione: {datetime.now().strftime('%d-%m-%Y %H:%M')}", normal_style))
+    elements.append(Spacer(1, 20))
+    
+    # Tabella Riepilogo
+    elements.append(Paragraph("RIEPILOGO PROGRESSIVI", header_style))
+    elements.append(Spacer(1, 10))
+    
+    data_riepilogo = [
+        ["Voce", "Maturate", "Godute", "Residue"],
+        ["Ferie (giorni)", f"{ferie_maturate:.1f}", f"{ferie_godute:.1f}", f"{ferie_residue:.2f}"],
+        ["Permessi (ore)", f"{permessi_maturati:.2f}", f"{permessi_goduti:.2f}", f"{permessi_residui:.2f}"],
+        ["ROL (ore)", f"{rol_maturati:.2f}", f"{rol_goduti:.2f}", f"{rol_residui:.2f}"],
+    ]
+    
+    table_riepilogo = Table(data_riepilogo, colWidths=[6*cm, 3*cm, 3*cm, 3*cm])
+    table_riepilogo.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#3f5a4e')),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, -1), 10),
+        ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+        ('BACKGROUND', (0, 1), (-1, -1), colors.HexColor('#f8f9fa')),
+        ('GRID', (0, 0), (-1, -1), 1, colors.HexColor('#dee2e6')),
+        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#f8f9fa')]),
+    ]))
+    elements.append(table_riepilogo)
+    elements.append(Spacer(1, 30))
+    
+    # Tabella Storico Mensile (se ci sono cedolini)
+    if cedolini:
+        elements.append(Paragraph("DETTAGLIO MENSILE", header_style))
+        elements.append(Spacer(1, 10))
+        
+        mesi_nomi = ["Gen", "Feb", "Mar", "Apr", "Mag", "Giu", "Lug", "Ago", "Set", "Ott", "Nov", "Dic"]
+        
+        data_mensile = [["Mese", "Ferie Godute", "Permessi Goduti", "Netto Busta"]]
+        
+        for ced in cedolini:
+            mese_num = ced.get("mese", 0)
+            mese_nome = mesi_nomi[mese_num - 1] if 1 <= mese_num <= 12 else str(mese_num)
+            ferie_g = ced.get("ferie_godute", 0) or 0
+            perm_g = ced.get("permessi_goduti", ced.get("ore_permesso", 0)) or 0
+            netto = ced.get("netto", ced.get("netto_mese", 0)) or 0
+            
+            data_mensile.append([
+                f"{mese_nome} {anno}",
+                f"{ferie_g:.1f}" if ferie_g else "-",
+                f"{perm_g:.1f}" if perm_g else "-",
+                f"€ {netto:,.2f}"
+            ])
+        
+        table_mensile = Table(data_mensile, colWidths=[4*cm, 4*cm, 4*cm, 4*cm])
+        table_mensile.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#3f5a4e')),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, -1), 9),
+            ('BOTTOMPADDING', (0, 0), (-1, 0), 10),
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#dee2e6')),
+            ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#f8f9fa')]),
+        ]))
+        elements.append(table_mensile)
+        elements.append(Spacer(1, 20))
+    
+    # Note finali
+    elements.append(Spacer(1, 20))
+    elements.append(Paragraph("NOTE", header_style))
+    elements.append(Paragraph(f"• Anno di riferimento progressivi: {progressivi.get('anno_riferimento', anno)}", normal_style))
+    elements.append(Paragraph(f"• Mese di riferimento: {progressivi.get('mese_riferimento', 'N/A')}", normal_style))
+    if progressivi.get('fonte_busta_paga'):
+        elements.append(Paragraph(f"• Fonte dati: {progressivi.get('fonte_busta_paga')}", normal_style))
+    
+    # Footer
+    elements.append(Spacer(1, 40))
+    elements.append(Paragraph("_" * 50, normal_style))
+    elements.append(Paragraph("Documento generato automaticamente dal sistema ERP", 
+                              ParagraphStyle('Footer', parent=normal_style, fontSize=8, textColor=colors.gray)))
+    
+    # Build PDF
+    doc.build(elements)
+    
+    pdf_bytes = buffer.getvalue()
+    buffer.close()
+    
+    filename = f"Report_Ferie_Permessi_{nome.replace(' ', '_')}_{anno}.pdf"
+    
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'}
+    )
+
+
+
+

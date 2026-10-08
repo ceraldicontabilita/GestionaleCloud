@@ -1,0 +1,681 @@
+"""Import sicuro dei PDF bonifico e associazione ai cedolini.
+
+Regola canonica: un PDF bonifico viene collegato a una riga stipendio solo
+quando l'identita' del dipendente e l'importo al centesimo coincidono. In
+caso di zero o piu' candidati il documento resta da verificare: nessuna
+scelta per vicinanza, ordine del database o semplice mese.
+"""
+from __future__ import annotations
+
+import asyncio
+import base64
+import hashlib
+import logging
+import re
+import uuid
+from datetime import datetime, timezone
+from typing import Any, Dict, Iterable, List, Optional
+
+from app.constants.canale_documento import (
+    STATO_BONIFICO_ASSOCIATO_ATTESA_BANCA, STATO_BONIFICO_DOCUMENTATO, canale_obbligatorio,
+)
+from app.routers.bonifici_module.common import build_dedup_key
+from app.routers.bonifici_module.pdf_parser import (
+    extract_filename_metadata,
+    extract_transfers_from_text,
+    read_pdf_bytes,
+)
+
+logger = logging.getLogger(__name__)
+
+
+def nome_tokens(nome: str) -> frozenset[str]:
+    """Token identita' accent-insensitive, senza parole bancarie."""
+    text = (nome or "").casefold()
+    tokens = re.findall(r"[a-zà-ÿ']+", text)
+    stop = {
+        "beneficiario", "ordinante", "bonifico", "stipendio", "emolumenti",
+        "mensilita", "pagamento", "favore", "copia",
+    }
+    return frozenset(t for t in tokens if len(t) > 1 and t not in stop)
+
+
+def identita_coincide(nome_a: str, nome_b: str) -> bool:
+    """Richiede lo stesso nome completo (almeno nome+cognome)."""
+    a, b = nome_tokens(nome_a), nome_tokens(nome_b)
+    return len(a) >= 2 and a == b
+
+
+def nome_presente_nel_testo(nome: str, testo: str) -> bool:
+    """Vero se tutti i token del nome completo compaiono nella causale."""
+    identita = nome_tokens(nome)
+    testo_tokens = nome_tokens(testo)
+    return len(identita) >= 2 and identita.issubset(testo_tokens)
+
+
+def importo_residuo_salario(riga: Dict[str, Any]) -> float:
+    busta = float(riga.get("importo_busta") or riga.get("importo") or 0)
+    # Il PDF documenta la disposizione, mentre `importo_bonifico` deriva
+    # dall'estratto conto. Sono due prove dello stesso pagamento: non vanno
+    # sommate. Per accettare acconti successivi si sottrae la prova piu'
+    # completa gia' disponibile.
+    documentato = float(riga.get("importo_bonifico_documentato") or 0)
+    riconciliato = float(riga.get("importo_bonifico") or 0)
+    return round(max(0.0, busta - max(documentato, riconciliato)), 2)
+
+
+def _nome_salario(riga: Dict[str, Any]) -> str:
+    return (
+        riga.get("dipendente_nome")
+        or riga.get("dipendente")
+        or riga.get("nome_dipendente")
+        or ""
+    ).strip()
+
+
+def data_pagamento_compatibile(data_pagamento: Any, riga: Dict[str, Any]) -> bool:
+    """Verifica la normale finestra paga: dal 20 al 15 del mese seguente."""
+    try:
+        data = datetime.fromisoformat(str(data_pagamento)[:10])
+        mese = int(riga.get("mese") or 0)
+        anno = int(riga.get("anno") or 0)
+        if not 1 <= mese <= 12:
+            return False
+        inizio = datetime(anno, mese, 20)
+        fine = datetime(anno + 1, 1, 15) if mese == 12 else datetime(anno, mese + 1, 15)
+        return inizio <= data <= fine
+    except (TypeError, ValueError):
+        return False
+
+
+def causale_contraddice_beneficiario(
+    bonifico: Dict[str, Any], righe: Iterable[Dict[str, Any]]
+) -> bool:
+    """Blocca il match se la causale nomina chiaramente un altro dipendente.
+
+    Nei documenti reali puo' capitare che il beneficiario bancario sia una
+    persona ma la causale riporti il nome completo di un'altra. In quel caso
+    il documento resta da verificare: non si sceglie ne' il beneficiario ne'
+    la causale in modo arbitrario.
+    """
+    beneficiario = bonifico.get("beneficiario") or {}
+    identita_beneficiario = nome_tokens(
+        beneficiario.get("nome") or bonifico.get("dipendente_nome") or ""
+    )
+    causale = bonifico.get("causale") or ""
+    if len(identita_beneficiario) < 2 or not causale:
+        return False
+
+    identita_viste = set()
+    for riga in righe:
+        identita = nome_tokens(_nome_salario(riga))
+        if len(identita) < 2 or identita in identita_viste:
+            continue
+        identita_viste.add(identita)
+        if identita != identita_beneficiario and nome_presente_nel_testo(
+            _nome_salario(riga), causale
+        ):
+            return True
+    return False
+
+
+def seleziona_salario_univoco(
+    bonifico: Dict[str, Any], righe: Iterable[Dict[str, Any]]
+) -> Optional[Dict[str, Any]]:
+    """Seleziona un solo candidato per identita', periodo e importo nel residuo."""
+    righe = list(righe)
+    importo = round(abs(float(bonifico.get("importo") or 0)), 2)
+    if importo <= 0:
+        return None
+    if causale_contraddice_beneficiario(bonifico, righe):
+        return None
+
+    beneficiario = bonifico.get("beneficiario") or {}
+    nome = (beneficiario.get("nome") or bonifico.get("dipendente_nome") or "").strip()
+    iban = re.sub(r"\s+", "", beneficiario.get("iban") or "").upper()
+    # Il periodo e' considerato solo quando proviene dalla causale del PDF.
+    # "bonifico marzo" nel nome file descrive invece il mese di pagamento.
+    periodo_mese = bonifico.get("periodo_mese")
+    periodo_anno = bonifico.get("periodo_anno")
+    data_pagamento = bonifico.get("data")
+
+    candidati: List[Dict[str, Any]] = []
+    for riga in righe:
+        if riga.get("riconciliato") is True:
+            continue
+        residuo = importo_residuo_salario(riga)
+        # Un dipendente puo' ricevere piu' acconti e poi il saldo. L'importo
+        # deve essere positivo e non puo' superare il residuo documentabile;
+        # la riga sara' chiusa solo quando la somma raggiunge la busta.
+        if residuo <= 0 or importo - residuo > 0.009:
+            continue
+
+        nome_ok = identita_coincide(nome, _nome_salario(riga))
+        riga_iban = re.sub(
+            r"\s+", "",
+            riga.get("iban") or riga.get("dipendente_iban") or "",
+        ).upper()
+        iban_ok = bool(iban and riga_iban and iban == riga_iban)
+        if not (nome_ok or iban_ok):
+            continue
+        if periodo_mese and int(riga.get("mese") or 0) != int(periodo_mese):
+            continue
+        if periodo_anno and int(riga.get("anno") or 0) != int(periodo_anno):
+            continue
+        if not periodo_mese and not periodo_anno and data_pagamento:
+            if not data_pagamento_compatibile(data_pagamento, riga):
+                continue
+        candidati.append(riga)
+
+    return candidati[0] if len(candidati) == 1 else None
+
+
+async def arricchisci_nomi_salari_da_cedolini(db) -> int:
+    """Completa le vecchie righe senza nome usando CF/cedolino, mai l'importo."""
+    vuote = await db["prima_nota_salari"].find(
+        {"$or": [
+            {"dipendente": {"$exists": False}}, {"dipendente": None},
+            {"dipendente": ""},
+            {"dipendente_nome": {"$exists": False}}, {"dipendente_nome": None},
+            {"dipendente_nome": ""},
+        ]},
+        {"_id": 0},
+    ).to_list(5000)
+    aggiornate = 0
+    for riga in vuote:
+        cedolino = None
+        if riga.get("cedolino_id"):
+            cedolino = await db["cedolini"].find_one(
+                {"id": riga["cedolino_id"]}, {"_id": 0}
+            )
+        if not cedolino and riga.get("codice_fiscale"):
+            cedolino = await db["cedolini"].find_one({
+                "codice_fiscale": riga["codice_fiscale"],
+                "mese": riga.get("mese"), "anno": riga.get("anno"),
+            }, {"_id": 0})
+        nome = (cedolino or {}).get("nome_dipendente")
+        if not nome:
+            # Alcune righe storiche hanno conservato il nome soltanto nella
+            # descrizione canonica "Stipendio NOME - MM/AAAA".
+            match = re.search(
+                r"Stipendio\s+(.+?)\s*[-–]\s*\d{1,2}/\d{4}",
+                riga.get("descrizione") or "",
+                re.I,
+            )
+            nome = match.group(1).strip() if match else None
+        if not nome:
+            continue
+        result = await db["prima_nota_salari"].update_one(
+            {"id": riga.get("id")},
+            {"$set": {
+                "dipendente": nome.upper(),
+                "dipendente_nome": nome,
+                "dipendente_id": (cedolino or {}).get("dipendente_id"),
+                "codice_fiscale": (cedolino or {}).get("codice_fiscale"),
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+            }},
+        )
+        aggiornate += int(bool(result.modified_count))
+    return aggiornate
+
+
+async def associa_transfer_a_salario(db, transfer: Dict[str, Any]) -> Dict[str, Any]:
+    """Collega il PDF, ma non certifica ancora il riscontro bancario."""
+    if transfer.get("salario_associato") is True and transfer.get(
+        "operazione_salario_id"
+    ):
+        return {
+            "associato": True,
+            "salario_id": transfer.get("operazione_salario_id"),
+            "dipendente": transfer.get("dipendente_nome"),
+            "gia_associato": True,
+        }
+    await arricchisci_nomi_salari_da_cedolini(db)
+    righe = await db["prima_nota_salari"].find(
+        {"riconciliato": {"$ne": True}}, {"_id": 0}
+    ).to_list(5000)
+
+    candidato = seleziona_salario_univoco(transfer, righe)
+    if not candidato:
+        return {"associato": False, "motivo": "identita_importo_non_univoci"}
+
+    transfer_id = transfer.get("id")
+    importo = round(abs(float(transfer.get("importo") or 0)), 2)
+    ids = list(candidato.get("bonifico_documenti_ids") or [])
+    gia_collegato = transfer_id in ids
+    if not gia_collegato:
+        ids.append(transfer_id)
+    totale_documentato = float(candidato.get("importo_bonifico_documentato") or 0)
+    if not gia_collegato:
+        totale_documentato = round(totale_documentato + importo, 2)
+
+    nome = _nome_salario(candidato)
+    now = datetime.now(timezone.utc).isoformat()
+    residuo_prima = importo_residuo_salario(candidato)
+    evidenze = ["identita_esatta", "importo_entro_residuo"]
+    if abs(residuo_prima - importo) <= 0.009:
+        evidenze.append("saldo_documentale_completo")
+    else:
+        evidenze.append("acconto_documentale")
+    await db["bonifici_transfers"].update_one(
+        {"id": transfer_id},
+        {"$set": {
+            "salario_associato": True,
+            "operazione_salario_id": candidato.get("id"),
+            "dipendente_id": candidato.get("dipendente_id"),
+            "dipendente_nome": nome,
+            "associazione_evidenze": evidenze,
+            "stato_riconciliazione": STATO_BONIFICO_ASSOCIATO_ATTESA_BANCA,
+            "updated_at": now,
+        }},
+    )
+    await db["prima_nota_salari"].update_one(
+        {"id": candidato.get("id")},
+        {"$set": {
+            "importo_bonifico_documentato": totale_documentato,
+            "bonifico_documenti_ids": ids,
+            "bonifico_documento_associato": True,
+            "stato_bonifico": "documentato_attesa_estratto_conto",
+            "updated_at": now,
+        }},
+    )
+    return {"associato": True, "salario_id": candidato.get("id"), "dipendente": nome}
+
+
+async def associa_transfer_a_fatture(db, transfer: Dict[str, Any]) -> Dict[str, Any]:
+    """Collega fatture solo con numero esplicito, fornitore e centesimi certi."""
+    from app.services.payment_document_links import (
+        collega_bonifico_fatture,
+        seleziona_fatture_bonifico,
+    )
+
+    from app.services.fattura_attiva import FILTRO_FATTURA_ATTIVA
+
+    # Solo fatture attive: ogni fattura 2026 esiste anche come copia
+    # `archived`, e con due candidati identici l'abbinamento si rifiutava.
+    # I campi della ritenuta servono al netto da confrontare col bonifico.
+    invoices = await db["invoices"].find(
+        {"$and": [dict(FILTRO_FATTURA_ATTIVA), {"bonifico_associato": {"$ne": True}}]},
+        {"_id": 0, "id": 1, "invoice_number": 1, "numero_fattura": 1,
+         "supplier_name": 1, "fornitore_denominazione": 1, "fornitore": 1,
+         "cedente_denominazione": 1, "total_amount": 1, "totale": 1,
+         "importo_totale": 1, "invoice_date": 1, "importo_ritenuta": 1,
+         "pagamento_rate_totale": 1, "pagamento_rate": 1},
+    ).to_list(5000)
+    matched = seleziona_fatture_bonifico(transfer, invoices)
+    if not matched:
+        return {"associato": False, "motivo": "fattura_non_certa_o_ambigua"}
+    await collega_bonifico_fatture(db, transfer, matched, auto=True)
+    return {"associato": True, "fattura_ids": [item["id"] for item in matched]}
+
+
+async def associa_transfer_documento(db, transfer: Dict[str, Any]) -> Dict[str, Any]:
+    """Prima salari/cedolini, poi fatture fornitori; mai entrambe."""
+    salary = await associa_transfer_a_salario(db, transfer)
+    if salary.get("associato"):
+        return salary
+    return await associa_transfer_a_fatture(db, transfer)
+
+
+# Decisione del titolare (26/09/2026): gli accrediti in entrata di questi anni
+# (Satispay, giroconti, rimborsi del 2023) non si registrano. L'originale resta
+# su Drive; gli altri anni e tutti i bonifici disposti restano come sono.
+ANNI_ACCREDITI_NON_REGISTRATI = frozenset({2023})
+STATO_NON_REGISTRATO = "non_registrato"
+
+
+CAMPI_COLLEGAMENTO = (
+    "salario_associato", "fattura_associata", "fatture_associate", "fattura_id",
+    "fattura_associata_id", "fattura_ids", "movimento_estratto_conto_id",
+)
+
+
+def transfer_collegato(transfer: Dict[str, Any]) -> bool:
+    """Gia' agganciato a uno stipendio, a una fattura o a un movimento, o depositato in HR come pagamento.
+
+    Un transfer cosi' ha collegamenti derivati dalla sua identita': non si corregge ne' si
+    toglie dall'archivio da un ripasso, perche' i collegamenti resterebbero attaccati ai dati vecchi.
+    """
+    return bool(
+        any(transfer.get(c) for c in CAMPI_COLLEGAMENTO)
+        or (transfer.get("hr_deposito") or {}).get("esito") in {"depositato", "arricchito"}
+    )
+
+
+def e_stampa_fattura(testo: str) -> bool:
+    """Stampa di una fattura elettronica, riconosciuta dal contenuto (mai dal nome)."""
+    compatto = re.sub(r"\s+", " ", (testo or "").upper())
+    return (
+        "CEDENTE" in compatto
+        and "CESSIONARIO" in compatto
+        and ("IMPONIBILE" in compatto or "TOTALE DOCUMENTO" in compatto)
+    )
+
+
+def accredito_non_registrabile(parsed: Dict[str, Any]) -> bool:
+    """Vero per un bonifico ricevuto (``direzione='entrata'``) di un anno escluso."""
+    if parsed.get("direzione") != "entrata":
+        return False
+    data = parsed.get("data")
+    anno = data.year if isinstance(data, datetime) else None
+    if anno is None and data:
+        match = re.match(r"(\d{4})-", str(data))
+        anno = int(match.group(1)) if match else None
+    return anno in ANNI_ACCREDITI_NON_REGISTRATI
+
+
+def _esito_non_registrato(parsed: Dict[str, Any]) -> Dict[str, Any]:
+    return {
+        "status": STATO_NON_REGISTRATO,
+        "associato": False,
+        "motivo": "accredito in entrata di un anno che non si registra",
+        "message": "Accredito in entrata del 2023: non si registra (decisione del titolare)",
+        "importo": parsed.get("importo"),
+    }
+
+
+async def togli_code_hr_e_inbox(db, transfer_id: str) -> None:
+    """Toglie, per id, la riga «da associare» di HR e la copia in inbox che citano un transfer."""
+    from app.services.hr_pagamenti_deposito import _db_hr
+
+    db_hr = _db_hr()
+    if db_hr is not None:
+        async for riga in db_hr.bonifici_da_associare.find(
+            {"gestionale_transfer_id": transfer_id}, {"_id": 0, "id": 1, "stato": 1}
+        ):
+            if riga.get("id") and riga.get("stato") == "da_associare":
+                await db_hr.bonifici_da_associare.delete_one({"id": riga["id"]})
+    async for doc in db["documents_inbox"].find(
+        {"bonifico_transfer_id": transfer_id}, {"_id": 0, "id": 1}
+    ):
+        if doc.get("id"):
+            await db["documents_inbox"].delete_one({"id": doc["id"]})
+
+
+async def _togli_accredito_registrato(db, transfer: Dict[str, Any]) -> bool:
+    """Toglie, per id, un accredito escluso gia' registrato e la sua coda HR.
+
+    Vale solo per un transfer che nessuno ha collegato: se e' gia' associato
+    a uno stipendio o a una fattura, o in HR e' diventato un pagamento, resta
+    dov'e' e lo si dice nel log.
+    """
+    transfer_id = transfer.get("id")
+    esito_hr = (transfer.get("hr_deposito") or {}).get("esito")
+    if (
+        not transfer_id
+        or transfer.get("salario_associato")
+        or transfer.get("fattura_associata")
+        or transfer.get("fatture_associate")
+        or esito_hr in {"depositato", "arricchito"}
+    ):
+        logger.warning(
+            "Accredito escluso %s non tolto: gia' collegato (hr=%s)", transfer_id, esito_hr
+        )
+        return False
+    await togli_code_hr_e_inbox(db, transfer_id)
+    await db["bonifici_transfers"].delete_one({"id": transfer_id})
+    return True
+
+
+async def importa_pdf_bonifico(
+    db,
+    content: bytes,
+    filename: str,
+    source: str = "upload_manuale",
+    auto_associa: bool = True,
+    source_path: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Parsa e archivia il PDF; il match automatico puo' essere disattivato.
+
+    ``source_path`` e' il percorso Drive relativo del file (es.
+    ``VESPA VINCENZO/BONIFICI/DA ELABORARE/x.pdf``): conservato sul transfer
+    perche' il fascicolo del dipendente dice a chi appartiene il bonifico
+    (ponte HR, ``hr_pagamenti_deposito.fascicolo_persona``)."""
+    if not content.startswith(b"%PDF"):
+        return {"status": "error", "message": "Il file non e' un PDF valido"}
+    if e_stampa_fattura(await asyncio.to_thread(read_pdf_bytes, content)):
+        # La stampa di una fattura dice «Bonifico» e IBAN, ma non e' un pagamento.
+        return {"status": "non_bonifico",
+                "message": "Stampa PDF di una fattura: la fattura entra dall'XML dello SDI"}
+    digest = hashlib.sha256(content).hexdigest()
+    esistente = await db["bonifici_transfers"].find_one(
+        {"document_hash": digest}, {"_id": 0}
+    )
+    if esistente:
+        # I documenti caricati prima della correzione possono contenere il
+        # mese del nome file nel vecchio campo "periodo". Rileggiamo sempre il
+        # PDF originale e correggiamo i soli metadati estratti.
+        text = await asyncio.to_thread(read_pdf_bytes, content)
+        reparsed = extract_transfers_from_text(text, filename=filename)[0]
+        if transfer_collegato(esistente):
+            # La stessa ricevuta ricaricata non riscrive l'identita' di un pagamento gia' agganciato.
+            return {"status": "duplicate", "transfer_id": esistente.get("id"),
+                    "associato": bool(esistente.get("salario_associato") or esistente.get("fattura_associata")),
+                    "motivo": "transfer_collegato_non_riletto"}
+        beneficiario = reparsed.get("beneficiario") or {}
+        metadata_file = extract_filename_metadata(filename)
+        if not beneficiario.get("nome"):
+            beneficiario["nome"] = metadata_file.get("beneficiario_nome")
+        reparsed["beneficiario"] = beneficiario
+        if accredito_non_registrabile(reparsed):
+            await _togli_accredito_registrato(db, esistente)
+            return _esito_non_registrato(reparsed)
+        aggiornamento = {
+            key: reparsed.get(key)
+            for key in (
+                "data", "importo", "beneficiario", "ordinante", "causale",
+                "cro_trn", "rif_interno", "periodo_mese", "periodo_anno",
+                "mese_pagamento_file", "anno_pagamento_file",
+            )
+        }
+        if isinstance(aggiornamento.get("data"), datetime):
+            aggiornamento["data"] = aggiornamento["data"].isoformat()
+        aggiornamento["parser_completo"] = bool(
+            aggiornamento.get("importo") and beneficiario.get("nome") and aggiornamento.get("data")
+        )
+        aggiornamento["source_file"] = filename
+        aggiornamento["updated_at"] = datetime.now(timezone.utc).isoformat()
+        await db["bonifici_transfers"].update_one(
+            {"id": esistente.get("id")}, {"$set": aggiornamento}
+        )
+        esistente.update(aggiornamento)
+        associazione = (
+            await associa_transfer_documento(db, esistente)
+            if auto_associa
+            else {"associato": False, "motivo": "associazione_manuale_richiesta"}
+        )
+        return {"status": "duplicate", "transfer_id": esistente.get("id"), **associazione}
+
+    text = await asyncio.to_thread(read_pdf_bytes, content)
+    parsed = extract_transfers_from_text(text, filename=filename)[0]
+    if accredito_non_registrabile(parsed):
+        return _esito_non_registrato(parsed)
+    metadata_file = extract_filename_metadata(filename)
+    beneficiario = parsed.get("beneficiario") or {}
+    if not beneficiario.get("nome"):
+        beneficiario["nome"] = metadata_file.get("beneficiario_nome")
+    parsed["beneficiario"] = beneficiario
+
+    now = datetime.now(timezone.utc).isoformat()
+    transfer = {
+        **parsed,
+        "id": str(uuid.uuid4()),
+        "source_file": filename,
+        "source": source,
+        "canale": canale_obbligatorio(source),
+        "source_path": source_path,
+        "document_hash": digest,
+        "pdf_data": base64.b64encode(content).decode("ascii"),
+        "created_at": now,
+        "riconciliato": False,
+        # PDF letto, nessuna prova bancaria: lo stato nasce esplicito.
+        "stato_riconciliazione": STATO_BONIFICO_DOCUMENTATO,
+    }
+    if isinstance(transfer.get("data"), datetime):
+        transfer["data"] = transfer["data"].isoformat()
+    transfer["dedup_key"] = build_dedup_key(transfer)
+    cro = str(transfer.get("cro_trn") or "").strip()
+    if cro:
+        # Stesso CRO/TRN e stesso importo = stesso bonifico, anche da un altro PDF.
+        stesso = await db["bonifici_transfers"].find_one(
+            {"cro_trn": cro, "importo": transfer.get("importo")}, {"_id": 0, "id": 1},
+        )
+        if stesso:
+            return {"status": "duplicate", "transfer_id": stesso["id"], "motivo": "stesso CRO/TRN"}
+    transfer["parser_completo"] = bool(
+        transfer.get("importo")
+        and (transfer.get("beneficiario") or {}).get("nome")
+        and transfer.get("data")
+    )
+    await db["bonifici_transfers"].insert_one(dict(transfer))
+    associazione = (
+        await associa_transfer_documento(db, transfer)
+        if auto_associa
+        else {"associato": False, "motivo": "associazione_manuale_richiesta"}
+    )
+    # Ponte verso l'app HR (pagamenti_esiti / paghe_mensili / coda manuale):
+    # un bonifico a un dipendente deve comparire in /hr/dipendenti/paghe-bonifici
+    # senza un secondo import. Mai bloccare l'archiviazione contabile per l'HR:
+    # se qui fallisce, il job periodico `hr_pagamenti_deposito` riprende il
+    # documento (nessun marcatore `hr_deposito` sul transfer).
+    deposito_hr = None
+    try:
+        from app.services.hr_pagamenti_deposito import deposita_bonifico_transfer_in_hr
+
+        if associazione.get("fattura_ids"):
+            transfer["fattura_associata"] = True
+        deposito_hr = (await deposita_bonifico_transfer_in_hr(db, transfer)).get("esito")
+    except Exception as exc:  # pragma: no cover - difesa: l'ingest non deve fallire
+        logger.warning("[HR deposito pagamenti] bonifico %s non depositato: %s", transfer["id"], exc)
+    return {
+        "status": "saved",
+        "transfer_id": transfer["id"],
+        "parser_completo": transfer["parser_completo"],
+        "deposito_hr": deposito_hr,
+        **associazione,
+    }
+
+
+async def processa_inbox_bonifici(db, limit: int = 100) -> Dict[str, int]:
+    """Recupera anche i PDF gia' caricati prima dell'attivazione del flusso."""
+    docs = await db["documents_inbox"].find(
+        {
+            "category": "bonifico",
+            "$or": [
+                {"processed": {"$ne": True}},
+                {"status": {"$in": ["da_processare", "errore_processing"]}},
+            ],
+        },
+        {
+            "_id": 1,
+            "id": 1,
+            "filename": 1,
+            "source": 1,
+            "source_path": 1,
+            "created_at": 1,
+        },
+    ).sort("created_at", 1).to_list(limit)
+    stats = {"letti": 0, "salvati": 0, "duplicati": 0, "associati": 0, "errori": 0}
+    for doc in docs:
+        stats["letti"] += 1
+        document_filter = {"_id": doc["_id"]} if doc.get("_id") is not None else {"id": doc.get("id")}
+        try:
+            payload = await db["documents_inbox"].find_one(
+                document_filter, {"_id": 0, "pdf_data": 1}
+            ) or {}
+            content = base64.b64decode(payload.get("pdf_data") or "", validate=True)
+            result = await importa_pdf_bonifico(
+                db, content, doc.get("filename") or "bonifico.pdf",
+                source=doc.get("source") or "documents_inbox",
+                source_path=doc.get("source_path"),
+            )
+            status = result.get("status")
+            if status == STATO_NON_REGISTRATO:
+                await db["documents_inbox"].delete_one(document_filter)
+                continue
+            if status == "non_bonifico":
+                # Stampa di una fattura: non e' un bonifico, non resta in coda come tale.
+                await db["documents_inbox"].update_one(
+                    document_filter,
+                    {"$set": {
+                        "category": "fattura_pdf", "processed": True, "status": "fuori_contabilita",
+                        "processing_error": result.get("message"),
+                        "processed_at": datetime.now(timezone.utc).isoformat(),
+                    }},
+                )
+                continue
+            if status == "saved":
+                stats["salvati"] += 1
+            elif status == "duplicate":
+                stats["duplicati"] += 1
+            if result.get("associato"):
+                stats["associati"] += 1
+            await db["documents_inbox"].update_one(
+                document_filter,
+                {"$set": {
+                    "processed": True,
+                    "status": "elaborato",
+                    "bonifico_transfer_id": result.get("transfer_id"),
+                    "processed_at": datetime.now(timezone.utc).isoformat(),
+                }},
+            )
+        except Exception as exc:
+            stats["errori"] += 1
+            logger.warning("Bonifico inbox non processabile (%s): %s", doc.get("id"), exc)
+            await db["documents_inbox"].update_one(
+                document_filter,
+                {"$set": {"status": "errore_processing", "processing_error": type(exc).__name__}},
+            )
+    return stats
+
+
+async def riprocessa_bonifici_pendenti(db, limit: int = 200) -> Dict[str, int]:
+    """Rilegge i PDF non associati e ritenta esclusivamente il match certo.
+
+    A giro prende i ``limit`` riletti meno di recente (``updated_at``, poi
+    ``created_at``): ordinati per sola creazione erano sempre gli stessi 200 piu'
+    vecchi, e i bonifici arrivati dopo non venivano mai riletti.
+    """
+    pendenti = await db["bonifici_transfers"].find(
+        {
+            "salario_associato": {"$ne": True},
+            "pdf_data": {"$exists": True, "$nin": [None, ""]},
+        },
+        {
+            "_id": 1,
+            "id": 1,
+            "source_file": 1,
+            "source": 1,
+            "created_at": 1,
+            "updated_at": 1,
+        },
+    ).to_list(None)
+    pendenti.sort(key=lambda t: str(t.get("updated_at") or t.get("created_at") or ""))
+    transfers = pendenti[:limit]
+    stats = {"letti": 0, "associati": 0, "non_associati": 0, "errori": 0}
+    for transfer in transfers:
+        stats["letti"] += 1
+        try:
+            transfer_filter = (
+                {"_id": transfer["_id"]}
+                if transfer.get("_id") is not None
+                else {"id": transfer.get("id")}
+            )
+            payload = await db["bonifici_transfers"].find_one(
+                transfer_filter, {"_id": 0, "pdf_data": 1}
+            ) or {}
+            content = base64.b64decode(payload.get("pdf_data") or "", validate=True)
+            result = await importa_pdf_bonifico(
+                db,
+                content,
+                transfer.get("source_file") or "bonifico.pdf",
+                source=transfer.get("source") or "riprocessamento_sicuro",
+            )
+            if result.get("associato"):
+                stats["associati"] += 1
+            else:
+                stats["non_associati"] += 1
+        except Exception as exc:
+            stats["errori"] += 1
+            logger.warning("Bonifico pendente non riprocessabile (%s): %s", transfer.get("id"), exc)
+    return stats

@@ -1,0 +1,77 @@
+# Ceraldi ERP — .gitignore
+
+# Ambiente e credenziali: non devono MAI finire nel repository
+.env
+.env.*
+*.env
+*token.json*
+*credentials.json*
+credentials.json
+*.key
+.pem
+*.pem
+.credentials
+
+# Worktree locali degli agenti Claude Code: scratch space di sessione, mai nel repository
+.claude/worktrees/
+
+# Dati reali (fatture, verbali, ricevute, foto): MAI nel repository
+uploads/
+app/uploads/
+app/static/tracciabilita/uploads/
+downloads/
+.private/
+
+# Eccezioni: .env.production di Lotti e Menu contengono solo PUBLIC_URL e
+# percorsi relativi, nessun segreto, e devono restare tracciati. Le foto
+# prodotto di Lotti sono contenuto del repository originale.
+!frontend_lotti/.env.production
+!frontend_lotti/public/uploads/
+!frontend_menu/.env.production
+
+# Dipendenze e build (il frontend si compila a ogni deploy Render)
+node_modules/
+.pnp.js
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+/build
+dist/
+frontend/dist/
+.cache/
+frontend/node_modules/.cache/
+# frontend/yarn.lock e' la fonte di verita': il package-lock generato dagli
+# strumenti automatici non entra.
+frontend/package-lock.json
+
+# Python
+__pycache__/
+*.pyc
+venv/
+.venv/
+
+# Test e log
+/coverage
+.pytest_cache/
+frontend/.pytest_cache/
+tmp/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.codex-*.log
+.codex-*.err.log
+.codex-pytest*/
+.codex-test-temp*/
+.verify-pytest*/
+.testtmp-cache*/
+
+# Archivi e sistema
+**/*.zip
+**/*.tar.gz
+*.pack
+.DS_Store
+.idea/
+.vscode/
+.claude/settings.local.json
+scripts/print_agent_config.json
+supabase/.temp/

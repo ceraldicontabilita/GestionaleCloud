@@ -1,0 +1,247 @@
+# Render Blueprint: contratto versionato del servizio di produzione.
+#
+# Stato verificato via Render API il 06/08/2026:
+# - un solo web service Python serve FastAPI e frontend/dist dallo stesso host;
+# - il frontend deve essere compilato durante ogni deploy;
+# - le variabili reali restano esclusivamente nella dashboard Render.
+#
+# Il file non modifica automaticamente un servizio gia esistente se questo non
+# e collegato a un Blueprint. Rimane comunque la fonte versionata da usare per
+# controllare e ricostruire la configurazione senza dipendere dalla dashboard.
+
+services:
+  - type: web
+    name: GestionaleCloud
+    runtime: python
+    plan: starter
+    branch: main
+    autoDeploy: true
+    # App portate pari pari, ognuna con la propria build servita dal proprio
+    # backend montato come sub-app (vedi app/<app>/embed.py):
+    # - frontend_lotti = Lotti (HACCP), build CRA, montata a /lotti;
+    # - frontend_menu  = Menu digitale, build CRA (PUBLIC_URL=/menu), a /menu;
+    # - frontend_hr    = AppDipendenti, build Vite (base /hr/), a /hr.
+    # ATTENZIONE: la dashboard Render NON recepisce da sola questo file (vedi
+    # DATA_BACKEND, 03/09/2026): il Build Command va incollato una volta in
+    # Settings del servizio. scripts/build_frontends.sh compila tutte le
+    # cartelle frontend_*/ presenti, quindi il comando non cambia piu'.
+    # Identico al Build Command impostato in dashboard (che NON recepisce
+    # render.yaml): Yarn usa il lockfile canonico versionato e `yarn build`
+    # compila il gestionale e poi, tramite scripts/build_frontends.sh --apps,
+    # tutte le cartelle frontend_*/ delle app portate pari pari.
+    buildCommand: >-
+      pip install -r backend/requirements.txt &&
+      yarn --cwd frontend install --frozen-lockfile --production=false &&
+      yarn --cwd frontend build
+    # Due interpreti Python completi duplicano la cache dell'archivio in
+    # memoria e superano il limite di RAM del piano. FastAPI resta quindi in
+    # un solo processo; i job periodici sono spenti finche' non vengono
+    # riabilitati singolarmente dopo verifica.
+    startCommand: python -m uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /api/health
+    envVars:
+      # La stessa versione usata dalla CI evita bundle Vite diversi tra
+      # GitHub e Render e rende verificabile il commit realmente pubblicato.
+      - key: NODE_VERSION
+        value: "20.20.2"
+      # rapidocr-onnxruntime 1.4.4 supporta Python < 3.13. Il pin evita che
+      # l'aggiornamento automatico del runtime Render interrompa i deploy.
+      - key: PYTHON_VERSION
+        value: "3.12.10"
+      - key: PYTHONUTF8
+        value: "1"
+      - key: FAIL_FAST_SECRETS
+        value: "true"
+      # Archivio unico: Supabase (decisione del titolare 03/09/2026, fusione
+      # delle app). Le tre SUPABASE_* restano nella dashboard Render.
+      - key: DATA_BACKEND
+        value: "supabase"
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_PUBLISHABLE_KEY
+        sync: false
+      - key: SUPABASE_RUNTIME_SECRET
+        sync: false
+      # Lettura AI delle descrizioni di fatture e listini in Lotti
+      # (servizi/lettura_articoli_ai.py, modello Haiku, una chiamata per lotto di
+      # descrizioni, mai rilette) e, opzionale, estrazione AI di documenti.
+      # Proprietario: titolare; segreto, si ruota dalla console Anthropic.
+      # Senza chiave la lettura AI resta ferma in stato «senza_chiave».
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      # Agenti AI per settore (services/agenti_proposte.py, giro ogni 30 min):
+      # leggono i documenti fermi (ERRORI della cartella unica, inbox senza
+      # categoria) e propongono tipo e dati; applica solo il titolare dal
+      # cruscotto /agenti. AGENTI_AI=false spegne il giro; il tetto e' il numero
+      # massimo di chiamate al modello al giorno (ora di Roma), la cache per
+      # impronta SHA-256 non conta. Non segreti. Proprietario: titolare.
+      - key: AGENTI_AI
+        value: "true"
+      - key: AGENTI_AI_TETTO_GIORNALIERO
+        value: "200"
+      # Classificazione propositiva per singola riga acquisto. E' separata per
+      # evitare consumo di quota AI non approvato: il codice e lo scheduler
+      # restano pronti, ma l'attivazione va concordata col titolare.
+      - key: AGENTI_AI_RIGHE_ACQUISTI
+        value: "false"
+      # Telegram, unico canale degli avvisi (fonti ferme, posta, ritenute).
+      # Proprietario: titolare. Token del bot da @BotFather (segreto, si ruota
+      # revocandolo li'), chat id della chat del titolare. Senza i due valori
+      # gli avvisi restano solo in pagina e il log dice «Telegram non configurato».
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: TELEGRAM_CHAT_ID
+        sync: false
+      # --- App Lotti (HACCP), montata a /lotti. Le variabili namespaced
+      # puntano allo stesso archivio Supabase del gruppo; il segreto JWT resta
+      # separato per limitare l'ambito dei token. Senza LOTTI_SUPABASE_URL
+      # l'avvio fallisce: non è ammesso un archivio non persistente.
+      - key: LOTTI_SUPABASE_URL
+        sync: false
+      - key: LOTTI_SUPABASE_ANON_KEY
+        sync: false
+      - key: LOTTI_DB_SECRET
+        sync: false
+      - key: LOTTI_AUTH_SECRET
+        sync: false
+      # --- App Menu, montata a /menu: tabelle menu_* nello stesso archivio,
+      # con un segreto JWT dedicato. L'identita' admin deriva dalla sessione
+      # ERP: non esiste una password Menu separata.
+      - key: MENU_SUPABASE_URL
+        sync: false
+      - key: MENU_SUPABASE_KEY
+        sync: false
+      - key: MENU_JWT_SECRET
+        sync: false
+      - key: MENU_ADMIN_USERNAME
+        sync: false
+      # --- AppDipendenti portata pari pari (app/hr, montata a /hr): DSN
+      # Postgres/Supabase (asyncpg) delle tabelle app_* dell'app originale,
+      # segreto JWT del suo login. Il PIN admin usa PIN_HASH_ADMIN dell'ERP.
+      - key: HR_SUPABASE_DB_URL
+        sync: false
+      - key: HR_JWT_SECRET
+        sync: false
+      # Alias temporaneo della stessa DSN Postgres: resta come fallback di
+      # HR_SUPABASE_DB_URL finche' la dashboard non usa soltanto il nome canonico.
+      - key: APPDIPENDENTI_DB_URL
+        sync: false
+      # --- Cartella unica «DATI SOCIETA CERALDI» (25/09/2026): DA ELABORARE /
+      # ELABORATE / ERRORI. Ogni documento passa dallo smistatore di Documenti >
+      # Import e «vedi documento» legge solo da ELABORATE
+      # (app/services/drive_cartella_unica.py). E' l'unico canale Drive: i
+      # canali per sezione (fatture, cedolini, F24, estratti...) sono smontati.
+      # Id cartella, non un segreto; vuota = giro spento. Proprietario: titolare.
+      - key: GOOGLE_DRIVE_DATI_FOLDER_ID
+        sync: false
+      - key: DRIVE_CARTELLA_UNICA_BATCH
+        value: "100"
+      # Pausa del solo import della cartella unica (la cartella resta configurata,
+      # «vedi documento» continua). Proprietario: titolare.
+      - key: DRIVE_CARTELLA_UNICA_IMPORT
+        sync: false
+      # Cartelle Drive (con sottocartelle) da importare in sola lettura, ids separati da
+      # virgola, es. il «MINISITO» dentro la cartella unica: lo smistatore non scende
+      # nelle sottocartelle e questo giro non sposta ne' cancella niente. Un giro al
+      # giorno; vuota = spento. Id cartella, non un segreto. Proprietario: titolare.
+      - key: DRIVE_IMPORT_CARTELLE_ID
+        sync: false
+      # Radice Drive della cartella GESTIONALE percorsa dal censimento doppioni
+      # (il nome viene dalla simulazione della migrazione, conclusa e tolta).
+      # Id cartella, non un segreto; vuota = censimento spento. Proprietario: titolare.
+      - key: DRIVE_SIMULAZIONE_RADICE
+        sync: false
+      # Censimento doppioni della cartella GESTIONALE (radice qui sopra):
+      # off | censisci (solo elenco) | marca (rinomina le copie
+      # «DUPLICATO DA ELIMINARE - …»; non cancella ne' sposta). Proprietario: titolare.
+      - key: DRIVE_CENSIMENTO_DOPPIONI
+        value: "off"
+      - key: DRIVE_CENSIMENTO_EDIZIONE
+        value: "1"
+      # Quarantena automatica degli F24 con lo stesso contenuto fiscale (copie
+      # dello stesso modello da PDF diversi). Reversibile. Proprietario: titolare.
+      - key: F24_QUARANTENA_DOPPIONI
+        value: "false"
+      - key: PROCESS_ROLE
+        value: "combined"
+      - key: ENABLE_SCHEDULER
+        value: "false"
+      # Nessuna migrazione, semina o riparazione dati implicita al riavvio:
+      # il database operativo resta vergine finche' il titolare non importa.
+      - key: RUN_STARTUP_DATA_REPAIRS
+        value: "false"
+      - key: RUN_STARTUP_INDEX_MIGRATIONS
+        value: "false"
+      - key: RUN_STARTUP_SEED_DATA
+        value: "false"
+      - key: GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON
+        sync: false
+      - key: CREDENTIALS_ENCRYPTION_KEY
+        sync: false
+      # PIN amministratore unico ERP/HR/Menu/Lotti (SHA-256 hex). Solo dashboard.
+      - key: PIN_HASH_ADMIN
+        sync: false
+      - key: SECRET_KEY
+        sync: false
+      # Chiave server-to-server usata esclusivamente dalla proiezione read-only
+      # delle fatture verso Lotti. Il valore resta nella dashboard Render.
+      - key: LOTTI_INTEGRATION_KEY
+        sync: false
+      - key: SUMUP_API_KEY
+        sync: false
+      - key: SUMUP_MERCHANT_CODE
+        sync: false
+      # A-Cube (fatture passive via API, app/services/acube.py). ACUBE_ENV:
+      # sandbox | production. Il segreto del webhook nasce nel database.
+      - key: ACUBE_EMAIL
+        sync: false
+      - key: ACUBE_PASSWORD
+        sync: false
+      - key: ACUBE_ENV
+        sync: false
+      # Interruttori dei soli giri automatici che leggono da SumUp e PayPal (ore 3:20 e 14:20
+      # per PayPal): «false» li ferma, le credenziali restano. Assenti = acceso. Proprietario: titolare.
+      - key: SUMUP_SYNC_ENABLED
+        sync: false
+      - key: PAYPAL_SYNC_ENABLED
+        sync: false
+      # --- Inviti recensione Colazioni B&B. Il template Meta deve avere due
+      # parametri nel corpo: nome struttura e link recensione. Proprietario:
+      # titolare; il token si ruota da Meta Business. Se assenti, nessun invio.
+      - key: COLAZIONI_PUBLIC_URL
+        value: "https://impresasemplice.online/convenzioni/"
+      - key: WHATSAPP_CLOUD_API_BASE
+        value: "https://graph.facebook.com/v23.0"
+      - key: WHATSAPP_CLOUD_PHONE_NUMBER_ID
+        sync: false
+      - key: WHATSAPP_CLOUD_ACCESS_TOKEN
+        sync: false
+      - key: WHATSAPP_REVIEW_TEMPLATE_NAME
+        value: "ceraldi_review_invite"
+      - key: WHATSAPP_REVIEW_TEMPLATE_LANGUAGE
+        value: "it"
+      # --- Banco BPM via Enable Banking (PSD2, sola lettura), modalita' ombra.
+      # Proprietario: titolare (Vincenzo Ceraldi). Spenta per default: senza
+      # ENABLE_BANKING_ENABLED=true le rotte /api/banca/enable-banking/*
+      # rispondono 503. ID e chiave sono gli stessi del servizio di prova
+      # (pannello Enable Banking); la chiave privata si ruota rigenerandola li'.
+      # La sessione della banca si salva cifrata con CREDENTIALS_ENCRYPTION_KEY.
+      # Si accende dalla dashboard Render (valore «true»); assente = spenta.
+      - key: ENABLE_BANKING_ENABLED
+        sync: false
+      - key: ENABLE_BANKING_APPLICATION_ID
+        sync: false
+      - key: ENABLE_BANKING_PRIVATE_KEY_PEM
+        sync: false
+      # Deve coincidere con il redirect URL registrato nel pannello Enable Banking.
+      - key: ENABLE_BANKING_REDIRECT_URL
+        value: "https://gestionalecloud.onrender.com/api/banca/enable-banking/callback"
+      # Finestra del giro automatico in giorni (difetto 7). ENABLE_BANKING_DAL
+      # (AAAA-MM-GG) fa rileggere la banca da quella data una volta sola, al
+      # primo avvio dopo l'impostazione; poi si puo' togliere.
+      - key: ENABLE_BANKING_GIORNI_GIRO
+        sync: false
+      - key: ENABLE_BANKING_DAL
+        sync: false
+      # Credenziali, archivio e integrazioni sono configurati nella dashboard.
+      # Non aggiungere valori sensibili al repository.

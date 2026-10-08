@@ -1,0 +1,1058 @@
+"""
+Servizio di Monitoraggio Email Automatico
+=========================================
+
+Questo servizio:
+1. Scarica nuovi documenti dalla posta ogni 10 minuti
+2. NON sovrascrive mai i dati esistenti (skip duplicati)
+3. Ricategorizza automaticamente i documenti
+4. Processa automaticamente i nuovi documenti (buste paga, estratti conto)
+5. Salva SEMPRE nell'archivio del runtime configurato
+
+IMPORTANTE:
+- I duplicati vengono SEMPRE saltati (controllo hash file)
+- I dati esistenti NON vengono MAI persi
+- Ogni operazione è atomica e sicura
+"""
+import asyncio
+import logging
+import uuid
+import base64
+from datetime import datetime, timedelta, timezone
+from typing import Dict, Any, Optional
+
+logger = logging.getLogger(__name__)
+
+# Stato del monitor
+_monitor_task: Optional[asyncio.Task] = None
+_is_running = False
+_last_sync: Optional[str] = None
+_sync_stats = {
+    "total_syncs": 0,
+    "documents_downloaded": 0,
+    "documents_processed": 0,
+    "last_error": None
+}
+
+_TIPI_EMAIL_ALIAS = {
+    "cedolino": "busta_paga",
+    "busta paga": "busta_paga",
+    "cartella": "cartella_esattoriale",
+    "avviso": "avviso_bonario",
+    "verbali": "verbale",
+    "fattura_xml": "fattura_xml",
+    "bolletta energia": "bolletta_energia",
+    "utenza energia": "bolletta_energia",
+}
+
+_TIPI_EMAIL_RILEVANTI = {
+    "fattura_xml", "fattura", "fattura_estera_pdf", "f24", "quietanza",
+    "busta_paga", "pagopa", "contributi_inps", "inps", "inail", "paypal",
+    "satispay", "cartella_esattoriale", "avviso_bonario", "verbale",
+    "dichiarazione_iva", "certificazione_unica", "estratto_conto", "bonifico",
+    "bolletta_energia",
+}
+
+
+def _normalizza_tipo_email(value: Any) -> str:
+    tipo = str(value or "").strip().lower().replace("-", "_")
+    return _TIPI_EMAIL_ALIAS.get(tipo, tipo)
+
+
+def _risolvi_tipo_documento_email(doc: Dict[str, Any], mittente: Dict[str, Any]) -> Optional[str]:
+    """La classificazione dell'allegato prevale sul profilo del mittente.
+
+    Il profilo mittente e' solo un fallback per i casi specifici gia'
+    configurati (es. fattura estera). Non trasforma allegati sconosciuti in
+    documenti generici e non forza una fattura su un F24/cedolino.
+    """
+    rilevato = _normalizza_tipo_email(
+        doc.get("tipo_documento") or doc.get("categoria") or doc.get("category")
+    )
+    fallback = _normalizza_tipo_email(mittente.get("tipo_documento"))
+    if rilevato == "fattura" and fallback in {"fattura_estera_pdf", "fattura_xml"}:
+        return fallback
+    if rilevato in _TIPI_EMAIL_RILEVANTI:
+        return rilevato
+    return fallback if fallback in _TIPI_EMAIL_RILEVANTI else None
+
+
+async def _archivia_copia_drive(db, doc: Dict[str, Any], tipo: str) -> None:
+    """Archivia in Drive senza bloccare ne' rimuovere la copia applicativa."""
+    try:
+        from app.services.email_drive_archive import archive_document_copy
+        result = await asyncio.to_thread(archive_document_copy, doc, tipo)
+    except Exception as exc:
+        logger.warning("[Gmail] Archivio Drive fallito per %s: %s", doc.get("filename"), exc)
+        result = {"status": "error", "reason": str(exc)}
+    await db["documents_inbox"].update_one(
+        {"id": doc.get("id")},
+        {"$set": {
+            "drive_archive_status": result.get("status"),
+            "drive_archive_area": result.get("area"),
+            "drive_archived_at": result.get("archived_at"),
+        }},
+    )
+
+
+async def _check_mittente(db, from_addr: str, canale: str) -> Optional[Dict]:
+    """
+    Verifica se un mittente è attendibile via pattern matching (if pattern in from_addr).
+    Restituisce il documento mittente se trovato, None altrimenti.
+    """
+    from_lower = from_addr.lower()
+    mittenti = await db["mittenti_email"].find(
+        {"canale": canale, "attivo": True}, {"_id": 0}
+    ).to_list(200)
+    for m in mittenti:
+        pattern = m.get("pattern", "").lower()
+        if pattern and pattern in from_lower:
+            return m
+    return None
+
+
+async def _build_gmail_credentials(db):
+    """Determinazione credenziali Gmail senza esporre segreti nei log."""
+    from app.services.gmail_credentials import get_gmail_environment_credentials
+    from app.utils.crypto import decrypt_credential
+
+    env = get_gmail_environment_credentials()
+    email_user = None
+    email_password = None
+    imap_host = env.host
+
+    try:
+        gmail_cfg = await db["settings"].find_one({"chiave": "gmail"}, {"_id": 0})
+        if gmail_cfg and gmail_cfg.get("gmail_app_password") and gmail_cfg.get("imap_user"):
+            email_user = gmail_cfg["imap_user"]
+            email_password = decrypt_credential(gmail_cfg["gmail_app_password"])
+            imap_host = gmail_cfg.get("imap_host", imap_host)
+    except Exception:
+        pass
+
+    if not email_user:
+        email_user = env.user
+    if not email_password:
+        email_password = env.password
+
+    return email_user, email_password, imap_host
+
+
+async def _load_allowed_gmail_patterns(db):
+    """Recupera i mittenti Gmail attivi per il controllo del flusso."""
+    mittenti_gmail = await db["mittenti_email"].find(
+        {"canale": "gmail", "attivo": True}, {"_id": 0}
+    ).to_list(200)
+    return [m["pattern"] for m in mittenti_gmail if m.get("pattern")]
+
+
+async def _queue_retry(db, execution_id: Optional[str], error: str, *, retry_after_seconds: int = 300, source: str = "gmail_daily") -> Dict[str, Any]:
+    """Accoda un retry transitorio senza duplicare il lavoro."""
+    if not execution_id:
+        return {"queued": False, "reason": "missing_execution_id"}
+    payload = {
+        "queue_id": f"retry-{execution_id}-{int(datetime.now(timezone.utc).timestamp())}",
+        "execution_id": execution_id,
+        "source": source,
+        "status": "queued",
+        "reason": "transient_error",
+        "error": str(error)[:2000],
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "scheduled_for": (datetime.now(timezone.utc) + timedelta(seconds=retry_after_seconds)).isoformat(),
+        "retry_after_seconds": retry_after_seconds,
+    }
+    await db["email_retry_queue"].insert_one(payload)
+    return payload
+
+
+async def start_email_monitor_run(db, source: str = "gmail_daily") -> Dict[str, Any]:
+    """Crea un record persistente di una singola esecuzione del monitor Gmail."""
+    execution_id = str(uuid.uuid4())
+    started_at = datetime.now(timezone.utc)
+    run = {
+        "execution_id": execution_id,
+        "source": source,
+        "status": "running",
+        "started_at": started_at.isoformat(),
+        "ended_at": None,
+        "counters": {},
+        "last_error": None,
+        "credential_status": {
+            "configured": False,
+            "user_set": False,
+            "password_present": False,
+            "imap_host": None,
+        },
+    }
+    try:
+        email_user, email_password, imap_host = await _build_gmail_credentials(db)
+        run["credential_status"] = {
+            "configured": bool(email_user and email_password),
+            "user_set": bool(email_user),
+            "password_present": bool(email_password),
+            "imap_host": imap_host,
+        }
+    except Exception:
+        pass
+    await db["email_monitor_runs"].insert_one(run)
+    return run
+
+
+async def finalize_email_monitor_run(db, execution_id: str, *, status: str, counters: Optional[Dict[str, Any]] = None, error: Optional[str] = None) -> Dict[str, Any]:
+    """Aggiorna la run con stato finale e contatori."""
+    doc = await db["email_monitor_runs"].find_one({"execution_id": execution_id}, {"_id": 0})
+    if not doc:
+        return {"execution_id": execution_id, "status": status, "ended_at": datetime.now(timezone.utc).isoformat()}
+    patch = {
+        "status": status,
+        "ended_at": datetime.now(timezone.utc).isoformat(),
+        "counters": counters or {},
+        "last_error": error,
+    }
+    if status == "completed":
+        patch["last_successful_run_at"] = patch["ended_at"]
+    await db["email_monitor_runs"].update_one({"execution_id": execution_id}, {"$set": patch})
+    return {**doc, **patch}
+
+
+async def get_last_email_monitor_status(db, source: str = "gmail_daily") -> Dict[str, Any]:
+    """Recupera l'ultima esecuzione riuscita e lo stato dell'ultima run."""
+    last_run = await db["email_monitor_runs"].find_one({"source": source}, {"_id": 0}, sort=[("started_at", -1)])
+    if not last_run:
+        return {"source": source, "status": "never_run", "last_successful_run_at": None, "last_error": None}
+    last_success = await db["email_monitor_runs"].find_one({"source": source, "status": "completed"}, {"_id": 0}, sort=[("started_at", -1)])
+    return {
+        "source": source,
+        "status": last_run.get("status"),
+        "last_successful_run_at": last_success.get("ended_at") if last_success else None,
+        "last_error": last_run.get("last_error"),
+        "last_execution_id": last_run.get("execution_id"),
+    }
+
+
+async def _salva_documento_generico(db, from_addr: str, subject: str, tipo: str, attachments: list, email_date: str = None):
+    """
+    Salva in documents_inbox i documenti non-XML (pagopa, inps, inail, paypal, cartella_esattoriale, cedolino).
+    """
+    import uuid, hashlib
+    from datetime import datetime, timezone
+    for att in attachments:
+        content = att.get("content") or b""
+        filename = att.get("filename", "allegato")
+        content_hash = hashlib.md5(content).hexdigest() if content else None
+
+        if content_hash:
+            existing = await db["documents_inbox"].find_one({"file_hash": content_hash}, {"_id": 0, "id": 1})
+            if existing:
+                continue
+
+        doc = {
+            "id":           str(uuid.uuid4()),
+            "filename":     filename,
+            "file_hash":    content_hash,
+            "tipo_documento": tipo,
+            "email_from":   from_addr,
+            "email_subject": subject,
+            "email_date":   email_date,
+            "fonte":        "gmail_monitor",
+            "stato":        "importato",
+            "categoria":    tipo,
+            "created_at":   datetime.now(timezone.utc).isoformat(),
+        }
+        if content:
+            import base64
+            doc["pdf_data"] = base64.b64encode(content).decode()
+
+        await db["documents_inbox"].insert_one(doc)
+        logger.info(f"[Gmail] Salvato documento {tipo}: {filename} da {from_addr}")
+
+        # --- EVENT BUS: propaga evento documento acquisito ---
+        try:
+            from app.services.event_bus import propagate_event, EventTypes
+            await propagate_event(EventTypes.DOCUMENTO_ACQUISITO, {
+                "documento_id": doc.get("id") or doc.get("_id"),
+                "filename": filename,
+                "origine": "gmail",
+                "mime_type": "application/pdf",
+                "hash_file": doc.get("file_hash") or doc.get("hash_file"),
+                "mittente": from_addr,
+                "category": tipo,
+            }, db, source_module="email_monitor_service")
+        except Exception:
+            logger.exception("Errore propagazione evento documento.acquisito (monitor)")
+
+
+async def sync_email_documents(db, giorni: int = 30, execution_id: Optional[str] = None) -> Dict[str, Any]:
+    """
+    Scarica documenti dalla Gmail con routing intelligente per tipo_documento.
+    La chiamata è idempotente e produce un record persistente di esecuzione
+    e una coda di retry per errori temporanei.
+    """
+
+    if execution_id is None:
+        execution = await start_email_monitor_run(db, source="gmail_daily")
+        execution_id = execution["execution_id"]
+
+    cred_result = _build_gmail_credentials(db)
+    if asyncio.iscoroutine(cred_result):
+        email_user, email_password, imap_host = await cred_result
+    else:
+        email_user, email_password, imap_host = cred_result
+    credential_status = {
+        "configured": bool(email_user and email_password),
+        "user_set": bool(email_user),
+        "password_present": bool(email_password),
+        "imap_host": imap_host,
+    }
+
+    if not email_user or not email_password:
+        await finalize_email_monitor_run(
+            db,
+            execution_id,
+            status="failed",
+            counters={"new_documents": 0, "xml_processed": 0},
+            error="Credenziali Gmail non configurate",
+        )
+        return {"success": False, "status": "missing_credentials", "execution_id": execution_id, "credential_status": credential_status, "error": "Credenziali Gmail non configurate"}
+
+    patterns_result = _load_allowed_gmail_patterns(db)
+    if asyncio.iscoroutine(patterns_result):
+        allowed_patterns = await patterns_result
+    else:
+        allowed_patterns = patterns_result
+    if not allowed_patterns:
+        await finalize_email_monitor_run(
+            db,
+            execution_id,
+            status="failed",
+            counters={"new_documents": 0, "xml_processed": 0},
+            error="Nessun mittente Gmail configurato",
+        )
+        return {"success": False, "status": "missing_sender_rules", "execution_id": execution_id, "error": "Nessun mittente Gmail configurato"}
+
+    logger.info(f"[Gmail] Sync con {len(allowed_patterns)} pattern mittenti")
+
+    try:
+        result = await _download_email_batch(
+            db=db,
+            email_user=email_user,
+            email_password=email_password,
+            imap_host=imap_host,
+            since_days=giorni,
+            max_emails=200,
+            allowed_patterns=allowed_patterns,
+        )
+    except TimeoutError as exc:
+        logger.error(f"[Gmail] Errore temporaneo download: {exc}")
+        await _queue_retry(db, execution_id, str(exc), retry_after_seconds=300)
+        await finalize_email_monitor_run(db, execution_id, status="failed", counters={"new_documents": 0, "xml_processed": 0}, error=str(exc))
+        return {"success": False, "status": "transient_error", "execution_id": execution_id, "error": str(exc), "retry_after_seconds": 300}
+    except Exception as exc:
+        logger.error(f"[Gmail] Errore download: {exc}")
+        await _queue_retry(db, execution_id, str(exc), retry_after_seconds=600)
+        await finalize_email_monitor_run(db, execution_id, status="failed", counters={"new_documents": 0, "xml_processed": 0}, error=str(exc))
+        return {"success": False, "status": "transient_error", "execution_id": execution_id, "error": str(exc), "retry_after_seconds": 600}
+
+    stats = result.get("stats", {})
+    new_docs = stats.get("new_documents", 0)
+    xml_processed = 0
+
+    # ── Routing documenti per tipo ───────────────────────────────────────────
+    # Recupera documenti non ancora processati dal download appena avvenuto
+    unprocessed = await db["documents_inbox"].find(
+        {"xml_processed": {"$ne": True}, "fonte": {"$in": ["gmail_monitor", "email_sync", None]}},
+        {"_id": 0, "id": 1, "filename": 1, "file_path": 1, "content": 1,
+         "pdf_data": 1, "email_from": 1, "email_subject": 1, "tipo_documento": 1,
+         "categoria": 1, "category": 1, "category_label": 1, "file_hash": 1}
+    ).to_list(200)
+
+    for doc in unprocessed:
+        from_addr = doc.get("email_from", "")
+        mittente = await _check_mittente(db, from_addr, "gmail")
+
+        if not mittente:
+            # Mittente non riconosciuto → skip silenzioso
+            await db["documents_inbox"].update_one(
+                {"id": doc["id"]},
+                {"$set": {"xml_processed": True, "xml_result": {"skipped": True, "reason": "mittente_non_riconosciuto"}}}
+            )
+            continue
+
+        tipo = _risolvi_tipo_documento_email(doc, mittente)
+        if not tipo:
+            await db["documents_inbox"].update_one(
+                {"id": doc["id"]},
+                {"$set": {
+                    "xml_processed": True,
+                    "stato": "non_rilevante",
+                    "xml_result": {"skipped": True, "reason": "allegato_non_rilevante"},
+                }},
+            )
+            continue
+
+        from app.constants.tipi_documento import set_tassonomia_documento
+        tassonomia = set_tassonomia_documento(
+            {}, tipo, label=doc.get("category_label") or tipo.replace("_", " ").title()
+        )
+        await db["documents_inbox"].update_one(
+            {"id": doc["id"]}, {"$set": tassonomia}
+        )
+        doc.update(tassonomia)
+        await _archivia_copia_drive(db, doc, tipo)
+
+        if tipo == "fattura_xml":
+            # ── Processo XML FatturaPA con la PIPELINE UNICA condivisa con
+            # Drive/upload manuale (process_xml_bytes): stesso schema campi
+            # sull'invoice, stesso rispetto del metodo fornitore, stessa
+            # registrazione in prima nota. Prima questa via usava un processore
+            # legacy che non creava MAI un documento in 'invoices' (solo un
+            # inserimento diretto in prima_nota_banca per i soli pagamenti
+            # bancari): le fatture arrivate da email restavano invisibili in
+            # /fatture e i fornitori risultavano "mai fatturato".
+            fname = doc.get("filename", "")
+            try:
+                from app.services.xml_invoice_processor import is_fatturapa_filename, decode_content
+                from app.routers.invoices.fatture_upload import process_xml_bytes
+                from app.services.email_document_downloader import FILE_TECNICI_PEC_RE
+                if FILE_TECNICI_PEC_RE.search((fname or "").strip()):
+                    # daticert.xml / *_MT_*.xml: trasporto PEC/SDI, non è un
+                    # documento — via dall'archivio (regola 18/07/2026)
+                    await db["documents_inbox"].delete_one({"id": doc["id"]})
+                    continue
+                if not is_fatturapa_filename(fname):
+                    await db["documents_inbox"].update_one(
+                        {"id": doc["id"]},
+                        {"$set": {"xml_processed": True, "xml_result": {"skipped": True, "reason": "non_fatturapa"}}}
+                    )
+                    continue
+
+                content = doc.get("content")
+                if not content and doc.get("file_path"):
+                    import pathlib
+                    fp = pathlib.Path(doc["file_path"])
+                    if fp.exists():
+                        content = fp.read_bytes()
+                if not content and doc.get("pdf_data"):
+                    content = decode_content(doc["pdf_data"])
+                if content:
+                    if isinstance(content, str):
+                        content = content.encode("utf-8")
+                    res = await process_xml_bytes(db, content, fname, source="email_gmail")
+                    if res.get("status") == "imported":
+                        xml_processed += 1
+                    if res.get("status") in ("imported", "duplicate", "archiviata", "fattura_emessa"):
+                        # la fattura vive in `invoices`: il file SDI grezzo
+                        # non deve comparire tra i documenti scaricati
+                        await db["documents_inbox"].delete_one({"id": doc["id"]})
+                    else:
+                        await db["documents_inbox"].update_one(
+                            {"id": doc["id"]},
+                            {"$set": {"xml_processed": True, "xml_result": res, "tipo_documento": "fattura_xml"}}
+                        )
+            except Exception as ex:
+                logger.debug(f"[Gmail] Errore XML {fname}: {ex}")
+
+        elif tipo == "bolletta_energia" and doc.get("pdf_data"):
+            try:
+                from app.services.enel_bolletta_parser import parse_bolletta_enel, salva_consumi_enel
+                parsed = parse_bolletta_enel(doc["pdf_data"])
+                aggiornati = await salva_consumi_enel(
+                    db, parsed, doc.get("file_hash") or "", doc.get("id") or "",
+                )
+                esito = {
+                    "routed": True, "tipo": tipo, "periodi_aggiornati": aggiornati,
+                    "anno": parsed.get("anno"), "annuale": parsed.get("annuale"),
+                }
+            except Exception as ex:
+                logger.warning("[Gmail] Errore lettura bolletta energia %s: %s", doc.get("filename"), ex)
+                esito = {"routed": True, "tipo": tipo, "errore_parser": str(ex)}
+            await db["documents_inbox"].update_one(
+                {"id": doc["id"]},
+                {"$set": {
+                    "xml_processed": True,
+                    **set_tassonomia_documento({}, tipo),
+                    "mittente_pattern": mittente.get("pattern"),
+                    "xml_result": esito,
+                }},
+            )
+
+        elif tipo == "fattura_estera_pdf" and doc.get("pdf_data"):
+            # ── Fattura ESTERA (PDF, mai XML: lo SDI è solo italiano) ──────
+            # Estrazione AI + import con la stessa pipeline condivisa delle
+            # fatture XML (import_parsed_invoice): se l'estrazione fallisce
+            # o non legge dati sufficienti, il PDF resta comunque archiviato
+            # come prima (nessuna regressione sul comportamento esistente).
+            fname = doc.get("filename", "")
+            try:
+                from app.routers.invoices.fatture_upload import process_fattura_estera_pdf
+                res = await process_fattura_estera_pdf(
+                    db, doc["pdf_data"], fname, source="email_gmail_estera",
+                    documento_inbox_id=doc["id"],
+                )
+            except Exception as ex:
+                logger.warning(f"[Gmail] Errore fattura estera {fname}: {ex}")
+                res = {"status": "extraction_error", "error": str(ex)}
+
+            if res.get("status") == "imported":
+                xml_processed += 1
+            await db["documents_inbox"].update_one(
+                {"id": doc["id"]},
+                {"$set": {
+                    "xml_processed": True,
+                    **set_tassonomia_documento({}, tipo),
+                    "mittente_pattern": mittente.get("pattern"),
+                    "xml_result": {"routed": True, "tipo": tipo, "estrazione": res}
+                }}
+            )
+            logger.info(f"[Gmail] Fattura estera {res.get('status')}: {fname} da {from_addr}")
+
+        else:
+            # ── cedolino / pagopa / inps / inail / paypal / cartella ──────────
+            await db["documents_inbox"].update_one(
+                {"id": doc["id"]},
+                {"$set": {
+                    "xml_processed": True,
+                    **set_tassonomia_documento({}, tipo),
+                    "mittente_pattern": mittente.get("pattern"),
+                    "xml_result": {"routed": True, "tipo": tipo}
+                }}
+            )
+            logger.info(f"[Gmail] Documento {tipo}: {doc.get('filename','?')} da {from_addr}")
+
+    logger.info(f"[Gmail] Sync OK: {new_docs} nuovi, {xml_processed} XML processati")
+    counters = {
+        "new_documents": new_docs,
+        "duplicates_skipped": stats.get("duplicates_skipped", 0),
+        "xml_processed": xml_processed,
+    }
+    await finalize_email_monitor_run(
+        db,
+        execution_id,
+        status="completed",
+        counters=counters,
+        error=None,
+    )
+    return {
+        "success": True,
+        "status": "completed",
+        "execution_id": execution_id,
+        "new_documents": new_docs,
+        "duplicates_skipped": stats.get("duplicates_skipped", 0),
+        "xml_processed": xml_processed,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "credential_status": credential_status,
+    }
+
+
+async def _download_email_batch(db, email_user: str, email_password: str, imap_host: str, since_days: int, max_emails: int, allowed_patterns: list):
+    """Wrapper per il download reale delle email: permette test e retry isolati."""
+    from app.services.email_document_downloader import download_documents_from_email
+    return await download_documents_from_email(
+        db=db,
+        email_user=email_user,
+        email_password=email_password,
+        since_days=since_days,
+        max_emails=max_emails,
+        allowed_senders=allowed_patterns,
+    )
+
+
+async def allinea_status_documenti_processati(db) -> int:
+    """Allinea il badge operativo con i flag di processamento effettivi.
+
+    È idempotente e può essere richiamata sia dalla pipeline completa sia dal
+    job email orario. In precedenza viveva soltanto dentro
+    ``processa_nuovi_documenti``, che il job attivo non eseguiva.
+    """
+    aligner = getattr(db, "align_processed_document_status", None)
+    if callable(aligner):
+        return int(await aligner())
+
+    result = await db["documents_inbox"].update_many(
+        {"$or": [{"processed": True}, {"xml_processed": True}],
+         "status": {"$in": ["nuovo", "da_processare", None]}},
+        {"$set": {"status": "processato"}},
+    )
+    return int(getattr(result, "modified_count", 0) or 0)
+
+
+async def processa_nuovi_documenti(db) -> Dict[str, Any]:
+    """
+    Processa automaticamente i documenti non ancora elaborati.
+
+    FLUSSO COMPLETO CEDOLINI:
+    1. Parsing PDF
+    2. Crea/aggiorna anagrafica dipendente
+    3. Salva in riepilogo_cedolini
+    4. Crea movimento prima_nota_salari
+    5. Riconcilia automaticamente con estratto conto
+    """
+    results = {
+        "buste_paga": 0,
+        "anagrafiche_create": 0,
+        "prima_nota_create": 0,
+        "riconciliati": 0,
+        "estratti_nexi": 0,
+        "estratti_bnl": 0,
+        "errori": []
+    }
+
+    # Auto-riparazione (bug segnalato 18/07/2026): la pipeline marcava
+    # `processed: True` ma non toccava mai `status`, che è il campo letto
+    # dal badge in "Tutti i Documenti" — i documenti da Drive restavano
+    # "NUOVO" per sempre pur essendo già stati esaminati.
+    try:
+        results["status_documenti_allineati"] = await allinea_status_documenti_processati(db)
+    except Exception as e:
+        logger.debug(f"Allineamento status documenti processati: {e}")
+
+    # 1. Processa buste paga con FLUSSO COMPLETO (Drive/Supabase)
+    try:
+        from app.services.cedolini_manager import processa_tutti_cedolini_pdf
+
+        docs = await db["documents_inbox"].find(
+            {
+                "category": "busta_paga",
+                "processed": {"$ne": True},
+                "status": {"$nin": ["errore_parser"]},
+            },
+            {"_id": 0}
+        ).to_list(100)
+
+        for doc in docs:
+            pdf_data = doc.get("pdf_data")
+            filename = doc.get("filename", "")
+
+            # Gli originali Drive non vengono duplicati nel JSONB. Si leggono
+            # per ID soltanto durante il parsing e restano in memoria.
+            if not pdf_data and doc.get("drive_file_id"):
+                from app.services.drive_download import scarica_originale
+                drive_content = await scarica_originale(str(doc["drive_file_id"]))
+                if drive_content:
+                    pdf_data = base64.b64encode(drive_content).decode("ascii")
+
+            if not pdf_data:
+                continue
+
+            try:
+                # Usa il nuovo manager completo con architettura Drive/Supabase
+                res = await processa_tutti_cedolini_pdf(
+                    db=db,
+                    pdf_data=pdf_data,
+                    filename=filename,
+                    source_path=doc.get("source_path") or filename,
+                    source_container=doc.get("source_container") or "",
+                    drive_file_id=doc.get("drive_file_id"),
+                    source_file_hash=doc.get("file_hash"),
+                    fonte="posta",
+                )
+
+                # Letto e' anche un foglio presenze, uno storico fuori periodo o
+                # una busta col netto vuoto (solo in HR): non sono errori.
+                letto = (
+                    res.get("cedolini_processati", 0) > 0
+                    or res.get("buste_senza_netto", 0) > 0
+                    or res.get("esito") in ("presenze", "fuori_periodo", "non_cedolino")
+                )
+                if res.get("success") and letto:
+                    results["buste_paga"] += res.get("cedolini_processati", 0)
+                    results["anagrafiche_create"] += res.get("anagrafiche_create", 0)
+                    results["prima_nota_create"] += res.get("prima_nota_create", 0)
+                    results["riconciliati"] += res.get("riconciliati", 0)
+
+                    # Marca come processato (anche `status`: è il campo del badge)
+                    await db["documents_inbox"].update_one(
+                        {"id": doc["id"]},
+                        {"$set": {
+                            "processed": True,
+                            "status": "processato",
+                            "processed_at": datetime.now(timezone.utc).isoformat(),
+                            "cedolini_estratti": res.get("cedolini_processati", 0),
+                            "esito_motore_cedolini": res.get("esito"),
+                            "parser_errors": res.get("errori", []),
+                        }}
+                    )
+                else:
+                    parser_errors = res.get("errori", []) or ["Nessun cedolino riconosciuto"]
+                    for err in parser_errors:
+                        results["errori"].append(f"{filename}: {err}")
+                    await db["documents_inbox"].update_one(
+                        {"id": doc["id"]},
+                        {"$set": {
+                            "processed": False,
+                            "status": "errore_parser",
+                            "parser_errors": parser_errors,
+                            "parser_checked_at": datetime.now(timezone.utc).isoformat(),
+                        }},
+                    )
+
+            except Exception as e:
+                results["errori"].append(f"Busta paga {filename}: {e}")
+                await db["documents_inbox"].update_one(
+                    {"id": doc["id"]},
+                    {"$set": {
+                        "processed": False,
+                        "status": "errore_parser",
+                        "parser_errors": [str(e)],
+                        "parser_checked_at": datetime.now(timezone.utc).isoformat(),
+                    }},
+                )
+
+    except Exception as e:
+        results["errori"].append(f"Errore buste paga: {e}")
+
+    # 2. Processa estratti conto Nexi (Drive/Supabase)
+    try:
+        from app.parsers.estratto_conto_nexi_parser import parse_estratto_conto_nexi
+        import uuid
+        import base64
+
+        docs = await db["documents_inbox"].find(
+            {
+                "category": "estratto_conto",
+                "processed": {"$ne": True},
+                "filename": {"$regex": "Estratto_conto|Nexi", "$options": "i"},
+                "pdf_data": {"$exists": True, "$nin": [None, ""]}
+            },
+            {"_id": 0}
+        ).to_list(100)
+
+        for doc in docs:
+            pdf_data = doc.get("pdf_data")
+            if not pdf_data:
+                continue
+
+            # Salta se è BNL
+            if "bnl" in doc.get("filename", "").lower():
+                continue
+
+            try:
+                pdf_content = base64.b64decode(pdf_data)
+                result = parse_estratto_conto_nexi(pdf_content)
+
+                if result.get("success"):
+                    transactions = result.get("transactions", [])
+                    estratto_id = str(uuid.uuid4())
+
+                    # Salva estratto
+                    estratto_doc = {
+                        "id": estratto_id,
+                        "filename": doc.get("filename"),
+                        "totale_transazioni": len(transactions),
+                        "import_date": datetime.now(timezone.utc).isoformat()
+                    }
+                    await db["estratto_conto_nexi"].insert_one(estratto_doc.copy())
+
+                    # Salva transazioni
+                    for idx, t in enumerate(transactions):
+                        trans_doc = {
+                            "id": f"{estratto_id}_{idx}",
+                            "estratto_id": estratto_id,
+                            "data": t.get("data"),
+                            "descrizione": t.get("descrizione", ""),
+                            "importo": t.get("importo", 0),
+                            "banca": "Nexi",
+                            "created_at": datetime.now(timezone.utc).isoformat()
+                        }
+                        await db["estratto_conto_movimenti"].insert_one(trans_doc.copy())
+
+                    results["estratti_nexi"] += 1
+
+                    await db["documents_inbox"].update_one(
+                        {"id": doc["id"]},
+                        {"$set": {"processed": True, "processed_at": datetime.now(timezone.utc).isoformat()}}
+                    )
+            except Exception as e:
+                results["errori"].append(f"Nexi {doc.get('filename')}: {e}")
+
+    except Exception as e:
+        results["errori"].append(f"Errore Nexi: {e}")
+
+    # 3. Processa estratti conto BNL (Drive/Supabase)
+    try:
+        from app.parsers.estratto_conto_bnl_parser import parse_estratto_conto_bnl
+        import uuid
+        import base64
+
+        docs = await db["documents_inbox"].find(
+            {
+                "category": "estratto_conto",
+                "processed": {"$ne": True},
+                "filename": {"$regex": "BNL", "$options": "i"},
+                "pdf_data": {"$exists": True, "$nin": [None, ""]}
+            },
+            {"_id": 0}
+        ).to_list(100)
+
+        for doc in docs:
+            pdf_data = doc.get("pdf_data")
+            if not pdf_data:
+                continue
+
+            try:
+                pdf_content = base64.b64decode(pdf_data)
+                result = parse_estratto_conto_bnl(pdf_content)
+
+                if result.get("success"):
+                    transactions = result.get("transazioni", [])
+                    estratto_id = str(uuid.uuid4())
+
+                    # Salva estratto
+                    estratto_bnl_doc = {
+                        "id": estratto_id,
+                        "filename": doc.get("filename"),
+                        "tipo": result.get("tipo_documento"),
+                        "totale_transazioni": len(transactions),
+                        "metadata": result.get("metadata", {}),
+                        "import_date": datetime.now(timezone.utc).isoformat()
+                    }
+                    await db["estratto_conto_bnl"].insert_one(estratto_bnl_doc.copy())
+
+                    # Salva transazioni
+                    for idx, t in enumerate(transactions):
+                        trans_bnl_doc = {
+                            "id": f"{estratto_id}_{idx}",
+                            "estratto_id": estratto_id,
+                            "data": t.get("data_contabile", t.get("data")),
+                            "descrizione": t.get("descrizione", ""),
+                            "importo": t.get("importo", 0),
+                            "banca": "BNL",
+                            "created_at": datetime.now(timezone.utc).isoformat()
+                        }
+                        await db["estratto_conto_movimenti"].insert_one(trans_bnl_doc.copy())
+
+                    results["estratti_bnl"] += 1
+
+                    await db["documents_inbox"].update_one(
+                        {"id": doc["id"]},
+                        {"$set": {"processed": True, "processed_at": datetime.now(timezone.utc).isoformat()}}
+                    )
+            except Exception as e:
+                results["errori"].append(f"BNL {doc.get('filename')}: {e}")
+
+    except Exception as e:
+        results["errori"].append(f"Errore BNL: {e}")
+
+    total = results["buste_paga"] + results["estratti_nexi"] + results["estratti_bnl"]
+    if total > 0:
+        logger.info(f"📄 Processati {total} documenti (BP:{results['buste_paga']}, Nexi:{results['estratti_nexi']}, BNL:{results['estratti_bnl']})")
+
+    # Controllo addebiti Nexi vs statement carta (richiesta utente 18/07/2026):
+    # ogni volta che arriva posta si ricontrolla che ogni addebito mensile
+    # Nexi in banca abbia il relativo statement carta, alert se manca/non quadra.
+    try:
+        from app.services.nexi_carta import verifica_addebiti_nexi
+        results["nexi_verifica"] = await verifica_addebiti_nexi(db)
+    except Exception as e:
+        results["errori"].append(f"Verifica Nexi: {e}")
+
+    return results
+
+
+async def run_full_sync(db) -> Dict[str, Any]:
+    """
+    Esegue un ciclo completo di sincronizzazione:
+    1. Scarica nuovi documenti dalla posta (ultimo 1 giorno)
+    2. Scarica F24 automatici (se configurati)
+    3. Ricategorizza documenti
+    4. Processa nuovi documenti
+
+    IMPORTANTE: I duplicati vengono SEMPRE saltati (controllo hash file)
+    """
+    global _last_sync
+
+    results = {
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "email_sync": None,
+        "f24_sync": None,
+        "processamento": None,
+    }
+
+    try:
+        # 1. Scarica email documenti (ultimo 1 giorno - i duplicati vengono saltati)
+        results["email_sync"] = await sync_email_documents(db, giorni=1)
+
+        # 2. Scarica F24 automatici (se auto_scan_attivo)
+        try:
+            settings = await db["f24_email_settings"].find_one({"tipo": "f24_settings"})
+            if settings and settings.get("auto_scan_attivo", False):
+                giorni = settings.get("giorni_indietro", 7)
+                from app.routers.f24.email_f24 import scarica_e_processa
+                f24_result = await scarica_e_processa(giorni=giorni)
+                results["f24_sync"] = f24_result
+
+                # Log della scansione automatica
+                await db["f24_scan_log"].insert_one({
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                    "tipo": "automatica",
+                    "risultato": f24_result,
+                    "success": f24_result.get("success", False)
+                })
+
+                f24_inseriti = f24_result.get("processamento", {}).get("f24_inseriti", 0)
+                if f24_inseriti > 0:
+                    logger.info(f"📄 F24 sync automatico: {f24_inseriti} nuovi F24 inseriti")
+        except Exception as e:
+            logger.warning(f"F24 sync automatico non eseguito: {e}")
+            results["f24_sync"] = {"success": False, "error": str(e)}
+
+        # 4. Processa i documenti gia' classificati dal contenuto.
+        results["processamento"] = await processa_nuovi_documenti(db)
+
+        # Step 7 (I): Alert fatture scadute
+        try:
+            from datetime import date as _date
+            oggi_str = _date.today().isoformat()
+            scadute = await db["scadenziario_fornitori"].count_documents({
+                "pagato": {"$ne": True}, "data_scadenza": {"$lt": oggi_str}
+            })
+            if scadute > 0:
+                await db["scadenziario_fornitori"].update_many(
+                    {"pagato": {"$ne": True}, "data_scadenza": {"$lt": oggi_str}},
+                    {"$set": {"stato": "scaduta", "urgente": True}}
+                )
+                results["fatture_scadute"] = scadute
+                logger.warning(f"⚠️ {scadute} fatture scadute non pagate")
+        except Exception as e:
+            logger.error(f"Errore controllo scadenze: {e}")
+
+        # Step 8 (I): Riconcilia POS Nexi con accrediti bancari (±3 giorni, ±1€)
+        try:
+            from datetime import date as _date2, timedelta, datetime as _dt
+            pos_pendenti = await db["prima_nota_banca"].find({
+                "source": "corrispettivo_pos",
+                "riconciliato": {"$ne": True},
+                "data": {"$gte": (_date2.today() - timedelta(days=7)).isoformat()}
+            }, {"_id": 0}).to_list(100)
+            pos_ric = 0
+            for pos in pos_pendenti:
+                importo = float(pos.get("importo", 0))
+                data_pos = pos.get("data", "")
+                if not importo or not data_pos:
+                    continue
+                data_base = _dt.strptime(data_pos, "%Y-%m-%d")
+                data_min = (data_base - timedelta(days=1)).strftime("%Y-%m-%d")
+                data_max = (data_base + timedelta(days=4)).strftime("%Y-%m-%d")
+                accredito = await db["estratto_conto_movimenti"].find_one({
+                    "data": {"$gte": data_min, "$lte": data_max},
+                    "importo": {"$gte": importo - 1, "$lte": importo + 1},
+                    "riconciliato": {"$ne": True},
+                    "descrizione": {"$regex": "NEXI|POS|PAGAMENTI ELETTRONICI", "$options": "i"}
+                })
+                if accredito:
+                    await db["prima_nota_banca"].update_one(
+                        {"id": pos["id"]},
+                        {"$set": {"riconciliato": True,
+                                  "data_riconciliazione": _date2.today().isoformat(),
+                                  "movimento_estratto_conto_id": str(accredito.get("id", ""))}}
+                    )
+                    await db["estratto_conto_movimenti"].update_one(
+                        {"_id": accredito["_id"]},
+                        {"$set": {"riconciliato": True, "riconciliato_con": "pos_nexi",
+                                  "prima_nota_id": pos["id"]}}
+                    )
+                    pos_ric += 1
+            if pos_ric > 0:
+                results["pos_riconciliati"] = pos_ric
+                logger.info(f"📱 POS riconciliati automaticamente: {pos_ric}")
+        except Exception as e:
+            logger.error(f"Errore riconciliazione POS: {e}")
+
+        _last_sync = results["timestamp"]
+        _sync_stats["total_syncs"] += 1
+        _sync_stats["documents_downloaded"] += results["email_sync"].get("new_documents", 0)
+        _sync_stats["documents_processed"] += (
+            results["processamento"].get("buste_paga", 0) +
+            results["processamento"].get("estratti_nexi", 0) +
+            results["processamento"].get("estratti_bnl", 0)
+        )
+
+        f24_new = results.get("f24_sync", {}).get("processamento", {}).get("f24_inseriti", 0) if results.get("f24_sync") else 0
+        logger.info(f"✅ Sync completo - Doc: {results['email_sync'].get('new_documents', 0)}, F24: {f24_new}, Processati: {_sync_stats['documents_processed']}")
+
+        # Passo finale: esegui agenti AI
+        try:
+            from app.agents.orchestrator import run_agenti
+            await run_agenti(db)
+        except Exception as e:
+            logger.error(f"Errore agenti AI: {e}")
+
+        # 7. NOTIFICA TELEGRAM se ci sono novità
+        try:
+            from app.services.telegram_notifications import notifica_sync_completato
+            nuovi_doc = results["email_sync"].get("new_documents", 0)
+            if nuovi_doc > 0 or f24_new > 0:
+                # Prepara stats per notifica
+                notifica_stats = {
+                    "email_sync": results["email_sync"],
+                    "f24_sync": results.get("f24_sync", {})
+                }
+                await notifica_sync_completato(notifica_stats)
+        except Exception as e:
+            logger.debug(f"Notifica Telegram non inviata: {e}")
+
+    except Exception as e:
+        logger.error(f"❌ Errore sync: {e}")
+        _sync_stats["last_error"] = str(e)
+        results["error"] = str(e)
+
+    return results
+
+
+async def monitor_loop(db, interval_seconds: int = 600):
+    """
+    Loop di monitoraggio che esegue sync ogni N secondi (default 10 minuti).
+    """
+    global _is_running
+
+    logger.info(f"🚀 Avvio monitor email (intervallo: {interval_seconds}s)")
+    _is_running = True
+
+    while _is_running:
+        try:
+            await run_full_sync(db)
+        except Exception as e:
+            logger.error(f"Errore nel monitor loop: {e}")
+
+        # Attendi prima del prossimo ciclo
+        await asyncio.sleep(interval_seconds)
+
+
+def start_monitor(db, interval_seconds: int = 3600):
+    """
+    Avvia il monitor in background.
+    """
+    global _monitor_task
+
+    if _monitor_task and not _monitor_task.done():
+        logger.warning("Monitor già in esecuzione")
+        return False
+
+    _monitor_task = asyncio.create_task(monitor_loop(db, interval_seconds))
+    return True
+
+
+def stop_monitor():
+    """
+    Ferma il monitor.
+    """
+    global _is_running, _monitor_task
+
+    _is_running = False
+    if _monitor_task:
+        _monitor_task.cancel()
+        _monitor_task = None
+
+    logger.info("🛑 Monitor email fermato")
+    return True
+
+
+def get_monitor_status() -> Dict[str, Any]:
+    """
+    Ritorna lo stato corrente del monitor.
+    """
+    return {
+        "is_running": _is_running,
+        "last_sync": _last_sync,
+        "stats": _sync_stats
+    }

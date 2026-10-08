@@ -1,0 +1,31 @@
+import axios from 'axios';
+import { esciDalGruppo } from '../../../frontend_shared/SessioneGruppo';
+
+// Sessione unica del gruppo: l'amministratore entra nel Gestionale una volta
+// (PIN piu' MFA) e da li' apre il Menu senza un secondo PIN. Il backend legge
+// il cookie del Gestionale e restituisce un token del Menu, mai quello
+// dell'ERP (`app/services/group_session.py`).
+import { MENU_BACKEND_URL as BACKEND_URL } from '@/lib/backend';
+
+export const DESTINAZIONE_ADMIN = '/menu/admin';
+
+// 'ok' | 'nessuna_sessione' | 'non_disponibile'
+export async function entraDalGestionale() {
+  try {
+    const r = await axios.get(`${BACKEND_URL}/api/qrcode/session`, { withCredentials: true, timeout: 15000 });
+    if (!r.data?.success || !r.data?.token) return 'nessuna_sessione';
+    localStorage.setItem('admin_token', r.data.token);
+    return 'ok';
+  } catch (error) {
+    const stato = error?.response?.status;
+    return stato === 401 || stato === 403 ? 'nessuna_sessione' : 'non_disponibile';
+  }
+}
+
+export function loginGestionale(destinazione = DESTINAZIONE_ADMIN) {
+  return `/login?next=${encodeURIComponent(destinazione)}`;
+}
+
+// «Esci» chiude la sessione di tutto il gruppo: una sola funzione condivisa
+// con HR e Lotti (`frontend_shared/SessioneGruppo.js`).
+export { esciDalGruppo };

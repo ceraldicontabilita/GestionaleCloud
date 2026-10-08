@@ -1,0 +1,145 @@
+{
+  "_descrizione": "Mappatura schede tecniche prodotti (cerca online + PDF). Per ogni prodotto commerciale presente nelle fatture: ingrediente madre, impiego reale, composizione (dichiarazione ingredienti dalla scheda tecnica), allergeni, fonte. La composizione va mostrata in scheda ricetta con carattere piu' piccolo sotto l'ingrediente. match_aliases = stringhe da riconoscere nelle descrizioni-fattura.",
+  "_aggiornato_il": "2026-06-14",
+  "schede": [
+    {
+      "nome_commerciale": "OLVA THERMO QUICK MB",
+      "marca": "Masterline (CSM Bakery Solutions)",
+      "ingrediente_madre": "Margarina",
+      "impiego": "Sfoglia, croissanteria e paste danesi (metodo diretto, panetto piatto). Buona anche per frolla.",
+      "composizione": [
+        "Grassi vegetali: palma, cocco",
+        "Acqua",
+        "Olio vegetale: girasole",
+        "Grasso vegetale parzialmente idrogenato: palma",
+        "Grasso vegetale totalmente idrogenato: palma",
+        "Emulsionanti",
+        "Sale",
+        "Correttori di acidita'",
+        "Aromi",
+        "Conservanti: sorbato di potassio",
+        "Coloranti: caroteni"
+      ],
+      "allergeni": [
+        "Latte (in tracce; certificata senza lattosio <0,1%)"
+      ],
+      "note": "Fonte Omega 3. Composizione coda (emulsionanti/sale/correttori/aromi/conservanti/coloranti) tipica della linea; il PDF specifico Quick conferma struttura.",
+      "fonte": "https://olvaitalia.it/margarina-thermo-quick/ ; https://www.fazzaridistribuzione.it (dichiarazione ingredienti)",
+      "match_aliases": [
+        "olva thermo quick",
+        "olva quick",
+        "thermo quick"
+      ]
+    },
+    {
+      "nome_commerciale": "OLVA THERMO (CREMA) GATEAUX MB",
+      "marca": "Masterline (CSM Bakery Solutions)",
+      "ingrediente_madre": "Margarina",
+      "impiego": "Creme, pasta frolla, paste lievitate e montate (multiuso). NON specifica per sfoglia.",
+      "composizione": [
+        "Grassi vegetali: palma, cocco",
+        "Acqua",
+        "Olio vegetale: girasole",
+        "Grasso vegetale parzialmente idrogenato: palma",
+        "Grasso vegetale totalmente idrogenato: palma",
+        "Emulsionanti: E471 (mono- e digliceridi degli acidi grassi)",
+        "Latte scremato in polvere",
+        "Sale",
+        "Correttori di acidita': acido citrico",
+        "Aromi",
+        "Conservanti: sorbato di potassio",
+        "Enzimi",
+        "Coloranti: carotene"
+      ],
+      "allergeni": [
+        "Latte"
+      ],
+      "note": "ATTENZIONE: oggi nel dizionario era classificata come 'Margarina Sfoglia' — ERRORE: e' per creme/frolla, non sfoglia.",
+      "fonte": "https://olvaitalia.it/margarina-thermo-gateaux/ ; https://www.fazzaridistribuzione.it (dichiarazione ingredienti)",
+      "match_aliases": [
+        "olva thermo crema gateaux",
+        "olva thermo gateaux",
+        "olva gateaux",
+        "thermo gateaux"
+      ]
+    },
+    {
+      "nome_commerciale": "OLVA TH PASTRY MB",
+      "marca": "Masterline (CSM Bakery Solutions)",
+      "ingrediente_madre": "Margarina",
+      "impiego": "Paste lievitate e sfogliate (metodo indiretto/filtraggio: sfoglia piu' sviluppata e leggera).",
+      "composizione": [
+        "Oli vegetali: girasole, soia",
+        "Grasso vegetale: palma",
+        "Acqua",
+        "Grasso vegetale totalmente idrogenato: palma",
+        "Grasso vegetale parzialmente idrogenato: palma",
+        "Emulsionanti: lecitine, esteri poliglicerici degli acidi grassi (E475), mono- e digliceridi degli acidi grassi (E471)",
+        "Sale",
+        "Correttori di acidita': acido citrico, citrati di sodio",
+        "Latte scremato in polvere",
+        "Aromi",
+        "Conservanti: sorbato di potassio",
+        "Coloranti: caroteni"
+      ],
+      "allergeni": [
+        "Latte"
+      ],
+      "note": "Riferimento gamma (non risulta acquistata da Ceraldi). PDF scheda tecnica CSM scaricato e verificato.",
+      "fonte": "https://www.carradistribuzione.eu/wp-content/uploads/2020/02/470013_MARGARINA-OLVA-TH-PASTRY-KG.10-1098.pdf",
+      "match_aliases": [
+        "olva th pastry",
+        "olva thermo pastry",
+        "olva pastry",
+        "thermo pastry"
+      ]
+    },
+    {
+      "nome_commerciale": "EST. ZUPPA INGLESE (estratto/pasta aromatizzante)",
+      "marca": "Elenka (Sicilia)",
+      "ingrediente_madre": "Estratto Zuppa Inglese",
+      "impiego": "Aroma/estratto per bagne, creme, gelati, farciture (a base Alchermes).",
+      "composizione_varianti": [
+        {
+          "tipo": "marche con coloranti azoici (es. Decora/Dolcincasa/PapoLab)",
+          "composizione": [
+            "Zucchero",
+            "Sciroppo di glucosio",
+            "Estratti vegetali naturali",
+            "Aromi",
+            "Emulsionante: E414 (gomma arabica)",
+            "Coloranti: E102 (tartrazina), E124 (rosso cocciniglia/ponceau 4R)"
+          ],
+          "allergeni": [
+            "Puo' contenere uovo",
+            "Possibili tracce: glutine, latte, frutta a guscio, soia, solfiti"
+          ],
+          "avvertenza_legale": "E102/E124: 'puo' influire negativamente su attivita' e attenzione dei bambini' (Reg. UE 1333/2008)."
+        },
+        {
+          "tipo": "marche con curcumina (es. Fugar)",
+          "composizione": [
+            "Sciroppo di glucosio",
+            "Aromi",
+            "Colorante: E160b(ii) (annatto/norbixina) o curcumina",
+            "Zucchero",
+            "Addensante: pectina"
+          ],
+          "allergeni": [
+            "Verificare etichetta"
+          ]
+        }
+      ],
+      "note": "Produttore confermato da Enzo: Elenka (Sicilia). Composizione Elenka: sciroppo di glucosio, zucchero, estratti vegetali naturali, aromi, emulsionante E414, coloranti E102+E124; puo' contenere uovo. Modello a cascata: ereditare nel prodotto finito per allergeni.",
+      "fonte": "fugar.it; dolcincasa.com; papolab.com; decora",
+      "match_aliases": [
+        "est. zuppa inglese",
+        "estratto zuppa inglese",
+        "zuppa inglese",
+        "pasta zuppa inglese"
+      ],
+      "produttore": "Elenka",
+      "sito_produttore": "https://www.elenka.it"
+    }
+  ]
+}

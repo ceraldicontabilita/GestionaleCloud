@@ -1,0 +1,867 @@
+import React, { useState, useEffect, useCallback } from 'react';
+import { Link } from 'react-router-dom';
+import {
+  formatDateIT,
+  STYLES,
+  COLORS,
+  button,
+  badge,
+  useIsMobile,
+  RG,
+  pagePad,
+} from '../lib/utils';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/card';
+import { Button } from '../components/ui/button';
+import { Input } from '../components/ui/input';
+import { Badge } from '../components/ui/badge';
+import { Alert, AlertDescription } from '../components/ui/alert';
+import { PageLayout } from '../components/PageLayout';
+import { PageHeader } from '../components/ds/PageHeader';
+import { VisoreOriginale } from '../components/ApriOriginale';
+import { urlOriginale, euroOppure } from '../lib/vista';
+import CartellePagamento from '../components/CartellePagamento';
+import LinkContropartita, { ROTTE_CONTROPARTITA } from '../components/LinkContropartita';
+import { FileText, RefreshCw, Search, CheckCircle2, AlertCircle, Upload, Link2, Download, Eye, Calendar, Landmark, ChartColumn, Scale, Trash2, Store } from 'lucide-react';
+import { toast } from '../components/ui/sonner';
+import api from '../api';
+
+export const paymentKindLabel = kind => ({
+  RICEVUTA_CBILL: 'CBILL', RICEVUTA_MAV: 'MAV', RICEVUTA_RAV: 'RAV',
+  RICEVUTA_BOLLETTINO_POSTALE: 'Bollettino postale', RICEVUTA_PAGOPA: 'PagoPA',
+}[kind] || 'Pagamento documentale');
+
+const importoOppureNull = v => (v === null || v === undefined || v === '' ? null : Number(v));
+
+export const paymentAmountParts = receipt => ({
+  operation: importoOppureNull(receipt.operation_amount ?? receipt.importo),
+  fee: importoOppureNull(receipt.fee_amount),
+  bankTotal: importoOppureNull(receipt.bank_debit_total ?? receipt.operation_amount ?? receipt.importo),
+});
+
+export default function GestionePagoPA() {
+  const [pdfViewer, setPdfViewer] = useState(null); // {title, url} — viewer canonico §8
+  const isMobile = useIsMobile();
+  const [limiteRicevute, setLimiteRicevute] = useState(200);
+  const [ricevute, setRicevute] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [autoAssociaLoading, setAutoAssociaLoading] = useState(false);
+  const [stats, setStats] = useState(null);
+  const [filtro, setFiltro] = useState('');
+  const [statoFiltro, setStatoFiltro] = useState('tutti');
+
+  const [nature, setNature] = useState([]);
+
+  useEffect(() => {
+    // Il vocabolario sta nel backend (un solo elenco): tributo, rata, diritti, sanzione…
+    api.get('/api/pagopa/nature')
+      .then(r => setNature(Array.isArray(r.data?.nature) ? r.data.nature : []))
+      .catch(() => setNature([]));
+  }, []);
+
+  const impostaNatura = async (ricevuta, natura) => {
+    if (!natura) return;
+    try {
+      const { data } = await api.put(`/api/pagopa/ricevute/${ricevuta.id}/natura`, { natura });
+      const scelta = nature.find(n => n.id === natura);
+      setRicevute(lista => lista.map(r => (r.id === ricevuta.id
+        ? {
+          ...r, natura, natura_label: scelta?.label || natura,
+          associata_per_natura: Boolean(data?.associata_per_natura),
+        } : r)));
+      toast.success('Natura del pagamento salvata');
+      fetchStats();
+    } catch (error) {
+      toast.error(error.response?.data?.detail?.message || 'Non sono riuscito a salvare la natura');
+    }
+  };
+
+  const fetchStats = useCallback(async () => {
+    try {
+      const response = await api.get('/api/pagopa/stats');
+      setStats(response.data);
+    } catch (error) {
+      console.error('Errore fetch stats:', error);
+    }
+  }, []);
+
+  const fetchRicevute = useCallback(async () => {
+    setLoading(true);
+    try {
+      const response = await api.get('/api/pagopa/ricevute');
+      setRicevute(response.data || []);
+    } catch (error) {
+      console.error('Errore fetch ricevute:', error);
+      toast.error('Errore nel caricamento ricevute');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchStats();
+    fetchRicevute();
+  }, [fetchStats, fetchRicevute]);
+
+  const handleAutoAssocia = async () => {
+    setAutoAssociaLoading(true);
+    try {
+      const response = await api.post('/api/pagopa/auto-associa');
+      toast.success(`Associati ${response.data?.associazioni_trovate || 0} ricevute`);
+      fetchStats();
+      fetchRicevute();
+    } catch (error) {
+      console.error('Errore auto-associa:', error);
+      toast.error("Errore nell'associazione automatica");
+    } finally {
+      setAutoAssociaLoading(false);
+    }
+  };
+
+  const ricevuteFiltrate = ricevute.filter(r => {
+    if (filtro) {
+      const search = filtro.toLowerCase();
+      if (
+        !r.identificativo_bolletta?.toLowerCase().includes(search) &&
+        !r.beneficiario?.toLowerCase().includes(search)
+      ) {
+        return false;
+      }
+    }
+    const associata = Boolean(r.movimento_id || r.associata_per_natura);
+    if (statoFiltro === 'associati' && !associata) return false;
+    if (statoFiltro === 'non_associati' && associata) return false;
+    return true;
+  });
+
+  const cellaCodice = (ricevuta, idx) => (
+    <>
+                          <strong>{paymentKindLabel(ricevuta.document_kind)}</strong><br />
+                          {ricevuta.identificativo_bolletta || ricevuta.numero_bollettino || '-'}
+    </>
+  );
+
+  const cellaBeneficiario = (ricevuta, idx) => (
+    <>
+                          {ricevuta.beneficiario || '-'}
+                          {ricevuta.id && nature.length > 0 && (
+                            <select
+                              value={ricevuta.natura || ''}
+                              onChange={e => impostaNatura(ricevuta, e.target.value)}
+                              aria-label={`Che cosa hai pagato (${ricevuta.identificativo_bolletta || ricevuta.id})`}
+                              data-testid={`natura-${ricevuta.id}`}
+                              style={{
+                                display: 'block', marginTop: 6, minHeight: 40, maxWidth: 210,
+                                padding: '6px 8px', fontSize: 12.5, fontWeight: 700,
+                                border: `1px solid ${COLORS.border}`, borderRadius: 8, background: COLORS.card,
+                              }}
+                            >
+                              <option value="">Che cosa hai pagato…</option>
+                              {nature.map(n => <option key={n.id} value={n.id}>{n.label}</option>)}
+                            </select>
+                          )}
+    </>
+  );
+
+  const cellaImporto = (ricevuta, idx) => (
+    <>
+                          {euroOppure(paymentAmountParts(ricevuta).operation)}
+                          <div style={{ fontSize: 11, color: '#7a776e', fontWeight: 400, marginTop: 3 }}>
+                            Commissione {euroOppure(paymentAmountParts(ricevuta).fee)}<br />
+                            Addebito banca {euroOppure(paymentAmountParts(ricevuta).bankTotal)}
+                          </div>
+    </>
+  );
+
+  const cellaStato = (ricevuta, idx) => (
+    <>
+                          <div style={{ display: 'grid', gap: 4, justifyItems: 'center' }}>
+                          <span style={{ fontSize: 11, color: '#166534', fontWeight: 700 }}>
+                            Versamento documentato
+                          </span>
+                          {ricevuta.associata_per_natura && !ricevuta.movimento_id ? (
+                            <span
+                              data-testid={`associata-natura-${ricevuta.id}`}
+                              title="Associata dalla natura scelta: diritti, oneri e sanzioni non hanno un movimento da cercare"
+                              style={{
+                                padding: '4px 8px',
+                                background: '#e2f0e7',
+                                color: '#166534',
+                                borderRadius: 4,
+                                fontSize: 12,
+                                fontWeight: 600,
+                              }}
+                            >
+                              Associata · {ricevuta.natura_label || 'natura scelta'}
+                            </span>
+                          ) : ricevuta.movimento_id ? (
+                            <>
+                              <span
+                                style={{
+                                  padding: '4px 8px',
+                                  background: '#e2f0e7',
+                                  color: '#166534',
+                                  borderRadius: 4,
+                                  fontSize: 12,
+                                  fontWeight: 600,
+                                }}
+                              >
+                                Associata
+                              </span>
+                              <LinkContropartita
+                                to={ROTTE_CONTROPARTITA.movimentoBanca(ricevuta.movimento_id)}
+                                title="Apre il movimento in Riconciliazione Banca"
+                                testId={`vedi-movimento-${idx}`}
+                                compatto
+                              >
+                                Vedi movimento
+                              </LinkContropartita>
+                            </>
+                          ) : (
+                            <span
+                              style={{
+                                padding: '4px 8px',
+                                background: '#ffedd5',
+                                color: '#9a3412',
+                                borderRadius: 4,
+                                fontSize: 12,
+                                fontWeight: 600,
+                              }}
+                            >
+                              Da Associare
+                            </span>
+                          )}
+                          {ricevuta.fiscal_target_id && <Link to="/situazione-fiscale/riscossione" style={{ fontSize: 11, color: '#4c4a44' }}>
+                            Rata/cartelle collegate ({(ricevuta.cartelle_collegate || []).length})
+                          </Link>}
+                          </div>
+    </>
+  );
+
+  const cellaAzioni = (ricevuta, idx) => (
+    <>
+                          <div style={{ display: 'flex', justifyContent: 'center', gap: 8 }}>
+                            {ricevuta.id && (
+                              <>
+                                <button
+                                  onClick={() =>
+                                    setPdfViewer({
+                                      title: `Ricevuta PagoPA ${ricevuta.iuv || ricevuta.id}`,
+                                      url: urlOriginale({ tipo: 'ricevuta_pagopa', id: ricevuta.id }),
+                                    })
+                                  }
+                                  style={{
+                                    padding: '6px 10px',
+                                    background: 'transparent',
+                                    border: '1px solid #e6e3d9',
+                                    borderRadius: 6,
+                                    cursor: 'pointer',
+                                  }}
+                                  data-testid={`view-ricevuta-${idx}`}
+                                >
+                                  <Eye size={16} aria-label="Apri ricevuta" />
+                                </button>
+                              </>
+                            )}
+                          </div>
+    </>
+  );
+
+  return (
+    <PageLayout>
+      <div style={{ maxWidth: 1400, margin: '0 auto' }} data-testid="gestione-pagopa">
+        <PageHeader
+          title="PagoPA"
+          style={{ marginBottom: 20 }}
+          actions={(
+            <>
+            <button
+              onClick={() => {
+                fetchStats();
+                fetchRicevute();
+              }}
+              disabled={loading}
+              style={{
+                padding: '10px 20px',
+                background: COLORS.card,
+                color: COLORS.text,
+                border: `1px solid ${COLORS.borderDark}`,
+                borderRadius: 8,
+                cursor: loading ? 'not-allowed' : 'pointer',
+                fontWeight: '600',
+                opacity: loading ? 0.6 : 1,
+              }}
+              data-testid="refresh-pagopa-btn"
+            >
+              Aggiorna
+            </button>
+            <button
+              onClick={handleAutoAssocia}
+              disabled={autoAssociaLoading}
+              style={{
+                padding: '10px 20px',
+                background: COLORS.primary,
+                color: 'white',
+                border: 'none',
+                borderRadius: 8,
+                cursor: autoAssociaLoading ? 'not-allowed' : 'pointer',
+                fontWeight: '600',
+                opacity: autoAssociaLoading ? 0.6 : 1,
+              }}
+              data-testid="auto-associa-pagopa-btn"
+            >
+              Associa in automatico
+            </button>
+            </>
+          )}
+        />
+
+        <CartellePagamento />
+
+        {/* Stats Cards */}
+        {stats && (
+          <div
+            style={{
+              background: 'white',
+              borderRadius: 12,
+              padding: 16,
+              boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
+              marginBottom: 20,
+            }}
+          >
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(4, 1fr)',
+                gap: 12,
+              }}
+            >
+              <div
+                style={{
+                  background: 'white',
+                  borderRadius: 8,
+                  padding: '10px 12px',
+                  boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
+                  borderLeft: '3px solid #5b7a6b',
+                }}
+              >
+                <div style={{ fontSize: 11, color: '#7a776e', marginBottom: 4 }}>
+                  Ricevute Totali
+                </div>
+                <div
+                  style={{ fontSize: 18, fontWeight: 'bold', color: '#5b7a6b' }}
+                  data-testid="stats-totali"
+                >
+                  {stats.ricevute_caricate || 0}
+                </div>
+              </div>
+              <div
+                style={{
+                  background: 'white',
+                  borderRadius: 8,
+                  padding: '10px 12px',
+                  boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
+                  borderLeft: '3px solid #22c55e',
+                }}
+              >
+                <div style={{ fontSize: 11, color: '#7a776e', marginBottom: 4 }}>Associate</div>
+                <div
+                  style={{ fontSize: 18, fontWeight: 'bold', color: '#22c55e' }}
+                  data-testid="stats-associate"
+                >
+                  {stats.ricevute_associate || 0}
+                </div>
+              </div>
+              <div
+                style={{
+                  background: 'white',
+                  borderRadius: 8,
+                  padding: '10px 12px',
+                  boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
+                  borderLeft: '3px solid #f97316',
+                }}
+              >
+                <div style={{ fontSize: 11, color: '#7a776e', marginBottom: 4 }}>
+                  Da Associare
+                </div>
+                <div
+                  style={{ fontSize: 18, fontWeight: 'bold', color: '#f97316' }}
+                  data-testid="stats-da-associare"
+                >
+                  {(stats.ricevute_caricate || 0) - (stats.ricevute_associate || 0)}
+                </div>
+              </div>
+              <div
+                style={{
+                  background: '#a94f30',
+                  borderRadius: 8,
+                  padding: '10px 12px',
+                  color: 'white',
+                }}
+              >
+                <div style={{ fontSize: 11, opacity: 0.9, marginBottom: 4 }}>Importo Totale</div>
+                <div style={{ fontSize: 18, fontWeight: 'bold' }} data-testid="stats-importo">
+                  {euroOppure(stats.totale_pagato)}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Info Card */}
+        <div
+          style={{
+            padding: 12,
+            background: '#eef3ef',
+            borderRadius: 8,
+            borderLeft: '4px solid #5b7a6b',
+            fontSize: 13,
+            color: '#4c4a44',
+            marginBottom: 20,
+          }}
+        >
+          <strong>ℹ️ Come funziona:</strong> Il sistema cerca nei movimenti bancari il codice CBILL
+          (bollettino) presente nella ricevuta PagoPA e li associa automaticamente. Puoi anche
+          associare manualmente cliccando su una ricevuta non associata.
+        </div>
+        {/* Categorie Pagamenti CBILL */}
+        <div
+          style={{
+            background: 'white',
+            borderRadius: 12,
+            boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
+            overflow: 'hidden',
+            marginBottom: 20,
+          }}
+        >
+          <div
+            style={{
+              padding: '16px 20px',
+              background: '#f6f4ee',
+              borderBottom: '1px solid #e6e3d9',
+            }}
+          >
+            <h2 style={{ margin: 0, fontSize: 16, fontWeight: 600, color: '#2c2b28' }}>
+              Tipologie Pagamenti CBILL
+            </h2>
+            <p style={{ margin: '4px 0 0 0', fontSize: 13, color: '#7a776e' }}>
+              Pagamenti identificabili tramite codice CBILL per rateizzazioni e tributi
+            </p>
+          </div>
+          <div style={{ padding: 16 }}>
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: isMobile ? '1fr' : 'repeat(3, 1fr)',
+                gap: 16,
+              }}
+            >
+              {/* INPS */}
+              <div
+                style={{
+                  padding: 16,
+                  borderRadius: 8,
+                  border: '2px solid #c2ddd0',
+                  background: '#eef3ef',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8 }}>
+                  <Landmark size={24} aria-hidden="true" />
+                  <div>
+                    <h4 style={{ margin: 0, fontWeight: 600, color: '#4c4a44' }}>Rateizzi INPS</h4>
+                    <p style={{ margin: 0, fontSize: 12, color: '#5b7a6b' }}>
+                      Dilazioni contributive
+                    </p>
+                  </div>
+                </div>
+                <ul style={{ fontSize: 13, color: '#4c4a44', margin: 0, paddingLeft: 16 }}>
+                  <li>Rateizzazione contributi</li>
+                  <li>Avvisi di addebito</li>
+                  <li>Sanzioni INPS</li>
+                </ul>
+              </div>
+
+              {/* Agenzia Entrate */}
+              <div
+                style={{
+                  padding: 16,
+                  borderRadius: 8,
+                  border: '2px solid #bbf7d0',
+                  background: '#f0fdf4',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8 }}>
+                  <ChartColumn size={24} aria-hidden="true" />
+                  <div>
+                    <h4 style={{ margin: 0, fontWeight: 600, color: '#166534' }}>
+                      Agenzia delle Entrate
+                    </h4>
+                    <p style={{ margin: 0, fontSize: 12, color: '#22c55e' }}>Imposte e tributi</p>
+                  </div>
+                </div>
+                <ul style={{ fontSize: 13, color: '#166534', margin: 0, paddingLeft: 16 }}>
+                  <li>Rateizzazione imposte</li>
+                  <li>Avvisi bonari</li>
+                  <li>Comunicazioni di irregolarità</li>
+                </ul>
+              </div>
+
+              {/* AdER */}
+              <div
+                style={{
+                  padding: 16,
+                  borderRadius: 8,
+                  border: '2px solid #fecaca',
+                  background: '#fef2f2',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8 }}>
+                  <Scale size={24} aria-hidden="true" />
+                  <div>
+                    <h4 style={{ margin: 0, fontWeight: 600, color: '#991b1b' }}>
+                      Agenzia Riscossione
+                    </h4>
+                    <p style={{ margin: 0, fontSize: 12, color: '#ef4444' }}>
+                      AdER - Cartelle esattoriali
+                    </p>
+                  </div>
+                </div>
+                <ul style={{ fontSize: 13, color: '#991b1b', margin: 0, paddingLeft: 16 }}>
+                  <li>Rottamazione quater</li>
+                  <li>Rateizzazione cartelle</li>
+                  <li>Definizione agevolata</li>
+                </ul>
+              </div>
+
+              {/* TARI */}
+              <div
+                style={{
+                  padding: 16,
+                  borderRadius: 8,
+                  border: '2px solid #fde68a',
+                  background: '#fefce8',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8 }}>
+                  <Trash2 size={24} aria-hidden="true" />
+                  <div>
+                    <h4 style={{ margin: 0, fontWeight: 600, color: '#92400e' }}>TARI</h4>
+                    <p style={{ margin: 0, fontSize: 12, color: '#f59e0b' }}>Tassa rifiuti</p>
+                  </div>
+                </div>
+                <ul style={{ fontSize: 13, color: '#92400e', margin: 0, paddingLeft: 16 }}>
+                  <li>Rate TARI annuali</li>
+                  <li>Conguagli</li>
+                  <li>Accertamenti</li>
+                </ul>
+              </div>
+
+              {/* COSAP / Tosap */}
+              <div
+                style={{
+                  padding: 16,
+                  borderRadius: 8,
+                  border: '2px solid #f7ebe4',
+                  background: '#f7ebe4',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8 }}>
+                  <Store size={24} aria-hidden="true" />
+                  <div>
+                    <h4 style={{ margin: 0, fontWeight: 600, color: '#8a6f47' }}>COSAP / TOSAP</h4>
+                    <p style={{ margin: 0, fontSize: 12, color: '#8a6f47' }}>
+                      Occupazione suolo pubblico
+                    </p>
+                  </div>
+                </div>
+                <ul style={{ fontSize: 13, color: '#8a6f47', margin: 0, paddingLeft: 16 }}>
+                  <li>Canone occupazione</li>
+                  <li>Rinnovi annuali</li>
+                  <li>Plateatici</li>
+                </ul>
+              </div>
+
+              {/* Altri tributi */}
+              <div
+                style={{
+                  padding: 16,
+                  borderRadius: 8,
+                  border: '2px solid #e6e3d9',
+                  background: '#f6f4ee',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8 }}>
+                  <FileText size={24} aria-hidden="true" />
+                  <div>
+                    <h4 style={{ margin: 0, fontWeight: 600, color: '#4c4a44' }}>Altri Tributi</h4>
+                    <p style={{ margin: 0, fontSize: 12, color: '#7a776e' }}>Pagamenti vari</p>
+                  </div>
+                </div>
+                <ul style={{ fontSize: 13, color: '#4c4a44', margin: 0, paddingLeft: 16 }}>
+                  <li>IMU / TASI</li>
+                  <li>Bollo auto</li>
+                  <li>Multe e sanzioni</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Filtri */}
+        <div
+          style={{
+            background: 'white',
+            borderRadius: 12,
+            padding: 16,
+            boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
+            marginBottom: 20,
+          }}
+        >
+          <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'center' }}>
+            <div style={{ flex: 1, minWidth: 250 }}>
+              <input
+                type="text"
+                placeholder="Cerca per codice CBILL o beneficiario..."
+                value={filtro}
+                onChange={e => setFiltro(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '10px 12px',
+                  border: '1px solid #e6e3d9',
+                  borderRadius: 8,
+                  fontSize: 14,
+                }}
+                data-testid="search-pagopa-input"
+              />
+            </div>
+
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button
+                onClick={() => setStatoFiltro('tutti')}
+                style={{
+                  padding: '8px 16px',
+                  background: statoFiltro === 'tutti' ? '#a94f30' : 'white',
+                  color: statoFiltro === 'tutti' ? 'white' : '#7a776e',
+                  border: '1px solid #e6e3d9',
+                  borderRadius: 6,
+                  cursor: 'pointer',
+                  fontWeight: 500,
+                  fontSize: 13,
+                }}
+              >
+                Tutti
+              </button>
+              <button
+                onClick={() => setStatoFiltro('associati')}
+                style={{
+                  padding: '8px 16px',
+                  background: statoFiltro === 'associati' ? '#22c55e' : 'white',
+                  color: statoFiltro === 'associati' ? 'white' : '#7a776e',
+                  border: '1px solid #e6e3d9',
+                  borderRadius: 6,
+                  cursor: 'pointer',
+                  fontWeight: 500,
+                  fontSize: 13,
+                }}
+              >
+                Associati
+              </button>
+              <button
+                onClick={() => setStatoFiltro('non_associati')}
+                style={{
+                  padding: '8px 16px',
+                  background: statoFiltro === 'non_associati' ? '#f97316' : 'white',
+                  color: statoFiltro === 'non_associati' ? 'white' : '#7a776e',
+                  border: '1px solid #e6e3d9',
+                  borderRadius: 6,
+                  cursor: 'pointer',
+                  fontWeight: 500,
+                  fontSize: 13,
+                }}
+              >
+                Da Associare
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Lista Ricevute */}
+        <div
+          style={{
+            background: 'white',
+            borderRadius: 12,
+            boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
+            overflow: 'hidden',
+          }}
+        >
+          <div
+            style={{
+              padding: '16px 20px',
+              background: '#f6f4ee',
+              borderBottom: '1px solid #e6e3d9',
+            }}
+          >
+            <h2 style={{ margin: 0, fontSize: 16, fontWeight: 600, color: '#2c2b28' }}>
+              Ricevute PagoPA
+            </h2>
+            <p style={{ margin: '4px 0 0 0', fontSize: 13, color: '#7a776e' }}>
+              {ricevuteFiltrate.length} ricevute {filtro && `(filtrate per "${filtro}")`}
+            </p>
+          </div>
+          <div style={{ padding: 16 }}>
+            {loading ? (
+              <div style={{ display: 'flex', justifyContent: 'center', padding: 32 }}>
+                <RefreshCw
+                  style={{
+                    width: 32,
+                    height: 32,
+                    animation: 'spin 1s linear infinite',
+                    color: '#a19d92',
+                  }}
+                />
+              </div>
+            ) : ricevuteFiltrate.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: 32, color: '#a19d92' }}>
+                <FileText style={{ width: 48, height: 48, margin: '0 auto 16px', opacity: 0.5 }} />
+                <p style={{ margin: 0 }}>Nessuna ricevuta PagoPA trovata</p>
+                <p style={{ fontSize: 13, marginTop: 8 }}>
+                  Carica le ricevute PDF dalla sezione Documenti o importa da email
+                </p>
+              </div>
+            ) : (
+              <>
+              {isMobile ? (
+              <div data-testid="ricevute-card" style={{ display: 'grid', gap: 10 }}>
+                {ricevuteFiltrate.slice(0, limiteRicevute).map((ricevuta, idx) => (
+                  <div
+                    key={ricevuta._id || idx}
+                    style={{ border: '1px solid #e6e3d9', borderRadius: 10, padding: 12, background: COLORS.card, display: 'grid', gap: 8, minWidth: 0 }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: 13 }}>
+                      <strong>{ricevuta.data_pagamento ? formatDateIT(ricevuta.data_pagamento) : '-'}</strong>
+                      <span style={{ fontFamily: 'monospace', fontSize: 12, textAlign: 'right', wordBreak: 'break-all' }}>{cellaCodice(ricevuta, idx)}</span>
+                    </div>
+                    <div>{cellaBeneficiario(ricevuta, idx)}</div>
+                    <div style={{ fontWeight: 500 }}>{cellaImporto(ricevuta, idx)}</div>
+                    <div>{cellaStato(ricevuta, idx)}</div>
+                    <div>{cellaAzioni(ricevuta, idx)}</div>
+                  </div>
+                ))}
+              </div>
+              ) : (
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                  <thead>
+                    <tr style={{ borderBottom: '2px solid #e6e3d9', background: '#f6f4ee' }}>
+                      <th
+                        style={{
+                          textAlign: 'left',
+                          padding: '12px 16px',
+                          fontWeight: 500,
+                          color: '#7a776e',
+                          fontSize: 13,
+                        }}
+                      >
+                        Data
+                      </th>
+                      <th
+                        style={{
+                          textAlign: 'left',
+                          padding: '12px 16px',
+                          fontWeight: 500,
+                          color: '#7a776e',
+                          fontSize: 13,
+                        }}
+                      >
+                        Codice CBILL
+                      </th>
+                      <th
+                        style={{
+                          textAlign: 'left',
+                          padding: '12px 16px',
+                          fontWeight: 500,
+                          color: '#7a776e',
+                          fontSize: 13,
+                        }}
+                      >
+                        Beneficiario
+                      </th>
+                      <th
+                        style={{
+                          textAlign: 'right',
+                          padding: '12px 16px',
+                          fontWeight: 500,
+                          color: '#7a776e',
+                          fontSize: 13,
+                        }}
+                      >
+                        Importo
+                      </th>
+                      <th
+                        style={{
+                          textAlign: 'center',
+                          padding: '12px 16px',
+                          fontWeight: 500,
+                          color: '#7a776e',
+                          fontSize: 13,
+                        }}
+                      >
+                        Stato
+                      </th>
+                      <th
+                        style={{
+                          textAlign: 'center',
+                          padding: '12px 16px',
+                          fontWeight: 500,
+                          color: '#7a776e',
+                          fontSize: 13,
+                        }}
+                      >
+                        Azioni
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {ricevuteFiltrate.slice(0, limiteRicevute).map((ricevuta, idx) => (
+                      <tr key={ricevuta._id || idx} style={{ borderBottom: '1px solid #e6e3d9' }}>
+                        <td style={{ padding: '12px 16px' }}>
+                          {ricevuta.data_pagamento ? formatDateIT(ricevuta.data_pagamento) : '-'}
+                        </td>
+                        <td style={{ padding: '12px 16px', fontFamily: 'monospace', fontSize: 13 }}>{cellaCodice(ricevuta, idx)}</td>
+                        <td style={{ padding: '12px 16px' }}>{cellaBeneficiario(ricevuta, idx)}</td>
+                        <td style={{ padding: '12px 16px', textAlign: 'right', fontWeight: 500 }}>{cellaImporto(ricevuta, idx)}</td>
+                        <td style={{ padding: '12px 16px', textAlign: 'center' }}>{cellaStato(ricevuta, idx)}</td>
+                        <td style={{ padding: '12px 16px', textAlign: 'center' }}>{cellaAzioni(ricevuta, idx)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              )}
+            {ricevuteFiltrate.length > limiteRicevute && (
+              <div style={{ display: 'flex', justifyContent: 'center', padding: 12 }}>
+                <button
+                  type="button"
+                  onClick={() => setLimiteRicevute(l => l + 200)}
+                  style={{ minHeight: 44, padding: '8px 16px', borderRadius: 8, border: '1px solid #e6e3d9', background: COLORS.card, cursor: 'pointer', fontWeight: 600 }}
+                >
+                  Mostra altre ({ricevuteFiltrate.length - limiteRicevute})
+                </button>
+              </div>
+            )}
+              </>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {pdfViewer && (
+        <VisoreOriginale
+          title={pdfViewer.title}
+          url={pdfViewer.url}
+          documentType="pagopa"
+          onClose={() => setPdfViewer(null)}
+        />
+      )}
+    </PageLayout>
+  );
+}

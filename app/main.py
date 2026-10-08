@@ -1,0 +1,1128 @@
+"""
+Ceraldi ERP - Main Application
+==============================
+FastAPI + Google Drive/Supabase | GestionaleCloud
+"""
+import asyncio
+from contextlib import asynccontextmanager, suppress
+from datetime import datetime, timezone
+import os
+from pathlib import Path
+import weakref
+
+from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
+from fastapi.staticfiles import StaticFiles
+
+from app.config import settings
+from app.database import Database
+from app.middleware.error_handler import add_exception_handlers
+from app.utils.logger import get_logger, setup_logging
+
+setup_logging()
+logger = get_logger(__name__)
+
+_PROJECT_ROOT = os.path.realpath(os.path.join(os.path.dirname(__file__), ".."))
+_FRONTEND_DIST = os.path.realpath(os.path.join(_PROJECT_ROOT, "frontend", "dist"))
+_FRONTEND_PUBLIC = os.path.realpath(os.path.join(_PROJECT_ROOT, "frontend", "public"))
+SALARI_SYNC_MARKER = "sync_prima_nota_salari_da_cedolini_2018_20260804_v1"
+# Budget della liveness /api/health per le letture remote (probe Supabase e
+# stato sync salari): Render la chiama con un timeout di pochi secondi e, se
+# scade piu' volte, riavvia l'istanza.
+_HEALTH_PROBE_TIMEOUT = 2.0
+# Esito della probe di scrittura riusato fra chiamate consecutive a /api/health
+# (una sola probe in volo per processo; vedi _probe_archivio).
+_PROBE_ESITO_TTL = 60.0
+_PROBE_ERRORE_TTL = 15.0
+_probe_stati: "weakref.WeakKeyDictionary[object, object]" = weakref.WeakKeyDictionary()
+SALARY_RELATIONS_RECOVERY_MARKER = "recover_salary_relations_20260821_v1"
+SUPPLIER_METHODS_RECOVERY_MARKER = "recover_supplier_payment_methods_20260822_v1"
+
+
+async def _allinea_badge_documenti_in_background(db) -> None:
+    """Esegue l'allineamento senza trattenere la readiness del servizio."""
+    try:
+        lease_factory = getattr(db, "scheduler_lease", None)
+        if callable(lease_factory):
+            async with lease_factory("startup_allinea_badge_documenti") as acquired:
+                if not acquired:
+                    logger.info("Allineamento badge gia' attivo su un'altra istanza")
+                    return
+                from app.services.email_monitor_service import allinea_status_documenti_processati
+
+                badge_allineati = await allinea_status_documenti_processati(db)
+        else:
+            from app.services.email_monitor_service import allinea_status_documenti_processati
+
+            badge_allineati = await allinea_status_documenti_processati(db)
+        logger.info("Badge documenti riallineati: %s", badge_allineati)
+    except Exception:
+        logger.exception("Riallineamento badge documenti in background non completato")
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Application lifecycle: startup, yield, shutdown."""
+    logger.info(f"Starting {settings.APP_NAME} v{settings.APP_VERSION}")
+
+    # Sentinella del processo: scrive nel log chi tiene fermo l'event loop.
+    from app.services import sorveglianza_loop
+
+    sorveglianza_loop.avvia()
+    # Arene malloc limitate prima che nascano i thread di lavoro, e memoria
+    # liberata restituita al sistema ogni 5 minuti (OOM a 2 GB su Render).
+    from app.services import memoria_processo
+
+    memoria_processo.avvia()
+
+    # Fail closed: senza l'archivio operativo configurato il gestionale non
+    # puo' garantire letture o scritture contabili coerenti.
+    await Database.connect_db()
+    from app.services.auth_secret import initialize_auth_secret
+
+    await initialize_auth_secret(Database.get_db())
+    settings.validate_startup()
+
+    # Non blocca la readiness: sul registro Supabase documents_inbox puo'
+    # richiedere piu' pagine. La lease evita la doppia esecuzione durante il
+    # rolling deploy e il job email orario resta il recupero idempotente.
+    badge_alignment_task = asyncio.create_task(
+        _allinea_badge_documenti_in_background(Database.get_db()),
+        name="startup_allinea_badge_documenti",
+    )
+    menu_pubblico_task = None
+
+    # Bus eventi unico (app/services/event_bus.py): include anche gli handler
+    # migrati dal vecchio bus core (app/core/event_bus.py, rimosso).
+    try:
+        from app.services.event_bus import register_all_handlers
+
+        register_all_handlers()
+    except Exception as e:
+        logger.warning(f"Event bus non inizializzato: {e}")
+
+    if settings.RUN_STARTUP_SEED_DATA:
+        try:
+            from app.services.alert_engine import seed_alert_definitions
+
+            db = Database.get_db()
+            if db is not None:
+                await seed_alert_definitions(db)
+        except Exception as e:
+            logger.warning(f"Seed alert_definitions non eseguito: {e}")
+
+    process_role = os.getenv("PROCESS_ROLE", "combined").strip().lower()
+    scheduler_attivo = (
+        settings.ENABLE_SCHEDULER
+        and process_role != "web"
+        and settings.ENVIRONMENT.lower() not in {"test", "testing"}
+    )
+    # App portate pari pari (Lotti, HR = AppDipendenti, Menu): Starlette non
+    # propaga lo startup alle sub-app montate, quindi il loro avvio (seed,
+    # scheduler APScheduler propri, cataloghi) va richiamato da qui. Ogni
+    # funzione avvia_* cattura le proprie eccezioni: un errore non ferma mai il
+    # gestionale. HR e Lotti hanno uno scheduler proprio: partono solo quando
+    # anche quello dell'ERP e' attivo (mai nel ruolo "web" o nei test).
+    # Lotti parte sempre (handler eventi, seed, cataloghi servono alle API);
+    # solo il suo scheduler segue il ruolo del processo.
+    from app.lotti.embed import avvia_lotti
+
+    await avvia_lotti(avvia_scheduler=scheduler_attivo)
+    if scheduler_attivo:
+        try:
+            from app.lotti.db import database as lotti_db
+            from app.lotti.servizi.menu_pubblico_default import applica_sicuro as applica_menu_pubblico
+
+            menu_pubblico_task = asyncio.create_task(
+                applica_menu_pubblico(lotti_db),
+                name="startup_menu_pubblico_ricette",
+            )
+        except Exception as e:
+            logger.warning("Attivazione predefinita ricette nel Menu rimandata: %s", e)
+
+    # La connessione al DB di HR serve anche quando gli scheduler sono spenti
+    # (ruolo web o ENABLE_SCHEDULER=false). Solo i job periodici seguono il flag.
+    from app.hr.embed import avvia_hr
+
+    hr_avviata = await avvia_hr(avvia_scheduler=scheduler_attivo)
+
+    # 14/09/2026 (R1): gli operatori del tablet Lotti sono l'anagrafica HR.
+    # Lotti parte PRIMA di HR (sopra), quindi il suo allineamento all'avvio
+    # trovava il database HR non ancora connesso: si ripete qui, a HR pronto
+    # (idempotente; il job Lotti lo riallinea comunque ogni giorno).
+    if scheduler_attivo and hr_avviata:
+        try:
+            from app.lotti.routers.tablet_operatori import seed_operatori
+
+            await seed_operatori()
+        except Exception as e:
+            logger.warning(f"Allineamento operatori Lotti all'anagrafica HR rimandato: {e}")
+
+    try:
+        from app.menu.embed import avvia_menu
+
+        await avvia_menu()
+    except Exception as e:
+        logger.warning(f"Sotto-applicazione Menu non avviata: {e}")
+
+    if scheduler_attivo:
+        try:
+            from app.scheduler import start_scheduler
+
+            start_scheduler()
+            logger.info("Scheduler avviato")
+        except Exception as e:
+            logger.warning(f"Scheduler non avviato: {e}")
+    else:
+        logger.info(
+            "Scheduler disabilitato (ENABLE_SCHEDULER=%s, ambiente=%s, ruolo=%s)",
+            settings.ENABLE_SCHEDULER,
+            settings.ENVIRONMENT,
+            process_role,
+        )
+
+    try:
+        db = Database.get_db()
+        if settings.RUN_STARTUP_DATA_REPAIRS and db is not None:
+            from app.routers.prima_nota_module.manutenzione import migrazione_pulisci_bancari_da_cassa
+
+            await migrazione_pulisci_bancari_da_cassa()
+    except Exception:
+        logger.exception("Riparazione dati startup non completata")
+
+    # Audit da commercialista 03/09/2026 (§2): 77 giornate di corrispettivi,
+    # 58 uscite POS e 56 trasferimenti POS registrati due volte in Prima Nota
+    # perche' la guardia di idempotenza viveva solo nella cache del singolo
+    # processo. Una tantum, registrata in migration_runs: la copia piu'
+    # recente di ogni coppia viene marcata (soft-delete reversibile con
+    # duplicate_of), mai cancellata; da qui in poi l'unicita' e' garantita
+    # dalla chiave idempotency_key e dall'indice in Postgres. NON sta sotto
+    # RUN_STARTUP_DATA_REPAIRS (false in produzione, dove quel blocco non e'
+    # mai stato eseguito): gira da sola al primo avvio dopo il deploy.
+    # Stessa regola per gli assegni registrati due volte in Prima Nota Banca
+    # (audit §1, PR 3): chiave assegno:<estratto_conto_id>:banca_uscita.
+    try:
+        db = Database.get_db()
+        from app.services.bonifica_prima_nota_conti import applica as applica_bonifica_conti
+        from app.services.bonifica_prima_nota_doppioni import applica as applica_bonifica
+        from app.services.bonifica_prima_nota_doppioni_assegni import (
+            applica as applica_bonifica_assegni,
+        )
+        from app.services.riallinea_pagamenti_fatture import (
+            analizza_avvio as analizza_riallineamento_pagamenti,
+        )
+
+        # Audit §2 PR 7: conti CEE (tesoreria + contropartita) sulle righe
+        # di Prima Nota che ne sono prive — assegna SOLO i campi mancanti.
+        # Audit §1 PR 2: il riallineamento fattura/banca/Prima Nota all'avvio
+        # e' SOLO un dry-run salvato in migration_runs; l'applicazione e' una
+        # scelta esplicita dell'admin (POST /api/admin/riallinea-pagamenti-fatture).
+        bonifiche_avvio = (
+            ("bonifica_prima_nota_doppioni_20260903_v1",
+             "Bonifica doppioni Prima Nota (corrispettivi/POS)", applica_bonifica),
+            ("bonifica_prima_nota_doppioni_assegni_20260903_v1",
+             "Bonifica doppioni Prima Nota (assegni)", applica_bonifica_assegni),
+            ("bonifica_prima_nota_conti_cee_20260903_v1",
+             "Bonifica conti CEE Prima Nota (tesoreria + contropartita)", applica_bonifica_conti),
+            ("riallinea_pagamenti_fatture_20260903_v1_dry_run",
+             "Analisi riallineamento pagamenti fatture (solo dry-run)",
+             analizza_riallineamento_pagamenti),
+        )
+        for bonifica_marker, bonifica_nome, bonifica_fn in bonifiche_avvio:
+            bonifica_run = (
+                await db["migration_runs"].find_one({"id": bonifica_marker})
+                if db is not None else {"status": "completed"}
+            )
+            if bonifica_run and bonifica_run.get("status") == "completed":
+                continue
+            bonifica_status = "failed"
+            try:
+                bonifica_result = await bonifica_fn(db, actor="migrazione_avvio")
+                bonifica_status = "completed"
+            except Exception as exc:
+                bonifica_result = {"success": False, "reason": str(exc)}
+                logger.exception("%s non completata", bonifica_nome)
+            await db["migration_runs"].update_one(
+                {"id": bonifica_marker},
+                {"$set": {
+                    "id": bonifica_marker,
+                    "status": bonifica_status,
+                    "finished_at": datetime.now(timezone.utc).isoformat(),
+                    "result": bonifica_result,
+                }},
+                upsert=True,
+            )
+            if bonifica_status == "completed":
+                logger.info(
+                    "%s completata: %s", bonifica_nome,
+                    {k: bonifica_result.get(k) for k in (
+                        "righe_marcate", "totale_righe_marcate",
+                        "chiavi_assegnate", "corrispettivi_riallineati",
+                        "riferimenti_riallineati", "righe_aggiornate",
+                        "righe_esaminate", "coerenti", "riallineabili", "proposte",
+                    ) if k in bonifica_result},
+                )
+    except Exception:
+        logger.exception("Bonifiche doppioni Prima Nota all'avvio non eseguite")
+
+    # Pulizia autorizzata dal titolare il 23/09/2026: il CSV BPM di quel
+    # giorno ha reimportato gennaio–agosto con descrizioni diverse. In
+    # background e una volta sola (migration_runs).
+    try:
+        from app.services.doppioni_estratto_conto import avvia_in_background
+
+        avvia_in_background(Database.get_db())
+    except Exception:
+        logger.exception("Pulizia doppioni estratto conto non avviata")
+
+    # Giornate di corrispettivi senza documento rimaste accanto alla loro
+    # chiusura XML (contanti due volte in Prima Nota Cassa). Una volta sola.
+    try:
+        from app.routers.invoices.corrispettivi_helpers import avvia_ritiro_giornate_superate
+
+        avvia_ritiro_giornate_superate(Database.get_db())
+    except Exception:
+        logger.exception("Ritiro giornate corrispettivi superate non avviato")
+
+    # Import documentali rimasti «in corso» dal processo spento: ripartono
+    # dalla copia conservata; senza copia la pagina dice di ricaricare il file.
+    try:
+        from app.routers.documenti import ELABORATORI_IN_CODA
+        from app.services.document_import_jobs import riprendi_interrotti_all_avvio
+
+        asyncio.create_task(riprendi_interrotti_all_avvio(Database.get_db(), ELABORATORI_IN_CODA))
+    except Exception:
+        logger.exception("Ripresa degli import interrotti non avviata")
+
+    # Operazione una tantum autorizzata: elimina i dati operativi antecedenti
+    # al 2026 solo in produzione Render, dopo backup separato per collection.
+    # Cedolini, prima nota salari e bonifici collegati sono esclusi e verificati.
+    if settings.RUN_STARTUP_DATA_REPAIRS and (
+        os.getenv("RENDER") or os.getenv("RENDER_SERVICE_ID")
+    ):
+        try:
+            from app.routers.prima_nota_module.manutenzione import (
+                esegui_pulizia_pregressi_una_tantum,
+                neutralizza_versamenti_cassa_generati_da_ec,
+                ripristina_provvisori_metodo_errato,
+                ripristina_abbinamenti_banca_senza_identita,
+            )
+
+            pulizia = await esegui_pulizia_pregressi_una_tantum()
+            if not pulizia.get("skipped"):
+                logger.info(
+                    "Pulizia pre-2026 completata: %s documenti archiviati ed eliminati",
+                    pulizia.get("totale_eliminati", 0),
+                )
+
+            versamenti = await neutralizza_versamenti_cassa_generati_da_ec()
+            if not versamenti.get("skipped"):
+                logger.info(
+                    "Versamenti creati dal solo estratto conto neutralizzati: cassa=%s banca=%s",
+                    versamenti.get("cassa_neutralizzati", 0),
+                    versamenti.get("banca_neutralizzati", 0),
+                )
+
+            # Ripara una sola volta le registrazioni automatiche sul lato
+            # errato. Pagamenti manuali e riconciliati non vengono toccati.
+            # Nuova regola 03/08/2026: anche una riga sul lato "banca"
+            # torna provvisoria se fu creata automaticamente dal solo metodo
+            # fornitore e non porta l'ID di un movimento reale. Soft-delete
+            # reversibile: nessuna registrazione manuale/riconciliata toccata.
+            repair_marker = "repair_bank_without_statement_20260803_v2"
+            repair_run = await db["migration_runs"].find_one({"id": repair_marker})
+            if not repair_run or repair_run.get("status") != "completed":
+                riparazione = await ripristina_provvisori_metodo_errato(
+                    dry_run=False, anno=2026,
+                    banca_non_riconciliate=True, _admin={}
+                )
+                await db["migration_runs"].update_one(
+                    {"id": repair_marker},
+                    {"$set": {
+                        "id": repair_marker,
+                        "status": "completed",
+                        "finished_at": datetime.now(timezone.utc).isoformat(),
+                        "result": riparazione,
+                    }},
+                    upsert=True,
+                )
+                if riparazione.get("corretti"):
+                    logger.info(
+                        "Fatture automatiche con metodo errato ripristinate: %s",
+                        riparazione["corretti"],
+                    )
+
+            strict_marker = "revalidate_invoice_bank_identity_20260803_v2"
+            strict_run = await db["migration_runs"].find_one({"id": strict_marker})
+            if not strict_run or strict_run.get("status") != "completed":
+                strict_result = await ripristina_abbinamenti_banca_senza_identita(
+                    anno=2026, dry_run=False
+                )
+                await db["migration_runs"].update_one(
+                    {"id": strict_marker},
+                    {"$set": {"id": strict_marker, "status": "completed",
+                              "finished_at": datetime.now(timezone.utc).isoformat(),
+                              "result": strict_result}},
+                    upsert=True,
+                )
+                logger.info(
+                    "Auto-match banca rivalidati: validi=%s provvisori=%s",
+                    strict_result.get("validi", 0),
+                    strict_result.get("ripristinati_provvisori", 0),
+                )
+
+            # Correzione puntuale autorizzata 04/08/2026: l'addebito nomina
+            # TIMAS, ma una precedente logica basata sul solo importo aveva
+            # chiuso anche Carta & Party fattura 56. TIMAS resta associata;
+            # viene riaperta esclusivamente la fattura estranea e l'estratto
+            # conto originale non viene modificato/eliminato.
+            carta_marker = "fix_carta_party_timas_collision_20260804_v1"
+            carta_run = await db["migration_runs"].find_one({"id": carta_marker})
+            if not carta_run or carta_run.get("status") != "completed":
+                from app.routers.prima_nota_module.manutenzione import (
+                    AnnullaAssociazioneFatturaBancaRequest,
+                    annulla_associazione_fattura_banca,
+                )
+                try:
+                    carta_result = await annulla_associazione_fattura_banca(
+                        AnnullaAssociazioneFatturaBancaRequest(
+                            partita_iva="05851861210",
+                            numero_fattura="56",
+                            importo_atteso=153.72,
+                            motivo=(
+                                "Correzione falsa associazione: il movimento bancario "
+                                "indica TIMAS ASCENSORI e non Carta & Party"
+                            ),
+                        ),
+                        {"username": "startup-migration"},
+                    )
+                    carta_status = "completed"
+                except Exception as exc:
+                    # Se la fattura e' gia' stata corretta o non e' presente,
+                    # non si altera alcun dato e il tentativo resta tracciato.
+                    # Lo stato resta failed affinche' un errore temporaneo di
+                    # database venga ritentato automaticamente al prossimo avvio.
+                    carta_result = {"skipped": True, "reason": str(exc)}
+                    carta_status = "failed"
+                await db["migration_runs"].update_one(
+                    {"id": carta_marker},
+                    {"$set": {"id": carta_marker, "status": carta_status,
+                              "finished_at": datetime.now(timezone.utc).isoformat(),
+                              "result": carta_result}},
+                    upsert=True,
+                )
+
+            # La stessa correzione operativa conferma che Carta & Party ha
+            # metodo predefinito misto. L'anagrafica resta riutilizzabile per
+            # le fatture future, mentre la fattura riaperta rimane provvisoria
+            # fino a una prova reale di pagamento.
+            carta_method_marker = "set_carta_party_payment_method_misto_20260804_v1"
+            carta_method_run = await db["migration_runs"].find_one(
+                {"id": carta_method_marker}
+            )
+            if not carta_method_run or carta_method_run.get("status") != "completed":
+                carta_method_status = "failed"
+                try:
+                    supplier_filter = {"$or": [
+                        {"partita_iva": "05851861210"},
+                        {"piva": "05851861210"},
+                        {"vat_number": "05851861210"},
+                    ]}
+                    carta_supplier = await db["fornitori"].find_one(supplier_filter)
+                    if not carta_supplier:
+                        raise RuntimeError("Fornitore Carta & Party non trovato")
+                    old_method = carta_supplier.get("metodo_pagamento") or ""
+                    method_now = datetime.now(timezone.utc).isoformat()
+                    update_method = {"$set": {
+                        "metodo_pagamento": "misto",
+                        "metodo_pagamento_dal": carta_supplier.get("metodo_pagamento_dal")
+                        or method_now[:10],
+                        "updated_at": method_now,
+                    }}
+                    if old_method != "misto":
+                        update_method["$push"] = {"storico_metodi_pagamento": {
+                            "metodo": "misto",
+                            "dal": method_now[:10],
+                            "registrato_il": method_now,
+                            "fonte": "correzione_amministrativa",
+                        }}
+                    await db["fornitori"].update_one(supplier_filter, update_method)
+                    carta_method_result = {
+                        "success": True, "old_method": old_method,
+                        "new_method": "misto",
+                    }
+                    carta_method_status = "completed"
+                except Exception as exc:
+                    carta_method_result = {"success": False, "reason": str(exc)}
+                await db["migration_runs"].update_one(
+                    {"id": carta_method_marker},
+                    {"$set": {
+                        "id": carta_method_marker,
+                        "status": carta_method_status,
+                        "finished_at": datetime.now(timezone.utc).isoformat(),
+                        "result": carta_method_result,
+                    }},
+                    upsert=True,
+                )
+
+            # Le versioni precedenti confondevano "copiata in Prima Nota"
+            # con "riconciliata": riapriamo soltanto le righe generiche che
+            # non hanno alcun documento collegato. In questo modo una fattura
+            # XML importata dopo l'estratto puo' ancora trovare la sua uscita.
+            reopen_marker = "reopen_generic_statement_rows_20260803_v1"
+            reopen_run = await db["migration_runs"].find_one({"id": reopen_marker})
+            if not reopen_run or reopen_run.get("status") != "completed":
+                reopened = await db["estratto_conto_movimenti"].update_many(
+                    {"tipo_riconciliazione": "auto_generico",
+                     "$and": [
+                         {"$or": [{"fattura_id": {"$exists": False}}, {"fattura_id": None}]},
+                         {"$or": [{"documento_id": {"$exists": False}}, {"documento_id": None}]},
+                     ]},
+                    {"$set": {"riconciliato": False,
+                              "importato_prima_nota": True,
+                              "stato_riconciliazione": "da_verificare"},
+                     "$unset": {"tipo_riconciliazione": ""}},
+                )
+                await db["migration_runs"].update_one(
+                    {"id": reopen_marker},
+                    {"$set": {"id": reopen_marker, "status": "completed",
+                              "finished_at": datetime.now(timezone.utc).isoformat(),
+                              "modified_count": reopened.modified_count}},
+                    upsert=True,
+                )
+
+        except Exception as e:
+            logger.error("Pulizia pregressi/riparazione metodo non completata: %s", e)
+
+        # Riallineamento una tantum del registro salari al registro canonico
+        # dei cedolini. I PDF vengono riletti per distinguere una mensilita'
+        # ordinaria da 13a/14a; pagamenti e riconciliazioni esistenti restano
+        # nei record originali e non vengono mai eliminati.
+        try:
+            salari_marker = SALARI_SYNC_MARKER
+            salari_run = await db["migration_runs"].find_one({"id": salari_marker})
+            if not salari_run or salari_run.get("status") != "completed":
+                from app.services.salari_sync import sincronizza_prima_nota_da_cedolini
+
+                salari_result = await sincronizza_prima_nota_da_cedolini(
+                    db, anno_minimo=2018
+                )
+                await db["migration_runs"].update_one(
+                    {"id": salari_marker},
+                    {"$set": {
+                        "id": salari_marker,
+                        "status": "completed",
+                        "finished_at": datetime.now(timezone.utc).isoformat(),
+                        "result": salari_result,
+                    }},
+                    upsert=True,
+                )
+                logger.info("Riallineamento cedolini/salari completato: %s", salari_result)
+        except Exception as e:
+            logger.error("Riallineamento cedolini/salari non completato: %s", e)
+
+    # Backfill: fatture importate da Drive/bulk prima del fix campi — senza
+    # `anno`/`data_documento` non comparivano nei filtri per anno.
+    try:
+        db = Database.get_db()
+        if settings.RUN_STARTUP_DATA_REPAIRS and db is not None:
+            r = await db["invoices"].update_many(
+                {"anno": {"$exists": False},
+                 "invoice_date": {"$regex": r"^\d{4}-"}},
+                [{"$set": {
+                    "anno": {"$toInt": {"$substrCP": ["$invoice_date", 0, 4]}},
+                    "data_documento": {"$ifNull": ["$data_documento", "$invoice_date"]},
+                    "numero_fattura": {"$ifNull": ["$numero_fattura", "$invoice_number"]},
+                    "cedente_denominazione": {"$ifNull": ["$cedente_denominazione", "$supplier_name"]},
+                    "cedente_piva": {"$ifNull": ["$cedente_piva", "$supplier_vat"]},
+                }}],
+            )
+            if r.modified_count:
+                logger.info(f"Backfill fatture senza anno: {r.modified_count} aggiornate")
+    except Exception as e:
+        logger.warning(f"Backfill anno fatture non eseguito: {e}")
+
+    # Migrazione: gli ammortamenti cespiti venivano registrati anche come
+    # "uscita" reale in prima_nota_cassa (costo non monetario che abbassava
+    # il saldo cassa). Soft-delete dei movimenti generati da quel bug:
+    # riconoscibili senza ambiguità dal source dedicato.
+    try:
+        db = Database.get_db()
+        if settings.RUN_STARTUP_DATA_REPAIRS and db is not None:
+            r = await db["prima_nota_cassa"].update_many(
+                {"source": "ammortamento_cespiti", "status": {"$ne": "deleted"}},
+                {"$set": {"status": "deleted",
+                          "nota_migrazione": "ammortamento non monetario, rimosso dalla cassa"}},
+            )
+            if r.modified_count:
+                logger.info(f"Neutralizzati {r.modified_count} movimenti cassa da ammortamenti (non monetari)")
+    except Exception as e:
+        logger.warning(f"Pulizia ammortamenti in cassa non eseguita: {e}")
+
+    # Rollback automatico della deduplica 20/08/2026 basata su fattura_id.
+    # Una fattura puo' essere pagata da piu' assegni/rate: quelle righe sono
+    # operazioni distinte e devono tornare visibili senza intervento utente.
+    try:
+        db = Database.get_db()
+        if db is not None:
+            from app.routers.prima_nota_module.manutenzione import (
+                ripristina_dedup_fatture_errato,
+            )
+            ripristino = await ripristina_dedup_fatture_errato()
+            if ripristino.get("ripristinati"):
+                logger.warning(
+                    "Ripristinate %s operazioni nascoste dalla deduplica fattura_id",
+                    ripristino["ripristinati"],
+                )
+    except Exception as e:
+        logger.error("Rollback deduplica fattura_id non eseguito: %s", e)
+
+    # Recupero una-tantum delle relazioni stipendio gia' dimostrate dai dati
+    # sorgente. Non cerca nuovi abbinamenti per solo nome/importo: ricostruisce
+    # esclusivamente il collegamento mancante quando la riga stipendio conserva
+    # l'ID del movimento bancario e il movimento supera tutte le verifiche
+    # (uscita, identita' completa, periodo/data e importo entro il residuo).
+    # La chiave canonica della relazione rende l'operazione idempotente.
+    try:
+        db = Database.get_db()
+        if db is not None:
+            marker = SALARY_RELATIONS_RECOVERY_MARKER
+            run = await db["migration_runs"].find_one({"id": marker})
+            if not run or run.get("status") != "completed":
+                started_at = datetime.now(timezone.utc).isoformat()
+                await db["migration_runs"].update_one(
+                    {"id": marker},
+                    {"$set": {
+                        "id": marker,
+                        "status": "running",
+                        "started_at": started_at,
+                    }},
+                    upsert=True,
+                )
+
+                from app.services.stipendi_bonifici import (
+                    recupera_relazioni_stipendi_mancanti,
+                )
+
+                result = await recupera_relazioni_stipendi_mancanti(db)
+                status = "completed" if not result.get("errori") else "retry"
+                await db["migration_runs"].update_one(
+                    {"id": marker},
+                    {"$set": {
+                        "id": marker,
+                        "status": status,
+                        "finished_at": datetime.now(timezone.utc).isoformat(),
+                        "result": result,
+                    }},
+                    upsert=True,
+                )
+                logger.info(
+                    "Recupero relazioni stipendi: status=%s esaminate=%s "
+                    "recuperate=%s gia_presenti=%s non_verificate=%s errori=%s",
+                    status,
+                    result.get("riferimenti_bancari_esaminati", 0),
+                    result.get("relazioni_recuperate", 0),
+                    result.get("relazioni_gia_presenti", 0),
+                    result.get("riferimenti_non_verificati", 0),
+                    result.get("errori", 0),
+                )
+    except Exception as e:
+        logger.exception("Recupero relazioni stipendi non completato")
+        try:
+            db = Database.get_db()
+            if db is not None:
+                await db["migration_runs"].update_one(
+                    {"id": SALARY_RELATIONS_RECOVERY_MARKER},
+                    {"$set": {
+                        "id": SALARY_RELATIONS_RECOVERY_MARKER,
+                        "status": "failed",
+                        "finished_at": datetime.now(timezone.utc).isoformat(),
+                        "error": type(e).__name__,
+                    }},
+                    upsert=True,
+                )
+        except Exception:
+            logger.exception("Impossibile registrare il fallimento del recupero stipendi")
+
+    # Ripristina i metodi fornitore persi soltanto quando esiste una prova
+    # esplicita nello storico o nel dizionario persistente. Il servizio crea
+    # una copia completa della riga prima di ogni modifica e non deduce nulla
+    # da fatture, importi o movimenti finanziari.
+    if Database.get_db() is not None:
+        try:
+            db = Database.get_db()
+            marker = SUPPLIER_METHODS_RECOVERY_MARKER
+            run = await db["migration_runs"].find_one({"id": marker})
+            if not run or run.get("status") != "completed":
+                from app.services.supplier_payment_method_recovery import (
+                    recover_supplier_payment_methods,
+                )
+
+                result = await recover_supplier_payment_methods(db, apply=True)
+                await db["migration_runs"].update_one(
+                    {"id": marker},
+                    {"$set": {
+                        "id": marker,
+                        "status": "completed",
+                        "finished_at": datetime.now(timezone.utc).isoformat(),
+                        "result": result,
+                    }},
+                    upsert=True,
+                )
+                try:
+                    from app.middleware.performance import cache
+                    await cache.clear_pattern("suppliers_list")
+                except Exception:
+                    logger.warning("Cache fornitori non invalidata dopo il recupero")
+                logger.info(
+                    "Recupero metodi fornitori: ripristinati=%s senza_fonte=%s conflitti=%s",
+                    result.get("ripristinati", 0), result.get("senza_fonte", 0),
+                    result.get("conflitti", 0),
+                )
+        except Exception:
+            logger.exception("Recupero metodi fornitori non completato")
+
+    logger.info("Application startup complete")
+    yield
+
+    logger.info("Shutting down...")
+    sorveglianza_loop.arresta()
+    memoria_processo.arresta()
+    if not badge_alignment_task.done():
+        badge_alignment_task.cancel()
+        with suppress(asyncio.CancelledError):
+            await badge_alignment_task
+    if menu_pubblico_task is not None and not menu_pubblico_task.done():
+        menu_pubblico_task.cancel()
+        with suppress(asyncio.CancelledError):
+            await menu_pubblico_task
+    try:
+        from app.services.email_monitor_service import stop_monitor
+
+        stop_monitor()
+    except Exception:
+        pass
+    if scheduler_attivo:
+        try:
+            from app.scheduler import stop_scheduler
+
+            stop_scheduler()
+        except Exception:
+            pass
+        # I lease dei job in corso vanno restituiti: se il processo muore
+        # tenendoli, l'istanza che subentra trova il job occupato e salta il
+        # turno per tutto il TTL (15 minuti dopo ogni deploy).
+        try:
+            rilascia = getattr(Database.db, "rilascia_lease_attive", None)
+            if callable(rilascia):
+                rimasti = await rilascia()
+                if rimasti:
+                    logger.info("Lease scheduler restituiti allo spegnimento: %s", rimasti)
+        except Exception:
+            logger.exception("Restituzione dei lease scheduler non riuscita")
+    from app.lotti.embed import arresta_lotti
+
+    await arresta_lotti()
+    if scheduler_attivo:
+        from app.hr.embed import arresta_hr
+
+        await arresta_hr()
+    try:
+        from app.menu.embed import arresta_menu
+
+        await arresta_menu()
+    except Exception:
+        pass
+    await Database.close_db()
+    logger.info("Shutdown complete")
+
+
+app = FastAPI(
+    title=settings.APP_NAME,
+    version=settings.APP_VERSION,
+    docs_url="/docs" if settings.is_development else None,
+    redoc_url="/redoc" if settings.is_development else None,
+    openapi_url="/openapi.json" if settings.is_development else None,
+    lifespan=lifespan,
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.get_cors_origins(),
+    allow_credentials=settings.ALLOW_CREDENTIALS,
+    allow_methods=["*"],
+    allow_headers=["*"],
+    # Sessione scorrevole: il browser deve poter leggere il token rinnovato
+    expose_headers=["X-Token-Rinnovato"],
+)
+
+try:
+    from slowapi import Limiter, _rate_limit_exceeded_handler
+    from slowapi.errors import RateLimitExceeded
+    from slowapi.middleware import SlowAPIMiddleware
+    from slowapi.util import get_remote_address
+
+    limiter = Limiter(key_func=get_remote_address, default_limits=["200/minute"])
+    app.state.limiter = limiter
+    app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+    # Audit sicurezza 19/07/2026: il Limiter era istanziato ma senza questo
+    # middleware default_limits non veniva mai applicato — nessun endpoint
+    # (tranne login/PIN, che hanno il loro lockout dedicato) aveva un limite
+    # di richieste reale.
+    app.add_middleware(SlowAPIMiddleware)
+except ImportError:
+    pass
+
+from app.middleware.authentication import AuthenticationMiddleware
+from app.middleware.performance import IstantaneeMiddleware
+
+app.add_middleware(IstantaneeMiddleware)
+app.add_middleware(AuthenticationMiddleware)
+add_exception_handlers(app)
+
+from app.router_registry import register_all_routers
+
+register_all_routers(app)
+
+
+def _frontend_index_path() -> str | None:
+    for root in (_FRONTEND_DIST, _FRONTEND_PUBLIC):
+        index_path = os.path.join(root, "index.html")
+        if os.path.isfile(index_path):
+            return index_path
+    return None
+
+
+# Bug segnalato dall'utente 17/07/2026 ("non vedo niente di live"): l'index
+# veniva servito SENZA Cache-Control, quindi il browser (specie la PWA su
+# telefono) applicava la cache euristica e continuava a caricare i chunk JS
+# vecchi anche dopo il deploy. no-cache = il browser riconvalida l'index a
+# ogni apertura (costa un 304 da pochi byte) e prende subito il bundle nuovo.
+_INDEX_HEADERS = {"Cache-Control": "no-cache"}
+
+
+def _index_response(index_path: str) -> FileResponse:
+    return FileResponse(index_path, headers=_INDEX_HEADERS)
+
+
+def _static_response(file_path: str) -> FileResponse:
+    # I file dentro /assets hanno l'hash del contenuto nel nome: se cambiano,
+    # cambia l'URL — la cache lunga e "immutable" è sicura e velocizza l'app.
+    if f"{os.sep}assets{os.sep}" in file_path:
+        return FileResponse(
+            file_path, headers={"Cache-Control": "public, max-age=31536000, immutable"}
+        )
+    # Altri file statici (icone, manifest, service-worker): riconvalida.
+    return FileResponse(file_path, headers=_INDEX_HEADERS)
+
+
+def _safe_frontend_file(root: str, requested_path: str) -> str | None:
+    safe_path = os.path.normpath(requested_path).lstrip("/\\")
+    if not safe_path:
+        return None
+    candidate = os.path.realpath(os.path.join(root, safe_path))
+    root_prefix = root if root.endswith(os.sep) else root + os.sep
+    if os.path.isfile(candidate) and candidate.startswith(root_prefix):
+        return candidate
+    return None
+
+
+@app.get("/")
+async def root(request: Request):
+    accept = request.headers.get("accept", "")
+    if "text/html" in accept:
+        index_path = _frontend_index_path()
+        if index_path:
+            return _index_response(index_path)
+    return {"app": settings.APP_NAME, "version": settings.APP_VERSION, "status": "online"}
+
+
+async def _probe_archivio(database, health_probe) -> tuple[str, str | None]:
+    """Esito della probe di scrittura Supabase: ("verified"|"failed", motivo).
+
+    17/09/2026 (terzo giro): Render interroga /api/health ogni pochi secondi e
+    ogni probe e' una scrittura + cancellazione su gestionale.documents
+    (trigger compresi). Con il database saturo (07:45 UTC) erano 130 probe in
+    13 minuti da 7 s l'una: carico aggiunto proprio quando manca. Una sola
+    probe in volo per processo, esito riusato e budget fisso: il meccanismo
+    e' ``services/health_probe.ProbeUnica``, lo stesso di HR e Menu.
+    """
+    from app.services.health_probe import ProbeUnica
+
+    probe = _probe_stati.get(database)
+    if probe is None:
+        probe = ProbeUnica("database")
+        _probe_stati[database] = probe
+    return await probe.esito(
+        health_probe,
+        timeout=_HEALTH_PROBE_TIMEOUT,
+        ttl_ok=_PROBE_ESITO_TTL,
+        ttl_errore=_PROBE_ERRORE_TTL,
+    )
+
+
+def _commit_pubblicato() -> str | None:
+    """Prefisso del commit servito, dalla stessa fonte di HR, Menu e Lotti."""
+    from app.services.deploy_info import get_deploy_info
+
+    commit = get_deploy_info()["deploy_commit"]
+    return None if commit == "unknown" else commit[:8]
+
+
+@app.get("/health")
+@app.get("/api/health")
+async def health_check(strict: bool = False):
+    """Liveness per Render + diagnostica dell'archivio.
+
+    17/09/2026: la probe di scrittura Supabase (``gc_runtime_health_probe``)
+    rispondeva 503 a ogni statement timeout del database; Render, che chiama
+    questo stesso percorso come health check, riavviava l'istanza dopo pochi
+    fallimenti consecutivi, e ogni riavvio rilanciava i job di avvio che
+    caricavano di nuovo il database: ciclo di riavvii (00:18-00:28 UTC, sei
+    riavvii, sito in 502). Un processo vivo con il catalogo verificato resta
+    ``200`` anche se la probe fallisce: risponde ``degraded`` con il motivo,
+    cosi' la diagnosi resta visibile senza far cadere il servizio. Con
+    ``?strict=true`` (verifiche manuali, CI) una probe fallita torna ``503``.
+    """
+    from datetime import datetime, timezone
+
+    if Database.db is None:
+        return JSONResponse(
+            status_code=503,
+            content={
+                "status": "unhealthy",
+                "database": "disconnected",
+                "version": settings.APP_VERSION,
+                "deploy_commit": _commit_pubblicato(),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            },
+        )
+
+    if getattr(Database.db, "hydration_result", None) is None:
+        # Avvio non completato: non e' pronto, e Render deve saperlo.
+        return JSONResponse(
+            status_code=503,
+            content={
+                "status": "unhealthy",
+                "database": "unreachable",
+                "archivio": "catalogo non verificato",
+                "version": settings.APP_VERSION,
+                "deploy_commit": _commit_pubblicato(),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            },
+        )
+
+    archivio_probe = "verified"
+    archivio_errore = None
+    health_probe = getattr(Database.db, "health_probe", None)
+    if callable(health_probe):
+        # 17/09/2026 (secondo giro): anche con il 200 "degraded", Render
+        # riavviava l'istanza ogni ~9 minuti con spegnimento pulito
+        # (SIGTERM) e memoria sotto 1 GB: il suo health check scadeva
+        # perche' la probe restava appesa fino allo statement timeout
+        # di Supabase (8-10 s). La liveness deve rispondere sempre in
+        # pochi secondi: la probe ha un budget fisso, oltre il quale il
+        # risultato e' "degraded" con motivo, non un'attesa.
+        archivio_probe, archivio_errore = await _probe_archivio(Database.db, health_probe)
+        if archivio_probe == "failed":
+            logger.warning("Health check archivio remoto fallito: %s", archivio_errore)
+        if archivio_probe == "failed" and strict and not str(archivio_errore).startswith("probe oltre"):
+            return JSONResponse(
+                status_code=503,
+                content={
+                    "status": "unhealthy",
+                    "database": "unreachable",
+                    "archivio": archivio_probe,
+                    "archivio_errore": archivio_errore,
+                    "version": settings.APP_VERSION,
+                    "deploy_commit": _commit_pubblicato(),
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                },
+            )
+
+    salari_sync = "not_started"
+    try:
+        if Database.db is not None:
+            run = await asyncio.wait_for(
+                Database.db["migration_runs"].find_one(
+                    {"id": SALARI_SYNC_MARKER}, {"_id": 0, "status": 1}
+                ),
+                timeout=_HEALTH_PROBE_TIMEOUT,
+            )
+            salari_sync = (run or {}).get("status") or "not_started"
+    except Exception:
+        salari_sync = "unavailable"
+
+    hydration_result = getattr(Database.db, "hydration_result", {}) or {}
+    hydration_errors = sum(
+        int(item.get("numero_errori") or 0)
+        for item in hydration_result.get("fogli", [])
+    )
+    hydration_rows = sum(
+        int(item.get("valide") or 0)
+        for item in hydration_result.get("fogli", [])
+    )
+
+    degradato = hydration_errors > 0 or archivio_probe == "failed"
+    return {
+        "status": "degraded" if degradato else "healthy",
+        "database": "connected" if archivio_probe != "failed" else "unreachable",
+        "storage": "supabase",
+        "archivio": archivio_probe,
+        "archivio_errore": archivio_errore,
+        "hydrated_rows": hydration_rows,
+        "hydration_errors": hydration_errors,
+        "version": settings.APP_VERSION,
+        # Prefisso pubblico e non sensibile: permette di verificare che
+        # Render stia realmente servendo il commit atteso.
+        "deploy_commit": _commit_pubblicato(),
+        "salari_sync": salari_sync,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+@app.get("/api/ping")
+async def ping():
+    return {"pong": True}
+
+
+@app.get("/api/system/lock-status")
+async def system_lock_status():
+    from app.routers.documenti import get_current_operation, is_email_operation_running
+
+    return {
+        "email_locked": is_email_operation_running(),
+        "operation": get_current_operation(),
+        "can_start_email_operation": not is_email_operation_running(),
+    }
+
+
+class _HashedAssets(StaticFiles):
+    """Asset con hash nel nome (index-BJ8lb5ff.js): cache lunga sicura."""
+
+    def file_response(self, *args, **kwargs):
+        response = super().file_response(*args, **kwargs)
+        response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+        return response
+
+
+# App Lotti (HACCP) portata pari pari dentro il gestionale: backend originale
+# (app/lotti, proprio login a PIN) montato a /lotti -> /lotti/api/...; il
+# frontend originale (build CRA di frontend_lotti, PUBLIC_URL=/lotti) e' servito
+# dalla stessa sub-app. Va montata PRIMA del catch-all del frontend del
+# gestionale, altrimenti /lotti/... finirebbe nella SPA dell'ERP.
+from app.lotti.embed import lotti_app, monta_frontend as _monta_frontend_lotti  # noqa: E402
+
+_LOTTI_BUILD = os.path.join(_PROJECT_ROOT, "frontend_lotti", "build")
+if _monta_frontend_lotti(Path(_LOTTI_BUILD)):
+    logger.info("Frontend Lotti montato da %s", _LOTTI_BUILD)
+else:
+    logger.warning("Frontend Lotti non trovato (%s): /lotti serve solo le API", _LOTTI_BUILD)
+app.mount("/lotti", lotti_app, name="lotti")
+# Le foto delle ricette SAIMA sono referenziate dai dati come /saima/... (radice
+# della pagina, non del prefisso): si servono dalla stessa build.
+_LOTTI_SAIMA = os.path.join(_LOTTI_BUILD, "saima")
+if os.path.isdir(_LOTTI_SAIMA):
+    app.mount("/saima", StaticFiles(directory=_LOTTI_SAIMA), name="lotti-saima")
+
+# App Menu (menu digitale Ceraldi Caffe') portata pari pari: backend originale
+# (app/menu, sessione admin derivata dall'ERP) montato a /menu ->
+# /menu/api/...; il build CRA di frontend_menu (PUBLIC_URL=/menu) e' servito
+# dalla stessa sub-app (app/menu/server.py monta da solo il build se la
+# cartella esiste all'import: qui si registra solo l'esito nel log).
+from app.menu.embed import menu_app  # noqa: E402
+from app.menu.server import FRONTEND_BUILD_DIR as _MENU_BUILD  # noqa: E402
+
+if os.path.isdir(_MENU_BUILD):
+    logger.info("Frontend Menu montato da %s", _MENU_BUILD)
+else:
+    logger.warning("Frontend Menu non trovato (%s): /menu serve solo le API", _MENU_BUILD)
+app.mount("/menu", menu_app, name="menu")
+
+# Convenzioni (Colazioni B&B): pagina unica statica (frontend_colazioni/index.html, nessuna
+# build) che parla direttamente con Supabase tramite funzioni RPC con PIN. Non ha
+# un backend in app/: si serve la cartella cosi' com'e', con `html=True` per
+# l'indice. Va montata PRIMA del catch-all della SPA dell'ERP.
+_COLAZIONI_DIR = os.path.join(_PROJECT_ROOT, "frontend_colazioni")
+if os.path.isdir(_COLAZIONI_DIR):
+    app.mount("/convenzioni", StaticFiles(directory=_COLAZIONI_DIR, html=True), name="convenzioni")
+    logger.info("Convenzioni (Colazioni B&B) montata da %s", _COLAZIONI_DIR)
+else:
+    logger.warning("Convenzioni (Colazioni B&B) non trovata (%s): /convenzioni non risponde", _COLAZIONI_DIR)
+
+# App HR (AppDipendenti) portata pari pari: backend originale (app/hr, proprio
+# login a PIN) montato a /hr -> /hr/api/...; il build Vite di frontend_hr
+# (base /hr/) e' servito dalla stessa sub-app con fallback SPA per i deep link
+# (/hr/portale, /hr/dipendenti/...).
+from app.hr.embed import hr_app, monta_frontend as _monta_frontend_hr  # noqa: E402
+
+_HR_BUILD = os.path.join(_PROJECT_ROOT, "frontend_hr", "dist")
+if _monta_frontend_hr(Path(_HR_BUILD)):
+    logger.info("Frontend HR montato da %s", _HR_BUILD)
+else:
+    logger.warning("Frontend HR non trovato (%s): /hr serve solo le API", _HR_BUILD)
+app.mount("/hr", hr_app, name="hr")
+
+# Il prefisso NUDO delle app portate (`/lotti`, senza la barra finale) non lo
+# prende il mount: Starlette compila `Mount("/lotti")` in `^/lotti/(?P<path>.*)$`,
+# che richiede la barra. La richiesta cadeva quindi nel catch-all della SPA
+# dell'ERP, e chi digitava `gestionalecloud.onrender.com/lotti` si ritrovava nel
+# gestionale — verificato il 20/09/2026: tutti e tre i prefissi rispondevano 200
+# con `<title>Ceraldi ERP</title>`. Il redirect a `/<prefisso>/` va registrato
+# DOPO i mount e PRIMA del catch-all, ed e' 307 perche' conserva il metodo.
+_APP_PORTATE = ("lotti", "menu", "hr", "convenzioni")
+
+for _prefisso in _APP_PORTATE:
+    def _vai_alla_app_portata(request: Request, _p: str = _prefisso) -> RedirectResponse:
+        # La query si conserva: un redirect che la butta perde i parametri del
+        # link con cui l'utente e' arrivato, e chi li legge non li trova piu'.
+        coda = f"?{request.url.query}" if request.url.query else ""
+        return RedirectResponse(url=f"/{_p}/{coda}", status_code=307)
+
+    app.add_api_route(
+        f"/{_prefisso}",
+        _vai_alla_app_portata,
+        methods=["GET", "HEAD"],
+        include_in_schema=False,
+        name=f"{_prefisso}-slash",
+    )
+
+# Vecchio indirizzo `/colazioni/...`: gli inviti gia' mandati agli albergatori lo
+# contengono. Rimanda a `/convenzioni/...` (il #frammento lo conserva il browser).
+@app.get("/colazioni", include_in_schema=False)
+@app.get("/colazioni/{resto:path}", include_in_schema=False)
+async def _colazioni_vecchio_indirizzo(request: Request, resto: str = "") -> RedirectResponse:
+    coda = f"?{request.url.query}" if request.url.query else ""
+    return RedirectResponse(url=f"/convenzioni/{resto}{coda}", status_code=307)
+
+
+if os.path.isdir(_FRONTEND_DIST):
+    assets_path = os.path.join(_FRONTEND_DIST, "assets")
+    if os.path.isdir(assets_path):
+        app.mount("/assets", _HashedAssets(directory=assets_path), name="frontend-assets")
+
+    @app.get("/{full_path:path}", include_in_schema=False, response_model=None)
+    async def serve_spa_dist(request: Request, full_path: str) -> FileResponse | JSONResponse:
+        if full_path.startswith("api/") or full_path == "api":
+            return JSONResponse({"detail": "Not found"}, status_code=404)
+        static_file = _safe_frontend_file(_FRONTEND_DIST, full_path)
+        if static_file:
+            return _static_response(static_file)
+        return _index_response(os.path.join(_FRONTEND_DIST, "index.html"))
+
+    logger.info("Frontend dist montato")
+elif os.path.isdir(_FRONTEND_PUBLIC):
+
+    @app.get("/{full_path:path}", include_in_schema=False, response_model=None)
+    async def serve_spa_public(request: Request, full_path: str) -> FileResponse | JSONResponse:
+        if full_path.startswith("api/") or full_path == "api":
+            return JSONResponse({"detail": "Not found"}, status_code=404)
+        static_file = _safe_frontend_file(_FRONTEND_PUBLIC, full_path)
+        if static_file:
+            return _static_response(static_file)
+        return _index_response(os.path.join(_FRONTEND_PUBLIC, "index.html"))
+
+    logger.info("Frontend public montato")
+
+# reload-trigger

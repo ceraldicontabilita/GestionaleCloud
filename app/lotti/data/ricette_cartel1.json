@@ -1,0 +1,2280 @@
+{
+  "schema_version": 1,
+  "source": {
+    "filename": "Cartel1.xlsx",
+    "sha256": "4D049B3DC8E849B68B10D0FF32CAEA94E26AAF1EBAED9746174DA56C67B5432C",
+    "sheet": "ricettario",
+    "max_row": 463,
+    "max_column": 7
+  },
+  "import_policy": {
+    "mode": "integrate",
+    "preserve_existing_records_not_in_source": true,
+    "preserve_existing_id_and_photo": true,
+    "preserve_matching_ingredient_quantities": true,
+    "new_ingredient_quantity": null
+  },
+  "stats": {
+    "recipes": 106,
+    "bases": 51,
+    "variants": 55,
+    "ingredients": 665
+  },
+  "recipes": [
+    {
+      "nome": "arancini",
+      "nome_origine": "arancini di riso",
+      "tipo": "base",
+      "ricetta_base_nome": null,
+      "ingredienti": [
+        "riso",
+        "sale fino",
+        "Sedano",
+        "carote",
+        "olio extravergine oliva",
+        "cipolle",
+        "pepe nero",
+        "concentrato di pomodoro",
+        "carne macinata"
+      ],
+      "origine": {
+        "foglio": "ricettario",
+        "cella": "A2",
+        "riga_inizio": 2,
+        "riga_fine": 13,
+        "colonna": 1
+      }
+    },
+    {
+      "nome": "arancini di riso funghi e provola",
+      "nome_origine": "arancini di riso funghi e provola",
+      "tipo": "variante",
+      "ricetta_base_nome": "arancini",
+      "ingredienti": [
+        "riso",
+        "sale fino",
+        "Sedano",
+        "carote",
+        "olio extravergine oliva",
+        "cipolle",
+        "pepe nero",
+        "concentrato di pomodoro",
+        "carne macinata",
+        "provola",
+        "funghi trifolati"
+      ],
+      "origine": {
+        "foglio": "ricettario",
+        "cella": "B2",
+        "riga_inizio": 2,
+        "riga_fine": 13,
+        "colonna": 2
+      }
+    },
+    {
+      "nome": "crocche",
+      "nome_origine": "crocche di patate",
+      "tipo": "base",
+      "ricetta_base_nome": null,
+      "ingredienti": [
+        "patate",
+        "sale fino",
+        "olio extravergine oliva",
+        "pepe",
+        "olio extravergine oliva",
+        "burro",
+        "prezzemolo"
+      ],
+      "origine": {
+        "foglio": "ricettario",
+        "cella": "A14",
+        "riga_inizio": 14,
+        "riga_fine": 21,
+        "colonna": 1
+      }
+    },
+    {
+      "nome": "frittatina",
+      "nome_origine": "frittatina di bucatini",
+      "tipo": "base",
+      "ricetta_base_nome": null,
+      "ingredienti": [
+        "Bucatini",
+        "sale fino",
+        "latte INTERO",
+        "Burro",
+        "FARINA 0/MAN. CAPUTO",
+        "carote",
+        "piselli",
+        "olio extravergine oliva",
+        "prezzemolo",
+        "piselli",
+        "Carne Macinata",
+        "pepe nero"
+      ],
+      "origine": {
+        "foglio": "ricettario",
+        "cella": "A22",
+        "riga_inizio": 22,
+        "riga_fine": 36,
+        "colonna": 1
+      }
+    },
+    {
+      "nome": "frittatina di bucatini peperoni",
+      "nome_origine": "frittatina di bucatini peperoni",
+      "tipo": "variante",
+      "ricetta_base_nome": "frittatina",
+      "ingredienti": [
+        "Bucatini",
+        "sale fino",
+        "latte INTERO",
+        "Burro",
+        "FARINA 0/MAN. CAPUTO",
+        "carote",
+        "piselli",
+        "olio extravergine oliva",
+        "prezzemolo",
+        "piselli",
+        "Carne Macinata",
+        "pepe nero",
+        "peperoni"
+      ],
+      "origine": {
+        "foglio": "ricettario",
+        "cella": "B22",
+        "riga_inizio": 22,
+        "riga_fine": 36,
+        "colonna": 2
+      }
+    },
+    {
+      "nome": "frittatina di bucatini carbonara",
+      "nome_origine": "frittatina di bucatini carbonara",
+      "tipo": "variante",
+      "ricetta_base_nome": "frittatina",
+      "ingredienti": [
+        "Bucatini",
+        "sale fino",
+        "latte INTERO",
+        "Burro",
+        "FARINA 0/MAN. CAPUTO",
+        "carote",
+        "piselli",
+        "olio extravergine oliva",
+        "prezzemolo",
+        "piselli",
+        "Carne Macinata",
+        "pepe nero",
+        "pecorino",
+        "tuorli d'uovo"
+      ],
+      "origine": {
+        "foglio": "ricettario",
+        "cella": "C22",
+        "riga_inizio": 22,
+        "riga_fine": 36,
+        "colonna": 3
+      }
+    },
+    {
+      "nome": "frittatina di bucatini genovese",
+      "nome_origine": "frittatina di bucatini genovese",
+      "tipo": "variante",
+      "ricetta_base_nome": "frittatina",
+      "ingredienti": [
+        "Bucatini",
+        "sale fino",
+        "latte INTERO",
+        "Burro",
+        "FARINA 0/MAN. CAPUTO",
+        "carote",
+        "piselli",
+        "olio extravergine oliva",
+        "prezzemolo",
+        "piselli",
+        "Carne Macinata",
+        "pepe nero",
+        "cipolle"
+      ],
+      "origine": {
+        "foglio": "ricettario",
+        "cella": "D22",
+        "riga_inizio": 22,
+        "riga_fine": 36,
+        "colonna": 4
+      }
+    },
+    {
+      "nome": "friarielli in padella",
+      "nome_origine": "friarielli in padella",
+      "tipo": "base",
+      "ricetta_base_nome": null,
+      "ingredienti": [
+        "friarielli",
+        "sale fino",
+        "olio extravergine oliva",
+        "peperoncino",
+        "aglio"
+      ],
+      "origine": {
+        "foglio": "ricettario",
+        "cella": "A37",
+        "riga_inizio": 37,
+        "riga_fine": 42,
+        "colonna": 1
+      }
+    },
+    {
+      "nome": "peperoni in padella",
+      "nome_origine": "peperoni in padella",
+      "tipo": "base",
+      "ricetta_base_nome": null,
+      "ingredienti": [
+        "Peperoni",
+        "sale fino",
+        "olio extravergine oliva",
+        "prezzemolo",
+        "aglio"
+      ],
+      "origine": {
+        "foglio": "ricettario",
+        "cella": "A43",
+        "riga_inizio": 43,
+        "riga_fine": 48,
+        "colonna": 1
+      }
+    },
+    {
+      "nome": "melanzane in padella",
+      "nome_origine": "melanzane in padella",
+      "tipo": "base",
+      "ricetta_base_nome": null,
+      "ingredienti": [
+        "melanzane",
+        "sale fino",
+        "olio extravergine oliva",
+        "aglio",
+        "pomodorini",
+        "basilico",
+        "pepe"
+      ],
+      "origine": {
+        "foglio": "ricettario",
+        "cella": "A49",
+        "riga_inizio": 49,
+        "riga_fine": 56,
+        "colonna": 1
+      }
+    },
+    {
+      "nome": "polpettine di carne",
+      "nome_origine": "polpettine di carne",
+      "tipo": "base",
+      "ricetta_base_nome": null,
+      "ingredienti": [
+        "Carne Macinata",
+        "olio extravergine oliva",
+        "sale fino",
+        "aglio",
+        "prezzemolo",
+        "basilico",
+        "latte",
+        "mollica di pane"
+      ],
+      "origine": {
+        "foglio": "ricettario",
+        "cella": "A57",
+        "riga_inizio": 57,
+        "riga_fine": 72,
+        "colonna": 1
+      }
+    },
+    {
+      "nome": "polpettine di carne al ragù di carne",
+      "nome_origine": "polpettine di carne al ragù di carne",
+      "tipo": "variante",
+      "ricetta_base_nome": "polpettine di carne",
+      "ingredienti": [
+        "Carne Macinata",
+        "olio extravergine oliva",
+        "sale fino",
+        "aglio",
+        "prezzemolo",
+        "basilico",
+        "latte",
+        "mollica di pane",
+        "passata di pomodoro"
+      ],
+      "origine": {
+        "foglio": "ricettario",
+        "cella": "B57",
+        "riga_inizio": 57,
+        "riga_fine": 72,
+        "colonna": 2
+      }
+    },
+    {
+      "nome": "zucchine alla scapece",
+      "nome_origine": "zucchine alla scapece",
+      "tipo": "base",
+      "ricetta_base_nome": null,
+      "ingredienti": [
+        "Zucchine",
+        "sale fino",
+        "olio extravergine oliva",
+        "menta",
+        "aceto",
+        "olio extravergine oliva"
+      ],
+      "origine": {
+        "foglio": "ricettario",
+        "cella": "A73",
+        "riga_inizio": 73,
+        "riga_fine": 88,
+        "colonna": 1
+      }
+    },
+    {
+      "nome": "zucchine in padella",
+      "nome_origine": "zucchine in padella",
+      "tipo": "base",
+      "ricetta_base_nome": null,
+      "ingredienti": [
+        "Zucchine",
+        "sale fino",
+        "olio extravergine oliva",
+        "menta",
+        "basilico",
+        "pepe"
+      ],
+      "origine": {
+        "foglio": "ricettario",
+        "cella": "A89",
+        "riga_inizio": 89,
+        "riga_fine": 104,
+        "colonna": 1
+      }
+    },
+    {
+      "nome": "scarole ripassate",
+      "nome_origine": "scarole ripassate",
+      "tipo": "base",
+      "ricetta_base_nome": null,
+      "ingredienti": [
+        "scarole",
+        "sale fino",
+        "olio extravergine oliva",
+        "aglio",
+        "acciughe",
+        "peperoncino"
+      ],
+      "origine": {
+        "foglio": "ricettario",
+        "cella": "A105",
+        "riga_inizio": 105,
+        "riga_fine": 119,
+        "colonna": 1
+      }
+    },
+    {
+      "nome": "crostone di ricotta",
+      "nome_origine": "crostone di ricotta e prosciutto",
+      "tipo": "base",
+      "ricetta_base_nome": null,
+      "ingredienti": [
+        "Pan Carrè",
+        "sale fino",
+        "ricotta roma",
+        "olio extravergine oliva",
+        "pepe",
+        "uovo",
+        "FARINA 0/MAN. CAPUTO",
+        "prosciutto cotto"
+      ],
+      "origine": {
+        "foglio": "ricettario",
+        "cella": "A120",
+        "riga_inizio": 120,
+        "riga_fine": 131,
+        "colonna": 1
+      }
+    },
+    {
+      "nome": "focaccia bianca",
+      "nome_origine": "Pizza Bianca",
+      "tipo": "base",
+      "ricetta_base_nome": null,
+      "ingredienti": [
+        "FARINA 0/MAN. CAPUTO",
+        "sale fino",
+        "LIEVITO x 2.5kg",
+        "STRUTTO"
+      ],
+      "origine": {
+        "foglio": "ricettario",
+        "cella": "A132",
+        "riga_inizio": 132,
+        "riga_fine": 142,
+        "colonna": 1
+      }
+    },
+    {
+      "nome": "pizza farcita friarielli",
+      "nome_origine": "pizza farcita friarielli",
+      "tipo": "variante",
+      "ricetta_base_nome": "focaccia bianca",
+      "ingredienti": [
+        "FARINA 0/MAN. CAPUTO",
+        "sale fino",
+        "LIEVITO x 2.5kg",
+        "STRUTTO",
+        "fiori e provola",
+        "friarielli"
+      ],
+      "origine": {
+        "foglio": "ricettario",
+        "cella": "B132",
+        "riga_inizio": 132,
+        "riga_fine": 142,
+        "colonna": 2
+      }
+    },
+    {
+      "nome": "focaccia margherita",
+      "nome_origine": "focaccia margherita",
+      "tipo": "variante",
+      "ricetta_base_nome": "focaccia bianca",
+      "ingredienti": [
+        "FARINA 0/MAN. CAPUTO",
+        "sale fino",
+        "LIEVITO x 2.5kg",
+        "STRUTTO",
+        "pomodori Pelati",
+        "fiori e provola"
+      ],
+      "origine": {
+        "foglio": "ricettario",
+        "cella": "C132",
+        "riga_inizio": 132,
+        "riga_fine": 142,
+        "colonna": 3
+      }
+    },
+    {
+      "nome": "Pizza Mimosa",
+      "nome_origine": "Pizza Mimosa",
+      "tipo": "variante",
+      "ricetta_base_nome": "focaccia bianca",
+      "ingredienti": [
+        "FARINA 0/MAN. CAPUTO",
+        "sale fino",
+        "LIEVITO x 2.5kg",
+        "STRUTTO",
+        "Mais",
+        "Panna da cucina"
+      ],
+      "origine": {
+        "foglio": "ricettario",
+        "cella": "D132",
+        "riga_inizio": 132,
+        "riga_fine": 142,
+        "colonna": 4
+      }
+    },
+    {
+      "nome": "Pizza Marinara",
+      "nome_origine": "Pizza Marinara",
+      "tipo": "variante",
+      "ricetta_base_nome": "focaccia bianca",
+      "ingredienti": [
+        "FARINA 0/MAN. CAPUTO",
+        "sale fino",
+        "LIEVITO x 2.5kg",
+        "STRUTTO",
+        "pomodori Pelati",
+        "origano"
+      ],
+      "origine": {
+        "foglio": "ricettario",
+        "cella": "E132",
+        "riga_inizio": 132,
+        "riga_fine": 142,
+        "colonna": 5
+      }
+    },
+    {
+      "nome": "pizza parigina",
+      "nome_origine": "pizza parigina",
+      "tipo": "variante",
+      "ricetta_base_nome": "focaccia bianca",
+      "ingredienti": [
+        "FARINA 0/MAN. CAPUTO",
+        "sale fino",
+        "LIEVITO x 2.5kg",
+        "STRUTTO",
+        "pomodori Pelati",
+        "sottilette",
+        "margarina sfoglia",
+        "prosciutto cotto",
+        "pepe"
+      ],
+      "origine": {
+        "foglio": "ricettario",
+        "cella": "F132",
+        "riga_inizio": 132,
+        "riga_fine": 142,
+        "colonna": 6
+      }
+    },
+    {
+      "nome": "salpicon di carne",
+      "nome_origine": "salpicon di carne",
+      "tipo": "base",
+      "ricetta_base_nome": null,
+      "ingredienti": [
+        "Carne Macinata",
+        "olio extravergine oliva",
+        "salame",
+        "piselli",
+        "basilico",
+        "Pepe"
+      ],
+      "origine": {
+        "foglio": "ricettario",
+        "cella": "A143",
+        "riga_inizio": 143,
+        "riga_fine": 151,
+        "colonna": 1
+      }
+    },
+    {
+      "nome": "prosciutto cotto",
+      "nome_origine": "prosciutto cotto",
+      "tipo": "base",
+      "ricetta_base_nome": null,
+      "ingredienti": [
+        "Prosciutto Cotto"
+      ],
+      "origine": {
+        "foglio": "ricettario",
+        "cella": "A152",
+        "riga_inizio": 152,
+        "riga_fine": 155,
+        "colonna": 1
+      }
+    },
+    {
+      "nome": "prosciutto crudo dissossato",
+      "nome_origine": "prosciutto crudo dissossato",
+      "tipo": "base",
+      "ricetta_base_nome": null,
+      "ingredienti": [
+        "Prosciutto Crudo"
+      ],
+      "origine": {
+        "foglio": "ricettario",
+        "cella": "A156",
+        "riga_inizio": 156,
+        "riga_fine": 159,
+        "colonna": 1
+      }
+    },
+    {
+      "nome": "porchetta di ariccia",
+      "nome_origine": "porchetta di ariccia",
+      "tipo": "base",
+      "ricetta_base_nome": null,
+      "ingredienti": [
+        "Porchetta"
+      ],
+      "origine": {
+        "foglio": "ricettario",
+        "cella": "A160",
+        "riga_inizio": 160,
+        "riga_fine": 163,
+        "colonna": 1
+      }
+    },
+    {
+      "nome": "salame napoletano",
+      "nome_origine": "salame napoletano",
+      "tipo": "base",
+      "ricetta_base_nome": null,
+      "ingredienti": [
+        "SALAME NAPOLI"
+      ],
+      "origine": {
+        "foglio": "ricettario",
+        "cella": "A164",
+        "riga_inizio": 164,
+        "riga_fine": 166,
+        "colonna": 1
+      }
+    },
+    {
+      "nome": "salame milanese",
+      "nome_origine": "salame milanese",
+      "tipo": "base",
+      "ricetta_base_nome": null,
+      "ingredienti": [
+        "salame milanese"
+      ],
+      "origine": {
+        "foglio": "ricettario",
+        "cella": "A167",
+        "riga_inizio": 167,
+        "riga_fine": 170,
+        "colonna": 1
+      }
+    },
+    {
+      "nome": "salsa cruda di pomodoro",
+      "nome_origine": "salsa cruda di pomodoro",
+      "tipo": "base",
+      "ricetta_base_nome": null,
+      "ingredienti": [
+        "pomodori Pelati",
+        "sale fino",
+        "olio extravergine oliva"
+      ],
+      "origine": {
+        "foglio": "ricettario",
+        "cella": "A171",
+        "riga_inizio": 171,
+        "riga_fine": 178,
+        "colonna": 1
+      }
+    },
+    {
+      "nome": "salsa Cotta di pomodoro",
+      "nome_origine": "salsa Cotta di pomodoro",
+      "tipo": "variante",
+      "ricetta_base_nome": "salsa cruda di pomodoro",
+      "ingredienti": [
+        "pomodori Pelati",
+        "sale fino",
+        "olio extravergine oliva",
+        "Basilico",
+        "Concentrato di pomodoro"
+      ],
+      "origine": {
+        "foglio": "ricettario",
+        "cella": "B171",
+        "riga_inizio": 171,
+        "riga_fine": 178,
+        "colonna": 2
+      }
+    },
+    {
+      "nome": "melanzana al forno",
+      "nome_origine": "melanzana al forno bianca",
+      "tipo": "base",
+      "ricetta_base_nome": null,
+      "ingredienti": [
+        "melanzane",
+        "sale fino",
+        "olio extravergine oliva"
+      ],
+      "origine": {
+        "foglio": "ricettario",
+        "cella": "A179",
+        "riga_inizio": 179,
+        "riga_fine": 187,
+        "colonna": 1
+      }
+    },
+    {
+      "nome": "melanzane fritta involtino",
+      "nome_origine": "melanzane fritta involtino",
+      "tipo": "variante",
+      "ricetta_base_nome": "melanzana al forno",
+      "ingredienti": [
+        "melanzane",
+        "sale fino",
+        "olio extravergine oliva",
+        "grana padano",
+        "basilico",
+        "tuorlo d'uovo"
+      ],
+      "origine": {
+        "foglio": "ricettario",
+        "cella": "B179",
+        "riga_inizio": 179,
+        "riga_fine": 187,
+        "colonna": 2
+      }
+    },
+    {
+      "nome": "zucca al forno",
+      "nome_origine": "zucca al forno",
+      "tipo": "base",
+      "ricetta_base_nome": null,
+      "ingredienti": [
+        "Zucca",
+        "olio extravergine oliva",
+        "sale fino",
+        "Prezzemolo"
+      ],
+      "origine": {
+        "foglio": "ricettario",
+        "cella": "A188",
+        "riga_inizio": 188,
+        "riga_fine": 194,
+        "colonna": 1
+      }
+    },
+    {
+      "nome": "funghi trifolati",
+      "nome_origine": "funghi trifolati",
+      "tipo": "base",
+      "ricetta_base_nome": null,
+      "ingredienti": [
+        "sale fino",
+        "olio extravergine oliva",
+        "basilico / rosmarino /prezzemolo"
+      ],
+      "origine": {
+        "foglio": "ricettario",
+        "cella": "A195",
+        "riga_inizio": 195,
+        "riga_fine": 200,
+        "colonna": 1
+      }
+    },
+    {
+      "nome": "wrustel di suino",
+      "nome_origine": "wrustel di suino",
+      "tipo": "base",
+      "ricetta_base_nome": null,
+      "ingredienti": [
+        "wrustel"
+      ],
+      "origine": {
+        "foglio": "ricettario",
+        "cella": "A201",
+        "riga_inizio": 201,
+        "riga_fine": 204,
+        "colonna": 1
+      }
+    },
+    {
+      "nome": "babà",
+      "nome_origine": "babà",
+      "tipo": "base",
+      "ricetta_base_nome": null,
+      "ingredienti": [
+        "FARINA 0/MAN. CAPUTO",
+        "sale fino",
+        "margarina crema",
+        "tuorlo pastorizzato",
+        "LIEVITO x 2.5kg",
+        "Rhum",
+        "zucchero semolato"
+      ],
+      "origine": {
+        "foglio": "ricettario",
+        "cella": "A205",
+        "riga_inizio": 205,
+        "riga_fine": 221,
+        "colonna": 1
+      }
+    },
+    {
+      "nome": "babà misù",
+      "nome_origine": "babàMisù",
+      "tipo": "variante",
+      "ricetta_base_nome": "babà",
+      "ingredienti": [
+        "FARINA 0/MAN. CAPUTO",
+        "sale fino",
+        "margarina crema",
+        "tuorlo pastorizzato",
+        "LIEVITO x 2.5kg",
+        "Rhum",
+        "zucchero semolato",
+        "Cacao",
+        "Panna",
+        "Mascarpone"
+      ],
+      "origine": {
+        "foglio": "ricettario",
+        "cella": "B205",
+        "riga_inizio": 205,
+        "riga_fine": 221,
+        "colonna": 2
+      }
+    },
+    {
+      "nome": "babà panna e Fragoline",
+      "nome_origine": "babà panna e Fragoline",
+      "tipo": "variante",
+      "ricetta_base_nome": "babà",
+      "ingredienti": [
+        "FARINA 0/MAN. CAPUTO",
+        "sale fino",
+        "margarina crema",
+        "tuorlo pastorizzato",
+        "LIEVITO x 2.5kg",
+        "Rhum",
+        "zucchero semolato"
+      ],
+      "origine": {
+        "foglio": "ricettario",
+        "cella": "C205",
+        "riga_inizio": 205,
+        "riga_fine": 221,
+        "colonna": 3
+      }
+    },
+    {
+      "nome": "babà Panna e Cioccolato",
+      "nome_origine": "babà Panna e Cioccolato",
+      "tipo": "variante",
+      "ricetta_base_nome": "babà",
+      "ingredienti": [
+        "FARINA 0/MAN. CAPUTO",
+        "sale fino",
+        "margarina crema",
+        "tuorlo pastorizzato",
+        "LIEVITO x 2.5kg",
+        "Rhum",
+        "zucchero semolato",
+        "Nocciola"
+      ],
+      "origine": {
+        "foglio": "ricettario",
+        "cella": "D205",
+        "riga_inizio": 205,
+        "riga_fine": 221,
+        "colonna": 4
+      }
+    },
+    {
+      "nome": "babà Panna e Pistacchio",
+      "nome_origine": "babà Panna e Pistacchio",
+      "tipo": "variante",
+      "ricetta_base_nome": "babà",
+      "ingredienti": [
+        "FARINA 0/MAN. CAPUTO",
+        "sale fino",
+        "margarina crema",
+        "tuorlo pastorizzato",
+        "LIEVITO x 2.5kg",
+        "Rhum",
+        "zucchero semolato",
+        "Pistacchio",
+        "Panna"
+      ],
+      "origine": {
+        "foglio": "ricettario",
+        "cella": "E205",
+        "riga_inizio": 205,
+        "riga_fine": 221,
+        "colonna": 5
+      }
+    },
+    {
+      "nome": "pasta frolla fresca",
+      "nome_origine": "Pasta Frolla",
+      "tipo": "base",
+      "ricetta_base_nome": null,
+      "ingredienti": [
+        "FARINA 0/MAN. CAPUTO",
+        "STRUTTO",
+        "sale fino",
+        "zucchero semolato"
+      ],
+      "origine": {
+        "foglio": "ricettario",
+        "cella": "A222",
+        "riga_inizio": 222,
+        "riga_fine": 228,
+        "colonna": 1
+      }
+    },
+    {
+      "nome": "biscotto di pasta frolla al cioccolato",
+      "nome_origine": "Biscotto Pasta Frolla al Cioccolato",
+      "tipo": "variante",
+      "ricetta_base_nome": "pasta frolla fresca",
+      "ingredienti": [
+        "FARINA 0/MAN. CAPUTO",
+        "STRUTTO",
+        "sale fino",
+        "zucchero semolato",
+        "Cacao"
+      ],
+      "origine": {
+        "foglio": "ricettario",
+        "cella": "B222",
+        "riga_inizio": 222,
+        "riga_fine": 228,
+        "colonna": 2
+      }
+    },
+    {
+      "nome": "Biscotto Pasta Frolla alle Mandorle",
+      "nome_origine": "Biscotto Pasta Frolla alle Mandorle",
+      "tipo": "variante",
+      "ricetta_base_nome": "pasta frolla fresca",
+      "ingredienti": [
+        "FARINA 0/MAN. CAPUTO",
+        "STRUTTO",
+        "sale fino",
+        "zucchero semolato",
+        "Mandorle"
+      ],
+      "origine": {
+        "foglio": "ricettario",
+        "cella": "C222",
+        "riga_inizio": 222,
+        "riga_fine": 228,
+        "colonna": 3
+      }
+    },
+    {
+      "nome": "brioche",
+      "nome_origine": "brioche Classica",
+      "tipo": "base",
+      "ricetta_base_nome": null,
+      "ingredienti": [
+        "FARINA 0/MAN. CAPUTO",
+        "margarina crema",
+        "LIEVITO x 2.5kg",
+        "tuorlo pastorizzato",
+        "AROMA CROISSANT",
+        "latte INTERO",
+        "sale fino"
+      ],
+      "origine": {
+        "foglio": "ricettario",
+        "cella": "A229",
+        "riga_inizio": 229,
+        "riga_fine": 241,
+        "colonna": 1
+      }
+    },
+    {
+      "nome": "Treccia",
+      "nome_origine": "Treccia",
+      "tipo": "variante",
+      "ricetta_base_nome": "brioche",
+      "ingredienti": [
+        "FARINA 0/MAN. CAPUTO",
+        "margarina crema",
+        "LIEVITO",
+        "tuorlo pastorizzato",
+        "AROMA CROISSANT",
+        "latte INTERO",
+        "sale fino"
+      ],
+      "origine": {
+        "foglio": "ricettario",
+        "cella": "B229",
+        "riga_inizio": 229,
+        "riga_fine": 241,
+        "colonna": 2
+      }
+    },
+    {
+      "nome": "Krans Cioccolato",
+      "nome_origine": "Krans Cioccolato",
+      "tipo": "variante",
+      "ricetta_base_nome": "brioche",
+      "ingredienti": [
+        "FARINA 0/MAN. CAPUTO",
+        "margarina crema",
+        "LIEVITO",
+        "tuorlo pastorizzato",
+        "AROMA CROISSANT",
+        "latte INTERO",
+        "sale fino",
+        "Gocce di cioccolato"
+      ],
+      "origine": {
+        "foglio": "ricettario",
+        "cella": "C229",
+        "riga_inizio": 229,
+        "riga_fine": 241,
+        "colonna": 3
+      }
+    },
+    {
+      "nome": "krans uvetta",
+      "nome_origine": "Krans Cioccolato",
+      "tipo": "variante",
+      "ricetta_base_nome": "brioche",
+      "ingredienti": [
+        "FARINA 0/MAN. CAPUTO",
+        "margarina crema",
+        "LIEVITO",
+        "tuorlo pastorizzato",
+        "AROMA CROISSANT",
+        "latte INTERO",
+        "sale fino",
+        "Uvetta Sultanina"
+      ],
+      "origine": {
+        "foglio": "ricettario",
+        "cella": "D229",
+        "riga_inizio": 229,
+        "riga_fine": 241,
+        "colonna": 4
+      }
+    },
+    {
+      "nome": "brioche mignon",
+      "nome_origine": "brioche Classica Mignon",
+      "tipo": "variante",
+      "ricetta_base_nome": "brioche",
+      "ingredienti": [
+        "FARINA 0/MAN. CAPUTO",
+        "margarina crema",
+        "LIEVITO",
+        "tuorlo pastorizzato",
+        "AROMA CROISSANT",
+        "latte INTERO",
+        "sale fino"
+      ],
+      "origine": {
+        "foglio": "ricettario",
+        "cella": "E229",
+        "riga_inizio": 229,
+        "riga_fine": 241,
+        "colonna": 5
+      }
+    },
+    {
+      "nome": "Buondì",
+      "nome_origine": "Buondì",
+      "tipo": "variante",
+      "ricetta_base_nome": "brioche",
+      "ingredienti": [
+        "FARINA 0/MAN. CAPUTO",
+        "margarina crema",
+        "LIEVITO",
+        "tuorlo pastorizzato",
+        "AROMA CROISSANT",
+        "latte INTERO",
+        "sale fino",
+        "Mandorle",
+        "Granelle di Zucchero"
+      ],
+      "origine": {
+        "foglio": "ricettario",
+        "cella": "F229",
+        "riga_inizio": 229,
+        "riga_fine": 241,
+        "colonna": 6
+      }
+    },
+    {
+      "nome": "cornetto ischitano",
+      "nome_origine": "cornetto ischitano",
+      "tipo": "variante",
+      "ricetta_base_nome": "brioche",
+      "ingredienti": [
+        "FARINA 0/MAN. CAPUTO",
+        "margarina crema",
+        "LIEVITO",
+        "uova",
+        "AROMA CROISSANT",
+        "latte INTERO",
+        "sale fino",
+        "margarina sfoglia",
+        "amido",
+        "Amarene"
+      ],
+      "origine": {
+        "foglio": "ricettario",
+        "cella": "G229",
+        "riga_inizio": 229,
+        "riga_fine": 241,
+        "colonna": 7
+      }
+    },
+    {
+      "nome": "cannolo siciliano",
+      "nome_origine": "cannolo siciliano Grande",
+      "tipo": "base",
+      "ricetta_base_nome": null,
+      "ingredienti": [
+        "Cannolo",
+        "ricotta omogeneizzata II",
+        "Ciliegia",
+        "Scorzetta Arancio"
+      ],
+      "origine": {
+        "foglio": "ricettario",
+        "cella": "A242",
+        "riga_inizio": 242,
+        "riga_fine": 249,
+        "colonna": 1
+      }
+    },
+    {
+      "nome": "cannolo siciliano Piccolo",
+      "nome_origine": "cannolo siciliano Piccolo",
+      "tipo": "variante",
+      "ricetta_base_nome": "cannolo siciliano",
+      "ingredienti": [
+        "Cannolo",
+        "ricotta omogeneizzata II",
+        "Ciliegia",
+        "Scorzetta Arancio"
+      ],
+      "origine": {
+        "foglio": "ricettario",
+        "cella": "B242",
+        "riga_inizio": 242,
+        "riga_fine": 249,
+        "colonna": 2
+      }
+    },
+    {
+      "nome": "caprese cioccolato",
+      "nome_origine": "caprese cioccolato",
+      "tipo": "base",
+      "ricetta_base_nome": null,
+      "ingredienti": [
+        "cioccolato",
+        "Mandorle",
+        "Gocce di Cioccolato surrogato",
+        "zucchero semolato",
+        "Burro",
+        "mix cake nature"
+      ],
+      "origine": {
+        "foglio": "ricettario",
+        "cella": "A250",
+        "riga_inizio": 250,
+        "riga_fine": 260,
+        "colonna": 1
+      }
+    },
+    {
+      "nome": "caprese limone",
+      "nome_origine": "caprese al Limone",
+      "tipo": "variante",
+      "ricetta_base_nome": "caprese cioccolato",
+      "ingredienti": [
+        "Limone",
+        "Mandorle",
+        "Gocce di Cioccolato surrogato",
+        "zucchero semolato",
+        "Burro",
+        "mix cake nature"
+      ],
+      "origine": {
+        "foglio": "ricettario",
+        "cella": "B250",
+        "riga_inizio": 250,
+        "riga_fine": 260,
+        "colonna": 2
+      }
+    },
+    {
+      "nome": "cassatina",
+      "nome_origine": "cassatina",
+      "tipo": "base",
+      "ricetta_base_nome": null,
+      "ingredienti": [
+        "FARINA 0/MAN. CAPUTO",
+        "zucchero semolato",
+        "mix cake nature",
+        "tuorlo pastorizzato",
+        "ricotta tipo roma",
+        "naspro",
+        "Amarene",
+        "cioccolato"
+      ],
+      "origine": {
+        "foglio": "ricettario",
+        "cella": "A261",
+        "riga_inizio": 261,
+        "riga_fine": 271,
+        "colonna": 1
+      }
+    },
+    {
+      "nome": "Raffiolo a Cassata",
+      "nome_origine": "Raffiolo a Cassata",
+      "tipo": "variante",
+      "ricetta_base_nome": "cassatina",
+      "ingredienti": [
+        "FARINA 0/MAN. CAPUTO",
+        "zucchero semolato",
+        "mix cake nature",
+        "tuorlo pastorizzato",
+        "ricotta tipo roma",
+        "naspro",
+        "Amarene",
+        "cioccolato"
+      ],
+      "origine": {
+        "foglio": "ricettario",
+        "cella": "B261",
+        "riga_inizio": 261,
+        "riga_fine": 271,
+        "colonna": 2
+      }
+    },
+    {
+      "nome": "Cassata Siciliana",
+      "nome_origine": "Cassata Siciliana",
+      "tipo": "variante",
+      "ricetta_base_nome": "cassatina",
+      "ingredienti": [
+        "FARINA 0/MAN. CAPUTO",
+        "zucchero semolato",
+        "mix cake nature",
+        "tuorlo pastorizzato",
+        "ricotta tipo roma",
+        "naspro",
+        "Amarene",
+        "cioccolato"
+      ],
+      "origine": {
+        "foglio": "ricettario",
+        "cella": "C261",
+        "riga_inizio": 261,
+        "riga_fine": 271,
+        "colonna": 3
+      }
+    },
+    {
+      "nome": "Cassata Napoletana",
+      "nome_origine": "Cassata Napoletana",
+      "tipo": "variante",
+      "ricetta_base_nome": "cassatina",
+      "ingredienti": [
+        "FARINA 0/MAN. CAPUTO",
+        "zucchero semolato",
+        "mix cake nature",
+        "tuorlo pastorizzato",
+        "ricotta tipo roma",
+        "naspro",
+        "Amarene",
+        "cioccolato",
+        "Strutto"
+      ],
+      "origine": {
+        "foglio": "ricettario",
+        "cella": "D261",
+        "riga_inizio": 261,
+        "riga_fine": 271,
+        "colonna": 4
+      }
+    },
+    {
+      "nome": "cervellatine",
+      "nome_origine": "cervellatine",
+      "tipo": "base",
+      "ricetta_base_nome": null,
+      "ingredienti": [
+        "Salsiccia",
+        "sale fino",
+        "olio extravergine oliva"
+      ],
+      "origine": {
+        "foglio": "ricettario",
+        "cella": "A272",
+        "riga_inizio": 272,
+        "riga_fine": 277,
+        "colonna": 1
+      }
+    },
+    {
+      "nome": "cheesecake",
+      "nome_origine": "cheesecake Classica",
+      "tipo": "base",
+      "ricetta_base_nome": null,
+      "ingredienti": [
+        "FARINA 0/MAN. CAPUTO",
+        "STRUTTO",
+        "sale fino",
+        "zucchero semolato",
+        "Mascarpone"
+      ],
+      "origine": {
+        "foglio": "ricettario",
+        "cella": "A278",
+        "riga_inizio": 278,
+        "riga_fine": 286,
+        "colonna": 1
+      }
+    },
+    {
+      "nome": "cheesecake Fragole",
+      "nome_origine": "cheesecake Fragole",
+      "tipo": "variante",
+      "ricetta_base_nome": "cheesecake",
+      "ingredienti": [
+        "FARINA 0/MAN. CAPUTO",
+        "STRUTTO",
+        "sale fino",
+        "zucchero semolato",
+        "Mascarpone",
+        "Fragole"
+      ],
+      "origine": {
+        "foglio": "ricettario",
+        "cella": "B278",
+        "riga_inizio": 278,
+        "riga_fine": 286,
+        "colonna": 2
+      }
+    },
+    {
+      "nome": "cheesecake Cioccolato",
+      "nome_origine": "cheesecake Cioccolato",
+      "tipo": "variante",
+      "ricetta_base_nome": "cheesecake",
+      "ingredienti": [
+        "FARINA 0/MAN. CAPUTO",
+        "STRUTTO",
+        "sale fino",
+        "zucchero semolato",
+        "Mascarpone",
+        "cioccolato"
+      ],
+      "origine": {
+        "foglio": "ricettario",
+        "cella": "C278",
+        "riga_inizio": 278,
+        "riga_fine": 286,
+        "colonna": 3
+      }
+    },
+    {
+      "nome": "cheesecake Nocciola",
+      "nome_origine": "cheesecake Nocciola",
+      "tipo": "variante",
+      "ricetta_base_nome": "cheesecake",
+      "ingredienti": [
+        "FARINA 0/MAN. CAPUTO",
+        "STRUTTO",
+        "sale fino",
+        "zucchero semolato",
+        "Mascarpone",
+        "Nocciola"
+      ],
+      "origine": {
+        "foglio": "ricettario",
+        "cella": "D278",
+        "riga_inizio": 278,
+        "riga_fine": 286,
+        "colonna": 4
+      }
+    },
+    {
+      "nome": "cheesecake Limone",
+      "nome_origine": "cheesecake Limone",
+      "tipo": "variante",
+      "ricetta_base_nome": "cheesecake",
+      "ingredienti": [
+        "FARINA 0/MAN. CAPUTO",
+        "STRUTTO",
+        "sale fino",
+        "zucchero semolato",
+        "Mascarpone",
+        "Limone"
+      ],
+      "origine": {
+        "foglio": "ricettario",
+        "cella": "E278",
+        "riga_inizio": 278,
+        "riga_fine": 286,
+        "colonna": 5
+      }
+    },
+    {
+      "nome": "coda di aragosta",
+      "nome_origine": "coda di aragosta",
+      "tipo": "base",
+      "ricetta_base_nome": null,
+      "ingredienti": [
+        "FARINA 0/MAN. CAPUTO",
+        "STRUTTO"
+      ],
+      "origine": {
+        "foglio": "ricettario",
+        "cella": "A287",
+        "riga_inizio": 287,
+        "riga_fine": 293,
+        "colonna": 1
+      }
+    },
+    {
+      "nome": "coda di aragosta al Cioccolato",
+      "nome_origine": "coda di aragosta al Cioccolato",
+      "tipo": "variante",
+      "ricetta_base_nome": "coda di aragosta",
+      "ingredienti": [
+        "FARINA 0/MAN. CAPUTO",
+        "STRUTTO",
+        "Nocciola"
+      ],
+      "origine": {
+        "foglio": "ricettario",
+        "cella": "B287",
+        "riga_inizio": 287,
+        "riga_fine": 293,
+        "colonna": 2
+      }
+    },
+    {
+      "nome": "coda di aragosta al Pistacchio",
+      "nome_origine": "coda di aragosta al Pistacchio",
+      "tipo": "variante",
+      "ricetta_base_nome": "coda di aragosta",
+      "ingredienti": [
+        "FARINA 0/MAN. CAPUTO",
+        "STRUTTO",
+        "Pistacchio"
+      ],
+      "origine": {
+        "foglio": "ricettario",
+        "cella": "C287",
+        "riga_inizio": 287,
+        "riga_fine": 293,
+        "colonna": 3
+      }
+    },
+    {
+      "nome": "coda di aragosta alla Panna",
+      "nome_origine": "coda di aragosta alla Panna",
+      "tipo": "variante",
+      "ricetta_base_nome": "coda di aragosta",
+      "ingredienti": [
+        "FARINA 0/MAN. CAPUTO",
+        "STRUTTO",
+        "Panna"
+      ],
+      "origine": {
+        "foglio": "ricettario",
+        "cella": "D287",
+        "riga_inizio": 287,
+        "riga_fine": 293,
+        "colonna": 4
+      }
+    },
+    {
+      "nome": "cornetto sfoglia",
+      "nome_origine": "cornetto Sfoglia Vuoto",
+      "tipo": "base",
+      "ricetta_base_nome": null,
+      "ingredienti": [
+        "FARINA 0/MAN. CAPUTO",
+        "margarina crema",
+        "LIEVITO",
+        "tuorlo pastorizzato",
+        "AROMA CROISSANT",
+        "latte INTERO",
+        "sale fino",
+        "zucchero semolato",
+        "Zuppa Inglese"
+      ],
+      "origine": {
+        "foglio": "ricettario",
+        "cella": "A294",
+        "riga_inizio": 294,
+        "riga_fine": 307,
+        "colonna": 1
+      }
+    },
+    {
+      "nome": "cornetto alla crema",
+      "nome_origine": "cornetto Sfoglia Crema",
+      "tipo": "variante",
+      "ricetta_base_nome": "cornetto sfoglia",
+      "ingredienti": [
+        "FARINA 0/MAN. CAPUTO",
+        "margarina crema",
+        "LIEVITO",
+        "tuorlo pastorizzato",
+        "AROMA CROISSANT",
+        "latte INTERO",
+        "sale fino",
+        "zucchero semolato",
+        "Zuppa Inglese",
+        "amido di riso",
+        "latte INTERO"
+      ],
+      "origine": {
+        "foglio": "ricettario",
+        "cella": "B294",
+        "riga_inizio": 294,
+        "riga_fine": 307,
+        "colonna": 2
+      }
+    },
+    {
+      "nome": "cornetto alla crema amarena",
+      "nome_origine": "cornetto Sfoglia Crema ed Amarene",
+      "tipo": "variante",
+      "ricetta_base_nome": "cornetto sfoglia",
+      "ingredienti": [
+        "FARINA 0/MAN. CAPUTO",
+        "margarina crema",
+        "LIEVITO",
+        "tuorlo pastorizzato",
+        "AROMA CROISSANT",
+        "latte INTERO",
+        "sale fino",
+        "zucchero semolato",
+        "Zuppa Inglese",
+        "amido di riso",
+        "latte INTERO",
+        "Amarene"
+      ],
+      "origine": {
+        "foglio": "ricettario",
+        "cella": "C294",
+        "riga_inizio": 294,
+        "riga_fine": 307,
+        "colonna": 3
+      }
+    },
+    {
+      "nome": "cornetto mignon",
+      "nome_origine": "cornetto Piccolo Sfoglia Vuoto",
+      "tipo": "variante",
+      "ricetta_base_nome": "cornetto sfoglia",
+      "ingredienti": [
+        "FARINA 0/MAN. CAPUTO",
+        "margarina crema",
+        "LIEVITO",
+        "tuorlo pastorizzato",
+        "AROMA CROISSANT",
+        "latte INTERO",
+        "sale fino",
+        "zucchero semolato",
+        "Zuppa Inglese"
+      ],
+      "origine": {
+        "foglio": "ricettario",
+        "cella": "D294",
+        "riga_inizio": 294,
+        "riga_fine": 307,
+        "colonna": 4
+      }
+    },
+    {
+      "nome": "crema chantilly",
+      "nome_origine": "crema chantilly",
+      "tipo": "base",
+      "ricetta_base_nome": null,
+      "ingredienti": [
+        "amido",
+        "latte INTERO",
+        "zucchero semolato",
+        "tuorlo pastorizzato",
+        "panna hoplà"
+      ],
+      "origine": {
+        "foglio": "ricettario",
+        "cella": "A308",
+        "riga_inizio": 308,
+        "riga_fine": 315,
+        "colonna": 1
+      }
+    },
+    {
+      "nome": "crostatina albicocca",
+      "nome_origine": "crostatina albicocca",
+      "tipo": "base",
+      "ricetta_base_nome": null,
+      "ingredienti": [
+        "FARINA 0/MAN. CAPUTO",
+        "STRUTTO",
+        "Albicocca",
+        "zucchero semolato"
+      ],
+      "origine": {
+        "foglio": "ricettario",
+        "cella": "A316",
+        "riga_inizio": 316,
+        "riga_fine": 321,
+        "colonna": 1
+      }
+    },
+    {
+      "nome": "crostatina Cioccolato",
+      "nome_origine": "crostatina Cioccolato",
+      "tipo": "variante",
+      "ricetta_base_nome": "crostatina albicocca",
+      "ingredienti": [
+        "FARINA 0/MAN. CAPUTO",
+        "STRUTTO",
+        "cioccolato",
+        "zucchero semolato"
+      ],
+      "origine": {
+        "foglio": "ricettario",
+        "cella": "B316",
+        "riga_inizio": 316,
+        "riga_fine": 321,
+        "colonna": 2
+      }
+    },
+    {
+      "nome": "crostatina Pistacchio",
+      "nome_origine": "crostatina Pistacchio",
+      "tipo": "variante",
+      "ricetta_base_nome": "crostatina albicocca",
+      "ingredienti": [
+        "FARINA 0/MAN. CAPUTO",
+        "STRUTTO",
+        "Pistacchio",
+        "zucchero semolato"
+      ],
+      "origine": {
+        "foglio": "ricettario",
+        "cella": "C316",
+        "riga_inizio": 316,
+        "riga_fine": 321,
+        "colonna": 3
+      }
+    },
+    {
+      "nome": "delizia al limone",
+      "nome_origine": "delizia al limone",
+      "tipo": "base",
+      "ricetta_base_nome": null,
+      "ingredienti": [
+        "FARINA 0/MAN. CAPUTO",
+        "sale fino",
+        "amido",
+        "Limoni",
+        "tuorlo pastorizzato",
+        "zucchero semolato",
+        "panna"
+      ],
+      "origine": {
+        "foglio": "ricettario",
+        "cella": "A322",
+        "riga_inizio": 322,
+        "riga_fine": 330,
+        "colonna": 1
+      }
+    },
+    {
+      "nome": "fagioli uccelletto",
+      "nome_origine": "fagioli uccelletto",
+      "tipo": "base",
+      "ricetta_base_nome": null,
+      "ingredienti": [
+        "FAGIOLI BORLOTTI",
+        "sale fino",
+        "olio extravergine oliva",
+        "Pomodorini",
+        "Prezzemolo"
+      ],
+      "origine": {
+        "foglio": "ricettario",
+        "cella": "A331",
+        "riga_inizio": 331,
+        "riga_fine": 339,
+        "colonna": 1
+      }
+    },
+    {
+      "nome": "fiocco di neve",
+      "nome_origine": "fiocco di neve",
+      "tipo": "base",
+      "ricetta_base_nome": null,
+      "ingredienti": [
+        "FARINA 0/MAN. CAPUTO",
+        "margarina sfoglia",
+        "LIEVITO x 2.5kg",
+        "uova",
+        "AROMA CROISSANT",
+        "latte INTERO",
+        "sale fino",
+        "panna",
+        "ricotta omogeneizzata II"
+      ],
+      "origine": {
+        "foglio": "ricettario",
+        "cella": "A340",
+        "riga_inizio": 340,
+        "riga_fine": 350,
+        "colonna": 1
+      }
+    },
+    {
+      "nome": "francesina",
+      "nome_origine": "francesina",
+      "tipo": "base",
+      "ricetta_base_nome": null,
+      "ingredienti": [
+        "FARINA 0/MAN. CAPUTO",
+        "margarina sfoglia",
+        "zucchero semolato",
+        "tuorlo pastorizzato"
+      ],
+      "origine": {
+        "foglio": "ricettario",
+        "cella": "A351",
+        "riga_inizio": 351,
+        "riga_fine": 361,
+        "colonna": 1
+      }
+    },
+    {
+      "nome": "francesina Crema ed Amarene",
+      "nome_origine": "francesina Crema ed Amarene",
+      "tipo": "variante",
+      "ricetta_base_nome": "francesina",
+      "ingredienti": [
+        "FARINA 0/MAN. CAPUTO",
+        "margarina sfoglia",
+        "zucchero semolato",
+        "tuorlo pastorizzato",
+        "latte INTERO",
+        "cioccolato",
+        "tuorlo pastorizzato",
+        "Amarene",
+        "Amido"
+      ],
+      "origine": {
+        "foglio": "ricettario",
+        "cella": "B351",
+        "riga_inizio": 351,
+        "riga_fine": 361,
+        "colonna": 2
+      }
+    },
+    {
+      "nome": "francesina Crema al Limone",
+      "nome_origine": "francesina Crema al Limone",
+      "tipo": "variante",
+      "ricetta_base_nome": "francesina",
+      "ingredienti": [
+        "FARINA 0/MAN. CAPUTO",
+        "margarina sfoglia",
+        "zucchero semolato",
+        "tuorlo pastorizzato",
+        "latte INTERO",
+        "cioccolato",
+        "tuorlo pastorizzato",
+        "Limone",
+        "Amido"
+      ],
+      "origine": {
+        "foglio": "ricettario",
+        "cella": "C351",
+        "riga_inizio": 351,
+        "riga_fine": 361,
+        "colonna": 3
+      }
+    },
+    {
+      "nome": "francesina Crema Pistacchio",
+      "nome_origine": "francesina Crema Pistacchio",
+      "tipo": "variante",
+      "ricetta_base_nome": "francesina",
+      "ingredienti": [
+        "FARINA 0/MAN. CAPUTO",
+        "margarina sfoglia",
+        "zucchero semolato",
+        "tuorlo pastorizzato",
+        "latte INTERO",
+        "cioccolato",
+        "tuorlo pastorizzato",
+        "Pistacchio",
+        "Amido"
+      ],
+      "origine": {
+        "foglio": "ricettario",
+        "cella": "D351",
+        "riga_inizio": 351,
+        "riga_fine": 361,
+        "colonna": 4
+      }
+    },
+    {
+      "nome": "prussiana",
+      "nome_origine": "prussiana",
+      "tipo": "variante",
+      "ricetta_base_nome": "francesina",
+      "ingredienti": [
+        "FARINA 0/MAN. CAPUTO",
+        "margarina sfoglia",
+        "zucchero semolato",
+        "tuorlo pastorizzato"
+      ],
+      "origine": {
+        "foglio": "ricettario",
+        "cella": "E351",
+        "riga_inizio": 351,
+        "riga_fine": 361,
+        "colonna": 5
+      }
+    },
+    {
+      "nome": "prussiana Mignon",
+      "nome_origine": "prussiana Mignon",
+      "tipo": "variante",
+      "ricetta_base_nome": "francesina",
+      "ingredienti": [
+        "FARINA 0/MAN. CAPUTO",
+        "margarina sfoglia",
+        "zucchero semolato",
+        "tuorlo pastorizzato"
+      ],
+      "origine": {
+        "foglio": "ricettario",
+        "cella": "F351",
+        "riga_inizio": 351,
+        "riga_fine": 361,
+        "colonna": 6
+      }
+    },
+    {
+      "nome": "pan di spagna",
+      "nome_origine": "pan di spagna",
+      "tipo": "base",
+      "ricetta_base_nome": null,
+      "ingredienti": [
+        "FARINA 0/MAN. CAPUTO",
+        "sale fino",
+        "zucchero semolato",
+        "tuorlo pastorizzato",
+        "Olio Girasole"
+      ],
+      "origine": {
+        "foglio": "ricettario",
+        "cella": "A362",
+        "riga_inizio": 362,
+        "riga_fine": 370,
+        "colonna": 1
+      }
+    },
+    {
+      "nome": "pasta choux",
+      "nome_origine": "pasta choux",
+      "tipo": "base",
+      "ricetta_base_nome": null,
+      "ingredienti": [
+        "FARINA 0/MAN. CAPUTO",
+        "uova",
+        "sale fino",
+        "margarina crema"
+      ],
+      "origine": {
+        "foglio": "ricettario",
+        "cella": "A371",
+        "riga_inizio": 371,
+        "riga_fine": 379,
+        "colonna": 1
+      }
+    },
+    {
+      "nome": "Via Col Vento",
+      "nome_origine": "Via Col Vento",
+      "tipo": "variante",
+      "ricetta_base_nome": "pasta choux",
+      "ingredienti": [
+        "FARINA 0/MAN. CAPUTO",
+        "uova",
+        "sale fino",
+        "margarina crema",
+        "amido",
+        "latte INTERO",
+        "zucchero semolato"
+      ],
+      "origine": {
+        "foglio": "ricettario",
+        "cella": "B371",
+        "riga_inizio": 371,
+        "riga_fine": 379,
+        "colonna": 2
+      }
+    },
+    {
+      "nome": "pasta di mandorle",
+      "nome_origine": "pasta di mandorle",
+      "tipo": "base",
+      "ricetta_base_nome": null,
+      "ingredienti": [
+        "pasta di mandorle"
+      ],
+      "origine": {
+        "foglio": "ricettario",
+        "cella": "A380",
+        "riga_inizio": 380,
+        "riga_fine": 383,
+        "colonna": 1
+      }
+    },
+    {
+      "nome": "pasticcino crema",
+      "nome_origine": "pasticcino crema ed Amarene",
+      "tipo": "base",
+      "ricetta_base_nome": null,
+      "ingredienti": [
+        "FARINA 0/MAN. CAPUTO",
+        "STRUTTO",
+        "zucchero semolato",
+        "sale fino",
+        "latte INTERO",
+        "amido",
+        "tuorlo pastorizzato",
+        "Amarene"
+      ],
+      "origine": {
+        "foglio": "ricettario",
+        "cella": "A388",
+        "riga_inizio": 388,
+        "riga_fine": 398,
+        "colonna": 1
+      }
+    },
+    {
+      "nome": "pasticcino limone",
+      "nome_origine": "pasticcino limone",
+      "tipo": "variante",
+      "ricetta_base_nome": "pasticcino crema",
+      "ingredienti": [
+        "FARINA 0/MAN. CAPUTO",
+        "STRUTTO",
+        "zucchero semolato",
+        "sale fino",
+        "latte INTERO",
+        "amido",
+        "tuorlo pastorizzato",
+        "Limone"
+      ],
+      "origine": {
+        "foglio": "ricettario",
+        "cella": "B388",
+        "riga_inizio": 388,
+        "riga_fine": 398,
+        "colonna": 2
+      }
+    },
+    {
+      "nome": "pasticcino Pistacchio",
+      "nome_origine": "pasticcino Pistacchio",
+      "tipo": "variante",
+      "ricetta_base_nome": "pasticcino crema",
+      "ingredienti": [
+        "FARINA 0/MAN. CAPUTO",
+        "STRUTTO",
+        "zucchero semolato",
+        "sale fino",
+        "latte INTERO",
+        "amido",
+        "tuorlo pastorizzato",
+        "Pistacchio"
+      ],
+      "origine": {
+        "foglio": "ricettario",
+        "cella": "C388",
+        "riga_inizio": 388,
+        "riga_fine": 398,
+        "colonna": 3
+      }
+    },
+    {
+      "nome": "pastiera",
+      "nome_origine": "pastiera",
+      "tipo": "base",
+      "ricetta_base_nome": null,
+      "ingredienti": [
+        "FARINA 0/MAN. CAPUTO",
+        "STRUTTO",
+        "zucchero a velo",
+        "sale fino",
+        "granno",
+        "latte INTERO",
+        "uova",
+        "zucchero semolato"
+      ],
+      "origine": {
+        "foglio": "ricettario",
+        "cella": "A399",
+        "riga_inizio": 399,
+        "riga_fine": 408,
+        "colonna": 1
+      }
+    },
+    {
+      "nome": "rustico",
+      "nome_origine": "rustico Napoletano",
+      "tipo": "base",
+      "ricetta_base_nome": null,
+      "ingredienti": [
+        "FARINA 0/MAN. CAPUTO",
+        "STRUTTO",
+        "sale fino",
+        "zucchero semolato",
+        "RICOTTA TIPO ROMA",
+        "Salame Napoletano",
+        "Provolone"
+      ],
+      "origine": {
+        "foglio": "ricettario",
+        "cella": "A409",
+        "riga_inizio": 409,
+        "riga_fine": 418,
+        "colonna": 1
+      }
+    },
+    {
+      "nome": "salumi misti",
+      "nome_origine": "salumi misti",
+      "tipo": "base",
+      "ricetta_base_nome": null,
+      "ingredienti": [
+        "Porchetta",
+        "wrustel",
+        "salame",
+        "Provolone"
+      ],
+      "origine": {
+        "foglio": "ricettario",
+        "cella": "A419",
+        "riga_inizio": 419,
+        "riga_fine": 424,
+        "colonna": 1
+      }
+    },
+    {
+      "nome": "sfogliatella frolla",
+      "nome_origine": "sfogliatella frolla",
+      "tipo": "base",
+      "ricetta_base_nome": null,
+      "ingredienti": [
+        "FARINA 0/MAN. CAPUTO",
+        "sale fino",
+        "zucchero semolato",
+        "uova",
+        "semola",
+        "gelatina neutra",
+        "STRUTTO"
+      ],
+      "origine": {
+        "foglio": "ricettario",
+        "cella": "A425",
+        "riga_inizio": 425,
+        "riga_fine": 433,
+        "colonna": 1
+      }
+    },
+    {
+      "nome": "sfogliatella riccia",
+      "nome_origine": "sfogliatella riccia",
+      "tipo": "variante",
+      "ricetta_base_nome": "sfogliatella frolla",
+      "ingredienti": [
+        "TAPPI PER RICCe",
+        "sale fino",
+        "zucchero semolato",
+        "uova",
+        "semola",
+        "canditi",
+        "STRUTTO"
+      ],
+      "origine": {
+        "foglio": "ricettario",
+        "cella": "B425",
+        "riga_inizio": 425,
+        "riga_fine": 433,
+        "colonna": 2
+      }
+    },
+    {
+      "nome": "sfogliatella frolla Mignon",
+      "nome_origine": "sfogliatella frolla Mignon",
+      "tipo": "variante",
+      "ricetta_base_nome": "sfogliatella frolla",
+      "ingredienti": [
+        "FARINA 0/MAN. CAPUTO",
+        "sale fino",
+        "zucchero semolato",
+        "uova",
+        "semola",
+        "gelatina neutra",
+        "STRUTTO"
+      ],
+      "origine": {
+        "foglio": "ricettario",
+        "cella": "C425",
+        "riga_inizio": 425,
+        "riga_fine": 433,
+        "colonna": 3
+      }
+    },
+    {
+      "nome": "sfogliatella riccia Mignon",
+      "nome_origine": "sfogliatella riccia Mignon",
+      "tipo": "variante",
+      "ricetta_base_nome": "sfogliatella frolla",
+      "ingredienti": [
+        "TAPPI PER RICCe",
+        "sale fino",
+        "zucchero semolato",
+        "uova",
+        "semola",
+        "canditi",
+        "STRUTTO"
+      ],
+      "origine": {
+        "foglio": "ricettario",
+        "cella": "D425",
+        "riga_inizio": 425,
+        "riga_fine": 433,
+        "colonna": 4
+      }
+    },
+    {
+      "nome": "strudel al cioccolato",
+      "nome_origine": "strudel al cioccolato",
+      "tipo": "base",
+      "ricetta_base_nome": null,
+      "ingredienti": [
+        "FARINA 0/MAN. CAPUTO",
+        "sale fino",
+        "margarina crema",
+        "mele",
+        "latte INTERO",
+        "zucchero semolato",
+        "amido",
+        "uova",
+        "cioccolato"
+      ],
+      "origine": {
+        "foglio": "ricettario",
+        "cella": "A434",
+        "riga_inizio": 434,
+        "riga_fine": 444,
+        "colonna": 1
+      }
+    },
+    {
+      "nome": "strudel di Mele",
+      "nome_origine": "strudel di Mele",
+      "tipo": "variante",
+      "ricetta_base_nome": "strudel al cioccolato",
+      "ingredienti": [
+        "FARINA 0/MAN. CAPUTO",
+        "sale fino",
+        "margarina crema",
+        "mele",
+        "latte INTERO",
+        "zucchero semolato",
+        "amido",
+        "uova",
+        "Mele"
+      ],
+      "origine": {
+        "foglio": "ricettario",
+        "cella": "B434",
+        "riga_inizio": 434,
+        "riga_fine": 444,
+        "colonna": 2
+      }
+    },
+    {
+      "nome": "tiramisù",
+      "nome_origine": "tiramisù",
+      "tipo": "base",
+      "ricetta_base_nome": null,
+      "ingredienti": [
+        "FARINA 0/MAN. CAPUTO",
+        "sale fino",
+        "zucchero semolato",
+        "uova",
+        "MASCARPONE",
+        "panna",
+        "cioccolato"
+      ],
+      "origine": {
+        "foglio": "ricettario",
+        "cella": "A445",
+        "riga_inizio": 445,
+        "riga_fine": 453,
+        "colonna": 1
+      }
+    },
+    {
+      "nome": "vesuvio",
+      "nome_origine": "vesuvio",
+      "tipo": "base",
+      "ricetta_base_nome": null,
+      "ingredienti": [
+        "TAPPI PER RICCe",
+        "STRUTTO"
+      ],
+      "origine": {
+        "foglio": "ricettario",
+        "cella": "A454",
+        "riga_inizio": 454,
+        "riga_fine": 461,
+        "colonna": 1
+      }
+    },
+    {
+      "nome": "vesuvio alle Fragoline",
+      "nome_origine": "vesuvio alle Fragoline",
+      "tipo": "variante",
+      "ricetta_base_nome": "vesuvio",
+      "ingredienti": [
+        "TAPPI PER RICCe",
+        "STRUTTO",
+        "Fragoline",
+        "amido",
+        "zucchero semolato",
+        "latte INTERO"
+      ],
+      "origine": {
+        "foglio": "ricettario",
+        "cella": "B454",
+        "riga_inizio": 454,
+        "riga_fine": 461,
+        "colonna": 2
+      }
+    },
+    {
+      "nome": "vesuvio al Cioccolato",
+      "nome_origine": "vesuvio al Cioccolato",
+      "tipo": "variante",
+      "ricetta_base_nome": "vesuvio",
+      "ingredienti": [
+        "TAPPI PER RICCe",
+        "STRUTTO",
+        "Cioccolato",
+        "amido",
+        "zucchero semolato",
+        "latte INTERO"
+      ],
+      "origine": {
+        "foglio": "ricettario",
+        "cella": "C454",
+        "riga_inizio": 454,
+        "riga_fine": 461,
+        "colonna": 3
+      }
+    },
+    {
+      "nome": "Peperoni",
+      "nome_origine": "Peperoni",
+      "tipo": "base",
+      "ricetta_base_nome": null,
+      "ingredienti": [
+        "peperoni"
+      ],
+      "origine": {
+        "foglio": "ricettario",
+        "cella": "A462",
+        "riga_inizio": 462,
+        "riga_fine": 463,
+        "colonna": 1
+      }
+    }
+  ]
+}

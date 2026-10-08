@@ -1,0 +1,2062 @@
+"""
+Servizio Download COMPLETO Email e Allegati
+Scarica TUTTI i PDF dalla posta e li salva nel database.
+Gestisce deduplicazione e documenti non associati.
+"""
+
+import asyncio
+from app.services.scritture_contabili import scrivi_riga_salari
+import imaplib
+import email
+from email.header import decode_header
+import os
+import re
+import uuid
+from datetime import datetime, timezone, timedelta
+from typing import Dict, Any, List, Optional, Tuple
+import logging
+import hashlib
+import base64
+from app.services.archivio_documenti_memoria import ArchivioDocumenti
+
+logger = logging.getLogger(__name__)
+
+# Configurazione IMAP - Usa variabili d'ambiente
+IMAP_SERVER = os.environ.get("IMAP_SERVER", "imap.gmail.com")
+# Configurazione IMAP
+IMAP_SERVER = "imap.gmail.com"
+
+
+def get_email_credentials():
+    """Credenziali dalla risoluzione canonica (``gmail_credentials``).
+
+    Questa funzione aveva una lista sua, senza ``IMAP_USER``/``IMAP_PASSWORD``:
+    proprio le variabili configurate su Render. Il downloader diceva
+    «Credenziali email non configurate» e non ha mai scaricato niente.
+    """
+    from app.services.gmail_credentials import get_gmail_environment_credentials
+
+    cred = get_gmail_environment_credentials()
+    return cred.user or "", cred.password or ""
+
+# Mapping categoria -> collezione
+CATEGORY_COLLECTIONS = {
+    "f24": "f24_email_attachments",
+    "fattura": "fatture_email_attachments",
+    "busta_paga": "cedolini_email_attachments",
+    "estratto_conto": "estratti_email_attachments",
+    "quietanza": "quietanze_email_attachments",
+    "bonifico": "bonifici_email_attachments",
+    "verbale": "verbali_email_attachments",
+    "certificato_medico": "certificati_email_attachments",
+    "cartella_esattoriale": "cartelle_email_attachments",
+    "avviso_bonario": "avvisi_bonari_email_attachments",
+    "dichiarazione_iva": "dichiarazioni_iva_email_attachments",
+    # schede tecniche dei produttori (ME.PA.): il PDF originale per l'ASL; la
+    # lettura (allergeni, nutrizionali) sta in app/lotti/servizi/schede_fornitore.py
+    "scheda_tecnica": "schede_tecniche_email_attachments",
+    "altro": "documenti_non_associati"  # Documenti da associare manualmente
+}
+
+# Pattern per riconoscere il tipo di documento
+DOCUMENT_PATTERNS = {
+    "f24": [
+        r"f[\s\-_]?24", r"modello\s*f24", r"tribut", r"agenzia.*entrate",
+        r"inps.*contribut", r"ritenute", r"imu", r"tasi", r"acconto.*irpef"
+    ],
+    "fattura": [
+        r"fattur[ae]", r"invoice", r"n\.\s*\d+.*del", r"ft\s*\d+",
+        r"importo.*iva", r"imponibile"
+    ],
+    "busta_paga": [
+        r"busta\s*paga", r"cedolino", r"libro\s*unico", r"lul\s*\d+",
+        r"stipendio", r"retribuzione", r"netto.*pagare"
+    ],
+    "estratto_conto": [
+        r"estratto\s*conto", r"moviment[io]", r"saldo.*precedente",
+        r"c/c", r"conto\s*corrente", r"iban"
+    ],
+    "quietanza": [
+        r"quietanza", r"ricevuta\s*pagamento", r"attestazione\s*versamento",
+        r"pagamento.*effettuato", r"versato"
+    ],
+    "bonifico": [
+        r"bonifico", r"disposizione.*pagamento", r"trasferimento",
+        r"cro\s*\d+", r"trn\s*\d+"
+    ],
+    "verbale": [
+        r"verbal[ei]", r"multa", r"sanzione", r"infrazione",
+        r"codice.*strada", r"polizia.*municipal"
+    ],
+    "certificato_medico": [
+        r"certificato\s*medico", r"inps.*malattia", r"puc\s*\d+",
+        r"prognosi", r"diagnosi"
+    ],
+    "cartella_esattoriale": [
+        r"cartella.*esattorial", r"riscossione", r"equitalia",
+        r"ader.*riscossione", r"intimazione"
+    ],
+    "avviso_bonario": [
+        r"avviso\s*bonario", r"comunicazione.*irregolarit", r"36[\s\-]?bis",
+        r"54[\s\-]?bis", r"controllo\s*automatizzato", r"esito.*liquidazione"
+    ],
+    "dichiarazione_iva": [
+        r"dichiarazione\s*iva", r"modello\s*iva\b", r"iva\s*annuale",
+        r"lipe", r"liquidazion[ei].*periodic", r"comunicazione.*iva"
+    ]
+}
+
+
+def decode_mime_header(header_value: str) -> str:
+    """Decodifica header MIME."""
+    if not header_value:
+        return ""
+    try:
+        decoded_parts = decode_header(header_value)
+        result = []
+        for part, encoding in decoded_parts:
+            if isinstance(part, bytes):
+                result.append(part.decode(encoding or 'utf-8', errors='replace'))
+            else:
+                result.append(part)
+        return ''.join(result)
+    except Exception as e:
+        logger.debug(f"Errore decodifica header: {e}")
+        return str(header_value)
+
+
+def calculate_pdf_hash(content: bytes) -> str:
+    """Calcola hash MD5 del contenuto PDF per deduplicazione."""
+    return hashlib.md5(content).hexdigest()
+
+
+def categorize_document(filename: str, subject: str = "", body: str = "") -> str:
+    """
+    Categorizza un documento in base al nome file, oggetto e contenuto.
+    """
+    text_to_check = f"{filename} {subject} {body}".lower()
+
+    for category, patterns in DOCUMENT_PATTERNS.items():
+        for pattern in patterns:
+            if re.search(pattern, text_to_check, re.IGNORECASE):
+                return category
+
+    return "altro"
+
+
+_DIMISSIONI_RE = re.compile(r"recesso\s+rapporto\s+di\s+lavoro|_dimission|dimission[ei]\s+telematic", re.IGNORECASE)
+
+
+def _sembra_modulo_dimissioni(filename: str, subject: str = "") -> bool:
+    """Il modulo del Ministero arriva come ``<CF>_Dimissione.pdf`` in una PEC
+    «Notifica richiesta recesso rapporto di lavoro»."""
+    return bool(_DIMISSIONI_RE.search(f"{filename} {subject}"))
+
+
+def _mittenti_messaggi_annidati(msg: email.message.Message) -> List[str]:
+    """Indirizzi ``From`` dei messaggi allegati (message/rfc822, es. la busta PEC)."""
+    out: List[str] = []
+    if not msg.is_multipart():
+        return out
+    for part in msg.walk():
+        if part.get_content_type() != "message/rfc822":
+            continue
+        for interno in part.get_payload() or []:
+            try:
+                frm = decode_mime_header(interno.get("From", "")).lower()
+            except Exception:
+                frm = ""
+            if frm:
+                out.append(frm)
+    return out
+
+
+def extract_period_from_text(text: str) -> Dict[str, Any]:
+    """Estrae mese e anno dal testo."""
+    result = {"mese": None, "anno": None}
+
+    # Pattern mese/anno
+    mesi_it = {
+        "gennaio": 1, "febbraio": 2, "marzo": 3, "aprile": 4,
+        "maggio": 5, "giugno": 6, "luglio": 7, "agosto": 8,
+        "settembre": 9, "ottobre": 10, "novembre": 11, "dicembre": 12
+    }
+
+    text_lower = text.lower()
+
+    # Pattern 1: "gennaio 2025", "febbraio 2024"
+    for mese_nome, mese_num in mesi_it.items():
+        pattern = rf'{mese_nome}\s*[/_\-]?\s*(\d{{4}})'
+        match = re.search(pattern, text_lower)
+        if match:
+            result["mese"] = mese_num
+            result["anno"] = int(match.group(1))
+            return result
+
+    # Pattern 2: "01/2025"
+    match = re.search(r'(\d{1,2})[/_\-](\d{4})', text)
+    if match:
+        mese = int(match.group(1))
+        anno = int(match.group(2))
+        if 1 <= mese <= 12 and 2020 <= anno <= 2030:
+            result["mese"] = mese
+            result["anno"] = anno
+            return result
+
+    # Pattern 3: "2025" solo anno
+    match = re.search(r'20(2[0-9])', text)
+    if match:
+        result["anno"] = int(f"20{match.group(1)}")
+
+    return result
+
+
+class EmailFullDownloader:
+    """
+    Scarica TUTTI gli allegati PDF dalla posta e li salva nel database.
+    Supporta deduplicazione e categorizzazione automatica.
+    """
+
+    def __init__(self, db: ArchivioDocumenti):
+        self.db = db
+        self.connection = None
+        self.stats = {
+            "emails_processed": 0,
+            "pdfs_downloaded": 0,
+            "pdfs_duplicates": 0,
+            "pdfs_by_category": {},
+            "errors": []
+        }
+        self._cached_keywords = None  # Cache per le parole chiave
+        self._cached_trusted_senders = None  # Cache mittenti attendibili "generico"
+
+    async def _load_admin_keywords(self) -> list:
+        """
+        Carica le parole chiave amministrative dal database.
+        Le parole chiave sono configurate nella pagina Admin.
+        """
+        # Usa cache se disponibile
+        if self._cached_keywords is not None:
+            return self._cached_keywords
+
+        try:
+            config = await self.db["config"].find_one({"tipo": "parole_chiave"})
+            if config:
+                keywords = []
+                # Combina tutte le categorie di parole chiave
+                for key in ["generale", "fatture", "f24", "buste_paga", "estratti_conto", "verbali", "altro"]:
+                    if key in config and isinstance(config[key], list):
+                        keywords.extend(config[key])
+
+                # Rimuovi duplicati e valori vuoti
+                keywords = list(set(kw.strip() for kw in keywords if kw and kw.strip()))
+
+                if keywords:
+                    self._cached_keywords = keywords
+                    logger.info(f"Caricate {len(keywords)} parole chiave da Admin")
+                    return keywords
+        except Exception as e:
+            logger.warning(f"Errore caricamento parole chiave da DB: {e}")
+
+        # Fallback: parole chiave di default se non configurate
+        default_keywords = [
+            # Fatture (escluse da Gmail ma utili per categorizzazione)
+            "fattura", "fatture", "invoice",
+            # F24 e tributi
+            "f24", "tribut", "irpef", "imu", "tari", "tarsu", "tasi",
+            "agenzia entrate", "agenzia riscossione", "ader",
+            # Cedolini e lavoro
+            "cedolino", "busta paga", "stipendio", "retribuzione",
+            "libro unico", "paghe", "lul",
+            "recesso rapporto di lavoro", "dimission", "unilav",
+            # Banca e pagamenti
+            "estratto conto", "bonifico", "pagamento", "quietanza",
+            "ricevuta", "versamento", "cro", "disposizione",
+            # Verbali e sanzioni
+            "verbale", "multa", "sanzione", "infrazione",
+            "polizia", "contravvenzione", "obbligazione",
+            # Assicurazioni e noleggio
+            "noleggio", "leasing", "assicurazione", "polizza",
+            "sinistro", "leasys", "arval", "ald",
+            # Utenze
+            "enel", "sorgenia", "fastweb", "tim", "wind",
+            "bolletta", "utenza", "fornitura",
+            # Documenti fiscali
+            "scadenza", "importo",
+            "pago pa", "pagopa", "avviso pagamento",
+            "cartella esattorial", "pignoramento",
+            "inps", "inail", "contribut",
+            # SIAE e altri enti
+            "siae", "suap", "regione", "comune",
+            # Generici documentali
+            "certificato", "contratto", "denuncia",
+            "modello", "dichiarazione"
+        ]
+        self._cached_keywords = default_keywords
+        logger.info(f"Usando {len(default_keywords)} parole chiave di default")
+        return default_keywords
+
+    async def _load_mittenti_per_tipo(self, tipo_documento: str) -> set:
+        """Indirizzi attivi di ``mittenti_email`` con quel tipo documento."""
+        cache = getattr(self, "_cache_mittenti_per_tipo", None)
+        if cache is None:
+            cache = self._cache_mittenti_per_tipo = {}
+        if tipo_documento in cache:
+            return cache[tipo_documento]
+        indirizzi: set = set()
+        try:
+            from app.services.mittenti import _addr
+            async for m in self.db["mittenti_email"].find({"attivo": True, "tipo_documento": tipo_documento}):
+                a = _addr(m)
+                if a:
+                    indirizzi.add(a.lower())
+        except Exception as e:
+            logger.warning(f"Mittenti '{tipo_documento}' non caricati: {type(e).__name__}: {e}")
+        cache[tipo_documento] = indirizzi
+        return indirizzi
+
+    async def _archivia_dilazione_inps(self, msg, email_uid, subject: str, from_addr: str,
+                                       source_folder: str) -> int:
+        """PDF del piano (sciolti o in ZIP) riconosciuti dal testo, mai dal nome."""
+        from app.routers.documenti import _pdf_text_for_detection
+        from app.services.dilazioni_inps import archivia_dilazione, pdf_da_zip, riconosci
+
+        allegati: List[Tuple[str, bytes]] = []
+        for part in msg.walk():
+            nome = decode_mime_header(part.get_filename() or "")
+            if not nome.lower().endswith((".pdf", ".zip")):
+                continue
+            contenuto = part.get_payload(decode=True) or b""
+            if nome.lower().endswith(".zip"):
+                try:
+                    allegati.extend(pdf_da_zip(contenuto))
+                except Exception as e:  # noqa: BLE001 - ZIP rifiutato, email conservata in Gmail
+                    logger.warning(f"[Gmail] dilazione INPS: ZIP {nome} rifiutato: {type(e).__name__}: {e}")
+            else:
+                allegati.append((nome, contenuto))
+        salvati = 0
+        for nome, contenuto in allegati:
+            testo = _pdf_text_for_detection(contenuto)
+            if not riconosci(testo):
+                continue
+            esito = await archivia_dilazione(
+                self.db, filename=nome, content=contenuto, testo=testo,
+                source_context={"source": "email", "email_uid": email_uid.decode() if isinstance(email_uid, bytes)
+                                else str(email_uid), "email_subject": subject, "email_from": from_addr,
+                                "source_folder": source_folder},
+            )
+            if esito.get("duplicate"):
+                self.stats["pdfs_duplicates"] += 1
+            else:
+                salvati += 1
+                self.stats["pdfs_downloaded"] += 1
+            logger.info(f"[Gmail] {esito.get('message')}")
+        return salvati
+
+    async def _archivia_schede_tecniche(self, msg, email_uid, subject: str, from_addr: str,
+                                        date_str: str, body: str, source_folder: str) -> int:
+        """Salva il PDF della scheda (dedup SHA-256) e la registra in Lotti."""
+        email_info = {
+            "uid": email_uid.decode() if isinstance(email_uid, bytes) else str(email_uid),
+            "subject": subject, "from": from_addr, "date": date_str, "source_folder": source_folder,
+        }
+        # la descrizione del prodotto sta nel corpo: testo e HTML insieme, perche'
+        # Order Sender non la mette sempre nella parte testo
+        parti = [body or ""]
+        for part in (msg.walk() if msg.is_multipart() else []):
+            if part.get_content_type() == "text/html":
+                try:
+                    parti.append(part.get_payload(decode=True).decode("utf-8", errors="replace"))
+                except Exception as e:
+                    logger.debug(f"[Gmail] parte HTML della scheda illeggibile: {type(e).__name__}: {e}")
+        corpo = "\n".join(parti)
+        salvati = 0
+        for filename, content in self.extract_pdfs_from_email(msg):
+            doc_id = await self.save_pdf_to_db(
+                pdf_content=content, filename=filename, category="scheda_tecnica",
+                email_info=email_info, period_info={},
+            )
+            if not doc_id:
+                continue  # stesso PDF gia' archiviato
+            salvati += 1
+            try:
+                # Drive e' il deposito fisico canonico. Il record Supabase
+                # conserva soltanto indice e riferimenti; il Base64 resta
+                # temporaneamente solo se Drive non e' raggiungibile, cosi' un
+                # guasto non perde l'originale ricevuto per posta.
+                from app.services.email_drive_archive import archive_document_copy
+                drive = await asyncio.to_thread(
+                    archive_document_copy,
+                    {"id": doc_id, "filename": filename, "content": content},
+                    "scheda_tecnica",
+                )
+                if drive.get("status") in {"archived", "duplicate"} and drive.get("drive_file_id"):
+                    await self.db[CATEGORY_COLLECTIONS["scheda_tecnica"]].update_one(
+                        {"id": doc_id},
+                        {"$set": {"drive_file_id": drive["drive_file_id"],
+                                  "sha256": drive["sha256"], "archivio_originale": "drive"},
+                         "$unset": {"pdf_data": ""}},
+                    )
+                from app.lotti.db import database as db_lotti
+                from app.lotti.servizi.schede_fornitore import registra_scheda_tecnica
+                from app.services.pdf_text_extraction import extract_pdf_text
+                testo = extract_pdf_text(content)
+                await self.db[CATEGORY_COLLECTIONS["scheda_tecnica"]].update_one(
+                    {"id": doc_id}, {"$set": {"testo_estratto": testo[:20000], "email_body": corpo[:4000]}})
+                esito = await registra_scheda_tecnica(
+                    db_lotti, documento_id=doc_id, pdf_sha256=hashlib.sha256(content).hexdigest(),
+                    testo_pdf=testo, oggetto=subject, corpo=corpo,
+                    email_uid=email_info["uid"], email_data=date_str,
+                    drive_file_id=drive.get("drive_file_id"), filename=filename,
+                )
+                logger.info(f"[Gmail] scheda tecnica {filename}: {esito}")
+            except Exception as e:
+                # il PDF resta archiviato: la scheda si ricostruisce da
+                # /lotti/api/schede-tecniche/ricostruisci-da-email
+                logger.warning(f"[Gmail] scheda tecnica {filename} non registrata in Lotti: "
+                               f"{type(e).__name__}: {e}")
+        return salvati
+
+    async def _load_trusted_senders_generico(self) -> set:
+        """
+        Whitelist mittenti per la scansione email generica.
+
+        REGOLA UTENTE 18/07/2026: "la lista è il vangelo per scaricare la
+        posta" — si scarica SOLO dai mittenti configurati in Mittenti Email
+        (collezione canonica mittenti_email, qualunque tipo documento,
+        attivi). Lista vuota = ZERO download, nessun fallback permissivo
+        (prima "lista vuota = nessuna restrizione", ed entravano
+        saveris2.net, pec.kimbo.it, legalmail mai autorizzati).
+        """
+        if self._cached_trusted_senders is not None:
+            return self._cached_trusted_senders
+        senders: set = set()
+        try:
+            from app.services.mittenti import _addr
+            async for m in self.db["mittenti_email"].find({"attivo": True}):
+                a = _addr(m)
+                if a:
+                    senders.add(a.lower())
+        except Exception as e:
+            logger.warning(f"Errore caricamento mittenti attendibili: {e}")
+        self._cached_trusted_senders = senders
+        return senders
+
+    def connect(self) -> bool:
+        """Connette al server IMAP."""
+        from app.services.gmail_credentials import (
+            candidate_gmail_credentials, ricorda_coppia_riuscita,
+        )
+
+        coppie = candidate_gmail_credentials()
+        if not coppie:
+            logger.error("Errore connessione IMAP: credenziali email non configurate")
+            self.stats["errors"].append("Connessione: credenziali email non configurate")
+            return False
+        ultimo_errore = ""
+        for utente, password, var_utente, var_password in coppie:
+            try:
+                connessione = imaplib.IMAP4_SSL(IMAP_SERVER)
+                connessione.login(utente, password)
+            except Exception as e:
+                ultimo_errore = f"{type(e).__name__}: {e}"
+                logger.warning("Login IMAP rifiutato con %s + %s: %s",
+                               var_utente, var_password, ultimo_errore)
+                continue
+            self.connection = connessione
+            ricorda_coppia_riuscita(var_utente, var_password)
+            logger.info("Connesso a %s come %s (variabili %s + %s)",
+                        IMAP_SERVER, utente, var_utente, var_password)
+            return True
+        provate = ", ".join(sorted({f"{c[2]}+{c[3]}" for c in coppie}))
+        logger.error(f"Errore connessione IMAP: {ultimo_errore} (provate: {provate})")
+        self.stats["errors"].append(f"Connessione: {ultimo_errore} (provate: {provate})")
+        return False
+
+    def disconnect(self):
+        """Disconnette dal server IMAP."""
+        if self.connection:
+            try:
+                self.connection.logout()
+            except Exception as e:
+                logger.warning(f"Errore durante disconnessione IMAP: {e}")
+            self.connection = None
+
+    async def check_duplicate(self, pdf_hash: str, pdf_content: Optional[bytes] = None) -> bool:
+        """Verifica se un PDF con questo hash esiste già, anche CROSS-CANALE
+        (P2-1): oltre alle collezioni allegati email, controlla `documents_inbox`
+        (dove lo stesso file può essere entrato dall'altra pipeline)."""
+        # Controlla in tutte le collezioni di allegati
+        for collection_name in CATEGORY_COLLECTIONS.values():
+            existing = await self.db[collection_name].find_one({"pdf_hash": pdf_hash})
+            if existing:
+                return True
+        # Cross-canale: stesso md5 già presente in documents_inbox
+        from app.services.deduplica import esiste_documento_cross_canale
+        from app.db_collections import COLL_DOCUMENTS_INBOX
+        altrove = await esiste_documento_cross_canale(self.db, pdf_hash, contenuto=pdf_content)
+        if altrove and altrove["collezione"] == COLL_DOCUMENTS_INBOX:
+            logger.info(f"[dedup cross-canale] PDF già presente in "
+                        f"{altrove['collezione']} — salto reinserimento allegato")
+            return True
+        return False
+
+    async def save_pdf_to_db(
+        self,
+        pdf_content: bytes,
+        filename: str,
+        category: str,
+        email_info: Dict[str, Any],
+        period_info: Dict[str, Any],
+        category_proposal: Optional[str] = None,
+    ) -> Optional[str]:
+        """
+        Salva un PDF nel database nella collezione appropriata.
+        Ritorna l'ID del documento salvato o None se duplicato.
+        """
+        pdf_hash = calculate_pdf_hash(pdf_content)
+
+        # Verifica duplicato
+        if await self.check_duplicate(pdf_hash, pdf_content):
+            self.stats["pdfs_duplicates"] += 1
+            logger.debug(f"PDF duplicato saltato: {filename}")
+            return None
+
+        # Prepara documento
+        doc_id = str(uuid.uuid4())
+        pdf_base64 = base64.b64encode(pdf_content).decode('utf-8')
+
+        document = {
+            "id": doc_id,
+            "filename": filename,
+            "pdf_data": pdf_base64,
+            "pdf_hash": pdf_hash,
+            "pdf_size": len(pdf_content),
+            "category": category,
+            "category_proposal": category_proposal if category == "altro" else None,
+            "classification_source": (
+                "document_content" if category != "altro" else "unclassified"
+            ),
+            "email_subject": email_info.get("subject", ""),
+            "email_from": email_info.get("from", ""),
+            "email_date": email_info.get("date", ""),
+            "email_uid": email_info.get("uid", ""),
+            "mese": period_info.get("mese"),
+            "anno": period_info.get("anno"),
+            "associato": False,  # Da associare manualmente se in "altro"
+            "documento_associato_id": None,
+            "documento_associato_collection": None,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "processed": False
+        }
+
+        # Determina collezione
+        collection_name = CATEGORY_COLLECTIONS.get(category, "documenti_non_associati")
+
+        # Salva nel database
+        result = await self.db[collection_name].insert_one(document)
+
+        if not result.inserted_id:
+            logger.error(f"Inserimento fallito per {filename} in {collection_name}")
+            return None
+
+        self.stats["pdfs_downloaded"] += 1
+        self.stats["pdfs_by_category"][category] = self.stats["pdfs_by_category"].get(category, 0) + 1
+
+        logger.info(f"PDF salvato: {filename} -> {collection_name}")
+        return doc_id
+
+    async def _archivia_dimissioni(self, filename: str, content: bytes,
+                                   email_info: Dict[str, Any], source_folder: str) -> bool:
+        """Riconosce e archivia il modulo di recesso come ``dimissioni_telematiche``
+        (documents_inbox + adempimenti HR). False se non e' quel modulo."""
+        try:
+            from app.services.fiscal_domain import classify_document
+            from app.services.administrative_document_parser import extract_administrative_metadata
+            from app.routers.documenti import _archive_non_payment_document
+
+            metadata = extract_administrative_metadata(
+                content=content, filename=filename, document_type="dimissioni_telematiche")
+            testo = " ".join(str(v) for v in metadata.values() if isinstance(v, str))
+            if classify_document(filename, testo).get("document_type") != "DIMISSIONI_TELEMATICHE" \
+                    and not metadata.get("lavoratore_cf"):
+                return False
+            archived = await _archive_non_payment_document(
+                self.db, filename=filename, content=content, document_type="dimissioni_telematiche",
+                metadata=metadata,
+                source_context={"source": "email", "email_uid": email_info.get("uid"),
+                                "email_subject": email_info.get("subject"),
+                                "email_from": email_info.get("from"), "source_folder": source_folder},
+            )
+            if archived.get("duplicate"):
+                self.stats["pdfs_duplicates"] += 1
+                return True
+            self.stats["pdfs_downloaded"] += 1
+            self.stats["pdfs_by_category"]["dimissioni"] = self.stats["pdfs_by_category"].get("dimissioni", 0) + 1
+            logger.info(f"[Gmail] dimissioni telematiche archiviate: {filename} "
+                        f"(HR: {(archived.get('adempimenti_dimissioni') or {}).get('hr')})")
+            return True
+        except Exception as e:
+            logger.warning(f"[Gmail] modulo dimissioni non archiviato ({filename}): {e}")
+            return False
+
+    def extract_pdfs_from_email(self, msg: email.message.Message) -> List[Tuple[str, bytes]]:
+        """
+        Estrae SOLO i PDF da un'email.
+        ESCLUDE: PNG, JPG, immagini, firme digitali, XML.
+        """
+        pdfs = []
+
+        # Estensioni da ESCLUDERE completamente
+        EXCLUDED_EXTENSIONS = {
+            # Firme digitali
+            '.p7s', '.p7m', '.p7c', '.sig', '.asc', '.gpg', '.pgp',
+            # Testo / XML
+            '.xml', '.txt', '.html', '.htm',
+            # IMMAGINI - NON AMMINISTRATIVE
+            '.png', '.jpg', '.jpeg', '.gif', '.bmp', '.tiff', '.tif', '.webp', '.ico', '.svg',
+            # Altri
+            '.zip', '.rar', '.7z', '.exe', '.dll'
+        }
+
+        if msg.is_multipart():
+            for part in msg.walk():
+                content_type = part.get_content_type()
+
+                # Verifica se è un PDF
+                filename = part.get_filename()
+                if filename:
+                    filename = decode_mime_header(filename)
+
+                    # Salta file esclusi
+                    ext = os.path.splitext(filename.lower())[1]
+                    if ext in EXCLUDED_EXTENSIONS:
+                        logger.debug(f"File escluso (estensione): {filename}")
+                        continue
+
+                # SOLO PDF veri - niente immagini
+                is_pdf = (
+                    content_type == "application/pdf" or
+                    (filename and filename.lower().endswith(".pdf"))
+                )
+
+                if is_pdf:
+                    try:
+                        content = part.get_payload(decode=True)
+                        if content and len(content) > 500:  # File valido (>500 bytes)
+                            if not filename:
+                                filename = f"allegato_{uuid.uuid4().hex[:8]}.pdf"
+                            pdfs.append((filename, content))
+                    except Exception as e:
+                        logger.debug(f"Errore estrazione allegato: {e}")
+        else:
+            # Email non multipart, verifica se è un PDF direttamente
+            content_type = msg.get_content_type()
+            if content_type == "application/pdf":
+                try:
+                    content = msg.get_payload(decode=True)
+                    if content:
+                        filename = msg.get_filename() or "documento.pdf"
+                        pdfs.append((decode_mime_header(filename), content))
+                except Exception:
+                    pass
+
+        return pdfs
+
+    async def process_email(self, email_uid: bytes, msg: email.message.Message, source_folder: str = "INBOX") -> int:
+        """
+        Processa una singola email ed estrae i PDF.
+        FILTRA: scarica solo email con parole chiave AMMINISTRATIVE dal database.
+        REGOLA: le fatture NON vengono scaricate da Gmail (solo PEC o import manuale).
+        """
+        pdfs_saved = 0
+
+        # Estrai info email
+        subject = decode_mime_header(msg.get("Subject", ""))
+        from_addr = decode_mime_header(msg.get("From", ""))
+        date_str = msg.get("Date", "")
+
+        # Estrai body per categorizzazione
+        body = ""
+        if msg.is_multipart():
+            for part in msg.walk():
+                if part.get_content_type() == "text/plain":
+                    try:
+                        body = part.get_payload(decode=True).decode('utf-8', errors='replace')
+                        break
+                    except Exception:
+                        pass
+        else:
+            try:
+                body = msg.get_payload(decode=True).decode('utf-8', errors='replace')
+            except Exception:
+                pass
+
+        # ============================================================
+        # Le parole chiave amministrative descrivono l'email, ma non decidono
+        # se un allegato attendibile debba essere acquisito o quale fatto sia.
+        admin_keywords = await self._load_admin_keywords()
+
+        # PEC che notifica una cartella di pagamento: la data della notifica sta solo qui (il PDF
+        # non la porta) e da lei partono i 60 giorni. Si legge e si mette sulla cartella; poi la
+        # mail prosegue come sempre (la cartella allegata entra dal suo smistamento).
+        from app.services.notifiche_pec_cartelle import e_notifica_cartella, registra_notifica_email
+
+        if e_notifica_cartella(subject):
+            try:
+                esito_notifica = await registra_notifica_email(
+                    self.db, subject, body, messaggio_id=msg.get("Message-ID") or None)
+                logger.info(f"[Gmail] notifica cartella {esito_notifica.get('numero')}: "
+                            f"{esito_notifica.get('stato')} {esito_notifica.get('data_notifica') or ''}")
+            except Exception as e:  # noqa: BLE001 - la mail resta in Gmail e si riprova al giro dopo
+                logger.warning(f"[Gmail] notifica cartella non registrata: {type(e).__name__}: {e}")
+
+        # Schede tecniche dei fornitori (mittente autorizzato con tipo
+        # «scheda_tecnica»): non passano dalle parole chiave amministrative,
+        # che non le conoscono, e hanno uno smistamento proprio.
+        mittenti_schede = await self._load_mittenti_per_tipo("scheda_tecnica")
+        if mittenti_schede and any(s in from_addr.lower() for s in mittenti_schede):
+            return await self._archivia_schede_tecniche(
+                msg, email_uid, subject, from_addr, date_str, body, source_folder)
+
+        # Dilazione INPS (PEC «Dilazione amministrativa»): il piano sta dentro
+        # Allegato.zip, che l'estrazione dei PDF salta. Si legge e si
+        # associa alle quietanze come dal Documenti > Import.
+        mittenti_dilazione = await self._load_mittenti_per_tipo("dilazione_inps")
+        if mittenti_dilazione and any(
+            s in m for s in mittenti_dilazione
+            for m in [from_addr.lower()] + _mittenti_messaggi_annidati(msg)
+        ):
+            return await self._archivia_dilazione_inps(msg, email_uid, subject, from_addr, source_folder)
+
+        # Combina testo ricercabile: oggetto + corpo + nomi allegati + NOME CARTELLA
+        # Il nome della cartella è fondamentale: se l'utente ha spostato
+        # un'email nella cartella "verbale", quell'email È un verbale
+        search_text = f"{subject} {body}".lower()
+
+        # Aggiungi il nome della cartella di origine al testo di ricerca
+        # Così email nella cartella "verbale" matchano la keyword "verbale"
+        search_text += f" {source_folder}".lower()
+
+        # Estrai anche i nomi degli allegati
+        attachment_names = []
+        if msg.is_multipart():
+            for part in msg.walk():
+                filename = part.get_filename()
+                if filename:
+                    attachment_names.append(decode_mime_header(filename).lower())
+
+        search_text += " " + " ".join(attachment_names)
+
+        # Verifica se contiene almeno UNA parola chiave amministrativa
+        has_admin_keyword = any(kw.lower() in search_text for kw in admin_keywords)
+
+        if not has_admin_keyword:
+            logger.debug(
+                "Email senza parola chiave amministrativa: gli allegati del "
+                "mittente attendibile saranno comunque letti dal contenuto"
+            )
+
+        # FILTRO MITTENTI ATTENDIBILI — REGOLA UTENTE 18/07/2026: "la lista
+        # è il vangelo per scaricare la posta: devi scaricare SOLO da quelli
+        # comunicati". La whitelist copre TUTTI i mittenti configurati in
+        # Mittenti Email (qualsiasi tipo); se la lista è vuota NON si
+        # scarica nulla (prima "lista vuota = nessuna restrizione", ed
+        # entravano saveris2.net, pec.kimbo.it, legalmail mai autorizzati).
+        trusted_senders = await self._load_trusted_senders_generico()
+        from_lower = from_addr.lower()
+        # Una PEC arriva dentro una busta del gestore (posta-certificata@...):
+        # il mittente vero e' quello del messaggio originale allegato
+        # (postacert.eml). Vale come mittente ai fini della lista.
+        mittenti_interni = _mittenti_messaggi_annidati(msg)
+        candidati_mittente = [from_lower] + mittenti_interni
+        if not any(s in m for s in trusted_senders for m in candidati_mittente):
+            logger.debug(f"Email saltata (mittente non in lista): {from_addr} [{subject[:50]}]")
+            return 0
+
+        email_info = {
+            "uid": email_uid.decode() if isinstance(email_uid, bytes) else str(email_uid),
+            "subject": subject,
+            "from": from_addr,
+            "date": date_str
+        }
+
+        # Estrai tutti i PDF
+        pdfs = self.extract_pdfs_from_email(msg)
+
+        for filename, content in pdfs:
+            # Il riconoscimento delle dimissioni valida sempre il contenuto;
+            # nome e oggetto servono soltanto per evitare lavoro superfluo.
+            if _sembra_modulo_dimissioni(filename, subject):
+                esito_dim = await self._archivia_dimissioni(filename, content, email_info, source_folder)
+                if esito_dim:
+                    pdfs_saved += 1
+                    continue
+
+            from app.services.email_document_downloader import category_from_content
+
+            category = category_from_content(filename, content)
+            category_proposal = categorize_document(filename, subject, body)
+
+            # REGOLA BUSINESS: le fatture NON si scaricano da Gmail
+            # Le fatture arrivano SOLO via PEC (Aruba) o import manuale XML
+            if category == "fattura":
+                logger.debug(f"[Gmail] Fattura saltata (solo PEC): {filename} da {from_addr}")
+                continue
+
+            # Estrai periodo
+            period_info = extract_period_from_text(f"{filename} {subject}")
+
+            # Salva nel database con cartella di origine
+            doc_id = await self.save_pdf_to_db(
+                pdf_content=content,
+                filename=filename,
+                category=category,
+                email_info={**email_info, "source_folder": source_folder},
+                period_info=period_info,
+                category_proposal=(
+                    category_proposal
+                    if category == "altro" and category_proposal != "altro"
+                    else None
+                ),
+            )
+
+            if doc_id:
+                pdfs_saved += 1
+
+        return pdfs_saved
+
+    def _list_all_folders(self) -> List[str]:
+        """
+        Lista TUTTE le cartelle/label Gmail disponibili.
+        Restituisce i nomi delle cartelle.
+        """
+        try:
+            status, folder_list = self.connection.list()
+            if status != "OK":
+                return ["INBOX"]
+
+            folders = []
+            for f in folder_list:
+                try:
+                    decoded = f.decode('utf-8', errors='replace')
+                    # Estrai nome cartella dal formato IMAP: (\\flags) "delimiter" "name"
+                    if '"' in decoded:
+                        parts = decoded.split('"')
+                        if len(parts) >= 4:
+                            folder_name = parts[-2]
+                        else:
+                            folder_name = parts[-1].strip()
+                    else:
+                        folder_name = decoded.split()[-1]
+
+                    if folder_name and folder_name not in ('[Gmail]',):
+                        folders.append(folder_name)
+                except Exception:
+                    continue
+
+            logger.info(f"[Gmail] Trovate {len(folders)} cartelle totali")
+            return folders if folders else ["INBOX"]
+
+        except Exception as e:
+            logger.warning(f"[Gmail] Errore lista cartelle: {e}")
+            return ["INBOX"]
+
+    async def _scan_single_folder(
+        self,
+        folder: str,
+        since_date: str,
+        batch_size: int = 50
+    ) -> int:
+        """
+        Scansiona una singola cartella e scarica i documenti amministrativi.
+        Per INBOX usa il filtro SINCE; per le altre cartelle prende TUTTE le email
+        (sono già organizzate dall'utente, e spesso sono storiche).
+        Restituisce il numero di PDF salvati.
+        """
+        pdfs_in_folder = 0
+        try:
+            # Seleziona cartella
+            status, _ = self.connection.select(f'"{folder}"')
+            if status != "OK":
+                return 0
+
+            # Per INBOX e cartelle di sistema Gmail: usa filtro data
+            # Per cartelle utente: prendi TUTTO (sono archivi organizzati)
+            gmail_system = ('[Gmail]' in folder or folder == 'INBOX')
+            if gmail_system:
+                search_criteria = f'(SINCE "{since_date}")'
+            else:
+                search_criteria = 'ALL'
+
+            status, messages = self.connection.search(None, search_criteria)
+            if status != "OK" or not messages[0]:
+                return 0
+
+            email_ids = messages[0].split()
+            if not email_ids:
+                return 0
+
+            logger.info(f"[Gmail] 📁 {folder}: {len(email_ids)} email da processare")
+
+            for email_uid in email_ids[:batch_size]:
+                try:
+                    status, msg_data = self.connection.fetch(email_uid, "(RFC822)")
+                    if status != "OK":
+                        continue
+
+                    raw_email = msg_data[0][1]
+                    msg = email.message_from_bytes(raw_email)
+
+                    saved = await self.process_email(email_uid, msg, source_folder=folder)
+                    pdfs_in_folder += saved
+                    self.stats["emails_processed"] += 1
+
+                except Exception as e:
+                    logger.debug(f"[Gmail] Errore email in {folder}: {e}")
+                    self.stats["errors"].append(f"{folder}: {str(e)[:80]}")
+
+            if pdfs_in_folder > 0:
+                logger.info(f"[Gmail] ✅ {folder}: {pdfs_in_folder} PDF salvati")
+
+        except Exception as e:
+            logger.debug(f"[Gmail] Cartella {folder} non accessibile: {e}")
+
+        return pdfs_in_folder
+
+    async def download_all_emails(
+        self,
+        folder: str = "ALL_FOLDERS",
+        days_back: int = 365,
+        batch_size: int = 100
+    ) -> Dict[str, Any]:
+        """
+        Scarica documenti amministrativi da Gmail.
+
+        REGOLE BUSINESS:
+        - Scansiona TUTTE le cartelle (non solo INBOX)
+        - Le FATTURE non vengono scaricate da Gmail (arrivano solo via PEC o import manuale)
+        - Scarica: cedolini, F24, estratti conto, verbali, quietanze, bonifici,
+          cartelle esattoriali, certificati medici
+        - Filtra per parole chiave amministrative e mittenti attendibili
+        """
+        if not self.connect():
+            return {"success": False, "error": "Connessione IMAP fallita", "stats": self.stats}
+
+        # Aggiungi stats per cartelle
+        self.stats["cartelle_scansionate"] = 0
+        self.stats["cartelle_con_documenti"] = 0
+        self.stats["cartelle_totali"] = 0
+
+        try:
+            since_date = (datetime.now() - timedelta(days=days_back)).strftime("%d-%b-%Y")
+
+            if folder == "ALL_FOLDERS":
+                # Scansiona TUTTE le cartelle
+                all_folders = self._list_all_folders()
+                self.stats["cartelle_totali"] = len(all_folders)
+
+                # INBOX prima, poi le altre
+                if "INBOX" in all_folders:
+                    all_folders.remove("INBOX")
+                    all_folders.insert(0, "INBOX")
+
+                logger.info(f"[Gmail] Avvio scansione di {len(all_folders)} cartelle...")
+
+                for idx, f_name in enumerate(all_folders):
+                    pdfs = await self._scan_single_folder(f_name, since_date, batch_size)
+                    self.stats["cartelle_scansionate"] += 1
+                    if pdfs > 0:
+                        self.stats["cartelle_con_documenti"] += 1
+
+                    # Log progresso ogni 50 cartelle
+                    if (idx + 1) % 50 == 0:
+                        logger.info(
+                            f"[Gmail] Progresso: {idx+1}/{len(all_folders)} cartelle, "
+                            f"{self.stats['pdfs_downloaded']} PDF scaricati"
+                        )
+            else:
+                # Scansiona singola cartella (backward compatibility)
+                self.stats["cartelle_totali"] = 1
+                await self._scan_single_folder(folder, since_date, batch_size)
+                self.stats["cartelle_scansionate"] = 1
+
+            logger.info(
+                f"[Gmail] ✅ Scansione completata: "
+                f"{self.stats['cartelle_scansionate']} cartelle, "
+                f"{self.stats['emails_processed']} email, "
+                f"{self.stats['pdfs_downloaded']} PDF scaricati"
+            )
+
+            return {
+                "success": True,
+                "stats": self.stats
+            }
+
+        except Exception as e:
+            logger.error(f"Errore download email: {e}")
+            return {"success": False, "error": str(e), "stats": self.stats}
+
+        finally:
+            self.disconnect()
+
+    async def download_single_day(self, target_date: datetime) -> Dict[str, Any]:
+        """
+        Scarica email di un singolo giorno specifico da TUTTE le cartelle.
+        """
+        if not self.connect():
+            return {"success": False, "error": "Connessione IMAP fallita"}
+
+        try:
+            date_str = target_date.strftime("%d-%b-%Y")
+            next_date_str = (target_date + timedelta(days=1)).strftime("%d-%b-%Y")
+
+            all_folders = self._list_all_folders()
+            logger.info(f"[Gmail] Scansione giorno {date_str} su {len(all_folders)} cartelle")
+
+            for folder in all_folders:
+                try:
+                    status, _ = self.connection.select(f'"{folder}"')
+                    if status != "OK":
+                        continue
+
+                    search_criteria = f'(SINCE "{date_str}" BEFORE "{next_date_str}")'
+                    status, messages = self.connection.search(None, search_criteria)
+
+                    if status != "OK" or not messages[0]:
+                        continue
+
+                    email_ids = messages[0].split()
+                    for email_uid in email_ids:
+                        try:
+                            status, msg_data = self.connection.fetch(email_uid, "(RFC822)")
+                            if status == "OK":
+                                msg = email.message_from_bytes(msg_data[0][1])
+                                await self.process_email(email_uid, msg, source_folder=folder)
+                                self.stats["emails_processed"] += 1
+                        except Exception as e:
+                            logger.debug(f"Errore email in {folder}: {e}")
+                except Exception:
+                    continue
+
+            return {"success": True, "stats": self.stats}
+
+        finally:
+            self.disconnect()
+
+
+async def associate_pdf_to_document(
+    db: ArchivioDocumenti,
+    pdf_id: str,
+    source_collection: str,
+    target_document_id: str,
+    target_collection: str
+) -> bool:
+    """
+    Associa un PDF scaricato a un documento esistente.
+    Copia il pdf_data nella collezione di destinazione.
+    """
+    try:
+        # Trova il PDF
+        pdf_doc = await db[source_collection].find_one({"id": pdf_id})
+        if not pdf_doc:
+            return False
+
+        # Aggiorna documento destinazione con il PDF
+        result = await db[target_collection].update_one(
+            {"id": target_document_id},
+            {
+                "$set": {
+                    "pdf_data": pdf_doc["pdf_data"],
+                    "pdf_filename": pdf_doc["filename"],
+                    "pdf_hash": pdf_doc["pdf_hash"]
+                }
+            }
+        )
+
+        if result.modified_count > 0:
+            # Marca il PDF come associato
+            await db[source_collection].update_one(
+                {"id": pdf_id},
+                {
+                    "$set": {
+                        "associato": True,
+                        "documento_associato_id": target_document_id,
+                        "documento_associato_collection": target_collection,
+                        "associated_at": datetime.now(timezone.utc).isoformat()
+                    }
+                }
+            )
+            return True
+
+        return False
+
+    except Exception as e:
+        logger.error(f"Errore associazione PDF: {e}")
+        return False
+
+
+async def get_documenti_non_associati(
+    db: ArchivioDocumenti,
+    category: str = None,
+    limit: int = 100
+) -> List[Dict[str, Any]]:
+    """
+    Recupera i documenti non ancora associati per l'associazione manuale.
+    """
+    query = {"associato": False}
+    if category:
+        query["category"] = category
+
+    # Cerca in tutte le collezioni di allegati
+    results = []
+    for coll_name in CATEGORY_COLLECTIONS.values():
+        cursor = db[coll_name].find(
+            query,
+            {"_id": 0, "pdf_data": 0}  # Escludi PDF pesante
+        ).limit(limit)
+
+        async for doc in cursor:
+            doc["source_collection"] = coll_name
+            results.append(doc)
+
+    return results[:limit]
+
+
+def _parole_nome(testo: Any) -> set:
+    import unicodedata
+    testo = unicodedata.normalize("NFKD", str(testo or "")).encode("ascii", "ignore").decode()
+    return {p for p in re.split(r"[^a-z0-9]+", testo.lower()) if p}
+
+
+async def _cedolino_unico_per_nome(db: ArchivioDocumenti, parole: List[str], mese, anno) -> Optional[Dict[str, Any]]:
+    """Il solo cedolino del periodo, ancora senza PDF, il cui dipendente
+    contiene tutte le parole del nome nel file. Nessuno o piu' d'uno: None."""
+    cercate = _parole_nome(" ".join(parole))
+    if not cercate or not mese or not anno:
+        return None
+    candidati = []
+    cursor = db["cedolini"].find({
+        "mese": mese,
+        "anno": anno,
+        "$or": [
+            {"pdf_data": None},
+            {"pdf_data": ""},
+            {"pdf_data": {"$exists": False}}
+        ]
+    })
+    nomi_anagrafica: Optional[Dict[str, str]] = None
+    async for doc in cursor:
+        nome_doc = doc.get("dipendente") or doc.get("dipendente_nome") or doc.get("nome_dipendente") or ""
+        if not isinstance(nome_doc, str) or not nome_doc.strip():
+            # Cedolino con il solo id del dipendente: il nome viene dall'anagrafica.
+            dip_id = doc.get("employee_id") or doc.get("dipendente_id")
+            if not dip_id:
+                continue
+            if nomi_anagrafica is None:
+                nomi_anagrafica = {}
+                async for d in db["dipendenti"].find({}, {"_id": 0, "id": 1, "nome_completo": 1, "nome": 1, "cognome": 1}):
+                    nomi_anagrafica[str(d.get("id"))] = (
+                        d.get("nome_completo") or f"{d.get('cognome', '')} {d.get('nome', '')}".strip())
+            nome_doc = nomi_anagrafica.get(str(dip_id), "")
+        if cercate <= _parole_nome(nome_doc):
+            candidati.append(doc)
+            if len(candidati) > 1:
+                return None
+    return candidati[0] if candidati else None
+
+
+async def _pdf_allegato(db, collezione: str, doc_id: str):
+    doc = await db[collezione].find_one({"id": doc_id}, {"_id": 0, "pdf_data": 1}) or {}
+    return doc.get("pdf_data")
+
+
+async def smart_auto_associate(db: ArchivioDocumenti) -> Dict[str, int]:
+    """
+    Tenta di associare automaticamente i PDF ai documenti esistenti
+    basandosi su filename, periodo e categoria.
+    """
+    stats = {"associated": 0, "skipped": 0, "errors": 0}
+
+    # ========== ASSOCIAZIONE CEDOLINI (BUSTE PAGA) ==========
+    # Pattern filename: "Busta paga - Vespa Vincenzo - Settembre 2024 - 2.pdf"
+    mesi_it = {
+        "gennaio": 1, "febbraio": 2, "marzo": 3, "aprile": 4,
+        "maggio": 5, "giugno": 6, "luglio": 7, "agosto": 8,
+        "settembre": 9, "ottobre": 10, "novembre": 11, "dicembre": 12
+    }
+
+    # Allegati senza PDF: il PDF si legge per id solo quando c'e' davvero un
+    # abbinamento (scorrerli tutti col PDF dentro esauriva la memoria).
+    cursor = db["cedolini_email_attachments"].find({"associato": False}, {"_id": 0, "pdf_data": 0})
+    async for pdf_doc in cursor:
+        try:
+            filename = pdf_doc.get("filename", "")
+
+            # Estrai nome dipendente e periodo dal filename
+            # Pattern: "Busta paga - COGNOME NOME - MESE ANNO"
+            import re
+            match = re.search(r'[Bb]usta\s*[Pp]aga\s*-\s*([^-]+)\s*-\s*(\w+)\s*(\d{4})', filename)
+
+            if match:
+                nome_completo = match.group(1).strip()
+                mese_str = match.group(2).lower()
+                anno = int(match.group(3))
+                mese = mesi_it.get(mese_str, pdf_doc.get("mese"))
+
+                # GC-17: il cedolino si abbina solo al dipendente del file.
+                # Prima la prima ricerca prendeva un cedolino qualsiasi del
+                # mese senza PDF, di chiunque fosse, e il cognome da solo
+                # confondeva omonimi. Ora servono tutte le parole del nome e
+                # un solo candidato; altrimenti il PDF resta da associare.
+                parts = nome_completo.split()
+                if len(parts) >= 2:
+                    cedolino = await _cedolino_unico_per_nome(db, parts, mese, anno)
+
+                    if cedolino:
+                        pdf_doc["pdf_data"] = await _pdf_allegato(db, "cedolini_email_attachments", pdf_doc["id"])
+                        # Associa
+                        await db["cedolini"].update_one(
+                            {"id": cedolino["id"]},
+                            {"$set": {
+                                "pdf_data": pdf_doc["pdf_data"],
+                                "pdf_filename": filename,
+                                "pdf_hash": pdf_doc.get("pdf_hash")
+                            }}
+                        )
+                        await db["cedolini_email_attachments"].update_one(
+                            {"id": pdf_doc["id"]},
+                            {"$set": {
+                                "associato": True,
+                                "documento_associato_id": cedolino["id"],
+                                "documento_associato_collection": "cedolini",
+                                "associated_at": datetime.now(timezone.utc).isoformat()
+                            }}
+                        )
+                        stats["associated"] += 1
+                        # L'archivio che gli utenti vedono e' l'app HR: la busta,
+                        # ora con il PDF, viene depositata in app_cedolini se manca.
+                        try:
+                            from app.services.hr_cedolini_deposito import deposita_cedolino_in_hr
+                            await deposita_cedolino_in_hr({
+                                **cedolino, "pdf_data": pdf_doc["pdf_data"], "pdf_filename": filename,
+                            })
+                        except Exception:
+                            logger.exception("Deposito cedolino in HR fallito (associazione PDF email)")
+                        logger.info(f"Cedolino associato: {filename} -> {cedolino['id']}")
+                        continue
+
+            stats["skipped"] += 1
+
+        except Exception as e:
+            logger.error(f"Errore auto-associazione cedolino: {e}")
+            stats["errors"] += 1
+
+    # ========== ASSOCIAZIONE F24 ==========
+    cursor = db["f24_email_attachments"].find({"associato": False}, {"_id": 0, "pdf_data": 0})
+    async for pdf_doc in cursor:
+        try:
+            filename = pdf_doc.get("filename", "")
+
+            # Cerca F24 con lo stesso filename che non ha ancora pdf_data
+            f24 = await db["f24_unificato"].find_one({
+                "$and": [
+                    {"$or": [
+                        {"file_name": filename},
+                        {"filename": filename},
+                        {"file_name": {"$regex": filename[:30], "$options": "i"}}
+                    ]},
+                    {"$or": [
+                        {"pdf_data": None},
+                        {"pdf_data": ""},
+                        {"pdf_data": {"$exists": False}}
+                    ]}
+                ]
+            })
+
+            if f24:
+                pdf_doc["pdf_data"] = await _pdf_allegato(db, "f24_email_attachments", pdf_doc["id"])
+                await db["f24_unificato"].update_one(
+                    {"id": f24["id"]},
+                    {"$set": {
+                        "pdf_data": pdf_doc["pdf_data"],
+                        "pdf_filename": filename,
+                        "pdf_hash": pdf_doc.get("pdf_hash")
+                    }}
+                )
+                await db["f24_email_attachments"].update_one(
+                    {"id": pdf_doc["id"]},
+                    {"$set": {
+                        "associato": True,
+                        "documento_associato_id": f24["id"],
+                        "documento_associato_collection": "f24_unificato",
+                        "associated_at": datetime.now(timezone.utc).isoformat()
+                    }}
+                )
+                stats["associated"] += 1
+                logger.info(f"F24 associato: {filename}")
+            else:
+                stats["skipped"] += 1
+
+        except Exception as e:
+            logger.error(f"Errore auto-associazione F24: {e}")
+            stats["errors"] += 1
+
+    return stats
+
+
+async def populate_payslips_pdf_data(db: ArchivioDocumenti) -> Dict[str, int]:
+    """
+    DEPRECATO: Funzione di migrazione legacy per popolare pdf_data da filesystem.
+    I nuovi documenti devono già avere pdf_data quando vengono scaricati dalle email.
+    Mantenuta per retrocompatibilità con dati esistenti.
+    """
+    stats = {"updated": 0, "skipped": 0, "errors": 0, "deprecated": True}
+
+    logger.warning("populate_payslips_pdf_data è DEPRECATO. I nuovi flussi usano pdf_data direttamente.")
+
+    # Cerca payslips che hanno solo pdf_data mancante (per migrazione)
+    cursor = db["cedolini"].find({
+        "$or": [
+            {"pdf_data": None},
+            {"pdf_data": ""},
+            {"pdf_data": {"$exists": False}}
+        ]
+    })
+
+    async for payslip in cursor:
+        try:
+            # Se non ha pdf_data, lo salta - i nuovi documenti devono averlo
+            stats["skipped"] += 1
+            continue
+
+        except Exception as e:
+            logger.error(f"Errore popolamento payslip: {e}")
+            stats["errors"] += 1
+
+    return stats
+
+
+async def get_documents_inbox_stats(db: ArchivioDocumenti) -> Dict[str, Any]:
+    """
+    Statistiche sulla collezione documents_inbox.
+    """
+    pipeline = [
+        {"$group": {
+            "_id": {"category": "$category", "status": "$status"},
+            "count": {"$sum": 1}
+        }}
+    ]
+
+    stats = {
+        "by_category": {},
+        "by_status": {},
+        "total": await db["documents_inbox"].count_documents({})
+    }
+
+    async for doc in db["documents_inbox"].aggregate(pipeline):
+        cat = doc["_id"].get("category", "unknown")
+        status = doc["_id"].get("status", "unknown")
+        count = doc["count"]
+
+        if cat not in stats["by_category"]:
+            stats["by_category"][cat] = {"total": 0, "nuovo": 0, "processato": 0, "associato": 0}
+        stats["by_category"][cat]["total"] += count
+        stats["by_category"][cat][status] = stats["by_category"][cat].get(status, 0) + count
+
+        stats["by_status"][status] = stats["by_status"].get(status, 0) + count
+
+    return stats
+
+
+async def sync_filesystem_pdfs_to_db(db: ArchivioDocumenti, base_dir: str = "/tmp/documents") -> Dict[str, Any]:
+    """
+    Scansiona i PDF sul filesystem e li sincronizza con documents_inbox.
+    Per ogni file:
+    1. Calcola hash per deduplicazione
+    2. Se nuovo, lo aggiunge a documents_inbox
+    3. Aggiorna il filepath se il file esiste ma il path è cambiato
+    """
+    stats = {
+        "files_scanned": 0,
+        "new_added": 0,
+        "paths_updated": 0,
+        "duplicates_skipped": 0,
+        "errors": []
+    }
+
+    # Mapping directory -> categoria
+    DIR_TO_CATEGORY = {
+        "F24": "f24",
+        "Fatture": "fattura",
+        "Buste Paga": "busta_paga",
+        "Estratti Conto": "estratto_conto",
+        "Quietanze": "quietanza",
+        "Bonifici": "bonifico",
+        "Verbali": "verbale",
+        "Certificati Medici": "certificato_medico",
+        "Cartelle Esattoriali": "cartella_esattoriale",
+        "Altri": "altro"
+    }
+
+    for dir_name, category in DIR_TO_CATEGORY.items():
+        dir_path = os.path.join(base_dir, dir_name)
+        if not os.path.exists(dir_path):
+            continue
+
+        for filename in os.listdir(dir_path):
+            if not filename.lower().endswith('.pdf'):
+                continue
+
+            filepath = os.path.join(dir_path, filename)
+            stats["files_scanned"] += 1
+
+            try:
+                # Leggi e calcola hash
+                with open(filepath, "rb") as f:
+                    content = f.read()
+
+                file_hash = calculate_pdf_hash(content)
+
+                # Controlla se esiste già per hash
+                existing = await db["documents_inbox"].find_one({"file_hash": file_hash})
+
+                if existing:
+                    # Aggiorna il filepath se diverso
+                    if existing.get("filepath") != filepath:
+                        await db["documents_inbox"].update_one(
+                            {"id": existing["id"]},
+                            {"$set": {"filepath": filepath, "file_exists": True}}
+                        )
+                        stats["paths_updated"] += 1
+                    else:
+                        stats["duplicates_skipped"] += 1
+                    continue
+
+                # Nuovo documento - aggiungi
+                doc_id = str(uuid.uuid4())
+                new_doc = {
+                    "id": doc_id,
+                    "filename": filename,
+                    "filepath": filepath,
+                    "category": category,
+                    "category_label": dir_name,
+                    "size_bytes": len(content),
+                    "file_hash": file_hash,
+                    "status": "nuovo",
+                    "processed": False,
+                    "file_exists": True,
+                    "source": "filesystem_sync",
+                    "synced_at": datetime.now(timezone.utc).isoformat()
+                }
+
+                await db["documents_inbox"].insert_one(new_doc)
+                stats["new_added"] += 1
+
+                # --- EVENT BUS: propaga evento documento acquisito ---
+                try:
+                    from app.services.event_bus import propagate_event, EventTypes
+                    await propagate_event(EventTypes.DOCUMENTO_ACQUISITO, {
+                        "documento_id": new_doc.get("id") or new_doc.get("_id"),
+                        "filename": new_doc.get("filename"),
+                        "origine": "filesystem",
+                        "mime_type": new_doc.get("mime_type") or "application/pdf",
+                        "hash_file": new_doc.get("file_hash"),
+                        "mittente": new_doc.get("mittente"),
+                        "category": new_doc.get("category"),
+                    }, db, source_module="email_full_download")
+                except Exception:
+                    logger.exception("Errore propagazione evento documento.acquisito (fs sync)")
+
+            except Exception as e:
+                logger.error(f"Errore sync file {filepath}: {e}")
+                stats["errors"].append(f"{filename}: {str(e)}")
+
+    return stats
+
+
+_MESI_IT = {
+    "gennaio": 1, "febbraio": 2, "marzo": 3, "aprile": 4,
+    "maggio": 5, "giugno": 6, "luglio": 7, "agosto": 8,
+    "settembre": 9, "ottobre": 10, "novembre": 11, "dicembre": 12,
+}
+
+
+def _indizi_f24_da_nome(filename: str) -> Tuple[Optional[int], Optional[int], Optional[str]]:
+    """(mese, anno, tipo di tributo) leggibili dal nome di un file F24."""
+    nome = (filename or "").lower()
+    mese = anno = None
+    for parola, numero in _MESI_IT.items():
+        if parola in nome:
+            mese = numero
+            break
+    m = re.search(r"(?<!\d)(20[1-3]\d)(?!\d)", nome)
+    if m:
+        anno = int(m.group(1))
+    if mese is None:
+        # IVA_09_2025, IVA_11.25, 2025_09
+        for pattern, gm, ga in ((r"(?<!\d)(\d{1,2})[._-](20[1-3]\d|\d{2})(?!\d)", 1, 2),
+                                (r"(?<!\d)(20[1-3]\d)[._-](\d{1,2})(?!\d)", 2, 1)):
+            m = re.search(pattern, nome)
+            if m and 1 <= int(m.group(gm)) <= 12:
+                a = m.group(ga)
+                a = int(a) if len(a) == 4 else 2000 + int(a)
+                if 2010 <= a <= 2039 and (anno is None or anno == a):
+                    mese, anno = int(m.group(gm)), a
+                    break
+    if "iva" in nome:
+        tipo = "iva"
+    elif "ires" in nome or "irpef" in nome:
+        tipo = "imposte_reddito"
+    elif "inps" in nome:
+        tipo = "contributi"
+    elif "imu" in nome or "tasi" in nome:
+        tipo = "tributi_locali"
+    elif "1040" in nome or "ritenute" in nome:
+        tipo = "ritenute"
+    else:
+        tipo = None
+    return mese, anno, tipo
+
+
+def _f24_ha_tipo(doc: Dict[str, Any], tipo: str) -> bool:
+    if tipo == "contributi":
+        return bool(doc.get("sezione_inps"))
+    if tipo == "tributi_locali":
+        return bool(doc.get("sezione_imu") or doc.get("sezione_tributi_locali")
+                    or doc.get("sezione_imu_tributi_locali"))
+    codici = {
+        str(r.get("codice_tributo") or r.get("codice") or "")
+        for sez in ("sezione_erario", "sezione_regioni")
+        for r in (doc.get(sez) or []) if isinstance(r, dict)
+    }
+    prefissi = {"iva": ("60",), "imposte_reddito": ("20", "40"), "ritenute": ("10",)}[tipo]
+    return any(c.startswith(prefissi) for c in codici)
+
+
+async def _f24_unico_da_file(db: ArchivioDocumenti, filename: str) -> Optional[Dict[str, Any]]:
+    """L'unico F24 senza PDF del mese e anno del file e, se il nome lo dice,
+    del suo tipo di tributo. Nessuno, piu' d'uno o indizi insufficienti: None."""
+    mese, anno, tipo = _indizi_f24_da_nome(filename)
+    if not mese or not anno:
+        return None
+    candidati = []
+    cursor = db["f24_unificato"].find({
+        "mese": mese,
+        "anno": anno,
+        "$or": [
+            {"pdf_data": None},
+            {"pdf_data": ""},
+            {"pdf_data": {"$exists": False}}
+        ]
+    })
+    async for doc in cursor:
+        if tipo and not _f24_ha_tipo(doc, tipo):
+            continue
+        candidati.append(doc)
+        if len(candidati) > 1:
+            return None
+    return candidati[0] if candidati else None
+
+
+async def associate_f24_from_filesystem(db: ArchivioDocumenti) -> Dict[str, int]:
+    """
+    Associa i PDF F24 dal filesystem ai record f24_commercialista.
+    Usa pattern matching su periodo e tipo tributo.
+    """
+    stats = {"associated": 0, "skipped": 0, "errors": 0}
+
+    # Trova tutti gli F24 in documents_inbox con file esistente
+    cursor = db["documents_inbox"].find({
+        "category": "f24",
+        "file_exists": True,
+        "status": {"$ne": "associato"}
+    })
+
+    async for doc in cursor:
+        try:
+            filename = doc.get("filename", "")
+            filepath = doc.get("filepath", "")
+
+            if not filepath or not os.path.exists(filepath):
+                stats["skipped"] += 1
+                continue
+
+            # GC-17: mese (anche in lettere), anno e tipo di tributo dal nome
+            # del file; il PDF va solo all'unico F24 che li rispetta tutti.
+            # Prima bastava l'anno, o niente, per prendere il primo F24 senza PDF.
+            f24 = await _f24_unico_da_file(db, filename)
+
+            if f24:
+                # Leggi PDF e associa
+                with open(filepath, "rb") as f:
+                    pdf_content = f.read()
+
+                pdf_base64 = base64.b64encode(pdf_content).decode('utf-8')
+
+                await db["f24_unificato"].update_one(
+                    {"id": f24["id"]},
+                    {"$set": {
+                        "pdf_data": pdf_base64,
+                        "pdf_hash": calculate_pdf_hash(pdf_content),
+                        "pdf_filepath": filepath,
+                        "pdf_filename": filename
+                    }}
+                )
+
+                await db["documents_inbox"].update_one(
+                    {"id": doc["id"]},
+                    {"$set": {
+                        "status": "associato",
+                        "associated_to": f24["id"],
+                        "associated_collection": "f24_unificato",
+                        "associated_at": datetime.now(timezone.utc).isoformat()
+                    }}
+                )
+
+                stats["associated"] += 1
+                logger.info(f"F24 associato: {filename} -> {f24['id']}")
+            else:
+                stats["skipped"] += 1
+
+        except Exception as e:
+            logger.error(f"Errore associazione F24: {e}")
+            stats["errors"] += 1
+
+    return stats
+
+
+async def process_cedolini_to_prima_nota(db: ArchivioDocumenti) -> Dict[str, Any]:
+    """
+    Processa i cedolini scaricati ed estrae i dati per prima_nota_salari.
+    Usa PyMuPDF per estrarre testo e pattern matching per i dati.
+    """
+    import fitz  # PyMuPDF
+
+    stats = {
+        "processed": 0,
+        "created_prima_nota": 0,
+        "skipped": 0,
+        "errors": []
+    }
+
+    mesi_it = {
+        "gennaio": 1, "febbraio": 2, "marzo": 3, "aprile": 4,
+        "maggio": 5, "giugno": 6, "luglio": 7, "agosto": 8,
+        "settembre": 9, "ottobre": 10, "novembre": 11, "dicembre": 12,
+        "gen": 1, "feb": 2, "mar": 3, "apr": 4, "mag": 5, "giu": 6,
+        "lug": 7, "ago": 8, "set": 9, "ott": 10, "nov": 11, "dic": 12
+    }
+
+    # Trova cedolini non processati
+    cursor = db["cedolini_email_attachments"].find({
+        "processed": {"$ne": True},
+        "pdf_data": {"$exists": True, "$ne": None}
+    })
+
+    async for cedolino in cursor:
+        try:
+            # Decodifica PDF
+            pdf_bytes = base64.b64decode(cedolino["pdf_data"])
+
+            # Estrai testo con PyMuPDF
+            doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+            text = ""
+            for page in doc:
+                text += page.get_text()
+            doc.close()
+
+            if not text.strip():
+                stats["skipped"] += 1
+                continue
+
+            # Estrai dati dal testo
+            parsed_data = {}
+
+            # Nome dipendente - pattern specifico per cedolini italiani
+            # La riga tipica è: "31/12/2019 VESPA VINCENZO  26/12/1967 VSPVCN67T26F839P"
+            # Cerchiamo data + NOME COGNOME + data_nascita + codice_fiscale
+            nome_patterns = [
+                # Pattern completo con CF: DATA NOME DATA_NASCITA CF
+                r'\d{2}/\d{2}/\d{4}\s+([A-Z][A-Z]+\s+[A-Z][A-Z]+)\s+\d{2}/\d{2}/\d{4}\s+[A-Z]{6}\d{2}[A-Z]\d{2}[A-Z]\d{3}[A-Z]',
+                # Pattern senza data nascita ma con CF
+                r'([A-Z][A-Z]+\s+[A-Z][A-Z]+)\s+\d{2}/\d{2}/\d{4}\s+[A-Z]{6}\d{2}[A-Z]\d{2}[A-Z]\d{3}[A-Z]',
+            ]
+            for pattern in nome_patterns:
+                match = re.search(pattern, text)
+                if match:
+                    parsed_data['dipendente_nome'] = match.group(1).strip().title()
+                    break
+
+            # Se non trovato nel testo, usa il filename
+            if not parsed_data.get('dipendente_nome'):
+                filename = cedolino.get("filename", "")
+                match = re.search(r'(?:Busta paga|Cedolino)[^\w-]*-?\s*([A-Za-z]+\s+[A-Za-z]+)', filename, re.IGNORECASE)
+                if match:
+                    parsed_data['dipendente_nome'] = match.group(1).strip().title()
+
+            # Codice Fiscale
+            cf_match = re.search(r'([A-Z]{6}\d{2}[A-Z]\d{2}[A-Z]\d{3}[A-Z])', text)
+            if cf_match:
+                parsed_data['codice_fiscale'] = cf_match.group(1)
+
+            # Periodo (mese/anno) - pattern specifico per cedolini
+            # Pattern: "DICEMBRE  2019" o "NOVEMBRE 2024"
+            mese_pattern = r'(GENNAIO|FEBBRAIO|MARZO|APRILE|MAGGIO|GIUGNO|LUGLIO|AGOSTO|SETTEMBRE|OTTOBRE|NOVEMBRE|DICEMBRE)\s+(\d{4})'
+            match = re.search(mese_pattern, text, re.IGNORECASE)
+            if match:
+                mese_nome = match.group(1).lower()
+                parsed_data['mese'] = mesi_it.get(mese_nome[:3])
+                parsed_data['anno'] = int(match.group(2))
+
+            # Importi
+            # Netto - pattern per cedolini italiani: cerca dopo "TOTALE NETTO" o simili
+            # Il formato può essere "1.035,00+" o "1035,00"
+            netto_patterns = [
+                r'TOTALE\s+NETTO\s*([\d.,]+)',
+                r'(?:Netto|Netto a pagare|Netto in busta)[:\s]*[€]?\s*([\d.,]+)',
+                r'(\d{1,3}(?:\.\d{3})*,\d{2})\+?\s*$',  # Pattern numerico con + alla fine
+            ]
+            for pattern in netto_patterns:
+                matches = re.findall(pattern, text, re.IGNORECASE | re.MULTILINE)
+                for match_val in matches:
+                    val = match_val if isinstance(match_val, str) else match_val[0]
+                    val = val.replace('.', '').replace(',', '.').replace('+', '')
+                    try:
+                        num = float(val)
+                        if 100 < num < 10000:  # Range ragionevole per uno stipendio netto
+                            parsed_data['netto'] = num
+                            break
+                    except Exception:
+                        pass
+                if parsed_data.get('netto'):
+                    break
+
+            # Lordo / Totale Competenze
+            lordo_match = re.search(r'TOTALE\s+COMPETENZE\s*([\d.,]+)', text, re.IGNORECASE)
+            if lordo_match:
+                val = lordo_match.group(1).replace('.', '').replace(',', '.').replace('+', '')
+                try:
+                    parsed_data['lordo'] = float(val)
+                except Exception:
+                    pass
+
+            # INPS (Ritenute Previdenziali)
+            inps_match = re.search(r'RITENUTE\s+PREVIDENZIALI\s*([\d.,]+)', text, re.IGNORECASE)
+            if inps_match:
+                val = inps_match.group(1).replace('.', '').replace(',', '.').replace('-', '')
+                try:
+                    parsed_data['inps'] = float(val)
+                except Exception:
+                    pass
+
+            # IRPEF (Ritenute Fiscali)
+            irpef_match = re.search(r'RITENUTE\s+FISCALI\s*([\d.,]+)', text, re.IGNORECASE)
+            if irpef_match:
+                val = irpef_match.group(1).replace('.', '').replace(',', '.').replace('-', '')
+                try:
+                    parsed_data['irpef'] = float(val)
+                except Exception:
+                    pass
+
+            # Se abbiamo abbastanza dati, crea record in prima_nota_salari
+            from app.services.salari_periodo import periodo_ammesso_in_prima_nota
+            if (
+                parsed_data.get('dipendente_nome')
+                and parsed_data.get('netto')
+                and periodo_ammesso_in_prima_nota(
+                    parsed_data.get('anno'), parsed_data.get('mese')
+                )
+            ):
+                # Cerca dipendente esistente
+                dipendente = await db["dipendenti"].find_one({
+                    "$or": [
+                        {"nome_completo": {"$regex": parsed_data['dipendente_nome'], "$options": "i"}},
+                        {"codice_fiscale": parsed_data.get('codice_fiscale', '')}
+                    ]
+                })
+
+                dipendente_id = dipendente["id"] if dipendente else None
+
+                # Verifica se esiste già in prima_nota_salari
+                existing = await db["prima_nota_salari"].find_one({
+                    "dipendente_nome": {"$regex": parsed_data['dipendente_nome'], "$options": "i"},
+                    "mese": parsed_data.get('mese'),
+                    "anno": parsed_data.get('anno')
+                })
+
+                if not existing:
+                    # Crea nuovo record
+                    salario_doc = {
+                        "id": str(uuid.uuid4()),
+                        "dipendente_id": dipendente_id,
+                        "dipendente_nome": parsed_data['dipendente_nome'],
+                        "codice_fiscale": parsed_data.get('codice_fiscale'),
+                        "mese": parsed_data.get('mese'),
+                        "anno": parsed_data.get('anno'),
+                        "netto": parsed_data.get('netto', 0),
+                        "lordo": parsed_data.get('lordo', 0),
+                        "inps": parsed_data.get('inps', 0),
+                        "irpef": parsed_data.get('irpef', 0),
+                        "cedolino_id": cedolino["id"],
+                        "source": "email_cedolino_auto",
+                        "created_at": datetime.now(timezone.utc).isoformat()
+                    }
+
+                    await scrivi_riga_salari(db, salario_doc)
+                    stats["created_prima_nota"] += 1
+                    logger.info(f"Prima nota salari creata: {parsed_data['dipendente_nome']} {parsed_data.get('mese')}/{parsed_data.get('anno')} - €{parsed_data.get('netto')}")
+
+            # Aggiorna cedolino come processato
+            await db["cedolini_email_attachments"].update_one(
+                {"id": cedolino["id"]},
+                {"$set": {
+                    "processed": True,
+                    "parsed_data": parsed_data,
+                    "processed_at": datetime.now(timezone.utc).isoformat()
+                }}
+            )
+            stats["processed"] += 1
+
+        except Exception as e:
+            logger.error(f"Errore processing cedolino {cedolino.get('filename')}: {e}")
+            stats["errors"].append(f"{cedolino.get('filename')}: {str(e)}")
+
+    return stats
+
+
+# ============================================================================
+# SCARICO AUTOMATICO CON CURSORI (giro orario dello scheduler)
+# ============================================================================
+#
+# Ogni cartella ha il suo cursore UID su Supabase (``sistema_stato``):
+# - ``alto``: l'UID piu' alto gia' visto; a ogni giro si leggono solo i nuovi;
+# - ``basso``: fin dove e' arrivato lo storico, che si scarica all'indietro
+#   dai piu' recenti fino al primo messaggio della casella (``completo``).
+# Il giro ha un tetto di tempo e di messaggi e riprende da dove si era fermato,
+# anche dopo un riavvio. Prima si controlla la struttura del messaggio
+# (BODYSTRUCTURE, pochi byte): si scarica per intero solo chi ha allegati.
+# Le chiamate IMAP sono bloccanti e girano in un thread, per non fermare il
+# server web mentre la posta si legge.
+
+CHIAVE_CURSORI_POSTA = "gmail_cursori_cartelle"
+# Lo storico della casella si legge solo fino a questi giorni fa: i documenti
+# piu' vecchi sono gia' su Drive (decisione del titolare, 02/10/2026).
+GIORNI_STORICO_POSTA = 5
+_MESI_IMAP = ("Jan", "Feb", "Mar", "Apr", "May", "Jun",
+              "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
+
+
+def _since_imap(giorni: int) -> str:
+    """Data IMAP (es. 27-Sep-2026) di `giorni` fa, indipendente dal locale."""
+    d = datetime.now() - timedelta(days=giorni)
+    return f"{d.day:02d}-{_MESI_IMAP[d.month - 1]}-{d.year}"
+CODICE_ALERT_POSTA = "POSTA_NON_RAGGIUNGIBILE"
+_SEGNI_ALLEGATO = ('"NAME"', '"FILENAME"', '"ATTACHMENT"')
+
+
+def _ha_allegati(bodystructure: bytes) -> bool:
+    testo = (bodystructure or b"").decode("utf-8", errors="replace").upper()
+    return any(segno in testo for segno in _SEGNI_ALLEGATO)
+
+
+def _uid_da_risposta(risposta: Any) -> List[int]:
+    if not risposta or not risposta[0]:
+        return []
+    return sorted(int(u) for u in risposta[0].split() if u.isdigit())
+
+
+async def _salva_cursori(db, stato: Dict[str, Any]) -> None:
+    stato["chiave"] = CHIAVE_CURSORI_POSTA
+    stato["aggiornato_at"] = datetime.now(timezone.utc).isoformat()
+    await db["sistema_stato"].update_one(
+        {"chiave": CHIAVE_CURSORI_POSTA}, {"$set": stato}, upsert=True,
+    )
+
+
+async def _segnala_posta_non_raggiungibile(db, motivo: str) -> None:
+    """Il login fallito non e' un giro vuoto: alert e Telegram, una volta."""
+    try:
+        from app.services.alert_engine import genera_alert
+
+        alert = await genera_alert(
+            CODICE_ALERT_POSTA, "gmail", "sistema_stato",
+            f"Il gestionale non riesce a entrare nella casella di posta: {motivo}. "
+            "Senza posta non arrivano F24, quietanze, cedolini e verbali. "
+            "Serve una nuova password per app di Gmail nella variabile IMAP_PASSWORD su Render.",
+            db,
+        )
+        if alert:
+            from app.services.telegram_notifications import send_notification
+
+            await send_notification(
+                "<b>Posta non raggiungibile</b>\n"
+                f"Il gestionale non entra nella casella: {motivo}.\n"
+                "F24, quietanze e cedolini dalla posta sono fermi finche' non si "
+                "aggiorna la password per app (IMAP_PASSWORD su Render)."
+            )
+    except Exception as exc:
+        logger.warning("Alert posta non raggiungibile non creato (%s): %s",
+                       type(exc).__name__, exc)
+
+
+async def scarica_posta_con_cursori(
+    db, *, budget_secondi: int = 600, max_scaricati: int = 400,
+) -> Dict[str, Any]:
+    """Giro automatico: nuovi messaggi di tutte le cartelle, poi lo storico."""
+    import asyncio
+    import time
+
+    downloader = EmailFullDownloader(db)
+    inizio = time.monotonic()
+    esito: Dict[str, Any] = {
+        "cartelle": 0, "controllati": 0, "scaricati": 0, "pdf_salvati": 0,
+        "errori": 0, "storico_completo": False, "interrotto_per_tetto": False,
+    }
+    connesso = await asyncio.to_thread(downloader.connect)
+    if not connesso:
+        motivo = (downloader.stats.get("errors") or ["accesso rifiutato"])[-1]
+        await _segnala_posta_non_raggiungibile(db, str(motivo)[:200])
+        stato = await db["sistema_stato"].find_one({"chiave": CHIAVE_CURSORI_POSTA}, {"_id": 0}) or {}
+        stato["ultimo_giro"] = {**esito, "errore": str(motivo)[:200],
+                                "at": datetime.now(timezone.utc).isoformat()}
+        await _salva_cursori(db, stato)
+        return {"success": False, "error": str(motivo), **esito}
+
+    try:
+        from app.services.alert_engine import risolvi_alert
+
+        await risolvi_alert(CODICE_ALERT_POSTA, "gmail", db, resolved_by="login_riuscito")
+    except Exception as exc:
+        logger.warning("Alert posta non chiuso (%s): %s", type(exc).__name__, exc)
+
+    stato = await db["sistema_stato"].find_one({"chiave": CHIAVE_CURSORI_POSTA}, {"_id": 0}) or {}
+    cartelle_stato: Dict[str, Any] = dict(stato.get("cartelle") or {})
+    conn = downloader.connection
+
+    def tetto() -> bool:
+        return (time.monotonic() - inizio > budget_secondi
+                or esito["scaricati"] >= max_scaricati)
+
+    async def elabora(cartella: str, uid: int) -> None:
+        esito["controllati"] += 1
+        typ, dati = await asyncio.to_thread(conn.uid, "FETCH", str(uid), "(BODYSTRUCTURE)")
+        if typ != "OK" or not dati or not _ha_allegati(
+            b" ".join(p if isinstance(p, bytes) else b" ".join(p) for p in dati if p)
+        ):
+            return
+        # BODY.PEEK e cartella in sola lettura: il messaggio non diventa «letto».
+        typ, dati = await asyncio.to_thread(conn.uid, "FETCH", str(uid), "(BODY.PEEK[])")
+        if typ != "OK" or not dati or not isinstance(dati[0], tuple):
+            return
+        esito["scaricati"] += 1
+        msg = email.message_from_bytes(dati[0][1])
+        esito["pdf_salvati"] += await downloader.process_email(
+            str(uid).encode(), msg, source_folder=cartella,
+        )
+
+    async def seleziona(cartella: str) -> Optional[Dict[str, Any]]:
+        typ, _ = await asyncio.to_thread(conn.select, f'"{cartella}"', True)
+        if typ != "OK":
+            return None
+        validita = (conn.response("UIDVALIDITY")[1] or [None])[0]
+        validita = validita.decode() if isinstance(validita, bytes) else str(validita)
+        cur = cartelle_stato.get(cartella) or {}
+        if cur.get("uidvalidity") != validita:
+            # Cartella nuova o ricreata: i vecchi UID non valgono piu'.
+            typ, risposta = await asyncio.to_thread(conn.uid, "SEARCH", None, "ALL")
+            uid = _uid_da_risposta(risposta) if typ == "OK" else []
+            massimo = uid[-1] if uid else 0
+            cur = {"uidvalidity": validita, "alto": massimo, "basso": massimo + 1,
+                   "completo": not uid}
+            cartelle_stato[cartella] = cur
+        return cur
+
+    try:
+        cartelle = await asyncio.to_thread(downloader._list_all_folders)
+        if "INBOX" in cartelle:
+            cartelle.remove("INBOX")
+            cartelle.insert(0, "INBOX")
+        esito["cartelle"] = len(cartelle)
+
+        # 1) I messaggi arrivati dopo l'ultimo giro, in tutte le cartelle.
+        for cartella in cartelle:
+            if tetto():
+                break
+            try:
+                cur = await seleziona(cartella)
+                if cur is None:
+                    continue
+                typ, risposta = await asyncio.to_thread(
+                    conn.uid, "SEARCH", None, f"UID {int(cur['alto']) + 1}:*")
+                nuovi = [u for u in (_uid_da_risposta(risposta) if typ == "OK" else [])
+                         if u > int(cur["alto"])]
+                for uid in nuovi:
+                    if tetto():
+                        break
+                    try:
+                        await elabora(cartella, uid)
+                    except Exception as exc:
+                        esito["errori"] += 1
+                        logger.warning("[Gmail] %s UID %s non letto (%s): %s",
+                                       cartella, uid, type(exc).__name__, exc)
+                    cur["alto"] = uid
+            except Exception as exc:
+                esito["errori"] += 1
+                logger.warning("[Gmail] cartella %s saltata (%s): %s",
+                               cartella, type(exc).__name__, exc)
+            await _salva_cursori(db, {**stato, "cartelle": cartelle_stato})
+
+        # 2) Lo storico, dal piu' recente fino a GIORNI_STORICO_POSTA giorni fa.
+        for cartella in cartelle:
+            if tetto():
+                break
+            cur = cartelle_stato.get(cartella)
+            if not cur or cur.get("completo"):
+                continue
+            try:
+                cur = await seleziona(cartella)
+                if cur is None:
+                    continue
+                basso = int(cur["basso"])
+                if basso <= 1:
+                    cur["completo"] = True
+                    continue
+                typ, risposta = await asyncio.to_thread(
+                    conn.uid, "SEARCH", None,
+                    f"UID 1:{basso - 1} SINCE {_since_imap(GIORNI_STORICO_POSTA)}")
+                vecchi = sorted((u for u in (_uid_da_risposta(risposta) if typ == "OK" else [])
+                                 if u < basso), reverse=True)
+                for n, uid in enumerate(vecchi, 1):
+                    if tetto():
+                        break
+                    try:
+                        await elabora(cartella, uid)
+                    except Exception as exc:
+                        esito["errori"] += 1
+                        logger.warning("[Gmail] %s UID %s non letto (%s): %s",
+                                       cartella, uid, type(exc).__name__, exc)
+                    cur["basso"] = uid
+                    if n % 50 == 0:
+                        await _salva_cursori(db, {**stato, "cartelle": cartelle_stato})
+                else:
+                    cur["completo"] = True
+            except Exception as exc:
+                esito["errori"] += 1
+                logger.warning("[Gmail] storico %s interrotto (%s): %s",
+                               cartella, type(exc).__name__, exc)
+            await _salva_cursori(db, {**stato, "cartelle": cartelle_stato})
+    finally:
+        await asyncio.to_thread(downloader.disconnect)
+
+    esito["interrotto_per_tetto"] = tetto()
+    esito["storico_completo"] = bool(cartelle_stato) and all(
+        c.get("completo") for c in cartelle_stato.values())
+    esito["storico_mancante_cartelle"] = sum(
+        1 for c in cartelle_stato.values() if not c.get("completo"))
+    esito["pdf_per_categoria"] = downloader.stats.get("pdfs_by_category", {})
+    await _salva_cursori(db, {
+        **stato, "cartelle": cartelle_stato,
+        "ultimo_giro": {**esito, "at": datetime.now(timezone.utc).isoformat()},
+    })
+    return {"success": True, **esito}

@@ -1,0 +1,464 @@
+"""
+Handler Eventi Fatture — Gestionale Ceraldi Group
+===================================================
+Handler che si attivano quando una fattura viene creata o aggiornata.
+Registrati nell'event bus per il tipo "fattura.created".
+
+Questi handler AGGIUNGONO funzionalità relazionali senza modificare
+il flusso esistente in import_xml.py (che già fa auto-routing,
+scadenziario e magazzino).
+
+Cosa aggiungono:
+1. Creazione partita aperta materializzata
+2. Alert strutturati (MP mancante, IBAN mancante, fornitore nuovo)
+3. Audit log dell'operazione
+4. Risoluzione alert quando la fattura viene pagata
+"""
+import asyncio
+import logging
+from typing import Dict, Any, Optional
+from app.services.stato_pagamento_fattura import FILTRO_NON_PAGATE
+from app.utils.id_fattura import filtro_id
+
+logger = logging.getLogger(__name__)
+
+
+# ============================================================
+# HANDLER 1: Crea partita aperta da fattura
+# ============================================================
+async def on_fattura_created_garantisci_fornitore(event: Dict[str, Any], db) -> Optional[Dict]:
+    """Ogni fattura con P.IVA ha la sua anagrafica fornitore, qualunque canale
+    l'abbia importata.
+
+    L'import principale chiama `ensure_supplier_exists`, ma un'altra strada
+    (il blocco del 14/09/2026) no: 24 fornitori con 28 fatture sono rimasti
+    senza anagrafica, quindi senza metodo impostabile e con le fatture ferme
+    fra le sospese. Qui si usa lo stesso motore, sulla fattura salvata: se
+    l'anagrafica c'e' gia' non si crea nulla (idempotente)."""
+    fattura_id = event.get("fattura_id")
+    if not fattura_id or not event.get("fornitore_piva"):
+        return None
+    from app.routers.invoices.fatture_upload import ensure_supplier_exists
+
+    fattura = await db["invoices"].find_one(
+        filtro_id(fattura_id),
+        {"_id": 0, "id": 1, "supplier_vat": 1, "supplier_name": 1, "fornitore": 1,
+         "cliente": 1, "sha256": 1, "document_hash": 1, "document_id": 1},
+    )
+    if not fattura:
+        return None
+    esito = await ensure_supplier_exists(db, fattura)
+    return {"fornitore_creato": bool(esito.get("supplier_created")),
+            "fornitore_id": esito.get("supplier_id")}
+
+
+async def on_fattura_created_crea_partita(event: Dict[str, Any], db) -> Optional[Dict]:
+    """
+    Quando arriva una fattura, crea una partita aperta nel scadenziario
+    materializzato. Le note credito TD04 creano partite con importo negativo.
+    """
+    from app.services.partite_aperte_engine import crea_partita, TipoPartita
+
+    fattura_id = event.get("fattura_id")
+    tipo_doc = event.get("tipo_documento", "TD01")
+    importo = event.get("importo_totale", 0)
+    fornitore_id = event.get("fornitore_id")
+    fornitore_nome = event.get("fornitore_ragione_sociale", "")
+    data_doc = event.get("data_documento", "")
+    data_scadenza = event.get("data_scadenza")  # può essere None
+    metodo = event.get("metodo_pagamento", "")
+    gia_pagata = event.get("pagato", False)
+
+    if not fattura_id or not importo:
+        return None
+
+    # Se la fattura è già stata auto-confermata (contanti/bonifico con MP noto),
+    # la partita nasce già chiusa — ma la creiamo lo stesso per storico
+    if gia_pagata:
+        logger.debug(f"Fattura {fattura_id} già pagata, skip partita aperta")
+        return {"action": "skip", "reason": "già pagata"}
+
+    # Note credito → importo negativo, tipo diverso
+    if tipo_doc in ("TD04", "TD08"):
+        tipo_partita = "nota_credito"
+        importo = -abs(importo)
+    else:
+        tipo_partita = TipoPartita.FATTURA_FORNITORE
+
+    partita = await crea_partita(
+        tipo=tipo_partita,
+        documento_id=fattura_id,
+        documento_collection="invoices",
+        controparte_id=fornitore_id or "",
+        controparte_nome=fornitore_nome,
+        importo=abs(importo),  # residuo sempre positivo
+        db=db,
+        data_scadenza=data_scadenza,
+        data_documento=data_doc,
+        extra={
+            "tipo_documento": tipo_doc,
+            "metodo_pagamento": metodo,
+            "importo_con_segno": importo
+        }
+    )
+
+    if partita:
+        return {"action": "partita_creata", "partita_id": partita["id"]}
+    return {"action": "partita_gia_esistente"}
+
+
+# ============================================================
+# HANDLER 2: Genera alert per fornitore incompleto
+# ============================================================
+async def on_fattura_created_alert_fornitore(event: Dict[str, Any], db) -> Optional[Dict]:
+    """
+    Genera alert strutturati se il fornitore ha dati incompleti:
+    - FORN_MP_MANCANTE: metodo pagamento non definito
+    - FORN_IBAN_MANCANTE: metodo bancario ma senza IBAN
+    - FORN_NUOVO_INCOMPLETO: fornitore creato automaticamente
+    """
+    from app.constants.metodi_pagamento import metodo_non_configurato
+    from app.services.alert_engine import genera_alert
+
+    fornitore_id = event.get("fornitore_id", "")
+    fornitore_nome = event.get("fornitore_ragione_sociale", "")
+    metodo = (event.get("metodo_pagamento", "") or "").strip().lower()
+    fornitore_nuovo = event.get("fornitore_nuovo", False)
+    fornitore_iban = event.get("fornitore_iban")
+
+    alerts_generati = []
+
+    # Alert metodo pagamento mancante.
+    # La lista dei valori che significano «non configurato» sta in un posto
+    # solo: qui mancava `"sospesa"`, che e' proprio quello che l'import
+    # scrive, e i due alert non sono mai stati emessi da questo percorso.
+    if metodo_non_configurato(metodo):
+        alert = await genera_alert(
+            "FORN_MP_MANCANTE",
+            fornitore_id,
+            "fornitori",
+            f"Fornitore '{fornitore_nome}' senza metodo pagamento. "
+            f"Le fatture restano in provvisori fino alla configurazione.",
+            db
+        )
+        if alert:
+            alerts_generati.append("FORN_MP_MANCANTE")
+
+        # Alert anche sulla fattura
+        await genera_alert(
+            "FAT_MP_NON_DEFINITO",
+            event.get("fattura_id", ""),
+            "invoices",
+            f"Fattura sospesa — fornitore '{fornitore_nome}' senza metodo pagamento",
+            db
+        )
+
+    # Alert IBAN mancante per fornitore bancario
+    metodi_bancari = ("bonifico", "banca", "sepa", "rid", "sdd")
+    if metodo in metodi_bancari and not fornitore_iban:
+        alert = await genera_alert(
+            "FORN_IBAN_MANCANTE",
+            fornitore_id,
+            "fornitori",
+            f"Fornitore '{fornitore_nome}' con metodo '{metodo}' ma senza IBAN",
+            db
+        )
+        if alert:
+            alerts_generati.append("FORN_IBAN_MANCANTE")
+
+    # Alert fornitore nuovo da completare
+    if fornitore_nuovo:
+        alert = await genera_alert(
+            "FORN_NUOVO_INCOMPLETO",
+            fornitore_id,
+            "fornitori",
+            f"Fornitore '{fornitore_nome}' creato automaticamente da fattura. "
+            f"Verificare e completare anagrafica.",
+            db
+        )
+        if alert:
+            alerts_generati.append("FORN_NUOVO_INCOMPLETO")
+
+    if alerts_generati:
+        return {"action": "alert_generati", "codici": alerts_generati}
+    return None
+
+
+# ============================================================
+# HANDLER 3: Audit log della fattura
+# ============================================================
+async def on_fattura_created_audit(event: Dict[str, Any], db) -> Optional[Dict]:
+    """Registra l'operazione di creazione fattura nell'audit log."""
+    from app.services.audit_logger import log_evento
+
+    audit_id = await log_evento(
+        modulo="fatture",
+        azione="creata",
+        entita_id=event.get("fattura_id", ""),
+        entita_collection="invoices",
+        db=db,
+        nuovo_stato={
+            "stato": event.get("stato", "importata"),
+            "importo": event.get("importo_totale"),
+            "fornitore": event.get("fornitore_ragione_sociale"),
+            "metodo_pagamento": event.get("metodo_pagamento"),
+            "tipo_documento": event.get("tipo_documento", "TD01"),
+            "pagato": event.get("pagato", False)
+        },
+        fonte=event.get("source_module", "import_xml"),
+        utente=event.get("user", "sistema"),
+        dettaglio=f"Fattura {event.get('numero_documento', '')} da {event.get('fornitore_ragione_sociale', '')}"
+    )
+
+    return {"action": "audit_log", "audit_id": audit_id}
+
+
+async def on_fattura_created_iva(event: Dict[str, Any], db) -> Optional[Dict]:
+    """All'arrivo di una fattura, calcola e salva i campi IVA per competenza
+    (periodo attribuito, regola, stato detrazione) con il motore iva_fatture.
+    Additivo: non tocca l'IVA già utilizzata. Non blocca mai l'import."""
+    from app.engines import iva_fatture
+
+    fattura_id = event.get("fattura_id")
+    if not fattura_id:
+        return None
+    try:
+        inv = await db["invoices"].find_one(filtro_id(fattura_id))
+        if not inv:
+            return {"action": "skip", "reason": "fattura non trovata"}
+        campi = iva_fatture.campi_iva_da_fattura(inv)
+        await db["invoices"].update_one(filtro_id(fattura_id), {"$set": campi})
+        return {"action": "iva_attribuita", "periodo": campi.get("periodo_iva_attribuito")}
+    except Exception as e:
+        logger.warning(f"Attribuzione IVA fattura {fattura_id} non riuscita (non bloccante): {e}")
+        return {"action": "errore", "dettaglio": str(e)[:200]}
+
+
+# ============================================================
+# HANDLER 4: Quando una fattura viene pagata → risolvi alert
+# ============================================================
+async def on_fattura_pagata_risolvi(event: Dict[str, Any], db) -> Optional[Dict]:
+    """
+    Quando una fattura viene pagata, risolve gli alert collegati
+    e aggiorna la partita aperta (chiusura totale o parziale in base all'importo).
+    """
+    from app.services.alert_engine import risolvi_alert
+    from app.services.audit_logger import log_evento
+    from app.services.partite_aperte_engine import chiudi_partita
+
+    fattura_id = event.get("fattura_id", "")
+
+    # Risolvi alert fattura
+    risolti = 0
+    risolti += await risolvi_alert("FAT_MP_NON_DEFINITO", fattura_id, db)
+    risolti += await risolvi_alert("FAT_DA_PAGARE_SCADUTA", fattura_id, db)
+    risolti += await risolvi_alert("FAT_DATI_INCOMPLETI", fattura_id, db)
+
+    # Chiudi/aggiorna partita aperta collegata alla fattura
+    # (se il pagamento non passa da riconciliazione bancaria, MATCH_CONFERMATO
+    #  non viene emesso e la partita resterebbe aperta per sempre)
+    partita_info = None
+    try:
+        partita = await db["partite_aperte"].find_one(
+            {
+                "tipo": "fattura_fornitore",
+                "documento_id": fattura_id,
+                "stato": {"$in": ["aperta", "parziale"]},
+            },
+            {"_id": 0, "id": 1, "residuo": 1}
+        )
+        if partita:
+            importo_pagato = event.get("importo")
+            if importo_pagato is None or importo_pagato <= 0:
+                # Fallback: se l'evento non porta importo, chiudi con il residuo completo
+                importo_pagato = partita.get("residuo", 0)
+            source = event.get("source_module", "pagamento")
+            match_id_sintetico = f"manual_{source}_{fattura_id}"
+            partita_info = await chiudi_partita(
+                partita["id"],
+                match_id_sintetico,
+                float(importo_pagato),
+                db
+            )
+    except Exception:
+        logger.exception(f"Errore chiusura partita per fattura {fattura_id}")
+
+    # Audit
+    await log_evento(
+        modulo="fatture",
+        azione="pagata",
+        entita_id=fattura_id,
+        entita_collection="invoices",
+        db=db,
+        vecchio_stato={"pagato": False},
+        nuovo_stato={
+            "pagato": True,
+            "metodo": event.get("metodo_pagamento"),
+            "data_pagamento": event.get("data_pagamento"),
+            "partita_aggiornata": partita_info if partita_info else None,
+        },
+        fonte=event.get("source_module", ""),
+        dettaglio=f"Fattura pagata via {event.get('metodo_pagamento', 'N/D')}"
+    )
+
+    return {
+        "action": "alert_risolti",
+        "count": risolti,
+        "partita": partita_info
+    }
+
+
+# ============================================================
+# HANDLER 5: Quando il fornitore viene aggiornato → risolvi alert
+# ============================================================
+async def on_fornitore_aggiornato_risolvi(event: Dict[str, Any], db) -> Optional[Dict]:
+    """
+    Quando il fornitore viene aggiornato (es. MP impostato),
+    risolve gli alert collegati.
+    """
+    from app.constants.metodi_pagamento import metodo_non_configurato
+    from app.services.alert_engine import risolvi_alert
+
+    fornitore_id = event.get("fornitore_id", "")
+    metodo = (event.get("metodo_pagamento", "") or "").lower()
+    iban = event.get("iban")
+
+    risolti = 0
+
+    # Se ora ha metodo pagamento → risolvi FORN_MP_MANCANTE.
+    # Il vocabolario e' quello canonico: con la lista scritta a mano qui,
+    # `"sospesa"` non risultava «non configurato», quindi l'alert veniva
+    # CHIUSO mentre il metodo mancava ancora. E' lo specchio del difetto gia'
+    # corretto in emissione — li' l'alert non partiva, qui spariva.
+    if not metodo_non_configurato(metodo):
+        risolti += await risolvi_alert("FORN_MP_MANCANTE", fornitore_id, db)
+
+        # Risolvi anche gli alert FAT_MP_NON_DEFINITO sulle fatture di questo fornitore
+        fatture = await db["invoices"].find(
+            {"fornitore_id": fornitore_id, **FILTRO_NON_PAGATE,},
+            {"_id": 0, "id": 1}
+        ).to_list(100)
+        for f in fatture:
+            risolti += await risolvi_alert("FAT_MP_NON_DEFINITO", f["id"], db)
+
+    # Se ora ha IBAN → risolvi FORN_IBAN_MANCANTE
+    if iban:
+        risolti += await risolvi_alert("FORN_IBAN_MANCANTE", fornitore_id, db)
+
+    # Se i campi minimi sono completi → risolvi FORN_NUOVO_INCOMPLETO
+    if not metodo_non_configurato(metodo):
+        risolti += await risolvi_alert("FORN_NUOVO_INCOMPLETO", fornitore_id, db)
+
+    if risolti > 0:
+        from app.services.audit_logger import log_evento
+        await log_evento(
+            modulo="fornitori",
+            azione="alert_risolti",
+            entita_id=fornitore_id,
+            entita_collection="fornitori",
+            db=db,
+            dettaglio=f"{risolti} alert risolti dopo aggiornamento fornitore"
+        )
+
+    return {"action": "alert_risolti", "count": risolti} if risolti > 0 else None
+
+
+# ============================================================
+# HANDLER 5: la fattura alimenta il magazzino di Lotti
+# ============================================================
+async def on_fattura_created_alimenta_lotti(event: Dict[str, Any], db) -> Optional[Dict]:
+    """Una fattura XML che entra deve alimentare anche Lotti, subito.
+
+    Prima esisteva solo il giro dei 15 minuti, che rileggeva l'intero elenco
+    dell'anno: quando quel giro si e' fermato (timeout sulle RPC, poi un tetto
+    che tagliava le fatture piu' recenti) il magazzino e' rimasto fermo al
+    26/05/2026 mentre nel gestionale le fatture continuavano ad arrivare, e
+    nessuno se n'e' accorto perche' i due percorsi non si parlavano.
+
+    Qui l'aggancio e' PUNTUALE: una sola fattura, quella dell'evento. Non e'
+    il ripasso d'archivio che `fattura.created` non deve mai innescare (il
+    giro Drive ne importa 25 alla volta, e un motore globale per documento
+    moltiplicherebbe il lavoro per il lotto) — e' l'import di quel singolo
+    documento, idempotente per fornitore + numero + data.
+
+    Non blocca mai l'import contabile: Lotti e' un consumatore a valle, e una
+    sua indisponibilita' non deve far fallire la registrazione della fattura.
+    Nemmeno la sua lentezza: il 23/09/2026 uno ZIP di 400 fatture e' rimasto
+    fermo 14 minuti su una sola fattura perche' il bus aspetta ogni handler e
+    Lotti ricalcolava le ricette. Nel runtime Supabase la scrittura accoda
+    transactionalmente l'evento nel database; il fallback in RAM resta solo
+    per installazioni legacy e test.
+    """
+    fattura_id = event.get("fattura_id")
+    if not fattura_id:
+        return None
+    # Nel runtime Supabase il trigger sulla stessa scrittura ha gia' inserito
+    # l'evento nella transactional outbox. Non creare una seconda coda in RAM:
+    # andrebbe persa al deploy e farebbe lavorare Lotti due volte. Il fallback
+    # resta per test e installazioni legacy prive delle RPC outbox.
+    if callable(getattr(db, "outbox_claim", None)):
+        return {"action": "lotti_outbox", "fattura_id": fattura_id}
+    task = asyncio.create_task(_alimenta_lotti(str(fattura_id)))
+    _CODA_LOTTI.add(task)
+    task.add_done_callback(_CODA_LOTTI.discard)
+    return {"action": "lotti_accodato", "fattura_id": fattura_id}
+
+
+_CODA_LOTTI: set = set()
+
+
+def accoda_alimentazione_lotti(source_ids) -> int:
+    """Accoda in sottofondo l'alimentazione di Lotti per piu' fatture.
+
+    Stessa coda e stesso lucchetto dell'handler `fattura.created`: una fattura
+    alla volta, idempotente. Serve quando si include un fornitore prima escluso
+    (`magazzino_fornitore.applica`)."""
+    accodate = 0
+    for sid in dict.fromkeys(str(x) for x in source_ids if x):
+        task = asyncio.create_task(_alimenta_lotti(sid))
+        _CODA_LOTTI.add(task)
+        task.add_done_callback(_CODA_LOTTI.discard)
+        accodate += 1
+    return accodate
+_LUCCHETTI_LOTTI: Dict[int, asyncio.Lock] = {}
+
+
+def _lucchetto_lotti() -> asyncio.Lock:
+    """Un lucchetto per event loop: uno legato a un loop chiuso non serve."""
+    loop_id = id(asyncio.get_running_loop())
+    lucchetto = _LUCCHETTI_LOTTI.get(loop_id)
+    if lucchetto is None:
+        _LUCCHETTI_LOTTI.clear()
+        lucchetto = _LUCCHETTI_LOTTI[loop_id] = asyncio.Lock()
+    return lucchetto
+
+
+async def attendi_alimentazione_lotti() -> None:
+    """Attende le fatture ancora in coda verso Lotti (test, spegnimento)."""
+    loop = asyncio.get_running_loop()
+    while True:
+        in_coda = [t for t in _CODA_LOTTI if t.get_loop() is loop and not t.done()]
+        if not in_coda:
+            return
+        await asyncio.gather(*in_coda, return_exceptions=True)
+
+
+async def _alimenta_lotti(fattura_id: str) -> Optional[Dict]:
+    async with _lucchetto_lotti():
+        try:
+            from app.lotti.routers.gestionale_fatture import alimenta_lotti_da_fattura
+
+            esito = await alimenta_lotti_da_fattura(fattura_id)
+        except Exception as exc:  # noqa: BLE001 - il motivo va scritto, non ingoiato
+            logger.warning(
+                "[lotti] fattura %s non alimentata: %s: %s",
+                fattura_id, type(exc).__name__, exc,
+            )
+            return None
+    if esito.get("stato") != "alimentata":
+        logger.info(
+            "[lotti] fattura %s non alimentata (%s)",
+            fattura_id, esito.get("motivo") or esito.get("stato"),
+        )
+        return None
+    return {"action": "lotti_alimentato", "fattura_id": fattura_id}

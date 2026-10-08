@@ -1,0 +1,191 @@
+"""
+Arricchimento IVA delle fatture di acquisto (SPECIFICA_IVA.md §7, §9).
+
+Data una fattura ricevuta (documento `invoices`), calcola i campi IVA per
+competenza usando il motore `iva_engine`: date normalizzate, periodo IVA
+attribuito, regola applicata, stato di detrazione. Non modifica nulla di
+esistente: aggiunge solo i campi IVA, preservando `iva_utilizzata` se la
+fattura è già stata inserita in una liquidazione.
+"""
+from typing import Any, Dict, List, Optional
+
+from app.engines import iva_engine
+
+
+def _data_operazione_da_righe(linee: Optional[List[Dict[str, Any]]]) -> Optional[str]:
+    """Per le fatture periodiche l'operazione è il periodo indicato nelle righe:
+    si usa la data di FINE periodo (quando l'operazione si è conclusa)."""
+    if not linee:
+        return None
+    for l in linee:
+        fine = (l.get("data_fine_periodo") or "").strip()
+        if fine:
+            return fine[:10]
+    for l in linee:
+        inizio = (l.get("data_inizio_periodo") or "").strip()
+        if inizio:
+            return inizio[:10]
+    return None
+
+
+#: Sotto questa confidenza la classificazione per centro di costo e' una
+#: proposta (stesso valore di `handlers/learning`: `richiede_verifica`).
+SOGLIA_CONFIDENZA_CDC = 0.6
+CDC_INDETERMINATO = "99_ALTRI_COSTI"
+
+
+def _detraibilita_cdc(cdc_id: Optional[str]) -> Optional[float]:
+    from app.services.learning_machine_cdc import risolvi_centro_costo
+
+    _, config = risolvi_centro_costo(cdc_id or "")
+    if not config:
+        return None
+    return config.get("detraibilita_iva")
+
+
+def motivo_detraibilita_in_dubbio(inv: Dict[str, Any]) -> Optional[str]:
+    """Perche' la percentuale di IVA detraibile non e' ancora affidabile (o None).
+
+    Il classificatore marca `stato_classificazione = da_verificare` per un
+    dubbio *analitico*: righe attribuite con poca confidenza, imponibile non
+    allocato, fornitore nuovo. Quel dubbio riguarda il centro di costo del
+    bilancio, non l'IVA: una fattura di materie prime resta al 100%
+    detraibile anche se non si sa in quale sottoconto va il costo. Il
+    dubbio diventa *fiscale* solo quando il centro di costo e' indeterminato
+    (99_ALTRI_COSTI: natura ignota, potrebbe essere auto o telefonia), quando
+    la testata applica una detraibilita' ridotta su una classificazione
+    incerta, o quando una riga classificata porta una percentuale diversa
+    dalla testata. In produzione il 07/10/2026 il dubbio analitico teneva
+    fuori dalla liquidazione 201 fatture su 265.
+    """
+    if str(inv.get("stato_classificazione") or "").lower() != "da_verificare":
+        return None
+    cdc = inv.get("centro_costo_id")
+    if not cdc or cdc == CDC_INDETERMINATO:
+        return "centro di costo non determinato: decidere la detraibilita'"
+    perc = _detraibilita_cdc(cdc)
+    if perc is None:
+        return f"centro di costo {cdc} senza regola di detraibilita' IVA"
+    try:
+        confidenza = float(inv.get("classificazione_confidence") or 0)
+    except (TypeError, ValueError):
+        confidenza = 0.0
+    if perc < 1.0 and confidenza < SOGLIA_CONFIDENZA_CDC:
+        return (f"detraibilita' ridotta al {perc:.0%} da una classificazione incerta "
+                f"({cdc}): confermare il centro di costo")
+    for riga in inv.get("classificazioni_righe") or []:
+        if not isinstance(riga, dict) or riga.get("richiede_verifica"):
+            continue
+        perc_riga = _detraibilita_cdc(riga.get("centro_costo_id"))
+        if perc_riga is not None and perc_riga != perc:
+            return (f"riga {riga.get('numero_linea') or '?'} con detraibilita' "
+                    f"{perc_riga:.0%} diversa dalla testata {perc:.0%}")
+    return None
+
+
+def campi_iva_da_fattura(inv: Dict[str, Any]) -> Dict[str, Any]:
+    """Ritorna i campi IVA da aggiungere/aggiornare su una fattura di acquisto.
+
+    Non tocca l'IVA già utilizzata: se `iva_utilizzata` è True resta True e lo
+    stato resta 'INSERITA_IN_LIQUIDAZIONE' (una fattura in liquidazione
+    confermata non va ri-attribuita)."""
+    data_documento = inv.get("data_documento") or inv.get("invoice_date")
+    data_operazione = _data_operazione_da_righe(inv.get("linee")) or data_documento
+    # Data di ricezione: determina la regola dei 15 giorni per l'attribuzione.
+    # Priorità: ricezione SDI reale → data_ricezione → data documento.
+    # P2-a (fix 13/07/2026): NON usare più `created_at` (data di IMPORT nel
+    # gestionale) come ricezione: per le fatture storiche importate in blocco
+    # sarebbe l'anno di import (es. 2026) e mis-attribuirebbe massivamente il
+    # pregresso. La data del documento è un'àncora molto più affidabile.
+    data_ricezione = (
+        inv.get("data_ricezione_sdi")
+        or inv.get("data_ricezione")
+        or data_documento
+    )
+    data_registrazione = inv.get("data_registrazione") or data_ricezione
+
+    periodo_attribuito, regola = iva_engine.attribuisci_periodo_iva(
+        data_operazione, data_ricezione, data_registrazione
+    )
+
+    iva = float(inv.get("iva") or inv.get("total_iva") or inv.get("iva_totale") or 0)
+    # L'IVA esposta nel documento non coincide automaticamente con l'IVA
+    # detraibile. Quest'ultima e' affidabile solo quando un classificatore
+    # fiscale (o una correzione esplicita) l'ha gia' valorizzata. In assenza di
+    # tale evidenza la fattura resta DA_VERIFICARE e non entra in liquidazione.
+    detraibilita_valutata = (
+        "iva_detraibile" in inv and inv.get("iva_detraibile") is not None
+    )
+    iva_detraibile = (
+        float(inv.get("iva_detraibile") or 0) if detraibilita_valutata else 0.0
+    )
+    gia_utilizzata = bool(inv.get("iva_utilizzata"))
+
+    motivo_dubbio: Optional[str] = None
+    if gia_utilizzata:
+        stato = "INSERITA_IN_LIQUIDAZIONE"
+        # P1-b (fix 13/07/2026): una fattura la cui IVA è già stata usata in una
+        # liquidazione confermata NON va ri-attribuita. Si preserva il periodo
+        # attribuito esistente (allineato al periodo utilizzato), evitando che
+        # un ricalcolo produca attribuito ≠ utilizzato e quadri incoerenti.
+        periodo_attribuito_finale = (
+            inv.get("periodo_iva_attribuito")
+            or inv.get("periodo_iva_utilizzato")
+            or periodo_attribuito
+        )
+    elif periodo_attribuito is None or not detraibilita_valutata:
+        stato = "DA_VERIFICARE"
+        periodo_attribuito_finale = periodo_attribuito
+        motivo_dubbio = ("periodo IVA non attribuibile" if periodo_attribuito is None
+                         else "detraibilita' non ancora valutata")
+    elif motivo_detraibilita_in_dubbio(inv):
+        stato = "DA_VERIFICARE"
+        periodo_attribuito_finale = periodo_attribuito
+        motivo_dubbio = motivo_detraibilita_in_dubbio(inv)
+    else:
+        # DA_VERIFICARE lo scrive solo questo motore, quando mancavano periodo o
+        # detraibilita': ora ci sono, e tenerlo lo bloccava per sempre (il
+        # motore gira all'import prima che la classificazione scriva
+        # `iva_detraibile`, quindi ogni fattura restava ferma lì).
+        stato_esistente = inv.get("stato_detrazione_iva")
+        stato = (
+            stato_esistente
+            if stato_esistente in {"INDETRAIBILE", "RINVIATA"}
+            else "DA_INSERIRE"
+        )
+        periodo_attribuito_finale = periodo_attribuito
+
+    # Data di trasmissione allo SDI (§7): serve al controllo documentale dei
+    # 12 giorni. La usiamo se presente sulla fattura; niente inferenze.
+    data_trasmissione_sdi = inv.get("data_trasmissione_sdi") or inv.get("data_invio_sdi")
+
+    campi = {
+        "data_documento": data_documento,
+        "data_operazione": data_operazione,
+        "data_ricezione": data_ricezione,
+        "data_registrazione": data_registrazione,
+        "data_trasmissione_sdi": data_trasmissione_sdi,
+        "periodo_iva_attribuito": periodo_attribuito_finale,
+        "regola_iva_applicata": regola,
+        "iva_documento": round(iva, 2),
+        "iva_utilizzata": gia_utilizzata,
+        "periodo_iva_utilizzato": inv.get("periodo_iva_utilizzato"),
+        "stato_detrazione_iva": inv.get("stato_detrazione_iva") if gia_utilizzata else stato,
+        # Perche' la fattura e' DA_VERIFICARE, a parole: la liquidazione lo
+        # mostra accanto all'esclusione. None quando non c'e' nulla da decidere.
+        "motivo_detraibilita_da_verificare": motivo_dubbio if stato == "DA_VERIFICARE" else None,
+    }
+    # `iva_detraibile` si scrive SOLO se la detraibilita' e' stata davvero
+    # valutata. Scrivere `0.00` su una fattura mai classificata la fa sembrare
+    # decisa — «zero detraibile» — quando invece nessuno ha ancora deciso, e
+    # soprattutto disarma l'unica guardia del libro giornale:
+    # `registrazione_contabile.registra_fattura` rifiuta la registrazione
+    # finche' `iva_detraibile is None` («IVA detraibile non classificata»).
+    # All'import il campo lo scrive poi `handlers/learning.handler_classifica_cdc`,
+    # registrato sullo stesso evento **dopo** questo motore. Ma
+    # `/api/iva/ricalcola-attribuzione` gira da solo: se scrivesse lo zero,
+    # nessun classificatore lo correggerebbe e le fatture finirebbero a
+    # giornale con tutta l'IVA a costo indetraibile.
+    if detraibilita_valutata:
+        campi["iva_detraibile"] = round(iva_detraibile, 2)
+    return campi

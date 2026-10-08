@@ -1,0 +1,1191 @@
+"""
+Router Schede Tecniche — associa un link a scheda tecnica/sicurezza a ogni prodotto
+del dizionario (alimentari e non: detersivi, brillantanti, ecc.).
+
+Per i controlli ASL: ogni prodotto deve poter esibire la sua scheda tecnica.
+Il link viene salvato (non il file). La ricerca del link è assistita da Claude.
+
+Collection: schede_tecniche
+  - prodotto_key:  chiave normalizzata del prodotto (match con dizionario)
+  - nome_prodotto: nome leggibile
+  - url:           link alla scheda (PDF o pagina)
+  - tipo:          "tecnica" | "sicurezza"
+  - verificato:    bool (l'utente ha confermato che il link è corretto)
+  - fonte:         dominio del link
+  - aggiornato_at: ISO timestamp
+"""
+
+import logging
+import re
+from datetime import datetime, timezone
+from urllib.parse import urlparse
+
+from fastapi import APIRouter, Body, HTTPException, Query, Depends, File, Form, UploadFile
+
+from app.lotti.db import database as db
+from app.lotti.auth import require_admin
+from app.lotti.servizi.schede_fornitore import FONTE_EMAIL_FORNITORE
+
+logger = logging.getLogger(__name__)
+
+router = APIRouter(prefix="/schede-tecniche", tags=["Schede Tecniche"])
+
+
+def _codice_da_nome_file(filename: str) -> str:
+    m = re.search(r"(?i)^scheda_prodotto_([a-z0-9._-]+?)(?:_\d{8,}|\s*\(|\.pdf$)", filename or "")
+    return m.group(1).upper() if m else ""
+
+
+def _nome_dichiarato_nel_pdf(testo: str) -> str:
+    """Nome commerciale dichiarato nel contenuto, mai ricavato dal filename."""
+    patterns = (
+        r"(?is)nome prodotto\s*:\s*n\.\s*art\.\s*fornitore\s*:\s*\n\s*[“\"]?([^\n]{2,140})",
+        r"(?im)^\s*denominazione di vendita\s+([^\n]{2,140})$",
+        r"(?is)nome del prodotto\s+product name\s*\n\s*([^\n]{2,140})",
+        r"(?im)^\s*prodotto finito\s+([^\n]{2,140})$",
+        r"(?im)^\s*prodotto\s*:\s*([^\n]{2,140})$",
+        r"(?im)^\s*cod\.\s*articolo\s*:\s*\S+\s+([^\n]{2,140})$",
+        r"(?im)^\s*scheda tecnica\s*\n\s*(?!technical sheet\s*$)([^\n]{2,140})$",
+        r"(?im)^\s*scheda tecnica\s+([^\n]{2,140})$",
+        r"(?im)^\s*nome\s*:\s*([^\n]{2,140})$",
+    )
+    for pattern in patterns:
+        m = re.search(pattern, testo or "")
+        if m:
+            nome = re.sub(r"\s+", " ", m.group(1)).strip(" ._–—-”“\"")
+            nome = re.sub(r"\s+\d{2,3}\s+\d{2,3}$", "", nome).strip(" ._–—-”“\"")
+            parole = nome.split()
+            if len(parole) % 2 == 0 and parole[:len(parole) // 2] == parole[len(parole) // 2:]:
+                nome = " ".join(parole[:len(parole) // 2])
+            if nome.lower() not in {"technical sheet", "scheda tecnica", "product name"} \
+                    and not re.search(r"(?i)\b(?:tel\.?|e-?mail|persona di riferimento)\b", nome):
+                return nome
+    return ""
+
+
+async def _associazione_esatta(codice: str, nome_pdf: str) -> dict:
+    """Candidato solo per identita' esatta; nessuna somiglianza del nome."""
+    candidati = []
+    if codice:
+        esistente = await db.schede_tecniche.find_one(
+            {"fornitore": "ME.PA. ALIMENTARI S.R.L.", "codice_articolo": codice}, {"_id": 0})
+        if esistente and esistente.get("nome_prodotto"):
+            candidati.append({"nome": esistente["nome_prodotto"], "via": "codice_fornitore_esistente"})
+        prodotti_codice = await db.dizionario_prodotti.find(
+            {"$or": [{"codice_articolo": codice}, {"codice": codice}]},
+            {"_id": 0, "nome_originale": 1, "nome_normalizzato": 1},
+        ).to_list(3)
+        for prodotto in prodotti_codice:
+            nome = prodotto.get("nome_originale") or prodotto.get("nome_normalizzato")
+            if nome:
+                candidati.append({"nome": nome, "via": "codice_fornitore"})
+    if nome_pdf:
+        chiave = _key(nome_pdf)
+        prodotti_nome = await db.dizionario_prodotti.find(
+            {"$or": [{"nome_originale": {"$regex": f"^{re.escape(nome_pdf)}$", "$options": "i"}},
+                     {"nome_normalizzato": {"$regex": f"^{re.escape(nome_pdf)}$", "$options": "i"}}]},
+            {"_id": 0, "nome_originale": 1, "nome_normalizzato": 1},
+        ).to_list(3)
+        for prodotto in prodotti_nome:
+            nome = prodotto.get("nome_originale") or prodotto.get("nome_normalizzato")
+            if nome and _key(nome) == chiave:
+                candidati.append({"nome": nome, "via": "nome_pdf_esatto"})
+    unici = {(c["nome"], c["via"]): c for c in candidati}
+    nomi = {_key(c["nome"]) for c in unici.values()}
+    if len(nomi) == 1:
+        scelto = next(iter(unici.values()))
+        return {"stato": "proposta_certa", **scelto}
+    if len(nomi) > 1:
+        return {"stato": "da_verificare", "motivo": "piu_associazioni_esatte", "candidati": list(unici.values())}
+    return {"stato": "da_verificare", "motivo": "nessuna_associazione_esatta", "candidati": []}
+
+
+async def _conferma_associazione_esatta(nome_richiesto: str) -> dict:
+    """Accetta una correzione umana solo se identifica un prodotto esistente."""
+    nome = re.sub(r"\s+", " ", (nome_richiesto or "")).strip()
+    if not nome:
+        raise HTTPException(400, "Associazione confermata vuota")
+    prodotti = await db.dizionario_prodotti.find(
+        {"$or": [
+            {"nome_originale": {"$regex": f"^{re.escape(nome)}$", "$options": "i"}},
+            {"nome_normalizzato": {"$regex": f"^{re.escape(nome)}$", "$options": "i"}},
+        ]},
+        {"_id": 0, "nome_originale": 1, "nome_normalizzato": 1},
+    ).to_list(5)
+    nomi = {p.get("nome_originale") or p.get("nome_normalizzato") for p in prodotti}
+    nomi = {n for n in nomi if n and _key(n) == _key(nome)}
+    if len(nomi) != 1:
+        raise HTTPException(409, f"Prodotto non identificato in modo univoco: {nome}")
+    return {"stato": "confermata_titolare", "nome": next(iter(nomi)), "via": "conferma_utente"}
+
+
+def _key(nome: str) -> str:
+    return re.sub(r"\s+", " ", (nome or "").strip().lower())
+
+
+# ── Filtro alimentari ────────────────────────────────────────────────────────
+# Nelle schede tecniche servono SOLO prodotti alimentari. L'import XML inserisce
+# anche righe non alimentari (stoviglie, attrezzi, pulizia) e frammenti di fattura.
+# Regola conservativa: si esclude solo cio' che e' NON-alimentare con certezza
+# (nome che identifica un oggetto/attrezzo/pulizia o un frammento di fattura).
+# In caso di dubbio il prodotto viene MANTENUTO.
+_NONFOOD_OGGETTI = re.compile(
+    r"(coltell|forbic|\bcalice\b|calici|bicchier|drink timeless|elysia|rock bar|"
+    r"paravent|cannucc|brillantant|detersiv|deterg\.?\s*lavastov|sgrassat|\bsapone\b|"
+    r"bobina allumini|rotolo allumini|sottotorta|pirottin|tovagli|\bguant|asciugaman|"
+    r"fazzolett|spazzol|\bscop[ae]\b|ruoto pastiera|pastierina allum|vassoi|posat|"
+    r"caraff|shaker|coperchi)", re.I)
+_NONFOOD_JUNK = re.compile(
+    r"(^\s*\d{5}\s+\w|acconto|fornitura di n|spese di trasport|nota credito|"
+    r"napoli\s+na\s*$|^\s*\d+\s*-\s*bar\b|p\.?\s*iva|partita iva|causale)", re.I)
+
+
+def _is_non_alimentare(nome: str) -> bool:
+    """True se il prodotto NON e' alimentare con ragionevole certezza."""
+    n = (nome or "").lower()
+    if not n.strip():
+        return False
+    if _NONFOOD_JUNK.search(n):
+        return True
+    if _NONFOOD_OGGETTI.search(n):
+        return True
+    return False
+
+
+
+# Prodotti finiti comprati (cornetti, sfogliatelle, tappi...): il loro canonico
+# resta il nome del prodotto, non il vocabolario ingredienti (vedi ricerca_web).
+# I confini di parola sono `\b` veri: prima erano caratteri backspace (0x08)
+# finiti nel sorgente, e «tappi» e «babà» non venivano mai riconosciuti.
+RX_PRODOTTO_FINITO = re.compile(
+    r"croissant|cornett|sfogliatell|\btapp[oi]\b|coda d.aragosta|ciambell|"
+    r"\bbab[aà]\b|brioche|saccottin|fagottin|treccia|danish|muffin|plumcake|"
+    r"donut|krapfen|bombolon|polacca|rustico|panzerott|panino|tramezzin",
+    re.IGNORECASE,
+)
+
+@router.get("/prodotti")
+async def lista_prodotti_con_schede(
+    solo_senza: bool = Query(False, description="Solo prodotti senza scheda"),
+    q: str = Query(None, description="Filtro testo sul nome"),
+    limit: int = Query(500, le=2000),
+    includi_non_alimentari: bool = Query(False, description="Includi anche i prodotti non alimentari (stoviglie, pulizia, ecc.)"),
+):
+    """
+    Elenco di tutti i prodotti del dizionario (alimentari + non), con lo stato
+    della scheda tecnica associata (se presente).
+    """
+    prodotti = await db.dizionario_prodotti.find(
+        {}, {"_id": 0, "id": 1, "nome_normalizzato": 1, "nome_originale": 1,
+             "fornitore": 1, "ingrediente_canonico": 1}
+    ).to_list(10000)
+    # Fuori la spazzatura fatture (omaggi, sconti, trasporti…): non sono prodotti
+    from app.lotti.routers.prodotti_master import _RX_NON_ORDINABILI
+    import re as _re
+    prodotti = [p for p in prodotti
+                if not _re.search(_RX_NON_ORDINABILI,
+                                  (p.get("nome_normalizzato") or p.get("nome_originale") or "").lower())]
+
+    # Mappa schede esistenti per prodotto_key
+    schede = await db.schede_tecniche.find({}, {"_id": 0}).to_list(10000)
+    per_key = {}
+    for s in schede:
+        k = s.get("prodotto_key")
+        if not k:
+            continue
+        per_key.setdefault(k, []).append(s)
+
+    out = []
+    visti = set()
+    for p in prodotti:
+        nome = p.get("nome_normalizzato") or p.get("nome_originale") or ""
+        key = _key(nome)
+        if not key or key in visti:
+            continue
+        visti.add(key)
+        # la scheda del fornitore porta la descrizione di fattura, che è il
+        # nome originale: stessa riga, non un secondo prodotto
+        originale = _key(p.get("nome_originale"))
+        if originale and originale != key and originale in per_key:
+            per_key.setdefault(key, [])
+            per_key[key] = per_key[key] + [s for s in per_key.pop(originale) if s not in per_key[key]]
+            visti.add(originale)
+        if not includi_non_alimentari and _is_non_alimentare(nome):
+            continue
+        sk = per_key.get(key, [])
+        if solo_senza and sk:
+            continue
+        if q and q.lower() not in nome.lower():
+            continue
+        out.append({
+            "prodotto_key": key,
+            "nome": nome,
+            "fornitore": p.get("fornitore", ""),
+            "categoria": p.get("ingrediente_canonico", ""),
+            "schede": sk,
+            "ha_scheda": len(sk) > 0,
+        })
+
+    # Schede arrivate dal fornitore per prodotti non ancora nel dizionario
+    # (le fatture ME.PA. arrivano a Lotti dopo le schede): si vedono lo stesso.
+    for key, sk in per_key.items():
+        if key in visti:
+            continue
+        nome = sk[0].get("nome_prodotto") or key
+        if q and q.lower() not in nome.lower():
+            continue
+        out.append({"prodotto_key": key, "nome": nome, "fornitore": sk[0].get("fornitore", ""),
+                    "categoria": "", "schede": sk, "ha_scheda": True})
+
+    out.sort(key=lambda x: (x["ha_scheda"], x["nome"]))
+    return {"totale": len(out), "prodotti": out[:limit]}
+
+
+# ── Schede ricevute dal fornitore per posta (PDF originale) ─────────────────
+_COLL_PDF_SCHEDE = "schede_tecniche_email_attachments"
+
+
+async def _anteprima_file(file: UploadFile) -> tuple[bytes, dict]:
+    import hashlib
+    from app.utils.upload_guard import leggi_upload
+    from app.utils.upload_validation import verifica_pdf_reale
+    from app.services.document_import_preview import create_confirmation_token
+    from app.services.pdf_text_extraction import extract_pdf_text
+    from app.lotti.servizi.schede_fornitore import (
+        leggi_allergeni, leggi_metadati_tecnici, leggi_valori_nutrizionali,
+    )
+
+    contenuto = await leggi_upload(file)
+    verifica_pdf_reale(contenuto, file.filename)
+    sha256 = hashlib.sha256(contenuto).hexdigest()
+    testo = extract_pdf_text(contenuto)
+    codice = _codice_da_nome_file(file.filename or "")
+    nome_pdf = _nome_dichiarato_nel_pdf(testo)
+    associazione = await _associazione_esatta(codice, nome_pdf)
+    allergeni = leggi_allergeni(testo)
+    nutrizione = leggi_valori_nutrizionali(testo)
+    metadati = leggi_metadati_tecnici(testo)
+    return contenuto, {
+        "filename": file.filename or "scheda.pdf", "sha256": sha256,
+        "codice_fornitore": codice or None, "nome_dichiarato": nome_pdf or None,
+        "associazione": associazione, **allergeni,
+        "valori_nutrizionali_100g": nutrizione,
+        "nutrizione_stato": "letti" if any(nutrizione.values()) else "da_verificare",
+        "metadati_tecnici": metadati,
+        "preview_token": create_confirmation_token(sha256, "scheda_tecnica"),
+    }
+
+
+@router.post("/importa/anteprima")
+async def anteprima_import_schede(
+    files: list[UploadFile] = File(...), _admin=Depends(require_admin),
+):
+    """Legge piu' PDF senza scrivere dati e segnala i duplicati per SHA-256."""
+    if not files or len(files) > 50:
+        raise HTTPException(400, "Selezionare da 1 a 50 PDF")
+    righe, visti = [], set()
+    for file in files:
+        _contenuto, riga = await _anteprima_file(file)
+        riga["duplicato_nel_lotto"] = riga["sha256"] in visti
+        visti.add(riga["sha256"])
+        righe.append(riga)
+    return {"files_ricevuti": len(righe), "originali_unici": len(visti), "schede": righe}
+
+
+@router.post("/importa/conferma")
+async def conferma_import_schede(
+    files: list[UploadFile] = File(...),
+    preview_tokens: list[str] = Form(...),
+    associazioni_confermate: list[str] = Form(...),
+    _admin=Depends(require_admin),
+):
+    """Conferma la stessa anteprima e deposita un solo originale per SHA-256."""
+    import asyncio
+    from app.database import Database
+    from app.services.document_import_preview import verify_confirmation_token
+    from app.services.email_drive_archive import archive_document_copy
+    from app.services.pdf_text_extraction import extract_pdf_text
+    from app.lotti.servizi.schede_fornitore import registra_scheda_tecnica
+
+    if len(files) != len(preview_tokens):
+        raise HTTPException(400, "File e token di anteprima non corrispondono")
+    associazioni_confermate = associazioni_confermate or [""] * len(files)
+    if len(associazioni_confermate) != len(files):
+        raise HTTPException(400, "File e associazioni confermate non corrispondono")
+    archivio = Database.get_db()[_COLL_PDF_SCHEDE]
+    risultati = []
+    for file, token, nome_confermato in zip(files, preview_tokens, associazioni_confermate):
+        contenuto, preview = await _anteprima_file(file)
+        testo_pdf = extract_pdf_text(contenuto)
+        sha256 = preview["sha256"]
+        if not verify_confirmation_token(token, sha256, "scheda_tecnica"):
+            raise HTTPException(409, f"Anteprima scaduta o file cambiato: {file.filename}")
+        associazione = preview["associazione"]
+        if nome_confermato.strip():
+            associazione = await _conferma_associazione_esatta(nome_confermato)
+        esistente = await archivio.find_one({"sha256": sha256}, {"_id": 0})
+        if esistente and esistente.get("drive_file_id"):
+            drive = {"status": "duplicate", "drive_file_id": esistente["drive_file_id"], "sha256": sha256}
+            documento_id = esistente["id"]
+            nuovo = False
+            await archivio.update_one(
+                {"id": documento_id},
+                {"$addToSet": {"source_occurrences": {
+                    "filename": preview["filename"], "sha256": sha256, "canale": "caricato",
+                }}, "$set": {"associazione": associazione,
+                              "updated_at": datetime.now(timezone.utc).isoformat()}},
+            )
+        else:
+            drive = await asyncio.to_thread(
+                archive_document_copy,
+                {"filename": preview["filename"], "content": contenuto, "source": "caricato"},
+                "scheda_tecnica",
+            )
+            if drive.get("status") not in {"archived", "duplicate"} or not drive.get("drive_file_id"):
+                raise HTTPException(503, f"Originale non archiviato su Drive: {drive.get('reason') or drive.get('status')}")
+            documento_id = (esistente or {}).get("id") or f"scheda-{sha256[:32]}"
+            nuovo = esistente is None
+            await archivio.update_one(
+                {"id": documento_id},
+                {"$set": {
+                    "id": documento_id, "filename": preview["filename"], "sha256": sha256,
+                    "pdf_size": len(contenuto), "category": "scheda_tecnica",
+                    "drive_file_id": drive["drive_file_id"], "archivio_originale": "drive",
+                    "canale": "caricato", "testo_estratto": testo_pdf[:20000],
+                    "associazione": associazione,
+                    "metadati_tecnici": preview["metadati_tecnici"],
+                    "updated_at": datetime.now(timezone.utc).isoformat(),
+                }, "$addToSet": {"source_occurrences": {
+                    "filename": preview["filename"], "sha256": sha256, "canale": "caricato",
+                }}}, upsert=True,
+            )
+        registrata = None
+        if associazione.get("stato") in {"proposta_certa", "confermata_titolare"}:
+            codice = preview.get("codice_fornitore") or ""
+            nome = associazione["nome"]
+            registrata = await registra_scheda_tecnica(
+                db, documento_id=documento_id, pdf_sha256=sha256,
+                testo_pdf=testo_pdf,
+                oggetto=f"Scheda prodotto cod. articolo {codice}" if codice else "Scheda tecnica",
+                corpo=f"del prodotto {codice} - {nome} Order Sender" if codice else "",
+                drive_file_id=drive["drive_file_id"], filename=preview["filename"],
+            )
+        risultati.append({
+            "filename": preview["filename"], "sha256": sha256, "documento_id": documento_id,
+            "drive_file_id": drive["drive_file_id"], "nuovo_originale": nuovo,
+            "associazione": associazione, "scheda_registrata": bool(registrata and registrata.get("registrata")),
+        })
+    return {"ok": True, "ricevuti": len(risultati),
+            "nuovi_originali": sum(1 for r in risultati if r["nuovo_originale"]), "risultati": risultati}
+
+
+@router.get("/pdf/{documento_id}")
+async def pdf_scheda(documento_id: str):
+    """Il PDF originale della scheda, come arrivato dal fornitore (per l'ASL)."""
+    import base64
+    from fastapi.responses import Response
+    from app.database import Database
+
+    doc = await Database.get_db()[_COLL_PDF_SCHEDE].find_one(
+        {"id": documento_id}, {"_id": 0, "pdf_data": 1, "filename": 1, "drive_file_id": 1})
+    if not doc:
+        raise HTTPException(404, "Scheda non trovata")
+    nome = re.sub(r"[^A-Za-z0-9._-]", "_", doc.get("filename") or "scheda.pdf")
+    contenuto = None
+    if doc.get("drive_file_id"):
+        from app.services.drive_download import scarica_originale
+        try:
+            contenuto = await scarica_originale(str(doc["drive_file_id"]))
+        except Exception as exc:  # noqa: BLE001 - fallback storico sotto
+            logger.warning("Scheda %s non letta da Drive: %s: %s", documento_id, type(exc).__name__, exc)
+    if contenuto is None and doc.get("pdf_data"):
+        contenuto = base64.b64decode(doc["pdf_data"])
+    if contenuto is None:
+        raise HTTPException(404, "Originale della scheda non disponibile")
+    return Response(content=contenuto, media_type="application/pdf",
+                    headers={"Content-Disposition": f'inline; filename="{nome}"'})
+
+
+_RICOSTRUZIONE: dict = {"in_corso": False, "esito": None}
+
+
+async def _ricostruisci_schede(limit: int) -> dict:
+    import base64
+    import hashlib
+    from app.database import Database
+    from app.lotti.servizi.schede_fornitore import registra_scheda_tecnica
+    from app.services.pdf_text_extraction import extract_pdf_text
+
+    erp = Database.get_db()[_COLL_PDF_SCHEDE]
+    ids = [d["id"] for d in await erp.find({}, {"_id": 0, "id": 1}).to_list(limit) if d.get("id")]
+    esiti = {"lette": 0, "registrate": 0, "errori": [], "iniziato_at": datetime.now(timezone.utc).isoformat()}
+    for doc_id in ids:
+        doc = await erp.find_one({"id": doc_id}, {"_id": 0})
+        if not doc or not doc.get("pdf_data"):
+            continue
+        esiti["lette"] += 1
+        try:
+            contenuto = base64.b64decode(doc["pdf_data"])
+            testo = extract_pdf_text(contenuto)
+            await erp.update_one({"id": doc_id}, {"$set": {"testo_estratto": testo[:20000]}})
+            esito = await registra_scheda_tecnica(
+                db, documento_id=doc_id, pdf_sha256=hashlib.sha256(contenuto).hexdigest(),
+                testo_pdf=testo, oggetto=doc.get("email_subject", ""), corpo=doc.get("email_body", ""),
+                email_uid=doc.get("email_uid", ""), email_data=doc.get("email_date", ""),
+            )
+            if esito.get("registrata"):
+                esiti["registrate"] += 1
+        except Exception as exc:  # noqa: BLE001 — si conta e si prosegue
+            esiti["errori"].append({"documento_id": doc_id, "errore": f"{type(exc).__name__}: {exc}"})
+    esiti["finito_at"] = datetime.now(timezone.utc).isoformat()
+    return esiti
+
+
+async def _giro_ricostruzione(limit: int) -> None:
+    try:
+        _RICOSTRUZIONE["esito"] = await _ricostruisci_schede(limit)
+    except Exception as exc:  # noqa: BLE001 — l'esito lo dice, il processo resta su
+        _RICOSTRUZIONE["esito"] = {"errore": f"{type(exc).__name__}: {exc}"}
+    finally:
+        _RICOSTRUZIONE["in_corso"] = False
+
+
+@router.post("/ricostruisci-da-email")
+async def ricostruisci_schede_da_email(limit: int = Query(500, le=2000), _admin=Depends(require_admin)):
+    """Rilegge le schede già archiviate dalla posta e le registra di nuovo.
+
+    Serve dopo un miglioramento del lettore o se la registrazione era fallita:
+    il PDF resta l'originale, cambiano solo i dati letti. Payload per id, in
+    background; l'esito su ``GET /schede-tecniche/ricostruisci-da-email/stato``.
+    """
+    import asyncio
+
+    if _RICOSTRUZIONE["in_corso"]:
+        return {"ok": True, "stato": "in_corso"}
+    _RICOSTRUZIONE["in_corso"] = True
+    _RICOSTRUZIONE["task"] = asyncio.create_task(_giro_ricostruzione(limit))
+    return {"ok": True, "stato": "avviata",
+            "stato_url": "/lotti/api/schede-tecniche/ricostruisci-da-email/stato"}
+
+
+@router.get("/ricostruisci-da-email/stato")
+async def stato_ricostruzione_schede(_admin=Depends(require_admin)):
+    return {"in_corso": _RICOSTRUZIONE["in_corso"], "esito": _RICOSTRUZIONE["esito"]}
+
+
+@router.post("/salva")
+async def salva_scheda(payload: dict = Body(...)):
+    """
+    Salva (o aggiorna) il link a una scheda tecnica per un prodotto.
+    Body: {prodotto_key, nome_prodotto, url, tipo, verificato}
+    """
+    key = _key(payload.get("prodotto_key") or payload.get("nome_prodotto"))
+    url = (payload.get("url") or "").strip()
+    if not key or not url:
+        raise HTTPException(400, "prodotto_key e url obbligatori")
+    if not url.startswith("http"):
+        raise HTTPException(400, "URL non valido (deve iniziare con http)")
+
+    tipo = payload.get("tipo", "tecnica")
+    doc = {
+        "prodotto_key": key,
+        "nome_prodotto": payload.get("nome_prodotto", key),
+        "url": url,
+        "tipo": tipo,
+        "verificato": bool(payload.get("verificato", False)),
+        "fonte": urlparse(url).netloc,
+        "aggiornato_at": datetime.now(timezone.utc).isoformat(),
+    }
+    # Upsert per (prodotto_key + tipo): una tecnica e una sicurezza per prodotto.
+    # La scheda arrivata dal fornitore per posta resta accanto, mai sovrascritta.
+    await db.schede_tecniche.update_one(
+        {"prodotto_key": key, "tipo": tipo, "fonte": {"$ne": FONTE_EMAIL_FORNITORE}},
+        {"$set": doc},
+        upsert=True,
+    )
+    return {"ok": True, "scheda": doc}
+
+
+@router.delete("/elimina")
+async def elimina_scheda(prodotto_key: str = Query(...), tipo: str = Query("tecnica"), _admin=Depends(require_admin)):
+    # l'originale del fornitore è la prova per un controllo ASL: non si elimina
+    res = await db.schede_tecniche.delete_one(
+        {"prodotto_key": _key(prodotto_key), "tipo": tipo, "fonte": {"$ne": FONTE_EMAIL_FORNITORE}})
+    return {"ok": True, "eliminati": res.deleted_count}
+
+
+@router.get("/da-proporre")
+async def schede_da_proporre(giorni: int = Query(30, description="Prodotti aggiunti negli ultimi N giorni")):
+    """
+    Prodotti NUOVI (arrivati da fatture recenti) che non hanno ancora una scheda tecnica.
+    Usato per proporre all'utente: 'Vuoi cercare la scheda di questo nuovo prodotto?'
+    """
+    prodotti = await db.dizionario_prodotti.find(
+        {}, {"_id": 0, "nome_normalizzato": 1, "nome_originale": 1, "fornitore": 1, "data_fattura": 1}
+    ).to_list(10000)
+
+    schede_keys = set(
+        s.get("prodotto_key") for s in await db.schede_tecniche.find({}, {"_id": 0, "prodotto_key": 1}).to_list(10000)
+    )
+    schede_keys.discard(None)
+
+    def recente(val):
+        if not val:
+            return False
+        try:
+            txt = str(val)
+            if "/" in txt:
+                d = datetime.strptime(txt[:10], "%d/%m/%Y")
+            else:
+                d = datetime.fromisoformat(txt[:10])
+            return (datetime.now() - d).days <= giorni
+        except Exception:
+            return False
+
+    proposte = []
+    visti = set()
+    for p in prodotti:
+        nome = p.get("nome_normalizzato") or p.get("nome_originale") or ""
+        key = _key(nome)
+        if not key or key in visti or key in schede_keys:
+            continue
+        if recente(p.get("data_fattura")):
+            visti.add(key)
+            proposte.append({
+                "prodotto_key": key,
+                "nome": nome,
+                "fornitore": p.get("fornitore", ""),
+                "data_fattura": p.get("data_fattura", ""),
+            })
+
+    return {"totale": len(proposte), "proposte": proposte}
+
+
+@router.get("/query-ricerca")
+async def query_ricerca(nome: str = Query(...)):
+    """
+    Restituisce una query Google pronta e l'URL di ricerca per trovare la scheda.
+    L'utente clicca, trova il PDF, e incolla il link in /salva.
+    """
+    q = f"scheda tecnica sicurezza {nome} PDF"
+    from urllib.parse import quote_plus
+    return {
+        "query": q,
+        "google_url": f"https://www.google.com/search?q={quote_plus(q)}",
+    }
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# FONTI PRODUTTORE + SCRAPING COMPOSIZIONE (richiesta Enzo)
+# Sezione Impostazioni: i prodotti senza produttore noto vengono elencati; Enzo
+# inserisce il sito del produttore reale (es. zuppa inglese -> www.elenka.it) e il
+# sistema fa scraping per estrarre composizione/ingredienti/coloranti/allergeni,
+# da ereditare poi nel prodotto finito (modello allergeni a cascata).
+# ════════════════════════════════════════════════════════════════════════════
+import html as _html
+
+from app.lotti.servizi.fetch_sicuro import UrlNonAmmesso, scarica as _scarica_sicuro
+
+_ALLERGENI_KW = {
+    "glutine": "Glutine", "frumento": "Glutine", "grano": "Glutine", "orzo": "Glutine",
+    "segale": "Glutine", "farro": "Glutine", "kamut": "Glutine", "avena": "Glutine", "semola": "Glutine",
+    "latte": "Latte", "lattosio": "Latte", "burro": "Latte", "panna": "Latte",
+    "formaggio": "Latte", "caseina": "Latte", "siero di latte": "Latte",
+    "uovo": "Uova", "uova": "Uova", "albume": "Uova", "tuorlo": "Uova",
+    "soia": "Soia", "arachid": "Arachidi",
+    "mandorl": "Frutta a guscio", "nocciol": "Frutta a guscio", "pistacch": "Frutta a guscio",
+    "anacard": "Frutta a guscio", "noci": "Frutta a guscio",
+    "sesamo": "Sesamo", "sedano": "Sedano", "senape": "Senape",
+    "solfiti": "Solfiti", "anidride solforosa": "Solfiti", "lupino": "Lupino",
+    "pesce": "Pesce", "crostacei": "Crostacei", "molluschi": "Molluschi",
+}
+# Coloranti azoici che per legge richiedono l'avvertenza "puo' influire su attivita'/attenzione bambini"
+_COLORANTI_AZOICI = {"e102", "e104", "e110", "e122", "e124", "e129"}
+
+
+def _estrai_da_testo(txt: str) -> dict:
+    """Estrae composizione/additivi/coloranti/allergeni da testo grezzo (HTML ripulito,
+    OCR, o incollato). Preferisce la dichiarazione ITALIANA."""
+    txt = _html.unescape(re.sub(r"\s+", " ", txt or "")).strip()
+    cand = []
+    for m in re.finditer(
+        r"(?i)ingredient[ie]\s*(?:\([a-z]{2}\))?\s*[:\.]?\s*(.{10,600}?)"
+        r"(?=\b(modalit|modo d|conservaz|consigli|istruzioni|valori|allergen|scadenz|dosagg|peso|formato|confezion|recension|categor|ingredient)\b|$)",
+        txt,
+    ):
+        cand.append(m.group(1).strip(" ."))
+    _en = re.compile(r"(?i)\b(sugar|syrup|flavour|flavor|dyes|water|wheat|milk|eggs?)\b")
+    comp_raw = next((c for c in cand if not _en.search(c)), (cand[0] if cand else ""))
+    comp = [p.strip(" .") for p in re.split(r"[;,]", comp_raw) if 1 < len(p.strip(" .")) < 90]
+    low = comp_raw.lower()
+    additivi = sorted({re.sub(r"\s", "", c).upper() for c in re.findall(r"e\s?\d{3}[a-z]?", low)})
+    coloranti = [e for e in additivi if e[1:4].isdigit() and 100 <= int(e[1:4]) <= 199]
+    # Allergeni: ignora le menzioni NEGATE ("senza glutine", "privo di lattosio",
+    # "non contiene...", "gluten free") per non segnalare un allergene assente.
+    low_allerg = re.sub(
+        r"(?i)\b(?:senza|privo di|priva di|privi di|prive di|non contiene|assenza di)\b[^,;.]{0,30}",
+        " ", low,
+    )
+    low_allerg = re.sub(r"(?i)\b(?:gluten|lactose)[\s-]?free\b", " ", low_allerg)
+    allergeni = sorted({v for k, v in _ALLERGENI_KW.items() if k in low_allerg})
+    avviso = [c for c in coloranti if c.lower() in _COLORANTI_AZOICI]
+    return {
+        "composizione": comp,
+        "composizione_raw": comp_raw[:600],
+        "additivi": additivi,
+        "coloranti": coloranti,
+        "allergeni": allergeni,
+        "avviso_coloranti_azoici": avviso,
+    }
+
+
+async def _scrape_composizione(url: str) -> dict:
+    """Scarica la pagina e prova a estrarre la dichiarazione ingredienti in modo euristico.
+
+    L'indirizzo arriva da fuori (utente o ricerca web): passa da ``fetch_sicuro``,
+    che rifiuta la rete interna e rivalida ogni reindirizzamento."""
+    risposta = await _scarica_sicuro(url, headers={"User-Agent": "Mozilla/5.0 (LottiHACCP scraper)"})
+    if risposta.status_code != 200:
+        raise ValueError(f"HTTP {risposta.status_code}")
+    raw = risposta.text
+    txt = re.sub(r"(?is)<(script|style)[^>]*>.*?</\1>", " ", raw)
+    txt = re.sub(r"(?is)<[^>]+>", " ", txt)
+    return _estrai_da_testo(txt)
+
+
+@router.get("/senza-produttore")
+async def prodotti_senza_produttore(limit: int = Query(500, le=2000), q: str = Query(None)):
+    """Prodotti alimentari per cui NON e' ancora indicato il sito del produttore
+    (nessuna scheda tipo='produttore'). Enzo assegna l'URL del produttore reale."""
+    from app.lotti.routers.prodotti_master import _RX_NON_ORDINABILI
+    import re as _re
+
+    prodotti = await db.dizionario_prodotti.find(
+        {}, {"_id": 0, "nome_normalizzato": 1, "nome_originale": 1, "fornitore": 1}
+    ).to_list(10000)
+    con_prod = {
+        s.get("prodotto_key")
+        for s in await db.schede_tecniche.find({"tipo": "produttore"}, {"_id": 0, "prodotto_key": 1}).to_list(10000)
+    }
+    out, visti = [], set()
+    for p in prodotti:
+        nome = p.get("nome_normalizzato") or p.get("nome_originale") or ""
+        key = _key(nome)
+        if not key or key in visti:
+            continue
+        visti.add(key)
+        if _is_non_alimentare(nome):
+            continue
+        if _re.search(_RX_NON_ORDINABILI, nome.lower()):
+            continue
+        if key in con_prod:
+            continue
+        if q and q.lower() not in nome.lower():
+            continue
+        out.append({"prodotto_key": key, "nome": nome, "fornitore": p.get("fornitore", "")})
+    out.sort(key=lambda x: x["nome"])
+    return {"totale": len(out), "prodotti": out[:limit]}
+
+
+@router.post("/scrape")
+async def scrape_scheda(payload: dict = Body(...), _admin=Depends(require_admin)):
+    """Scarica la pagina del produttore ed estrae composizione/coloranti/allergeni.
+    Se prodotto_key e' presente (e salva!=False) salva il risultato come scheda tipo='produttore'.
+    Body: {url, prodotto_key?, nome_prodotto?, produttore?, salva?}"""
+    url = (payload.get("url") or "").strip()
+    if not url.startswith("http"):
+        raise HTTPException(400, "URL non valido (deve iniziare con https)")
+    try:
+        dati = await _scrape_composizione(url)
+    except UrlNonAmmesso as e:
+        raise HTTPException(400, f"indirizzo non ammesso: {e}") from e
+    except Exception as e:
+        logger.warning("[schede-tecniche] scraping %s fallito: %s %s", urlparse(url).netloc,
+                       type(e).__name__, e)
+        raise HTTPException(502, "scraping fallito: pagina non raggiungibile o non leggibile") from e
+
+    key = _key(payload.get("prodotto_key") or payload.get("nome_prodotto") or "")
+    if key and payload.get("salva", True):
+        doc = {
+            "prodotto_key": key,
+            "nome_prodotto": payload.get("nome_prodotto", key),
+            "url": url,
+            "tipo": "produttore",
+            "produttore": payload.get("produttore", ""),
+            "fonte": urlparse(url).netloc,
+            "composizione": dati["composizione"],
+            "composizione_raw": dati["composizione_raw"],
+            "additivi": dati["additivi"],
+            "coloranti": dati["coloranti"],
+            "allergeni": dati["allergeni"],
+            "avviso_coloranti_azoici": dati["avviso_coloranti_azoici"],
+            "verificato": False,
+            "aggiornato_at": datetime.now(timezone.utc).isoformat(),
+        }
+        await db.schede_tecniche.update_one(
+            {"prodotto_key": key, "tipo": "produttore"}, {"$set": doc}, upsert=True
+        )
+        return {"ok": True, "salvato": True, "scheda": doc}
+    return {"ok": True, "salvato": False, **dati}
+
+
+@router.post("/parse-etichetta")
+async def parse_etichetta(payload: dict = Body(...)):
+    """Interpreta un TESTO grezzo (da OCR gratuito lato browser o incollato a mano) ed estrae
+    composizione/coloranti/allergeni con lo stesso motore dello scraping. Se prodotto_key e'
+    presente (e salva!=False) salva come scheda tipo='produttore'.
+    Body: {testo, prodotto_key?, nome_prodotto?, produttore?, fonte?, salva?}"""
+    testo = (payload.get("testo") or "").strip()
+    if len(testo) < 5:
+        raise HTTPException(400, "testo mancante o troppo corto")
+    dati = _estrai_da_testo(testo)
+    key = _key(payload.get("prodotto_key") or payload.get("nome_prodotto") or "")
+    if key and payload.get("salva", True):
+        doc = {
+            "prodotto_key": key,
+            "nome_prodotto": payload.get("nome_prodotto", key),
+            "url": "",
+            "tipo": "produttore",
+            "produttore": payload.get("produttore", ""),
+            "fonte": payload.get("fonte", "foto-etichetta"),
+            "composizione": dati["composizione"],
+            "composizione_raw": dati["composizione_raw"],
+            "additivi": dati["additivi"],
+            "coloranti": dati["coloranti"],
+            "allergeni": dati["allergeni"],
+            "avviso_coloranti_azoici": dati["avviso_coloranti_azoici"],
+            "verificato": False,
+            "aggiornato_at": datetime.now(timezone.utc).isoformat(),
+        }
+        await db.schede_tecniche.update_one(
+            {"prodotto_key": key, "tipo": "produttore"}, {"$set": doc}, upsert=True
+        )
+        return {"ok": True, "salvato": True, "scheda": doc}
+    return {"ok": True, "salvato": False, **dati}
+
+
+@router.post("/leggi-foto-ai")
+async def leggi_foto_ai(payload: dict = Body(...)):
+    """Fallback AI-visione per etichette difficili: riceve la FOTO (base64) e usa il
+    modello multimodale per trascrivere il testo (in particolare la dichiarazione
+    'Ingredienti:', additivi/coloranti E-numbers, allergeni); poi estrae
+    composizione/coloranti/allergeni con lo STESSO motore _estrai_da_testo e salva come
+    scheda tipo='produttore' (come /parse-etichetta). Usato solo quando l'OCR gratuito
+    del browser resta povero. Body: {immagine_base64, media_type?, prodotto_key?,
+    nome_prodotto?, produttore?, salva?}"""
+    from app.services.anthropic_llm_client import ImageContent, LlmChat, UserMessage, chiave_api, modello_veloce
+    api_key = chiave_api()
+    if not api_key:
+        raise HTTPException(503, "AI-visione non disponibile (manca ANTHROPIC_API_KEY)")
+    img = (payload.get("immagine_base64") or "").strip()
+    media_type = payload.get("media_type") or "image/jpeg"
+    if not img:
+        raise HTTPException(400, "immagine mancante")
+    if img.startswith("data:"):
+        try:
+            media_type = img.split(";")[0].split(":")[1]
+            img = img.split(",", 1)[1]
+        except Exception:
+            pass
+    try:
+        chat = LlmChat(api_key, model=modello_veloce(), timeout_s=60.0, tentativi=1, max_tokens=1024,
+                       scopo="lotti_foto_etichetta")
+        txt = await chat.send_message(UserMessage(
+            content=(
+                "Trascrivi TUTTO il testo leggibile di questa etichetta alimentare, in italiano. "
+                "Mantieni in particolare la riga che inizia con 'Ingredienti:' con l'elenco completo, "
+                "additivi e coloranti (codici E...), e le diciture sugli allergeni. "
+                "Rispondi SOLO con il testo trascritto, senza commenti."
+            ),
+            images=[ImageContent(image_data=img, mime_type=media_type)]))
+    except Exception as e:
+        logger.warning("[schede-tecniche] AI-visione fallita: %s %s", type(e).__name__, e)
+        raise HTTPException(502, f"AI-visione fallita ({type(e).__name__}): riprova o compila a mano") from e
+    txt = (txt or "").strip()
+    if len(txt) < 5:
+        return {"ok": False, "testo_ocr": txt, "nota": "Nessun testo leggibile dall'immagine"}
+    dati = _estrai_da_testo(txt)
+    key = _key(payload.get("prodotto_key") or payload.get("nome_prodotto") or "")
+    if key and payload.get("salva", True):
+        doc = {
+            "prodotto_key": key,
+            "nome_prodotto": payload.get("nome_prodotto", key),
+            "url": "",
+            "tipo": "produttore",
+            "produttore": payload.get("produttore", ""),
+            "fonte": payload.get("fonte", "foto-etichetta-ai"),
+            "composizione": dati["composizione"],
+            "composizione_raw": dati["composizione_raw"],
+            "additivi": dati["additivi"],
+            "coloranti": dati["coloranti"],
+            "allergeni": dati["allergeni"],
+            "avviso_coloranti_azoici": dati["avviso_coloranti_azoici"],
+            "verificato": False,
+            "aggiornato_at": datetime.now(timezone.utc).isoformat(),
+        }
+        await db.schede_tecniche.update_one(
+            {"prodotto_key": key, "tipo": "produttore"}, {"$set": doc}, upsert=True
+        )
+        return {"ok": True, "salvato": True, "scheda": doc, "testo_ocr": txt}
+    return {"ok": True, "salvato": False, "testo_ocr": txt, **dati}
+import os as _os
+import json as _json
+
+_SCHEDE_BASE = None
+
+
+def _carica_schede_base():
+    """Carica (una volta) le schede precaricate da data/schede_prodotti.json."""
+    global _SCHEDE_BASE
+    if _SCHEDE_BASE is not None:
+        return _SCHEDE_BASE
+    try:
+        p = _os.path.join(_os.path.dirname(__file__), "..", "data", "schede_prodotti.json")
+        with open(p, encoding="utf-8") as f:
+            _SCHEDE_BASE = (_json.load(f) or {}).get("schede", [])
+    except Exception:
+        _SCHEDE_BASE = []
+    return _SCHEDE_BASE
+
+
+async def risolvi_scheda(nome: str) -> dict:
+    """Risolve una scheda per identita' esatta o mapping gia' confermato.
+
+    Le schede PDF del fornitore hanno precedenza sulle fonti web. Se il nome
+    della ricetta non coincide con la descrizione di fattura, il collegamento
+    e' ammesso soltanto tramite ``nome_mapping`` confermato e univoco.
+    """
+    key = _key(nome)
+    salvata = await db.schede_tecniche.find_one(
+        {"prodotto_key": key, "tipo": {"$in": ["tecnica", "produttore"]}}, {"_id": 0})
+    if salvata:
+        return {"trovata": True, "fonte": "salvata", "scheda": salvata}
+
+    from app.lotti.servizi.articoli_fattura import carica_associazioni, serve_ingrediente
+    associazioni = await carica_associazioni(db)
+    chiavi = [chiave for chiave, assoc in associazioni.items()
+              if assoc.get("confermato") and serve_ingrediente(assoc, nome)]
+    if chiavi:
+        collegate = await db.schede_tecniche.find(
+            {"prodotto_key": {"$in": chiavi}, "tipo": {"$in": ["tecnica", "produttore"]}},
+            {"_id": 0},
+        ).to_list(3)
+        uniche = {s.get("documento_id") or f"{s.get('prodotto_key')}:{s.get('tipo')}": s for s in collegate}
+        if len(uniche) == 1:
+            return {"trovata": True, "fonte": "mapping_confermato", "scheda": next(iter(uniche.values()))}
+
+    low = key
+    for s in _carica_schede_base():
+        for al in s.get("match_aliases", []):
+            if al and al.lower() in low:
+                comp = s.get("composizione")
+                allerg_base = list(s.get("allergeni") or [])
+                if not comp and s.get("composizione_varianti"):
+                    v = s["composizione_varianti"][0]
+                    comp = v.get("composizione")
+                    allerg_base = list(v.get("allergeni") or allerg_base)
+                dati = _estrai_da_testo("Ingredienti: " + ", ".join(comp or []))
+                allerg = sorted(set(dati["allergeni"]) | set(allerg_base))
+                return {
+                    "trovata": True,
+                    "fonte": "base",
+                    "scheda": {
+                        "prodotto_key": key,
+                        "produttore": s.get("produttore") or s.get("marca", ""),
+                        "impiego": s.get("impiego", ""),
+                        "composizione": comp or [],
+                        "additivi": dati["additivi"],
+                        "coloranti": dati["coloranti"],
+                        "allergeni": allerg,
+                        "avviso_coloranti_azoici": dati["avviso_coloranti_azoici"],
+                        "fonte_url": s.get("sito_produttore") or s.get("fonte", ""),
+                    },
+                }
+    return {"trovata": False}
+
+
+@router.get("/scheda")
+async def scheda_prodotto(nome: str = Query(...)):
+    """Scheda 'produttore' di un prodotto (salvata o base). Usata da SchedaFonteModal."""
+    return await risolvi_scheda(nome)
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# RICERCA WEB AUTOMATICA (richiesta Enzo, 02/07/2026)
+# Flusso: descrizione ESATTA della riga fattura XML → ricerca web con quella
+# stringa → identificazione certa del prodotto commerciale (es. "FARINA 00
+# CAPUTO RINFORZ." = farina 00 rinforzata Caputo, per pizza/lievitati, NON
+# farina generica) → link alla scheda tecnica del produttore + composizione →
+# nome canonico imparato in nome_mapping (L1), così le fatture successive
+# risolvono da sole. La scheda salvata entra nella cascata allergeni ricette
+# (risolvi_scheda), quindi la ricetta espone anche il link.
+# ════════════════════════════════════════════════════════════════════════════
+
+def _estrai_json(testo: str) -> dict:
+    """Estrae l'ULTIMO oggetto JSON piatto dal testo di risposta del modello."""
+    matches = re.findall(r"\{[^{}]*\}", testo or "", re.S)
+    for raw in reversed(matches):
+        try:
+            return _json.loads(raw)
+        except Exception:
+            continue
+    return {}
+
+
+async def _identifica_con_ricerca_web(descrizione: str, fornitore: str = "",
+                                      tipo: str = "alimento") -> dict:
+    """Chiede al modello (con strumento di ricerca web server-side Anthropic) di
+    cercare la descrizione esatta della fattura e identificare il prodotto.
+    tipo='alimento' → prodotto_identificato, marca, nome_canonico, impiego,
+    url_scheda, ingredienti_testo, confidenza (alta|media|bassa).
+    tipo='chimico' (detersivi, richiesta Enzo per HACCP) → prodotto_identificato,
+    marca, url_scheda (scheda di SICUREZZA), principi_attivi, pericoli,
+    velenoso, confidenza."""
+    from app.services.anthropic_llm_client import chiave_api
+    if not chiave_api():
+        raise HTTPException(503, "Ricerca web non disponibile (manca ANTHROPIC_API_KEY)")
+    contesto_forn = f' Il fornitore della fattura è "{fornitore}".' if fornitore else ""
+    if tipo == "chimico":
+        prompt = (
+            "Sei il responsabile HACCP di una pasticceria italiana. Questa è la descrizione "
+            f'ESATTA di una riga di fattura elettronica XML: «{descrizione}».{contesto_forn} '
+            "È un prodotto CHIMICO/DETERSIVO usato nel laboratorio. Cerca sul web per "
+            "identificarlo con certezza, preferendo la SCHEDA DI SICUREZZA (SDS) o la "
+            "pagina del produttore. "
+            "Poi rispondi SOLO con un oggetto JSON con questi campi (tutti stringhe): "
+            '{"prodotto_identificato": "nome commerciale completo", '
+            '"marca": "produttore/marca", '
+            '"url_scheda": "URL scheda di sicurezza (SDS) o pagina produttore, altrimenti vuoto", '
+            '"principi_attivi": "principi attivi separati da punto e virgola, es. ipoclorito di sodio 5%", '
+            '"pericoli": "indicazioni di pericolo per l\'uomo separate da punto e virgola, es. provoca ustioni; nocivo se ingerito", '
+            '"velenoso": "sì se tossico/velenoso per l\'uomo, no altrimenti", '
+            '"confidenza": "alta se hai trovato il prodotto esatto, media se plausibile, bassa se incerto"}. '
+            "NON inventare: se non trovi il prodotto esatto, usa confidenza bassa e lascia vuoti i campi dubbi."
+        )
+    else:
+        prompt = (
+            "Sei l'assistente HACCP di una pasticceria italiana. Questa è la descrizione "
+            f'ESATTA di una riga di fattura elettronica XML: «{descrizione}».{contesto_forn} '
+            "Cerca sul web questa descrizione (o le sue parole chiave: marca + tipo prodotto) "
+            "per identificare CON CERTEZZA il prodotto commerciale reale, preferendo la "
+            "scheda tecnica o la pagina prodotto del PRODUTTORE. "
+            "Poi rispondi SOLO con un oggetto JSON con questi campi (tutti stringhe): "
+            '{"prodotto_identificato": "nome commerciale completo del prodotto", '
+            '"marca": "produttore/marca", '
+            '"nome_canonico": "nome cucina atomico e pulito, es. Farina 00 / Burro / Margarina", '
+            '"impiego": "uso principale se noto, es. pizza, dolci, sfoglia, altrimenti vuoto", '
+            '"url_scheda": "URL scheda tecnica o pagina prodotto del produttore, altrimenti vuoto", '
+            '"ingredienti_testo": "dichiarazione ingredienti trovata, altrimenti vuoto", '
+            '"pezzi_per_cartone": "quanti pezzi contiene un cartone/collo secondo la scheda, SOLO il numero, altrimenti vuoto", '
+            '"peso_pezzo_g": "peso di UN pezzo in grammi secondo la scheda, SOLO il numero, altrimenti vuoto", '
+            '"confidenza": "alta se hai trovato il prodotto esatto, media se plausibile, bassa se incerto"}. '
+            "Per pezzi_per_cartone e peso_pezzo_g cerca nella scheda tecnica le voci "
+            "formato/confezione/imballo (es. 'cartone da 48 pz', '80 g/pezzo', '52x80g'). "
+            "NON inventare: se non trovi il prodotto esatto, usa confidenza bassa e lascia vuoti i campi dubbi."
+        )
+    from app.lotti.servizi.lettura_articoli_ai import RicercaWebErrore, cerca_sul_web
+    try:
+        txt = (await cerca_sul_web(prompt))["testo"]
+    except RicercaWebErrore as e:
+        raise HTTPException(502, f"ricerca web fallita: {str(e)[:120]}") from e
+    except Exception as e:
+        logger.warning("[schede-tecniche] ricerca web fallita: %s %s", type(e).__name__, e)
+        raise HTTPException(502, f"ricerca web fallita ({type(e).__name__})") from e
+    res = _estrai_json(txt)
+    if not res.get("prodotto_identificato"):
+        return {"confidenza": "bassa", "prodotto_identificato": "", "marca": "",
+                "nome_canonico": "", "impiego": "", "url_scheda": "", "ingredienti_testo": ""}
+    return res
+
+
+@router.post("/ricerca-web")
+async def ricerca_web(payload: dict = Body(...), _admin=Depends(require_admin)):
+    """Identifica un prodotto partendo dalla descrizione ESATTA della fattura XML
+    tramite ricerca web, e (se confidenza alta) salva scheda tecnica con link +
+    impara il mapping descrizione→canonico. Body: {descrizione, fornitore?, salva?}.
+    Con salva=False restituisce solo la proposta, non scrive nulla."""
+    descrizione = (payload.get("descrizione") or payload.get("nome_prodotto") or "").strip()
+    if len(descrizione) < 4:
+        raise HTTPException(400, "descrizione mancante o troppo corta")
+    fornitore = (payload.get("fornitore") or "").strip()
+    salva = bool(payload.get("salva", True))
+    from app.lotti.routers.classificatore_alimenti import RX_DETERSIVI
+    tipo = payload.get("tipo") or ("chimico" if RX_DETERSIVI.search(descrizione) else "alimento")
+
+    res = await _identifica_con_ricerca_web(descrizione, fornitore, tipo=tipo)
+    confidenza = (res.get("confidenza") or "bassa").lower()
+    url = (res.get("url_scheda") or "").strip()
+
+    if tipo == "chimico":
+        # Detersivi: scheda di SICUREZZA (principi attivi, pericoli), MAI mapping
+        # ingredienti — un detersivo non deve entrare nel matching delle ricette.
+        principi = [p.strip() for p in (res.get("principi_attivi") or "").split(";") if p.strip()]
+        pericoli = [p.strip() for p in (res.get("pericoli") or "").split(";") if p.strip()]
+        salvato_scheda = False
+        if salva and confidenza == "alta" and (url.startswith("http") or principi or pericoli):
+            doc = {
+                "prodotto_key": _key(descrizione),
+                "nome_prodotto": descrizione,
+                "url": url,
+                "tipo": "sicurezza",
+                "produttore": res.get("marca", ""),
+                "fonte": urlparse(url).netloc if url.startswith("http") else "ricerca-web",
+                "principi_attivi": principi,
+                "pericoli": pericoli,
+                "velenoso": (res.get("velenoso") or "").strip().lower() in ("sì", "si", "yes", "true"),
+                "verificato": False,
+                "aggiornato_at": datetime.now(timezone.utc).isoformat(),
+            }
+            await db.schede_tecniche.update_one(
+                {"prodotto_key": doc["prodotto_key"], "tipo": "sicurezza"},
+                {"$set": doc}, upsert=True,
+            )
+            salvato_scheda = True
+        return {
+            "ok": True,
+            "tipo": "chimico",
+            "descrizione": descrizione,
+            "prodotto_identificato": res.get("prodotto_identificato", ""),
+            "marca": res.get("marca", ""),
+            "url_scheda": url,
+            "principi_attivi": principi,
+            "pericoli": pericoli,
+            "velenoso": (res.get("velenoso") or "").strip().lower() in ("sì", "si", "yes", "true"),
+            "confidenza": confidenza,
+            "salvato_scheda": salvato_scheda,
+            "salvato_mapping": False,
+        }
+
+    # Nome canonico: PRIMA il vocabolario controllato (match_livello2 su canonico
+    # proposto + nome identificato: restituisce solo chiavi di INGREDIENTI_CANONICI,
+    # es. "Burro", "Farina tipo 0"), POI il nome libero consolidato come fallback.
+    # Motivo: un canonico libero tipo "Burro biologico" entrerebbe in nome_mapping
+    # (L1, che vince su L2) e spezzerebbe il match FIFO con le ricette che dicono
+    # "Burro" — il vocabolario controllato tiene fatture e ricette sulla stessa lingua.
+    canonico = ""
+    try:
+        from app.lotti.routers.ingredienti import _consolida_canonico, match_livello2, _impara_mapping
+        testo_match = f'{res.get("nome_canonico") or ""} {res.get("prodotto_identificato") or ""}'.strip()
+        # PRODOTTI FINITI comprati (cornetti/sfogliatelle/tappi...): il canonico
+        # resta il NOME DEL PRODOTTO, non il vocabolario ingredienti — visto nel
+        # primo test live: "CRNT MLTCER BER" prendeva canonico "Frutti di bosco"
+        # (il gusto!) e le ricette coi frutti di bosco veri avrebbero pescato i
+        # cornetti nel FIFO.
+        if RX_PRODOTTO_FINITO.search(testo_match):
+            canonico = _consolida_canonico((res.get("nome_canonico") or "").strip()) or ""
+        else:
+            canonico = match_livello2(testo_match) or ""
+            if not canonico:
+                canonico = _consolida_canonico((res.get("nome_canonico") or "").strip()) or ""
+    except Exception:
+        _impara_mapping = None  # noqa: F841
+
+    # Composizione: prima dal testo ingredienti trovato, poi scrape dell'URL
+    dati = None
+    if res.get("ingredienti_testo"):
+        dati = _estrai_da_testo("Ingredienti: " + res["ingredienti_testo"])
+    if (not dati or not dati.get("composizione")) and url.startswith("http"):
+        try:
+            dati = await _scrape_composizione(url)
+        except Exception as e:
+            logger.info("[schede-tecniche] composizione da %s non letta: %s %s",
+                        urlparse(url).netloc, type(e).__name__, e)
+            dati = dati or None
+
+    salvato_scheda = False
+    salvato_mapping = False
+    if salva and confidenza == "alta":
+        key = _key(descrizione)
+        if url.startswith("http") or (dati and dati.get("composizione")):
+            doc = {
+                "prodotto_key": key,
+                "nome_prodotto": descrizione,
+                "url": url,
+                "tipo": "produttore",
+                "produttore": res.get("marca", ""),
+                "impiego": res.get("impiego", ""),
+                "pezzi_per_cartone": res.get("pezzi_per_cartone", ""),
+                "peso_pezzo_g": res.get("peso_pezzo_g", ""),
+                "fonte": urlparse(url).netloc if url.startswith("http") else "ricerca-web",
+                "composizione": (dati or {}).get("composizione", []),
+                "composizione_raw": (dati or {}).get("composizione_raw", ""),
+                "additivi": (dati or {}).get("additivi", []),
+                "coloranti": (dati or {}).get("coloranti", []),
+                "allergeni": (dati or {}).get("allergeni", []),
+                "avviso_coloranti_azoici": (dati or {}).get("avviso_coloranti_azoici", []),
+                "verificato": False,
+                "aggiornato_at": datetime.now(timezone.utc).isoformat(),
+            }
+            await db.schede_tecniche.update_one(
+                {"prodotto_key": key, "tipo": "produttore"}, {"$set": doc}, upsert=True
+            )
+            salvato_scheda = True
+        # Formato confezione dalla scheda (richiesta Enzo 02/07: "quanti pezzi
+        # ci sono per cartone"): diventa REGOLA NOTA nel dizionario, la stessa
+        # che calcola_prezzo_quantita_kg usa con priorità 0, e che consente di
+        # sapere i pezzi veri di ogni riga fattura (cartoni × pezzi/cartone).
+        def _num(v):
+            try:
+                x = float(str(v).replace(",", ".").strip())
+                return x if x > 0 else None
+            except Exception:
+                return None
+        ppc = _num(res.get("pezzi_per_cartone"))
+        peso_g = _num(res.get("peso_pezzo_g"))
+        if confidenza == "alta" and (ppc or peso_g):
+            upd = {}
+            if ppc:
+                upd["pezzi_per_cartone"] = ppc
+                upd["pezzi_per_cartone_fonte"] = "scheda-tecnica-web"
+            if peso_g:
+                upd["peso_pezzo_g"] = peso_g
+                # peso_confezione (kg) solo se mancante: mai sovrascrivere dati fattura
+                upd_peso_kg = round((ppc or 1) * peso_g / 1000, 3)
+            await db.dizionario_prodotti.update_many(
+                {"$or": [{"nome_originale": descrizione},
+                         {"nome_normalizzato": _key(descrizione)}]},
+                {"$set": upd},
+            )
+            if peso_g:
+                await db.dizionario_prodotti.update_many(
+                    {"$or": [{"nome_originale": descrizione},
+                             {"nome_normalizzato": _key(descrizione)}],
+                     "$and": [{"$or": [{"peso_confezione": {"$exists": False}},
+                                        {"peso_confezione": None},
+                                        {"peso_confezione": 0}]}]},
+                    {"$set": {"peso_confezione": upd_peso_kg,
+                              "tipo_quantita": "conteggio_confezioni"}},
+                )
+        if canonico and _impara_mapping:
+            await _impara_mapping(descrizione, canonico)
+            # Completa il dizionario SOLO dove il canonico manca (mai sovrascrivere)
+            await db.dizionario_prodotti.update_many(
+                {"$and": [
+                    {"$or": [{"nome_originale": descrizione},
+                             {"nome_normalizzato": _key(descrizione)}]},
+                    {"$or": [{"ingrediente_canonico": {"$exists": False}},
+                             {"ingrediente_canonico": ""},
+                             {"ingrediente_canonico": None}]},
+                ]},
+                {"$set": {"ingrediente_canonico": canonico,
+                          **({"impiego": res.get("impiego")} if res.get("impiego") else {})}},
+            )
+            salvato_mapping = True
+
+    return {
+        "ok": True,
+        "descrizione": descrizione,
+        "prodotto_identificato": res.get("prodotto_identificato", ""),
+        "marca": res.get("marca", ""),
+        "nome_canonico": canonico or res.get("nome_canonico", ""),
+        "impiego": res.get("impiego", ""),
+        "url_scheda": url,
+        "confidenza": confidenza,
+        "composizione": (dati or {}).get("composizione", []),
+        "allergeni": (dati or {}).get("allergeni", []),
+        "coloranti": (dati or {}).get("coloranti", []),
+        "pezzi_per_cartone": res.get("pezzi_per_cartone", ""),
+        "peso_pezzo_g": res.get("peso_pezzo_g", ""),
+        "salvato_scheda": salvato_scheda,
+        "salvato_mapping": salvato_mapping,
+    }

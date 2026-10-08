@@ -1,0 +1,413 @@
+"""Consolidamento F24 (PROMPT_DEFINITIVO §5.1) — collezione canonica UNICA per i
+modelli F24: `f24_unificato`. Le quietanze restano in `quietanze_f24`.
+
+Questo modulo fornisce:
+- la costante canonica `COLL`;
+- `chiave_f24(doc)`: chiave naturale di deduplica (contribuente + periodo + saldo
+  + hash PDF + protocollo), robusta ai vari schemi storici;
+- `salva_f24(db, doc, source)`: unico punto di scrittura canonico, idempotente
+  (upsert per chiave naturale, non duplica).
+
+I MODELLI F24 vivono solo in `f24_unificato`: non esiste un'altra collezione di
+modelli. Il sottosistema parser paghe (`f24_pagamenti`/`tributi_pagati`/
+`distinte_f24`) e la classificazione (`f24_tributi`) restano separati: sono vivi e
+verranno consolidati in una fase dedicata.
+"""
+import base64
+import hashlib
+import logging
+from datetime import datetime, timezone
+from typing import Any, Dict, Optional
+from uuid import uuid4
+
+from app.constants.canale_documento import canale_obbligatorio
+
+logger = logging.getLogger(__name__)
+
+COLL = "f24_unificato"
+COLL_QUIETANZE = "quietanze_f24"
+
+
+def richiedi_quadratura_f24(parsed: Dict[str, Any]) -> Dict[str, Any]:
+    """Rifiuta un PDF F24 privo di quadratura positiva esplicita."""
+    validation = parsed.get("validazione") or {}
+    section_statuses = {
+        str(value.get("stato") or "")
+        for value in (validation.get("quadrature_sezioni") or {}).values()
+        if isinstance(value, dict)
+    }
+    if validation.get("saldo_quadrato") is not True or (
+        validation.get("sezioni_quadrate") is False
+        or "ERRORE" in section_statuses
+    ):
+        difference = validation.get("differenza_saldo")
+        raise ValueError(
+            "F24 non quadrato o non validato: salvataggio bloccato"
+            + (f" (differenza {difference})" if difference is not None else "")
+            + _dettaglio_quadratura(parsed)
+        )
+    return validation
+
+
+def _dettaglio_quadratura(parsed: Dict[str, Any]) -> str:
+    """Righe lette e saldo stampato, in breve: dice DOVE non quadra.
+
+    Senza questo l'errore dava solo la differenza e per capire la causa serviva
+    riaprire il PDF; con le righe lette si vede subito quale importo o quale
+    codice il lettore ha perso o moltiplicato.
+    """
+    sezioni = (
+        ("E", "sezione_erario"), ("I", "sezione_inps"), ("R", "sezione_regioni"),
+        ("L", "sezione_tributi_locali"), ("N", "sezione_inail"),
+    )
+    voci = []
+    geometria: list[str] = []
+    for sigla, nome in sezioni:
+        for riga in parsed.get(nome) or []:
+            colonne = riga.get("colonne_x1") or {}
+            geometria.append(f"{colonne.get('debito') or '-'}/{colonne.get('credito') or '-'}")
+            voci.append(
+                f"{sigla}{riga.get('codice_tributo') or riga.get('causale') or '?'}"
+                f"/{riga.get('anno') or ''}"
+                f" D{riga.get('importo_debito_cents') or 0}"
+                f" C{riga.get('importo_credito_cents') or 0}"
+            )
+    saldo = (parsed.get("totali") or {}).get("saldo_delega_cents")
+    testa = f" [saldo stampato: {'non letto' if saldo is None else saldo} cent; righe {len(voci)}: "
+    # «x1 d/c»: bordo destro (in punti) dell'importo letto come debito e come credito, riga per
+    # riga. Un debito che cade a destra della soglia finisce fra i crediti: da qui si vede
+    # senza riaprire il PDF, e la colonna si calibra sui dati veri.
+    coda = (" | x1 d/c: " + " ".join(geometria[:14])) if any(g != "-/-" for g in geometria) else ""
+    return testa + "; ".join(voci[:14]) + ("; …" if len(voci) > 14 else "") + coda + "]"
+
+
+def normalizza_righe_tributo(doc: Dict[str, Any]) -> list[Dict[str, Any]]:
+    """Unica vista applicativa di debiti, crediti e periodi delle righe F24."""
+    from app.services.f24_fiscal_evidence import normalize_f24_evidence_rows
+
+    return normalize_f24_evidence_rows(doc)
+
+
+async def importa_quietanza(
+    db, content: bytes, filename: str, *, source: str = "upload_manuale",
+    source_metadata: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """Ingresso canonico delle quietanze, condiviso da ogni canale."""
+    from app.services.quietanze_import import importa_quietanza_bytes
+
+    esito = await importa_quietanza_bytes(
+        db, content, filename, fonte=source, source_metadata=source_metadata,
+    )
+    if esito.get("success") and not esito.get("duplicate"):
+        # Un prospetto del consulente gia' agganciato all'F24 trova adesso la sua quietanza.
+        try:
+            from app.services.prospetti_contabili import collega_prospetti
+            await collega_prospetti(db)
+        except Exception as exc:  # noqa: BLE001 - la quietanza resta importata
+            logger.exception("Quietanza arrivata: prospetti contabili non ripassati (%s)", type(exc).__name__)
+    return esito
+
+
+async def cerca_controparti_f24(db, saldo: Any = None) -> Dict[str, Any]:
+    """Un modello F24 appena arrivato cerca subito i suoi pezzi gia' presenti.
+
+    La quietanza puo' essere arrivata prima (e restare orfana) e l'addebito
+    puo' essere gia' nell'estratto conto: si guardano entrambi adesso, con gli
+    stessi motori del resto del gestionale, invece di aspettare un giro. Un
+    guasto qui non annulla l'import del modello: resta scritto nel log.
+    """
+    esito: Dict[str, Any] = {}
+    try:
+        from app.services.quietanze_import import ricollega_quietanze_orfane
+        esito["quietanze"] = await ricollega_quietanze_orfane(db)
+    except Exception as exc:  # noqa: BLE001 - il modello resta importato
+        logger.exception("F24 arrivato: quietanze orfane non ripassate (%s)", type(exc).__name__)
+        esito["quietanze"] = {"errore": type(exc).__name__}
+    try:
+        from app.services.f24_ravvedimento import collega_ravvedimenti
+        ravv = await collega_ravvedimenti(db)
+        esito["ravvedimento"] = {**ravv["conteggi"], "scritti": ravv["scritti"]}
+    except Exception as exc:  # noqa: BLE001 - il modello resta importato
+        logger.exception("F24 arrivato: ravvedimento non cercato (%s)", type(exc).__name__)
+        esito["ravvedimento"] = {"errore": type(exc).__name__}
+    try:
+        from app.services.f24_controllo_incrociato import riconcilia_f24_arrivato
+        esito["banca"] = await riconcilia_f24_arrivato(db, saldo)
+    except Exception as exc:  # noqa: BLE001 - il modello resta importato
+        logger.exception("F24 arrivato: addebito in banca non cercato (%s)", type(exc).__name__)
+        esito["banca"] = {"errore": type(exc).__name__}
+    try:
+        from app.services.prospetti_contabili import collega_prospetti
+        esito["prospetti"] = await collega_prospetti(db)
+    except Exception as exc:  # noqa: BLE001 - il modello resta importato
+        logger.exception("F24 arrivato: prospetti contabili non agganciati (%s)", type(exc).__name__)
+        esito["prospetti"] = {"errore": type(exc).__name__}
+    return esito
+
+
+# Stato di pagamento di un modello: iniziale all'import, poi dei motori.
+_CAMPI_STATO_PAGAMENTO = ("status", "stato_pagamento", "pagato", "riconciliato")
+
+
+async def importa_modello_bytes(
+    db, content: bytes, filename: str, *, source: str = "upload_manuale",
+    source_metadata: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """Importa un modello F24 direttamente in ``f24_unificato``.
+
+    Conserva il PDF, tutte le righe a debito/credito e usa la stessa chiave
+    idempotente degli altri canali. Non alimenta le collezioni legacy.
+    """
+    from app.services.parser_f24 import parse_f24_commercialista
+
+    parsed = parse_f24_commercialista(pdf_content=content)
+    if not parsed or parsed.get("error"):
+        return {
+            "success": False,
+            "filename": filename,
+            "error": (parsed or {}).get("error", "Parsing F24 fallito"),
+        }
+    if not normalizza_righe_tributo(parsed):
+        # Una pratica, una ricevuta o un PDF non letto non e' un F24 da pagare
+        # (22 gusci vuoti il 28/09/2026): non diventa un modello, da nessun canale.
+        return {
+            "success": False,
+            "filename": filename,
+            "error": "Nessuna riga tributo letta: non e' un modello F24",
+            "stato_modello": "SENZA_RIGHE_TRIBUTO",
+        }
+    try:
+        validation = richiedi_quadratura_f24(parsed)
+    except ValueError as exc:
+        return {
+            "success": False,
+            "filename": filename,
+            "error": str(exc),
+            "validazione": parsed.get("validazione") or {},
+        }
+
+    source_metadata = dict(source_metadata or {})
+    documento = dict(parsed)
+    documento.update({
+        "file_name": filename,
+        "pdf_hash": hashlib.sha256(content).hexdigest(),
+        "status": "da_pagare",
+        "riconciliato": False,
+        "pagato": False,
+        "import_date": datetime.now(timezone.utc).isoformat(),
+    })
+    if source_metadata.get("drive_file_id"):
+        documento.update({
+            "drive_file_id": source_metadata["drive_file_id"],
+            "drive_parent_id": source_metadata.get("drive_parent_id"),
+            "drive_path": source_metadata.get("drive_path"),
+            "drive_md5": source_metadata.get("drive_md5"),
+            "original_storage": "google_drive",
+            "source_metadata": source_metadata,
+        })
+    else:
+        documento["pdf_data"] = base64.b64encode(content).decode("utf-8")
+        if source_metadata:
+            documento["source_metadata"] = source_metadata
+    documento["f24_dedup_key"] = chiave_f24(documento)
+    documento["idempotency_key"] = f"f24:{documento['f24_dedup_key']}"
+    existing = await db[COLL].find_one(
+        {"f24_dedup_key": documento["f24_dedup_key"]}, {"_id": 0, "id": 1}
+    )
+    if existing:
+        # Lo stesso PDF letto di nuovo rinfresca le righe, mai lo stato di pagamento: lo scrivono i
+        # motori (quietanza, banca, doppioni). Riportarlo a «da pagare» cancellava la prova gia'
+        # trovata (`pagato=False` con l'addebito collegato) e riportava in vita un modello in quarantena.
+        for campo in _CAMPI_STATO_PAGAMENTO:
+            documento.pop(campo, None)
+    f24_id = await salva_f24(db, documento, source=source)
+    controparti = None if existing else await cerca_controparti_f24(
+        db, (documento.get("totali") or {}).get("saldo_netto", documento.get("importo")))
+    rows = normalizza_righe_tributo(documento)
+    from app.services.fiscal_accounting_policy import build_journal_proposal
+
+    # Il modello viene conservato come fonte documentale, ma non produce mai
+    # una scrittura definitiva. La proposta e' calcolata in memoria e resa
+    # visibile all'operatore/commercialista.
+    journal_proposal = build_journal_proposal(
+        documento,
+        document_type="F24_MODELLO",
+        context={"source": source},
+    )
+    return {
+        "success": True,
+        "duplicate": bool(existing),
+        "f24_id": f24_id,
+        "filename": filename,
+        "righe_tributo": len(rows),
+        "righe_credito": sum(1 for row in rows if row["credit_amount"] > 0),
+        "validazione": validation,
+        "journal_proposal": journal_proposal,
+        "controparti": controparti,
+    }
+
+
+def _saldo(doc: Dict[str, Any]) -> float:
+    tot = doc.get("totali") or {}
+    val = (
+        doc.get("saldo")
+        or doc.get("saldo_finale")
+        or doc.get("saldo_netto")
+        or doc.get("totale_versato")
+        or doc.get("totale_versamento")
+        or doc.get("importo")
+        or tot.get("saldo_netto")
+        or tot.get("saldo_finale")
+        or 0
+    )
+    try:
+        return round(float(val or 0), 2)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _periodo(doc: Dict[str, Any]) -> str:
+    dg = doc.get("dati_generali") or {}
+    return str(
+        doc.get("periodo")
+        or doc.get("periodo_competenza")
+        or doc.get("scadenza")
+        or doc.get("data_scadenza")
+        or dg.get("data_stampa")
+        or dg.get("data_compilazione")
+        or dg.get("data_versamento")
+        or dg.get("data_scadenza")
+        or ""
+    ).strip()
+
+
+def _contribuente(doc: Dict[str, Any]) -> str:
+    dg = doc.get("dati_generali") or {}
+    return str(
+        doc.get("codice_fiscale")
+        or dg.get("codice_fiscale")
+        or doc.get("contribuente")
+        or dg.get("contribuente")
+        or ""
+    ).strip().upper()
+
+
+def chiave_f24(doc: Dict[str, Any]) -> str:
+    """Chiave naturale stabile di un modello F24 per la deduplica: stesso
+    contribuente + periodo + saldo + hash PDF + protocollo → stessa chiave.
+    Non dipende dall'`id` (che varia tra le collezioni legacy)."""
+    pdf_hash = str(doc.get("pdf_hash") or doc.get("pdf_data_hash") or doc.get("file_hash") or "")
+    protocollo = str(doc.get("protocollo") or doc.get("protocollo_telematico") or "")
+    base = f"{_contribuente(doc)}|{_periodo(doc)}|{_saldo(doc)}|{pdf_hash}|{protocollo}"
+    return "f24_" + hashlib.md5(base.encode("utf-8")).hexdigest()[:20]
+
+
+# Campi che descrivono il PRIMO arrivo del modello: una copia successiva non li
+# riscrive (il PDF e' lo stesso: la chiave di dedup contiene il suo hash).
+_CAMPI_PROVENIENZA = frozenset({
+    "id", "_id", "file_name", "filename", "original_filename", "stored_filename",
+    "import_source", "canale", "source_metadata", "source_occurrences", "created_at",
+    "import_date", "imported_at", "pdf_data", "drive_file_id", "drive_parent_id",
+    "drive_path", "drive_md5", "original_storage", "email_from", "email_date",
+    "email_subject", "source_document_id",
+})
+
+
+async def _annota_provenienza(db, esistente: Dict[str, Any], doc: Dict[str, Any], source: Optional[str]) -> None:
+    """Aggiunge la copia appena vista alle provenienze del modello, una volta sola."""
+    meta = doc.get("source_metadata") or {}
+    provenienza = {
+        "file_name": doc.get("file_name") or doc.get("filename") or doc.get("original_filename"),
+        "drive_file_id": doc.get("drive_file_id") or meta.get("drive_file_id"),
+        "attachment_id": meta.get("attachment_id"),
+        "pdf_hash": doc.get("pdf_hash") or doc.get("file_hash"),
+        "import_source": source,
+        "visto_il": datetime.now(timezone.utc).isoformat(),
+    }
+    provenienza = {k: v for k, v in provenienza.items() if v not in (None, "")}
+    provenienze = list(esistente.get("source_occurrences") or [])
+    stessa = any(
+        p.get("drive_file_id") == provenienza.get("drive_file_id")
+        and p.get("attachment_id") == provenienza.get("attachment_id")
+        and p.get("file_name") == provenienza.get("file_name")
+        and p.get("import_source") == provenienza.get("import_source")
+        for p in provenienze
+    )
+    if not stessa:
+        provenienze.append(provenienza)
+        await db[COLL].update_one({"id": esistente["id"]}, {"$set": {"source_occurrences": provenienze}})
+
+
+async def salva_f24(
+    db,
+    doc: Dict[str, Any],
+    source: Optional[str] = None,
+    *,
+    existing_id: Optional[str] = None,
+) -> str:
+    """Scrive un modello F24 nella collezione canonica in modo IDEMPOTENTE:
+    se un F24 con la stessa chiave naturale esiste già lo aggiorna (senza
+    duplicarlo), altrimenti lo inserisce. Ritorna l'`id` canonico."""
+    doc = dict(doc)
+    doc.pop("_id", None)
+    validation = doc.get("validazione")
+    if validation is not None and (
+        validation.get("saldo_quadrato") is not True
+        or any(
+            isinstance(value, dict) and value.get("stato") == "ERRORE"
+            for value in (validation.get("quadrature_sezioni") or {}).values()
+        )
+    ):
+        richiedi_quadratura_f24(doc)
+    chiave = chiave_f24(doc)
+    doc["f24_dedup_key"] = chiave
+    doc["idempotency_key"] = f"f24:{chiave}"
+    if source:
+        doc.setdefault("import_source", source)
+    # Il canale d'ingresso e' provenienza: la prima copia arrivata lo fissa.
+    doc.setdefault("canale", canale_obbligatorio(doc.get("import_source"),
+                                                 drive_file_id=doc.get("drive_file_id")))
+
+    if existing_id:
+        doc["id"] = existing_id
+        patch = {k: v for k, v in doc.items() if k not in ("id", "_id")}
+        await db[COLL].update_one({"id": existing_id}, {"$set": patch})
+        return existing_id
+
+    esistente = await db[COLL].find_one(
+        {"f24_dedup_key": chiave}, {"_id": 0, "id": 1, "source_occurrences": 1, "source_metadata": 1},
+    )
+    if esistente:
+        # Stesso PDF gia' in archivio: le righe lette si rinfrescano (un lettore
+        # corretto rilegge sul posto), ma la provenienza del primo arrivo resta
+        # sua e la nuova copia si annota in `source_occurrences`. Prima il
+        # `$set` intero riscriveva nome del file, fonte e metadati con quelli
+        # dell'ultima copia, e l'allegato email puntato dal modello cambiava a
+        # ogni rinvio.
+        patch = {k: v for k, v in doc.items() if k not in _CAMPI_PROVENIENZA}
+        if not esistente.get("source_metadata") and doc.get("source_metadata"):
+            patch["source_metadata"] = doc["source_metadata"]
+        await db[COLL].update_one({"f24_dedup_key": chiave}, {"$set": patch})
+        await _annota_provenienza(db, esistente, doc, source)
+        return esistente.get("id")
+
+    # Lo stesso F24 arrivato da un altro PDF (copia «(2)», stampa di
+    # controllo): stesso contenuto fiscale, nessun secondo modello. Il file
+    # in piu' resta tracciato come provenienza del modello che c'e' gia'.
+    from app.services.f24_doppioni import modello_uguale
+
+    uguale = await modello_uguale(db, doc)
+    if uguale:
+        await _annota_provenienza(db, uguale, doc, source)
+        return uguale["id"]
+
+    doc.setdefault("id", str(uuid4()))
+    doc.setdefault("created_at", datetime.now(timezone.utc).isoformat())
+    await db[COLL].insert_one(doc.copy())
+    # Il fatto nasce qui, una volta sola: alla prima scrittura del modello, da
+    # qualunque ingresso. Le copie successive (sopra) non lo ripubblicano, e una
+    # quietanza non e' un modello (`e_quietanza`).
+    from app.services.f24_evento_acquisito import pubblica_f24_acquisito
+
+    await pubblica_f24_acquisito(db, doc, source_module=source or "salva_f24")
+    return doc["id"]

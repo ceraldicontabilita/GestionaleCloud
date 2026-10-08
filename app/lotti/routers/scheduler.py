@@ -1,0 +1,728 @@
+import logging
+
+"""
+scheduler.py — Task automatici periodici per HACCP Ceraldi.
+
+Job registrati:
+  01:00  aggiorna_riferimenti_fatture  — riscrive numeri fattura >30gg nei lotti
+  01:30  pulisci_lotti_scaduti         — elimina lotti scaduti >30gg non in ricetta
+  ogni:15 sync_gestionale_fatture     — riceve fatture da GestionaleCloud
+  07:00  genera_haccp_giornaliero      — pre-compila temperature + sanificazione
+  02:30  backup_notturno               — backup DB con rotazione 7 giorni
+  04:00  pipeline_aggiornamento        — aggiorna prezzi, food cost, manuale HACCP
+"""
+
+import re
+import asyncio
+from datetime import datetime, timezone, timedelta
+from app.scheduler import SchedulerConLease
+from apscheduler.triggers.cron import CronTrigger
+from fastapi import APIRouter, Depends, Request
+from pydantic import BaseModel
+from typing import List, Optional
+
+from app.lotti.db import database as db
+from app.lotti.auth import require_admin, require_automation_or_admin
+
+logger = logging.getLogger(__name__)
+
+router = APIRouter(prefix="/scheduler", tags=["Scheduler"])
+
+scheduler = SchedulerConLease(timezone="Europe/Rome")
+scheduler_started = False
+
+
+class SchedulerJob(BaseModel):
+    id: str
+    name: str
+    next_run: Optional[str]
+    trigger: str
+    enabled: bool
+
+
+class SchedulerStatus(BaseModel):
+    running: bool
+    jobs: List[SchedulerJob]
+    last_haccp_update: Optional[str]
+
+
+# ── JOB 01:00 — Aggiornamento riferimenti fatture nei lotti ──────────────────
+
+
+async def job_aggiorna_riferimenti_fatture():
+    """
+    Ogni notte alle 01:00 (Roma).
+    Aggiorna i riferimenti fattura negli ingredienti_dettaglio dei lotti
+    quando la fattura originale ha più di 30 giorni.
+    """
+    print(f"[Scheduler] {datetime.now()} - Aggiornamento riferimenti fatture nei lotti...")
+    aggiornati = 0
+    ora = datetime.now(timezone.utc)
+    soglia = ora - timedelta(days=30)
+
+    PATTERN_FATT = re.compile(r"n° fatt\s+([\w/\-]+)\s+-\s+(\d{4}-\d{2}-\d{2})")
+    PATTERN_FORN = re.compile(r"-\s+(.+?)\s+n° fatt")
+
+    lotti = await db.lotti.find({}, {"_id": 1, "ingredienti_dettaglio": 1}).to_list(5000)
+
+    for lotto in lotti:
+        ingredienti = lotto.get("ingredienti_dettaglio", [])
+        nuovi = []
+        modificato = False
+
+        for riga in ingredienti:
+            m_fatt = PATTERN_FATT.search(riga)
+            m_forn = PATTERN_FORN.search(riga)
+            if not m_fatt or not m_forn:
+                nuovi.append(riga)
+                continue
+
+            try:
+                data_fatt = datetime.fromisoformat(m_fatt.group(2)).replace(tzinfo=timezone.utc)
+            except Exception:
+                nuovi.append(riga)
+                continue
+
+            if data_fatt >= soglia:
+                nuovi.append(riga)
+                continue
+
+            fornitore_raw = m_forn.group(1).strip()
+            nome_ing = riga.split("contiene")[0].split("non contiene")[0].strip()
+
+            # il campo si chiama data_fattura (non "data": la query storica non
+            # trovava MAI nulla) ed è in formato misto dd/mm|ISO → filtro e
+            # ordinamento su date vere in Python.
+            from app.lotti.routers.utils import parse_data_flessibile
+            _data_min = parse_data_flessibile(m_fatt.group(2))
+            _candidate = await db.fatture.find(
+                {"fornitore": {"$regex": re.escape(fornitore_raw[:15]), "$options": "i"}},
+                {"_id": 0, "numero_fattura": 1, "data_fattura": 1, "prodotti": 1},
+            ).to_list(500)
+            _con_data = [
+                (parse_data_flessibile(f.get("data_fattura")), f) for f in _candidate
+            ]
+            fatture_recenti = [
+                f for d, f in sorted(
+                    (x for x in _con_data if x[0] and _data_min and x[0] >= _data_min),
+                    key=lambda x: x[0], reverse=True,
+                )
+            ][:5]
+
+            fattura_nuova = None
+            for f in fatture_recenti:
+                for p in f.get("prodotti", []):
+                    if nome_ing[:15].upper() in (p.get("descrizione") or "").upper():
+                        fattura_nuova = f
+                        break
+                if fattura_nuova:
+                    break
+
+            if fattura_nuova:
+                riga_nuova = PATTERN_FATT.sub(
+                    f"n° fatt {fattura_nuova['numero_fattura']} - {fattura_nuova.get('data_fattura', '')}", riga
+                )
+                nuovi.append(riga_nuova)
+                modificato = True
+            else:
+                nuovi.append(riga)
+
+        if modificato:
+            await db.lotti.update_one(
+                {"_id": lotto["_id"]}, {"$set": {"ingredienti_dettaglio": nuovi}}
+            )
+            aggiornati += 1
+
+    await db.scheduler_logs.insert_one(
+        {
+            "job": "aggiorna_riferimenti_fatture",
+            "timestamp": ora.isoformat(),
+            "success": True,
+            "lotti_aggiornati": aggiornati,
+        }
+    )
+    print(f"[Scheduler] Riferimenti fatture aggiornati in {aggiornati} lotti")
+
+
+# ── JOB 01:30 — Pulizia lotti scaduti ────────────────────────────────────────
+
+
+async def job_pulisci_lotti_scaduti():
+    """
+    Ogni notte alle 01:30 (Roma).
+    ARCHIVIA (non elimina più) i lotti scaduti da oltre 30 giorni il cui
+    prodotto non è più usato in nessuna ricetta attiva.
+
+    CAMBIO 25/07/2026 (audit import/database §2.2): prima faceva
+    `delete_one` — cancellazione FISICA. I `movimenti_lotto` e le
+    `vendite_banco` che citavano quel lotto restavano orfani e, soprattutto,
+    il lotto spariva dai registri stampati, mentre il registro ASL dichiara
+    "conservare 5 anni". Un'ispezione che chiede il registro di due mesi prima
+    non lo avrebbe più trovato.
+    Ora il lotto resta a DB con `archiviato=True` (+ data e motivo): esce dagli
+    elenchi operativi come prima (il filtro canonico guarda stato/esaurito e
+    questi lotti sono comunque scaduti da un mese), ma le stampe e la
+    tracciabilità continuano a vederlo.
+    """
+    print(f"[Scheduler] {datetime.now()} - Pulizia lotti scaduti...")
+    ora = datetime.now(timezone.utc)
+    soglia_iso = (ora - timedelta(days=30)).strftime("%Y-%m-%d")
+
+    ricette = await db.ricette.find({}, {"_id": 0, "ingredienti": 1, "nome": 1}).to_list(5000)
+    nomi_in_ricette = set()
+    for r in ricette:
+        nomi_in_ricette.add((r.get("nome") or "").lower())
+        for ing in r.get("ingredienti") or []:
+            nome_ing = (ing if isinstance(ing, str) else ing.get("nome", "")).lower()
+            nomi_in_ricette.add(nome_ing)
+
+    tutti_lotti = await db.lotti.find(
+        {"archiviato": {"$ne": True}},
+        {"_id": 1, "prodotto": 1, "data_scadenza": 1},
+    ).to_list(5000)
+
+    eliminati = 0
+    for lotto in tutti_lotti:
+        ds = lotto.get("data_scadenza", "")
+        try:
+            if re.match(r"\d{2}/\d{2}/\d{4}", ds):
+                parts = ds.split("/")
+                ds_iso = f"{parts[2]}-{parts[1]}-{parts[0]}"
+            else:
+                ds_iso = ds[:10]
+
+            if ds_iso >= soglia_iso:
+                continue
+
+            prodotto = (lotto.get("prodotto") or "").lower()
+            in_ricetta = any(
+                prodotto in nome or nome in prodotto for nome in nomi_in_ricette if nome
+            )
+
+            if not in_ricetta:
+                # ARCHIVIAZIONE LOGICA, mai cancellazione: i registri devono
+                # restare consultabili 5 anni (Reg. CE 178/2002).
+                await db.lotti.update_one(
+                    {"_id": lotto["_id"]},
+                    {"$set": {
+                        "archiviato": True,
+                        "archiviato_il": ora.isoformat(),
+                        "archiviato_motivo": "scaduto da oltre 30 giorni, prodotto non più in ricetta",
+                    }},
+                )
+                eliminati += 1
+
+        except Exception as e:
+            logger.warning(f"[scheduler] Errore pulizia lotto: {e}")
+            continue
+
+    await db.scheduler_logs.insert_one(
+        {
+            "job": "pulizia_lotti_scaduti",
+            "timestamp": ora.isoformat(),
+            "success": True,
+            # nome storico della chiave mantenuto per non rompere i grafici
+            # esistenti; da oggi conta gli ARCHIVIATI, non i cancellati
+            "lotti_eliminati": eliminati,
+            "lotti_archiviati": eliminati,
+        }
+    )
+    print(f"[Scheduler] Lotti scaduti archiviati: {eliminati}")
+
+
+# ── JOB 07:00 — Generazione HACCP giornaliero ────────────────────────────────
+
+
+async def job_genera_haccp_giornaliero():
+    """Il turno del mattino, alle 07:00 (Roma): prima che arrivino gli operatori.
+
+    Tutto il lavoro sta in `run_morning_automation`, che e' l'unico ingresso:
+    lo usano anche il recupero all'avvio e il workflow esterno, e la chiave
+    job/data impedisce che una giornata venga aperta due volte.
+
+    Qui sotto stava una seconda copia dello stesso giro, irraggiungibile perche'
+    veniva dopo il `return`. Nessun comportamento e' andato perso: apertura del
+    turno, generazione di quel che manca e marcatura dei giorni non rilevati le
+    fa `daily_haccp()` dentro l'orchestratore.
+    """
+    from app.lotti.servizi.automatismi_mattutini import run_morning_automation
+
+    return await run_morning_automation(source="internal_scheduler")
+
+
+# ── JOB 02:30 — Backup notturno ──────────────────────────────────────────────
+
+
+async def job_backup_notturno():
+    """Ogni notte alle 02:30 (Roma): backup su Supabase, verificato, rotazione 7.
+
+    Un backup non riuscito o incompleto manda un avviso Telegram: senza,
+    ci si accorge che mancano i backup solo il giorno in cui servono."""
+    print(f"[Scheduler] {datetime.now()} - Backup notturno...")
+    errore = None
+    try:
+        from app.lotti.routers.backup import esegui_backup_async
+
+        result = await esegui_backup_async()
+        await db.scheduler_logs.insert_one(
+            {
+                "job": "backup_notturno",
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "success": bool(result.get("success")),
+                "verificato": bool(result.get("verificato")),
+                "collezioni_fallite": result.get("collezioni_fallite", []),
+                "file": result.get("file"),
+                "dimensione": result.get("dimensione"),
+                "eliminati": result.get("eliminati", []),
+            }
+        )
+        print(f"[Scheduler] Backup: {result.get('file')} ({result.get('dimensione')})")
+        if not result.get("success"):
+            errore = "backup incompleto, collezioni: " + ", ".join(result.get("collezioni_fallite") or [])
+    except Exception as e:
+        errore = f"{type(e).__name__}: {e}"
+        await db.scheduler_logs.insert_one(
+            {
+                "job": "backup_notturno",
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "success": False,
+                "error": errore,
+            }
+        )
+        print(f"[Scheduler] Errore backup: {errore}")
+    if errore:
+        try:
+            from app.services.telegram_notifications import notifica_errore_critico
+
+            await notifica_errore_critico(f"Backup notturno di Lotti non riuscito: {errore[:300]}",
+                                          contesto="Lotti › Backup")
+        except Exception as e:
+            print(f"[Scheduler] Avviso Telegram backup non inviato: {type(e).__name__}: {e}")
+
+
+# ── JOB 04:00 — Pipeline aggiornamento ───────────────────────────────────────
+
+
+async def job_pipeline_aggiornamento():
+    """Ogni notte alle 04:00 (Roma). Aggiorna prezzi, food cost e manuale HACCP."""
+    print(f"[Scheduler] {datetime.now()} - Pipeline aggiornamento...")
+    try:
+        from app.lotti.routers.pipeline import esegui_pipeline_post_import
+
+        result = await esegui_pipeline_post_import(motivo="scheduler_notte")
+        await db.scheduler_logs.insert_one(
+            {
+                "job": "pipeline_aggiornamento",
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "success": result.get("esito") == "OK",
+                "durata_s": result.get("durata_s"),
+            }
+        )
+        print(f"[Scheduler] Pipeline completata ({result.get('durata_s', '?')}s)")
+    except Exception as e:
+        await db.scheduler_logs.insert_one(
+            {
+                "job": "pipeline_aggiornamento",
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "success": False,
+                "error": str(e),
+            }
+        )
+        print(f"[Scheduler] Errore pipeline: {e}")
+
+
+async def job_normalizza_nuovi_prodotti():
+    """Ogni notte alle 03:00 (Roma). Classifica i prodotti nuovi arrivati dalle fatture
+    (keyword statiche + AI Cloud) e li aggiunge al dizionario nome_mapping."""
+    print(f"[Scheduler] {datetime.now()} - Normalizzazione nuovi prodotti...")
+    try:
+        from app.lotti.routers.normalizzazione import processa_nuovi_prodotti
+
+        totale = 0
+        # processa a blocchi finché ci sono nuovi (max 5 giri = ~250 prodotti/notte)
+        for _ in range(5):
+            res = await processa_nuovi_prodotti(limit=50)
+            n = res.get("processati", 0) if isinstance(res, dict) else 0
+            totale += n
+            if n == 0:
+                break
+        # righe di fattura senza nome canonico (arrivate prima che il motore
+        # lo scrivesse): si ricollegano qui, non con un bottone
+        from app.lotti.routers.fatture import ricollega_righe_fatture
+        ricollegate = await ricollega_righe_fatture()
+        await db.scheduler_logs.insert_one(
+            {
+                "job": "normalizza_nuovi_prodotti",
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "success": True,
+                "processati": totale,
+                "righe_ricollegate": ricollegate.get("righe_collegate", 0),
+            }
+        )
+        print(f"[Scheduler] Normalizzazione completata — {totale} prodotti classificati")
+    except Exception as e:
+        await db.scheduler_logs.insert_one(
+            {
+                "job": "normalizza_nuovi_prodotti",
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "success": False,
+                "error": str(e),
+            }
+        )
+        print(f"[Scheduler] Errore normalizzazione: {e}")
+
+
+# job_check_scorta_minima RIMOSSO (02/07/2026): faceva da doppione del riordino
+# automatico su un'altra collezione (dizionario_prodotti.scorta_minima) creando
+# una bozza cumulativa parallela senza dedup incrociata. Ora le materie prime
+# sotto scorta sono coperte dal MOTORE UNICO esegui_riordino_automatico
+# (ordini_fornitori.py), che gira alle 07:00 dentro job_genera_haccp_giornaliero.
+
+
+async def job_lettura_articoli_ai():
+    """Ogni ora (06-22) e qualche minuto dopo l'avvio: l'AI legge le descrizioni
+    di fatture e listini non ancora lette (servizi/lettura_articoli_ai.py)."""
+    try:
+        from app.lotti.routers.confronto_fornitori import esegui_lettura_ai
+
+        esito = await esegui_lettura_ai(limite=3000)
+        await db.scheduler_logs.insert_one({
+            "job": "lettura_articoli_ai",
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "success": bool(esito.get("ok")) or esito.get("motivo") == "lettura gia' in corso",
+            "esito": esito,
+        })
+    except Exception as e:
+        await db.scheduler_logs.insert_one({
+            "job": "lettura_articoli_ai",
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "success": False,
+            "error": f"{type(e).__name__}: {e}",
+        })
+        logger.warning(f"[Scheduler] lettura articoli AI: {type(e).__name__}: {e}")
+
+
+async def _lettura_articoli_ai_dopo_avvio():
+    await asyncio.sleep(180)
+    await job_lettura_articoli_ai()
+
+
+async def job_sync_gestionale_fatture():
+    """Riceve le fatture correnti da GestionaleCloud con registro idempotente."""
+    try:
+        from app.lotti.routers.gestionale_fatture import configurato, esegui_sync_gestionale
+        if not configurato():
+            return
+        res = await esegui_sync_gestionale(
+            # 40 per giro: un giro deve finire prima del successivo, o
+            # APScheduler salta tutti i turni dopo (successo dal 23/09/2026).
+            anno=datetime.now().year, massimo=40, anteprima=False
+        )
+        await db.scheduler_logs.insert_one({
+            "job": "sync_gestionale_fatture",
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "success": bool(res.get("ok")),
+            "importate": res.get("importate", 0),
+            "gia_ricevute": res.get("gia_ricevute", 0),
+            "collegate_esistenti": res.get("collegate_esistenti", 0),
+            "importabili": res.get("importabili", 0),
+            "arretrato": res.get("arretrato", 0),
+            "senza_xml": res.get("senza_xml", 0),
+            "non_importabili_noti": res.get("non_importabili_noti", 0),
+            "escluse_fornitore": res.get("escluse_fornitore", 0),
+            "completo": bool(res.get("completo")),
+            "errori": (res.get("errori") or [])[:10],
+            "conflitti": (res.get("conflitti") or [])[:10],
+        })
+    except Exception as e:
+        # Un ReadTimeout di Supabase ha messaggio vuoto: senza il tipo il log
+        # diceva solo «fallito: ». E se il registro stesso non si scrive (stesso
+        # timeout) l'errore resta nel log invece di uscire dal job.
+        motivo = f"{type(e).__name__}: {e}"[:250]
+        logger.warning("[scheduler] gestionale-fatture fallito: %s", motivo)
+        try:
+            await db.scheduler_logs.insert_one({
+                "job": "sync_gestionale_fatture",
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "success": False,
+                "error": motivo,
+            })
+        except Exception as exc:
+            logger.warning("[scheduler] registro gestionale-fatture non scritto: %s: %s",
+                           type(exc).__name__, exc)
+
+
+async def job_sincronizza_operatori_hr():
+    """R1 (14/09/2026): gli operatori del tablet sono l'anagrafica HR.
+    Riallinea la proiezione ogni 10 minuti (cessazioni, nuovi assunti, PIN)."""
+    try:
+        from app.lotti.routers.tablet_operatori import migra_pin_in_hr, sincronizza_operatori_da_hr
+        await migra_pin_in_hr()
+        esito = await sincronizza_operatori_da_hr()
+        if esito.get("creati") or esito.get("disattivati"):
+            await db.scheduler_logs.insert_one({
+                "job": "sincronizza_operatori_hr",
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "success": True, **{k: v for k, v in esito.items() if k != "esito"},
+            })
+    except Exception as e:
+        logger.warning(f"[scheduler] allineamento operatori HR fallito: {e}")
+
+
+def setup_scheduler():
+    global scheduler_started
+    if scheduler_started:
+        return
+
+    TZ = "Europe/Rome"
+
+    scheduler.add_job(
+        job_aggiorna_riferimenti_fatture,
+        CronTrigger(hour=1, minute=0, timezone=TZ),
+        id="aggiorna_riferimenti_fatture",
+        name="Aggiornamento Riferimenti Fatture nei Lotti (>30gg)",
+        replace_existing=True,
+    )
+    scheduler.add_job(
+        job_pulisci_lotti_scaduti,
+        CronTrigger(hour=1, minute=30, timezone=TZ),
+        id="pulizia_lotti_scaduti",
+        name="Pulizia Lotti Scaduti (>30gg non in ricetta)",
+        replace_existing=True,
+    )
+    scheduler.add_job(
+        job_genera_haccp_giornaliero,
+        CronTrigger(hour=7, minute=0, timezone=TZ),
+        id="haccp_daily_generation",
+        name="Generazione HACCP Giornaliera (07:00)",
+        replace_existing=True,
+    )
+    scheduler.add_job(
+        job_digest_mattutino,
+        CronTrigger(hour=7, minute=30, timezone=TZ),
+        id="digest_mattutino",
+        name="Promemoria mattutino WhatsApp (07:30) — lotti in scadenza/scaduti",
+        replace_existing=True,
+    )
+    scheduler.add_job(
+        job_backup_notturno,
+        CronTrigger(hour=2, minute=30, timezone=TZ),
+        id="backup_notturno",
+        name="Backup DB Notturno (rotazione 7 giorni)",
+        replace_existing=True,
+    )
+    scheduler.add_job(
+        job_pipeline_aggiornamento,
+        CronTrigger(hour=4, minute=0, timezone=TZ),
+        id="pipeline_aggiornamento",
+        name="Pipeline Aggiornamento Prezzi e Food Cost",
+        replace_existing=True,
+    )
+
+    scheduler.add_job(
+        job_normalizza_nuovi_prodotti,
+        CronTrigger(hour=3, minute=0, timezone=TZ),
+        id="normalizza_nuovi_prodotti",
+        name="Normalizzazione Nuovi Prodotti da Fatture (03:00)",
+        replace_existing=True,
+    )
+
+    scheduler.add_job(
+        job_sincronizza_operatori_hr,
+        CronTrigger(hour=5, minute=50, timezone=TZ),
+        id="sincronizza_operatori_hr",
+        name="Operatori tablet = anagrafica HR (ogni giorno 5:50)",
+        replace_existing=True,
+    )
+
+    scheduler.add_job(
+        job_sync_gestionale_fatture,
+        CronTrigger(minute="5,35", hour="5-22", timezone=TZ),
+        id="sync_gestionale_fatture",
+        name="Ricezione fatture da GestionaleCloud (ogni 30 min, 05-22)",
+        replace_existing=True,
+    )
+
+    scheduler.add_job(
+        job_lettura_articoli_ai,
+        CronTrigger(minute=40, hour="6-22/3", timezone=TZ),
+        id="lettura_articoli_ai",
+        name="Lettura AI descrizioni articoli per il confronto prezzi (ogni 3 ore, 06-22)",
+        replace_existing=True,
+    )
+
+    scheduler.start()
+    scheduler_started = True
+    asyncio.create_task(_lettura_articoli_ai_dopo_avvio())
+    print(
+        "[Scheduler] Avviato — 01:00 ref-fatture | 01:30 pulizia-lotti | "
+        "ogni:30 GestionaleCloud-fatture | 02:30 backup | 03:00 normalizza | 04:00 pipeline | 07:00 HACCP+riordino"
+    )
+
+    # ── CATCHUP ALL'AVVIO ────────────────────────────────────────────────────
+    # Se il backend riparte (deploy/hot-reload) dopo l'orario pianificato di un
+    # job critico e oggi non è ancora stato eseguito, lo esegue subito.
+    # APScheduler è in-memory: se il server si spegne prima del trigger,
+    # il job viene saltato. Questo catchup evita buchi nei dati HACCP.
+    asyncio.create_task(_catchup_jobs_mancanti())
+
+
+async def _catchup_jobs_mancanti():
+    """All'avvio, controlla se i job fissi di oggi sono stati eseguiti.
+    Se l'ora attuale supera l'orario pianificato e non c'è log di oggi,
+    esegue subito il job (una sola volta per giornata).
+    """
+    try:
+        # Aspetta qualche secondo che il backend sia pronto
+        await asyncio.sleep(10)
+        from zoneinfo import ZoneInfo
+
+        tz = ZoneInfo("Europe/Rome")
+        ora_it = datetime.now(tz)
+        oggi_start = (
+            datetime(ora_it.year, ora_it.month, ora_it.day, tzinfo=tz)
+            .astimezone(timezone.utc)
+            .isoformat()
+        )
+
+        # Mappa job → (ora_trigger, funzione)
+        jobs_da_verificare = [
+            ("haccp_daily", 7, 0, job_genera_haccp_giornaliero),
+            ("pipeline_aggiornamento", 4, 0, job_pipeline_aggiornamento),
+        ]
+
+        for job_name, ora, minuto, fn in jobs_da_verificare:
+            # Trigger orario in Europe/Rome già passato?
+            trigger_dt = datetime(ora_it.year, ora_it.month, ora_it.day, ora, minuto, tzinfo=tz)
+            if ora_it < trigger_dt:
+                continue  # trigger non ancora scattato oggi → regular schedule farà il lavoro
+            # C'è già log success=True di oggi?
+            log_oggi = await db.scheduler_logs.find_one(
+                {
+                    "job": job_name,
+                    "success": True,
+                    "timestamp": {"$gte": oggi_start},
+                }
+            )
+            if log_oggi:
+                continue  # già eseguito oggi
+            print(
+                f"[Scheduler CATCHUP] Job '{job_name}' non eseguito oggi (trigger {ora:02d}:{minuto:02d}) → eseguo subito"
+            )
+            try:
+                await fn()
+            except Exception as e:
+                print(f"[Scheduler CATCHUP] Errore eseguendo '{job_name}': {e}")
+
+    except Exception as e:
+        print(f"[Scheduler CATCHUP] Errore generale: {e}")
+
+
+# ── Endpoint REST ─────────────────────────────────────────────────────────────
+
+
+
+
+@router.get("/stato", response_model=SchedulerStatus)
+async def get_scheduler_status():
+    """Stato dello scheduler: job attivi, orari prossima esecuzione, ultimi log."""
+    last_haccp = await db.scheduler_logs.find_one({"job": "haccp_daily"}, sort=[("timestamp", -1)])
+    jobs = [
+        SchedulerJob(
+            id=job.id,
+            name=job.name or job.id,
+            next_run=str(job.next_run_time) if job.next_run_time else None,
+            trigger=str(job.trigger),
+            enabled=True,
+        )
+        for job in scheduler.get_jobs()
+    ]
+    return SchedulerStatus(
+        running=scheduler.running,
+        jobs=jobs,
+        last_haccp_update=last_haccp.get("timestamp") if last_haccp else None,
+    )
+
+
+@router.post("/start")
+async def start_scheduler(_admin=Depends(require_admin)):
+    setup_scheduler()
+    return {"success": True, "message": "Scheduler avviato"}
+
+
+@router.post("/stop")
+async def stop_scheduler(_admin=Depends(require_admin)):
+    global scheduler_started
+    if scheduler.running:
+        scheduler.shutdown(wait=False)
+        scheduler_started = False
+        return {"success": True, "message": "Scheduler fermato"}
+    return {"success": True, "message": "Scheduler non era in esecuzione"}
+
+
+@router.post("/run-aggiorna-fatture-now")
+async def run_aggiorna_fatture_now(_admin=Depends(require_admin)):
+    """Aggiorna subito i riferimenti fattura nei lotti (>30gg)."""
+    await job_aggiorna_riferimenti_fatture()
+    return {"success": True, "message": "Riferimenti fatture aggiornati"}
+
+
+@router.post("/run-pulizia-lotti-now")
+async def run_pulizia_lotti_now(_admin=Depends(require_admin)):
+    """Elimina subito i lotti scaduti da >30gg non più in ricetta."""
+    await job_pulisci_lotti_scaduti()
+    return {"success": True, "message": "Lotti scaduti eliminati"}
+
+
+@router.post("/run-haccp-now")
+async def run_haccp_now(_admin=Depends(require_admin)):
+    """Esegue l'orchestratore mattutino come amministratore."""
+    from app.lotti.servizi.automatismi_mattutini import run_morning_automation
+
+    return await run_morning_automation(source="manual_admin")
+
+
+@router.post("/morning/run")
+async def run_morning(request: Request, actor=Depends(require_automation_or_admin)):
+    """Ingresso indipendente Lotti per scheduler interno e workflow GitHub."""
+    from app.lotti.servizi.automatismi_mattutini import run_morning_automation
+
+    source = "external_workflow" if actor and actor.get("ruolo") == "automazione" else "manual_admin"
+    return await run_morning_automation(source=source, actor=actor)
+
+
+@router.get("/morning/status")
+async def morning_status(data: str = None):
+    from app.lotti.servizi.automatismi_mattutini import get_morning_status
+
+    return await get_morning_status(data)
+
+
+@router.get("/logs")
+async def get_scheduler_logs(limit: int = 50, job: str = None):
+    """Ultimi log dello scheduler con esito per ogni job. Filtro opzionale
+    ?job=nome. I log appartengono al database operativo separato di Lotti."""
+    q = {"job": job} if job else {}
+    logs = (
+        await db.scheduler_logs.find(q, {"_id": 0})
+        .sort("timestamp", -1)
+        .limit(min(limit, 200))
+        .to_list(min(limit, 200))
+    )
+    return logs
+
+
+async def job_digest_mattutino():
+    """Promemoria operativo del mattino: calcola lotti scaduti/in scadenza e invia
+    il riepilogo su WhatsApp (se il gateway è configurato)."""
+    from app.lotti.routers.digest import calcola_e_invia
+    try:
+        res = await calcola_e_invia()
+        logger.info(f"[scheduler] digest mattutino: {res.get('conteggi')} esito={res.get('esito')}")
+    except Exception as e:
+        logger.warning(f"[scheduler] digest mattutino errore: {e}")
+
+
+# NB: lo scheduler viene avviato dallo startup_event di server.py (dentro l'event
+# loop). Non avviarlo qui all'import: scheduler.start()/create_task richiedono un
+# event loop in esecuzione, assente in fase di import → fallirebbe sempre.

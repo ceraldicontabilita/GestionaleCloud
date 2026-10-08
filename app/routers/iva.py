@@ -1,0 +1,1142 @@
+"""
+API Gestione IVA (SPECIFICA_IVA.md).
+
+Fase 1: attribuzione del periodo IVA per competenza alle fatture di acquisto e
+vista "IVA disponibile non ancora utilizzata".
+Fase 3: liquidazioni IVA mensili PERSISTITE con stati e versioni, calcolo
+anti-doppia-detrazione (§10-13), conferma che marca l'IVA come utilizzata,
+riapertura e rettifica. Montato sotto /api/iva.
+"""
+import uuid
+from datetime import datetime, timezone
+from decimal import ROUND_HALF_UP, Decimal
+from typing import Any, Dict, List, Optional, Tuple
+
+import logging
+from fastapi import APIRouter, Depends, HTTPException, Query
+from app.middleware.performance import istantanea
+
+from app.database import Database
+from app.engines import iva_fatture
+from app.engines import liquidazione_iva_engine as liq
+from app.engines import riepilogo_iva_engine as riep
+from app.utils.dependencies import get_current_user
+from app.utils.ruoli import richiedi_admin
+
+logger = logging.getLogger(__name__)
+router = APIRouter()
+
+COLL = "invoices"
+COLL_LIQ = "liquidazioni_iva"
+COLL_MOV = "movimenti_iva_fattura"
+# Note di credito: non sono acquisti detraibili in positivo
+from app.constants.tipi_documento import TIPI_NOTA_CREDITO
+from app.constants.fattura_attiva import FILTRO_FATTURA_ATTIVA
+
+
+def _float(value: Any) -> float:
+    try:
+        return float(value or 0)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _somma_euro(valori) -> float:
+    """Somma al centesimo in ``Decimal`` (i singoli importi arrivano ``float``)."""
+    totale = sum((Decimal(str(v)) for v in valori), Decimal("0"))
+    return float(totale.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
+
+
+def _iva_detraibile_fattura(doc: Dict[str, Any]) -> float:
+    """Ritorna solo l'IVA la cui detraibilita' e' stata valutata.
+
+    Il fallback sull'IVA esposta trasformava le fatture non classificate in
+    credito pienamente detraibile. Un valore mancante resta quindi zero finche'
+    il learning o una correzione fiscale non lo valorizzano esplicitamente.
+    """
+    if doc.get("iva_detraibile") is not None:
+        return _float(doc.get("iva_detraibile"))
+    percentuale = doc.get("percentuale_detraibilita_iva")
+    if percentuale is None:
+        return 0.0
+    pct = _float(percentuale)
+    if 0 <= pct <= 1:
+        pct *= 100
+    pct = max(0.0, min(100.0, pct))
+    iva_esposta = _float(doc.get("iva_documento") or doc.get("iva"))
+    return round(iva_esposta * pct / 100, 2)
+
+
+def _iva_detraibile_fattura_con_segno(doc: Dict[str, Any]) -> float:
+    """Come ``_iva_detraibile_fattura``, ma una nota di credito (TD04/TD08)
+    RIDUCE l'IVA detraibile: segno negativo (audit 27/09/2026, punto 8)."""
+    valore = _iva_detraibile_fattura(doc)
+    return -abs(valore) if liq.e_nota_credito(doc) else valore
+
+
+def _percentuale_detraibilita_fattura(doc: Dict[str, Any]) -> Optional[float]:
+    """Percentuale esplicita, oppure rapporto verificabile tra gli importi.
+
+    Un campo IVA detraibile assente/non valutato resta ``None``: la vista non
+    deve trasformarlo silenziosamente in 0% e quindi in una classificazione
+    fiscale certa. I valori storici 0..1 vengono normalizzati in percentuale.
+    """
+    raw = doc.get("percentuale_detraibilita_iva")
+    if raw is not None:
+        pct = _float(raw)
+        if 0 <= pct <= 1:
+            pct *= 100
+        return round(max(0.0, min(100.0, pct)), 2)
+
+    if doc.get("iva_detraibile") is None:
+        return None
+    iva_esposta = _float(doc.get("iva_documento") or doc.get("iva"))
+    if iva_esposta <= 0:
+        return None
+    pct = (_iva_detraibile_fattura(doc) / iva_esposta) * 100
+    return round(max(0.0, min(100.0, pct)), 2)
+
+
+def _arricchisci_fattura_iva(doc: Dict[str, Any]) -> Dict[str, Any]:
+    riga = dict(doc)
+    riga["iva_esposta"] = round(_float(doc.get("iva_documento") or doc.get("iva")), 2)
+    riga["iva_detraibile"] = round(_iva_detraibile_fattura(doc), 2)
+    riga["percentuale_detraibilita_iva"] = _percentuale_detraibilita_fattura(doc)
+    stato_classificazione = str(doc.get("stato_classificazione") or "").lower()
+    classificazione_esplicita = bool(doc.get("classificato_da")) or stato_classificazione in {
+        "classificata", "classificato", "confermata", "confermato", "verificata", "verificato",
+    }
+    riga["detraibilita_valutata"] = (
+        doc.get("percentuale_detraibilita_iva") is not None
+        or classificazione_esplicita
+        or (
+            doc.get("iva_detraibile") is not None
+            and doc.get("stato_detrazione_iva") not in {None, "DA_VERIFICARE"}
+        )
+    )
+    return riga
+
+
+def _utente_autenticato(current_user: Any) -> str:
+    """Usa esclusivamente l'identita autenticata."""
+    if isinstance(current_user, dict):
+        return str(
+            current_user.get("user_id")
+            or current_user.get("email")
+            or current_user.get("name")
+            or "utente_autenticato"
+        )
+    return "sistema"
+
+
+def _iva_corrispettivo(doc: Dict[str, Any]) -> float:
+    """IVA vendite dichiarata dal RT, con fallback per i record storici."""
+    iva = _float(doc.get("totale_iva"))
+    if abs(iva) >= 0.005:
+        return iva
+    riepilogo = doc.get("riepilogo_iva") or []
+    iva_righe = sum(_float(r.get("imposta")) for r in riepilogo if isinstance(r, dict))
+    if abs(iva_righe) >= 0.005:
+        return iva_righe
+    totale = _float(doc.get("totale") or doc.get("totale_complessivo"))
+    return totale - (totale / 1.10) if totale > 0 else 0.0
+
+
+async def _iva_vendite_corrispettivi(db, periodo: str) -> float:
+    """Compatibilita': delega alla fonte unica dei calcoli IVA."""
+    from app.services.iva_liquidation_query import corrispettivi_periodo
+
+    return (await corrispettivi_periodo(db, periodo))["iva_vendite"]
+
+
+def _periodo_precedente(periodo: str) -> str:
+    """'YYYY-MM' → mese precedente 'YYYY-MM'."""
+    anno, mese = int(periodo[:4]), int(periodo[5:7])
+    if mese == 1:
+        return f"{anno - 1}-12"
+    return f"{anno}-{mese - 1:02d}"
+
+
+COLL_RICALC_LOG = "iva_ricalcolo_log"
+
+# Campi che servono al motore IVA: si proietta solo questo, così si leggono
+# DAVVERO tutte le fatture senza caricare i PDF/XML in base64 (che le
+# renderebbero pesantissime) e senza mai troncare l'elenco.
+_PROJ_RICALCOLO = {
+    "invoice_date": 1, "data_documento": 1, "linee": 1,
+    "data_ricezione_sdi": 1, "data_ricezione": 1, "created_at": 1,
+    "data_registrazione": 1, "iva": 1, "total_iva": 1, "iva_totale": 1,
+    "iva_utilizzata": 1, "periodo_iva_utilizzato": 1, "stato_detrazione_iva": 1,
+    "periodo_iva_attribuito": 1, "regola_iva_applicata": 1, "tipo_documento": 1,
+    "iva_detraibile": 1, "stato_classificazione": 1, "classificato_da": 1,
+}
+
+
+@router.post("/ricalcola-attribuzione")
+async def ricalcola_attribuzione(
+    anno: Optional[int] = Query(None, description="Limita al singolo anno (opzionale). Vuoto = TUTTE le fatture"),
+    current_user: Optional[Dict[str, Any]] = Depends(get_current_user),
+) -> Dict[str, Any]:
+    """Calcola il PREGRESSO: rilegge DAVVERO tutte le fatture di acquisto (o di
+    un anno) e ricalcola i campi IVA (periodo attribuito per competenza, regola,
+    stato). Non tocca l'IVA già utilizzata in una liquidazione confermata.
+
+    Ritorna un report verificabile (lette, modificate, invariate, attribuite,
+    da verificare, già utilizzate + ripartizione per regola e per anno) e lo
+    SALVA in `iva_ricalcolo_log`, così l'esito resta consultabile e non serve
+    ripetere il calcolo per essere sicuri di cosa è stato letto."""
+    db = Database.get_db()
+    query: Dict[str, Any] = {}
+    if anno:
+        query["$or"] = [
+            {"invoice_date": {"$regex": f"^{anno}"}},
+            {"data_documento": {"$regex": f"^{anno}"}},
+        ]
+
+    lette = modificate = invariate = 0
+    con_periodo = da_verificare = gia_utilizzate = 0
+    per_regola: Dict[str, int] = {}
+    per_anno: Dict[str, int] = {}
+
+    async for inv in db[COLL].find(query, _PROJ_RICALCOLO):
+        lette += 1
+        campi = iva_fatture.campi_iva_da_fattura(inv)
+
+        # modificata solo se un campo IVA cambia davvero rispetto all'esistente
+        cambia = any(inv.get(k) != v for k, v in campi.items())
+        if cambia:
+            await db[COLL].update_one({"_id": inv["_id"]}, {"$set": campi})
+            modificate += 1
+        else:
+            invariate += 1
+
+        periodo = campi.get("periodo_iva_attribuito")
+        if campi.get("iva_utilizzata"):
+            gia_utilizzate += 1
+        if periodo:
+            con_periodo += 1
+            per_anno[periodo[:4]] = per_anno.get(periodo[:4], 0) + 1
+        else:
+            da_verificare += 1
+        regola = campi.get("regola_iva_applicata") or "—"
+        per_regola[regola] = per_regola.get(regola, 0) + 1
+
+    report = {
+        "id": str(uuid.uuid4()),
+        "eseguito_il": datetime.now(timezone.utc).isoformat(),
+        "eseguito_da": _utente_autenticato(current_user),
+        "filtro_anno": anno,
+        "lette": lette,
+        "modificate": modificate,
+        "invariate": invariate,
+        "con_periodo": con_periodo,
+        "da_verificare": da_verificare,
+        "gia_utilizzate": gia_utilizzate,
+        "per_regola": per_regola,
+        "per_anno": per_anno,
+    }
+    # Persistenza dell'esito (best-effort: non deve far fallire il calcolo).
+    try:
+        await db[COLL_RICALC_LOG].insert_one(dict(report))
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("[IVA] esito del ricalcolo non archiviato nel registro: %s", exc)
+
+    return {"success": True, "esaminate": lette, "aggiornate": modificate, "report": report}
+
+
+@router.get("/ricalcola-attribuzione/ultimo")
+async def ultimo_ricalcolo() -> Dict[str, Any]:
+    """Ultimo esito del 'Calcola pregresso' (persistito): resta visibile nella
+    pagina così sai sempre quante fatture sono state lette e attribuite."""
+    db = Database.get_db()
+    doc = await db[COLL_RICALC_LOG].find_one({}, {"_id": 0}, sort=[("eseguito_il", -1)])
+    return {"ultimo": doc}
+
+
+@router.get("/fatture")
+async def fatture_iva(
+    periodo: Optional[str] = Query(None, description="Periodo IVA attribuito, 'YYYY-MM'"),
+    anno: Optional[int] = Query(None),
+    limit: int = Query(500, ge=1, le=5000),
+    skip: int = 0,
+) -> Dict[str, Any]:
+    """Elenco fatture con i dati IVA (periodo attribuito, regola, stato).
+
+    ``fatture`` e' una pagina (``skip``/``limit``); ``totale`` e i totali IVA
+    sono sempre dell'intero periodo, qualunque sia la pagina richiesta.
+    """
+    db = Database.get_db()
+    query: Dict[str, Any] = {}
+    if periodo:
+        query["periodo_iva_attribuito"] = periodo
+    elif anno:
+        query["periodo_iva_attribuito"] = {"$regex": f"^{anno}"}
+
+    proj = {
+        "_id": 0, "id": 1, "invoice_number": 1, "supplier_name": 1,
+        "data_documento": 1, "data_operazione": 1, "data_ricezione": 1,
+        "data_registrazione": 1, "periodo_iva_attribuito": 1,
+        "periodo_iva_utilizzato": 1, "regola_iva_applicata": 1,
+        "iva": 1, "iva_documento": 1, "iva_detraibile": 1,
+        "percentuale_detraibilita_iva": 1, "iva_utilizzata": 1,
+        "stato_detrazione_iva": 1, "tipo_documento": 1,
+        "stato_classificazione": 1, "classificato_da": 1,
+    }
+    docs = await db[COLL].find(query, proj).sort("data_documento", -1).to_list(None)
+    docs = [_arricchisci_fattura_iva(doc) for doc in docs]
+    skip = max(0, int(skip or 0))
+    disponibili = [
+        doc for doc in docs
+        if doc.get("iva_utilizzata") is not True
+        and doc.get("stato_detrazione_iva") in liq.STATI_DETRAZIONE_AMMESSI
+    ]
+    return {
+        "fatture": docs[skip:skip + limit],
+        "totale": len(docs),
+        "skip": skip,
+        "limit": limit,
+        "totale_iva_esposta": _somma_euro(_float(doc.get("iva_esposta")) for doc in docs),
+        "totale_iva_detraibile": _somma_euro(_iva_detraibile_fattura(doc) for doc in docs),
+        "totale_iva_disponibile": _somma_euro(_iva_detraibile_fattura(doc) for doc in disponibili),
+        "totale_iva_utilizzata": _somma_euro(
+            _iva_detraibile_fattura(doc) for doc in docs if doc.get("iva_utilizzata") is True
+        ),
+        "totale_da_verificare": sum(
+            1 for doc in docs if doc.get("stato_detrazione_iva") == "DA_VERIFICARE"
+        ),
+    }
+
+
+@router.get("/fatture/non-utilizzate")
+async def fatture_non_utilizzate(
+    anno: Optional[int] = Query(None),
+    limit: int = Query(1000, le=5000),
+) -> Dict[str, Any]:
+    """IVA disponibile NON ancora utilizzata (SPECIFICA_IVA.md §14): fatture
+    con IVA detraibile > 0 non ancora inserita in alcuna liquidazione."""
+    db = Database.get_db()
+    query: Dict[str, Any] = {
+        "iva_utilizzata": {"$ne": True},
+        "tipo_documento": {"$nin": list(TIPI_NOTA_CREDITO)},
+    }
+    if anno:
+        query["periodo_iva_attribuito"] = {"$regex": f"^{anno}"}
+
+    proj = {
+        "_id": 0, "id": 1, "invoice_number": 1, "supplier_name": 1,
+        "data_documento": 1, "data_ricezione": 1, "periodo_iva_attribuito": 1,
+        "regola_iva_applicata": 1, "iva": 1, "iva_documento": 1,
+        "iva_detraibile": 1, "percentuale_detraibilita_iva": 1,
+        "stato_detrazione_iva": 1,
+    }
+    docs = await db[COLL].find(query, proj).sort("periodo_iva_attribuito", 1).to_list(limit)
+    docs = [
+        _arricchisci_fattura_iva(d) for d in docs
+        if d.get("stato_detrazione_iva") in liq.STATI_DETRAZIONE_AMMESSI
+        and _iva_detraibile_fattura(d) > 0
+    ]
+    totale_iva = round(sum(_iva_detraibile_fattura(d) for d in docs), 2)
+    return {"fatture": docs, "totale": len(docs), "totale_iva_disponibile": totale_iva}
+
+
+# ─── Liquidazioni IVA mensili (Fase 3) ──────────────────────────────────────
+
+async def _fatture_del_periodo(db, periodo: str) -> List[Dict[str, Any]]:
+    """Tutte le fatture attribuite al periodo (per selezione liquidazione)."""
+    proj = {
+        "_id": 0, "id": 1, "invoice_number": 1, "supplier_name": 1,
+        "data_documento": 1, "data_ricezione": 1,
+        "periodo_iva_attribuito": 1, "periodo_iva_utilizzato": 1,
+        "iva": 1, "iva_documento": 1, "iva_detraibile": 1,
+        "percentuale_detraibilita_iva": 1, "iva_utilizzata": 1,
+        "stato_detrazione_iva": 1, "tipo_documento": 1,
+        "annullata": 1, "duplicata": 1,
+    }
+    return await db[COLL].find(
+        {"periodo_iva_attribuito": periodo, **FILTRO_FATTURA_ATTIVA}, proj).to_list(5000)
+
+
+async def _credito_precedente(db, periodo: str) -> Tuple[float, Dict[str, Any]]:
+    """Credito IVA riportato nel periodo, con la sua fonte.
+
+    Dalla liquidazione confermata del mese precedente; a gennaio, senza una
+    liquidazione di dicembre confermata, dal rigo VX5 della dichiarazione
+    annuale dell'anno prima in archivio (§113.3). Senza nessuna delle due il
+    credito e' 0.0 ma la fonte dice `non_disponibile` con il motivo: lo zero
+    non e' un dato, e' l'assenza del dato.
+    """
+    from app.services.dichiarazioni_quadri import credito_iva_riportato
+
+    prev = _periodo_precedente(periodo)
+    doc = await db[COLL_LIQ].find_one(
+        {"periodo": prev, "stato": {"$in": [liq.CONFERMATA, liq.TRASMESSA]}},
+        sort=[("versione", -1)],
+    )
+    if doc:
+        return round(float(doc.get("credito_periodo") or 0), 2), {
+            "tipo": "liquidazione_confermata", "periodo": prev, "liquidazione_id": doc.get("id"),
+        }
+    if periodo.endswith("-01"):
+        esito = await credito_iva_riportato(db, int(periodo[:4]) - 1)
+        if esito.get("credito") is not None:
+            return round(float(esito["credito"]), 2), {
+                "tipo": "dichiarazione_annuale", **(esito.get("fonte") or {}),
+            }
+        return 0.0, {"tipo": "non_disponibile", "motivo": esito.get("motivo"),
+                     "dettaglio": esito.get("candidati") or esito.get("documenti")}
+    return 0.0, {"tipo": "non_disponibile", "motivo": "liquidazione_precedente_non_confermata",
+                 "periodo": prev}
+
+
+async def _componi_liquidazione(
+    db, periodo: str, iva_vendite: float, versione: int, liq_id: str,
+) -> Dict[str, Any]:
+    """Costruisce (senza persistere) il documento liquidazione per il periodo."""
+    fatture = await _fatture_del_periodo(db, periodo)
+    incluse, escluse = liq.seleziona_fatture_per_liquidazione(fatture, periodo)
+    credito_prec, fonte_credito = await _credito_precedente(db, periodo)
+    totali = liq.calcola_totali(incluse, iva_vendite, credito_prec)
+    ora = datetime.now(timezone.utc).isoformat()
+    # Una fattura con IVA e detraibilita' non decisa resta fuori dal calcolo:
+    # l'IVA acquisti sarebbe sottostimata. La liquidazione nasce
+    # DA_VERIFICARE e non si conferma finche' qualcuno non decide.
+    da_decidere = [
+        {"id": f.get("id"), "invoice_number": f.get("invoice_number"),
+         "supplier_name": f.get("supplier_name")}
+        for f in fatture if liq.detraibilita_da_decidere(f)
+    ]
+    return {
+        "id": liq_id,
+        "periodo": periodo,
+        "versione": versione,
+        "stato": liq.DA_VERIFICARE if da_decidere else liq.CALCOLATA,
+        "fatture_detraibilita_da_decidere": da_decidere,
+        "iva_vendite": totali["iva_vendite"],
+        "iva_acquisti": totali["iva_acquisti"],
+        "credito_precedente": totali["credito_precedente"],
+        "credito_precedente_fonte": fonte_credito,
+        "saldo": totali["saldo"],
+        "debito_periodo": totali["debito_periodo"],
+        "credito_periodo": totali["credito_periodo"],
+        "fatture_incluse": [
+            {
+                "id": f.get("id"),
+                "invoice_number": f.get("invoice_number"),
+                "supplier_name": f.get("supplier_name"),
+                "data_documento": f.get("data_documento"),
+                "iva_esposta": round(_float(f.get("iva_documento") or f.get("iva")), 2),
+                "iva": round(liq.iva_detraibile_con_segno(f), 2),
+                "percentuale_detraibilita_iva": _percentuale_detraibilita_fattura(f),
+            }
+            for f in incluse
+        ],
+        "fatture_escluse": escluse,
+        "data_calcolo": ora,
+        "data_conferma": None,
+        "motivo_rettifica": None,
+        "updated_at": ora,
+    }
+
+
+@router.post("/liquidazioni/calcola")
+async def calcola_liquidazione(
+    periodo: str = Query(..., description="Periodo mensile 'YYYY-MM'"),
+    iva_vendite: Optional[float] = Query(
+        None,
+        description="Override eccezionale; se assente viene calcolata dai corrispettivi XML",
+    ),
+    motivo_override: Optional[str] = Query(None),
+    current_user: Optional[Dict[str, Any]] = Depends(get_current_user),
+) -> Dict[str, Any]:
+    """Calcola (o ricalcola) la liquidazione del periodo come BOZZA/CALCOLATA.
+
+    NON marca l'IVA come utilizzata: quello avviene solo alla conferma. Se per
+    il periodo esiste già una liquidazione CONFERMATA o TRASMESSA, il ricalcolo
+    è bloccato: va prima riaperta (§12, una confermata non si sovrascrive)."""
+    db = Database.get_db()
+
+    try:
+        datetime.strptime(periodo, "%Y-%m")
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=422, detail="Periodo non valido: usare YYYY-MM") from exc
+    if iva_vendite is not None and isinstance(current_user, dict) and not str(motivo_override or "").strip():
+        raise HTTPException(status_code=422, detail="Motivazione obbligatoria per l'override IVA vendite")
+
+    confermata = await db[COLL_LIQ].find_one(
+        {"periodo": periodo, "stato": {"$in": [liq.CONFERMATA, liq.TRASMESSA]}}
+    )
+    if confermata:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Esiste già una liquidazione {confermata['stato']} per {periodo}. "
+                   "Riaprila prima di ricalcolare.",
+        )
+
+    # Riusa la bozza di lavoro se già presente (nuova versione), altrimenti nuova.
+    esistente = await db[COLL_LIQ].find_one(
+        {"periodo": periodo, "stato": {"$nin": [liq.CONFERMATA, liq.TRASMESSA, liq.RETTIFICATA]}},
+        sort=[("versione", -1)],
+    )
+    if esistente:
+        liq_id = esistente["id"]
+        versione = int(esistente.get("versione") or 1) + 1
+    else:
+        liq_id = str(uuid.uuid4())
+        # Nuova versione = max esistente + 1 (tiene conto di storiche rettificate)
+        ultima = await db[COLL_LIQ].find_one({"periodo": periodo}, sort=[("versione", -1)])
+        versione = int(ultima.get("versione") or 0) + 1 if ultima else 1
+
+    iva_vendite_calcolata = (
+        await _iva_vendite_corrispettivi(db, periodo)
+        if iva_vendite is None
+        else round(float(iva_vendite), 2)
+    )
+    doc = await _componi_liquidazione(db, periodo, iva_vendite_calcolata, versione, liq_id)
+    doc["iva_vendite_fonte"] = "corrispettivi_xml" if iva_vendite is None else "override_manuale"
+    doc["calcolata_da"] = _utente_autenticato(current_user)
+    doc["motivo_override_iva_vendite"] = str(motivo_override or "").strip() or None
+    if esistente:
+        doc["created_at"] = esistente.get("created_at") or doc["data_calcolo"]
+    else:
+        doc["created_at"] = doc["data_calcolo"]
+    await db[COLL_LIQ].replace_one({"id": liq_id}, doc, upsert=True)
+    doc.pop("_id", None)
+    return {"success": True, "liquidazione": doc}
+
+
+@router.post("/liquidazioni/{liq_id}/conferma")
+async def conferma_liquidazione(
+    liq_id: str,
+    current_user: Optional[Dict[str, Any]] = Depends(get_current_user),
+) -> Dict[str, Any]:
+    """Conferma la liquidazione: marca l'IVA delle fatture incluse come
+    utilizzata (§10) impedendo la doppia detrazione (§11). Idempotente per
+    fattura: se una fattura risulta già utilizzata altrove non viene ritoccata."""
+    db = Database.get_db()
+    doc = await db[COLL_LIQ].find_one({"id": liq_id}, {"_id": 0})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Liquidazione non trovata")
+    if doc.get("stato") in (liq.CONFERMATA, liq.TRASMESSA):
+        raise HTTPException(status_code=409, detail="Liquidazione già confermata")
+    if doc.get("stato") == liq.DA_VERIFICARE and doc.get("fatture_detraibilita_da_decidere"):
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "message": "Liquidazione non confermabile: detraibilità IVA da decidere",
+                "fatture_detraibilita_da_decidere": doc["fatture_detraibilita_da_decidere"],
+            },
+        )
+
+    periodo = doc["periodo"]
+    actor = _utente_autenticato(current_user)
+    ora = datetime.now(timezone.utc).isoformat()
+    fatture_incluse = [f for f in doc.get("fatture_incluse", []) if f.get("id")]
+    ids = [f["id"] for f in fatture_incluse]
+
+    correnti = await db[COLL].find(
+        {"id": {"$in": ids}},
+        {"_id": 0, "id": 1, "iva_utilizzata": 1, "liquidazione_id": 1},
+    ).to_list(max(len(ids), 1))
+    per_id = {f.get("id"): f for f in correnti}
+    mancanti = [fid for fid in ids if fid not in per_id]
+    conflitti = [
+        fid for fid in ids
+        if per_id.get(fid, {}).get("iva_utilizzata") is True
+        and per_id.get(fid, {}).get("liquidazione_id") != liq_id
+    ]
+    if mancanti or conflitti:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "message": "Liquidazione non confermata: il contenuto e cambiato dopo il calcolo",
+                "fatture_mancanti": mancanti,
+                "fatture_gia_utilizzate": conflitti,
+            },
+        )
+
+    marcate = 0
+    marcate_ids: List[str] = []
+    operazione_id = str(uuid.uuid4())
+
+    async def _annulla_conferma_parziale() -> None:
+        """Compensa le scritture gia eseguite se la conferma non si completa."""
+        if marcate_ids:
+            await db[COLL].update_many(
+                {"id": {"$in": marcate_ids}, "liquidazione_id": liq_id},
+                {"$set": {
+                    "iva_utilizzata": False,
+                    "periodo_iva_utilizzato": None,
+                    "liquidazione_id": None,
+                    "importo_iva_utilizzato": 0,
+                    "data_utilizzo_iva": None,
+                    "stato_detrazione_iva": "DA_INSERIRE",
+                    "disponibile_per_nuovo_calcolo": True,
+                }},
+            )
+        await db[COLL_MOV].delete_many({"operazione_id": operazione_id})
+
+    for f in doc.get("fatture_incluse", []):
+        fid = f.get("id")
+        if not fid:
+            continue
+        # Anti-doppia-detrazione: marca solo se NON già utilizzata.
+        res = await db[COLL].update_one(
+            {"id": fid, "iva_utilizzata": {"$ne": True}},
+            {"$set": {
+                "iva_utilizzata": True,
+                "periodo_iva_utilizzato": periodo,
+                "liquidazione_id": liq_id,
+                "importo_iva_utilizzato": f.get("iva"),
+                "data_utilizzo_iva": ora,
+                "stato_detrazione_iva": "INSERITA_IN_LIQUIDAZIONE",
+                "disponibile_per_nuovo_calcolo": False,
+            }},
+        )
+        if res.modified_count:
+            marcate += 1
+            marcate_ids.append(fid)
+            try:
+                await db[COLL_MOV].insert_one({
+                    "id": str(uuid.uuid4()),
+                    "fattura_id": fid,
+                    "tipo_movimento": liq.MOV_UTILIZZO,
+                    "periodo": periodo,
+                    "importo_iva": f.get("iva"),
+                    "liquidazione_id": liq_id,
+                    "motivazione": f"Conferma liquidazione {periodo}",
+                    "created_at": ora,
+                    "created_by": actor,
+                    "operazione_id": operazione_id,
+                })
+            except Exception as exc:
+                await _annulla_conferma_parziale()
+                logger.exception("Conferma IVA annullata: movimento audit non salvato")
+                raise HTTPException(
+                    status_code=500,
+                    detail="Liquidazione non confermata: scrittura audit non riuscita",
+                ) from exc
+            # STORIA: registra in quale dichiarazione/liquidazione IVA è entrata.
+            try:
+                _fk = await db[COLL].find_one({"id": fid}, {"_id": 0, "invoice_key": 1})
+                _key = (_fk or {}).get("invoice_key")
+                if _key:
+                    from app.services import storia_fatture as _storia
+                    await _storia.registra(
+                        db, _key, "iva_in_liquidazione",
+                        f"IVA inserita nella liquidazione {periodo} (€{f.get('iva')})",
+                        patch={"iva_utilizzata": True, "periodo_iva_utilizzato": periodo,
+                               "liquidazione_id": liq_id,
+                               "stato_detrazione_iva": "INSERITA_IN_LIQUIDAZIONE"},
+                    )
+            except Exception:
+                logger.exception(f"Storia: hook IVA liquidazione fallito per {fid}")
+        else:
+            await _annulla_conferma_parziale()
+            raise HTTPException(
+                status_code=409,
+                detail="Liquidazione non confermata: modifica concorrente rilevata",
+            )
+
+    try:
+        conferma_res = await db[COLL_LIQ].update_one(
+            {"id": liq_id, "stato": {"$nin": [liq.CONFERMATA, liq.TRASMESSA]}},
+            {"$set": {
+                "stato": liq.CONFERMATA,
+                "data_conferma": ora,
+                "confermata_da": actor,
+                "updated_at": ora,
+            }},
+        )
+        if conferma_res.modified_count != 1:
+            await _annulla_conferma_parziale()
+            raise HTTPException(
+                status_code=409,
+                detail="Liquidazione non confermata: stato modificato durante l'operazione",
+            )
+    except HTTPException:
+        raise
+    except Exception as exc:
+        await _annulla_conferma_parziale()
+        logger.exception("Conferma IVA annullata: liquidazione non aggiornata")
+        raise HTTPException(
+            status_code=500,
+            detail="Liquidazione non confermata: salvataggio finale non riuscito",
+        ) from exc
+    doc.update({"stato": liq.CONFERMATA, "data_conferma": ora})
+    return {
+        "success": True, "liquidazione": doc,
+        "fatture_marcate": marcate, "fatture_gia_utilizzate": [],
+    }
+
+
+@router.post("/liquidazioni/{liq_id}/riapri")
+async def riapri_liquidazione(
+    liq_id: str,
+    motivo: str = Query("Riapertura", description="Motivazione obbligatoria (§19)"),
+    current_user: Optional[Dict[str, Any]] = Depends(get_current_user),
+) -> Dict[str, Any]:
+    """Riapre una liquidazione confermata liberando l'IVA delle sue fatture
+    (torna disponibile per un nuovo calcolo)."""
+    db = Database.get_db()
+    doc = await db[COLL_LIQ].find_one({"id": liq_id}, {"_id": 0})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Liquidazione non trovata")
+    if doc.get("stato") not in (liq.CONFERMATA, liq.TRASMESSA):
+        raise HTTPException(status_code=409, detail="Solo una liquidazione confermata può essere riaperta")
+
+    actor = _utente_autenticato(current_user)
+    if not motivo or not motivo.strip():
+        raise HTTPException(status_code=422, detail="La motivazione della riapertura e obbligatoria")
+    liberate = await _libera_fatture(db, liq_id, doc["periodo"], actor, motivo.strip())
+    ora = datetime.now(timezone.utc).isoformat()
+    await db[COLL_LIQ].update_one(
+        {"id": liq_id},
+        {"$set": {"stato": liq.RIAPERTA, "motivo_rettifica": motivo.strip(),
+                  "riaperta_da": actor, "updated_at": ora}},
+    )
+    doc.update({"stato": liq.RIAPERTA})
+    return {"success": True, "liquidazione": doc, "fatture_liberate": liberate}
+
+
+async def _libera_fatture(db, liq_id: str, periodo: str, utente: str, motivo: str) -> int:
+    """Sgancia dalle fatture l'utilizzo IVA di questa liquidazione."""
+    ora = datetime.now(timezone.utc).isoformat()
+    liberate = 0
+    async for inv in db[COLL].find({"liquidazione_id": liq_id}, {"_id": 0, "id": 1, "importo_iva_utilizzato": 1}):
+        res = await db[COLL].update_one(
+            {"id": inv["id"], "liquidazione_id": liq_id},
+            {"$set": {
+                "iva_utilizzata": False,
+                "periodo_iva_utilizzato": None,
+                "liquidazione_id": None,
+                "importo_iva_utilizzato": 0,
+                "data_utilizzo_iva": None,
+                "stato_detrazione_iva": "DA_INSERIRE",
+                "disponibile_per_nuovo_calcolo": True,
+            }},
+        )
+        if res.modified_count:
+            liberate += 1
+            await db[COLL_MOV].insert_one({
+                "id": str(uuid.uuid4()),
+                "fattura_id": inv["id"],
+                "tipo_movimento": liq.MOV_RETTIFICA,
+                "periodo": periodo,
+                "importo_iva": inv.get("importo_iva_utilizzato"),
+                "liquidazione_id": liq_id,
+                "motivazione": motivo,
+                "created_at": ora,
+                "created_by": utente,
+            })
+    return liberate
+
+
+@router.post("/liquidazioni/{liq_id}/rettifica")
+async def rettifica_liquidazione(
+    liq_id: str,
+    motivo: str = Query(..., description="Motivazione obbligatoria della rettifica (§19)"),
+    iva_vendite: Optional[float] = Query(None),
+    current_user: Optional[Dict[str, Any]] = Depends(get_current_user),
+) -> Dict[str, Any]:
+    """Rettifica una liquidazione confermata: la marca RETTIFICATA, libera le
+    sue fatture e produce una NUOVA versione ricalcolata (§13)."""
+    db = Database.get_db()
+    doc = await db[COLL_LIQ].find_one({"id": liq_id}, {"_id": 0})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Liquidazione non trovata")
+    if doc.get("stato") not in (liq.CONFERMATA, liq.TRASMESSA):
+        raise HTTPException(status_code=409, detail="Solo una liquidazione confermata può essere rettificata")
+
+    periodo = doc["periodo"]
+    actor = _utente_autenticato(current_user)
+    if not motivo or not motivo.strip():
+        raise HTTPException(status_code=422, detail="La motivazione della rettifica e obbligatoria")
+    await _libera_fatture(db, liq_id, periodo, actor, motivo.strip())
+    ora = datetime.now(timezone.utc).isoformat()
+    await db[COLL_LIQ].update_one(
+        {"id": liq_id},
+        {"$set": {"stato": liq.RETTIFICATA, "motivo_rettifica": motivo.strip(),
+                   "rettificata_da": actor, "updated_at": ora}},
+    )
+
+    # Nuova versione ricalcolata (bozza di lavoro)
+    nuovo_id = str(uuid.uuid4())
+    ultima = await db[COLL_LIQ].find_one({"periodo": periodo}, sort=[("versione", -1)])
+    versione = int(ultima.get("versione") or 0) + 1 if ultima else 1
+    iva_vendite_calcolata = (
+        await _iva_vendite_corrispettivi(db, periodo)
+        if iva_vendite is None
+        else round(float(iva_vendite), 2)
+    )
+    nuovo = await _componi_liquidazione(db, periodo, iva_vendite_calcolata, versione, nuovo_id)
+    nuovo["created_at"] = ora
+    nuovo["motivo_rettifica"] = motivo.strip()
+    nuovo["iva_vendite_fonte"] = "corrispettivi_xml" if iva_vendite is None else "override_manuale"
+    await db[COLL_LIQ].insert_one(nuovo)
+    nuovo.pop("_id", None)
+    return {"success": True, "rettificata": liq_id, "nuova_liquidazione": nuovo}
+
+
+@router.get("/liquidazioni")
+async def lista_liquidazioni(
+    anno: Optional[int] = Query(None),
+    limit: int = Query(200, le=2000),
+) -> Dict[str, Any]:
+    """Elenco liquidazioni (tutte le versioni), ordinate per periodo/versione."""
+    db = Database.get_db()
+    query: Dict[str, Any] = {}
+    if anno:
+        query["periodo"] = {"$regex": f"^{anno}"}
+    docs = await db[COLL_LIQ].find(query, {"_id": 0}).sort(
+        [("periodo", -1), ("versione", -1)]
+    ).to_list(limit)
+    return {"liquidazioni": docs, "totale": len(docs)}
+
+
+@router.get("/liquidazioni/{periodo}")
+async def liquidazione_periodo(periodo: str) -> Dict[str, Any]:
+    """Ultima versione della liquidazione del periodo + tutte le versioni."""
+    db = Database.get_db()
+    versioni = await db[COLL_LIQ].find({"periodo": periodo}, {"_id": 0}).sort(
+        "versione", -1
+    ).to_list(100)
+    corrente = versioni[0] if versioni else None
+    return {"periodo": periodo, "corrente": corrente, "versioni": versioni}
+
+
+# ─── Riepilogo/calcolo annuale e anomalie (Fase 4) ──────────────────────────
+
+async def _fatture_anno(db, anno: int) -> List[Dict[str, Any]]:
+    proj = {
+        "_id": 0, "id": 1, "invoice_number": 1, "supplier_name": 1,
+        "invoice_date": 1,
+        "data_documento": 1, "data_operazione": 1, "data_ricezione": 1,
+        "periodo_iva_attribuito": 1, "periodo_iva_utilizzato": 1,
+        "iva": 1, "iva_detraibile": 1, "iva_utilizzata": 1,
+        "stato_detrazione_iva": 1, "tipo_documento": 1, "annullata": 1,
+    }
+    # Fatture attribuite all'anno + fatture con periodo nullo la cui data
+    # (documento/ricezione) cade nell'anno: senza questo ramo la categoria
+    # "IVA da verificare" del §16 non le contava mai.
+    #
+    # Il secondo ramo pretendeva `stato_detrazione_iva == "DA_VERIFICARE"`, e
+    # cosi' una fattura che non e' MAI passata dal motore — periodo nullo E
+    # stato assente — non rientrava ne' nel primo ramo ne' nel secondo:
+    # spariva dal riepilogo annuale senza comparire da nessuna parte.
+    # Misurato il 19/09/2026: 366 fatture attive in quello stato, per
+    # 28.742,08 EUR di IVA, tutte con data entro il 20/05/2026. Lo stato
+    # assente vale come "da verificare": e' il caso piu' da verificare di
+    # tutti, non uno da nascondere.
+    #
+    # Il ramo sulla data deve guardare anche `invoice_date`, che e' il campo
+    # che l'import scrive per primo: in produzione al 19/09/2026 lo hanno 860
+    # fatture attive su 873, contro le 823 che hanno `data_documento`, e **50
+    # hanno solo quello**. Nessuna fattura e' davvero senza data — sono le
+    # stesse che il motore non ha mai toccato, quindi `data_documento` (che
+    # `campi_iva_da_fattura` deriva da `invoice_date` e riscrive) non e' mai
+    # stato popolato. Guardare le sole due date derivate significa perdere
+    # proprio le fatture che il riepilogo deve segnalare.
+    # Solo fatture attive (audit 27/09/2026): le copie archiviate o in
+    # collisione contavano due volte la stessa IVA.
+    return await db[COLL].find(
+        {**FILTRO_FATTURA_ATTIVA, "$or": [
+            {"periodo_iva_attribuito": {"$regex": f"^{anno}"}},
+            {"periodo_iva_attribuito": {"$in": [None, ""]},
+             "stato_detrazione_iva": {"$in": [None, "", "DA_VERIFICARE"]},
+             "$or": [
+                 {"data_documento": {"$regex": f"^{anno}"}},
+                 {"data_ricezione": {"$regex": f"^{anno}"}},
+                 {"invoice_date": {"$regex": f"^{anno}"}},
+             ]},
+        ]},
+        proj,
+    ).to_list(20000)
+
+
+@router.get("/dashboard/{anno}/{mese}")
+@istantanea(ttl=300)
+async def dashboard_iva_mensile(anno: int, mese: int) -> Dict[str, Any]:
+    """Riquadri IVA del mese (§21): attribuita, ricevuta-ma-attribuita-al-mese-
+    precedente, utilizzata, non utilizzata, rinviata, indetraibile, credito
+    precedente, saldo e stato della liquidazione."""
+    db = Database.get_db()
+    periodo = f"{anno}-{mese:02d}"
+    prev = _periodo_precedente(periodo)
+
+    def _somma_iva(docs):
+        # Le note di credito riducono l'IVA (audit 27/09/2026, punto 8).
+        return round(sum(_iva_detraibile_fattura_con_segno(d) for d in docs), 2)
+
+    proj = {"_id": 0, "iva": 1, "iva_detraibile": 1, "stato_detrazione_iva": 1,
+            "tipo_documento": 1}
+    attive = FILTRO_FATTURA_ATTIVA
+    attribuite = await db[COLL].find(
+        {"periodo_iva_attribuito": periodo, **attive}, proj).to_list(20000)
+    utilizzate = await db[COLL].find(
+        {"periodo_iva_utilizzato": periodo, **attive}, proj).to_list(20000)
+    rinviate = await db[COLL].find(
+        {"periodo_iva_attribuito": periodo, "stato_detrazione_iva": "RINVIATA", **attive}, proj
+    ).to_list(20000)
+    indetraibili = await db[COLL].find(
+        {"periodo_iva_attribuito": periodo, "stato_detrazione_iva": "INDETRAIBILE", **attive}, proj
+    ).to_list(20000)
+    # ricevute NEL mese ma attribuite al mese PRECEDENTE (regola entro il 15)
+    ricevute_attr_prec = await db[COLL].find(
+        {"data_ricezione": {"$regex": f"^{periodo}"}, "periodo_iva_attribuito": prev, **attive},
+        proj,
+    ).to_list(20000)
+
+    non_utilizzate = [
+        d for d in attribuite
+        if d.get("stato_detrazione_iva") in liq.STATI_DETRAZIONE_AMMESSI
+    ]
+
+    from app.services.iva_liquidation_query import get_iva_period_snapshot
+    snapshot = await get_iva_period_snapshot(db, anno=anno, mese=mese)
+    iva_vendite_corr = snapshot.get("iva_vendite")
+    from app.services.iva_f24_verifica import verifica_versamento_iva
+
+    versamento = await verifica_versamento_iva(
+        db,
+        anno=anno,
+        mese=mese,
+        debito_liquidazione=snapshot.get("debito_periodo"),
+    )
+
+    return {
+        "periodo": periodo,
+        "iva_acquisti_attribuita": _somma_iva(attribuite),
+        "iva_ricevuta_attribuita_mese_precedente": _somma_iva(ricevute_attr_prec),
+        "iva_utilizzata": _somma_iva(utilizzate),
+        "iva_non_utilizzata": _somma_iva(non_utilizzate),
+        "iva_rinviata": _somma_iva(rinviate),
+        "iva_indetraibile": _somma_iva(indetraibili),
+        "credito_precedente": snapshot.get("credito_precedente"),
+        "iva_vendite": snapshot.get("iva_vendite"),
+        "iva_vendite_corrispettivi": iva_vendite_corr,
+        "iva_vendite_fonte": snapshot.get("fonte"),
+        "saldo": snapshot.get("saldo"),
+        "stato_liquidazione": snapshot.get("stato_calcolo"),
+        "attendibile": snapshot.get("attendibile"),
+        "motivi": snapshot.get("motivi") or [],
+        "giorni_senza_corrispettivo": snapshot.get("giorni_senza_corrispettivo") or [],
+        "giorni_con_corrispettivo": snapshot.get("giorni_con_corrispettivo"),
+        "giorni_mese": snapshot.get("giorni_mese"),
+        "scadenza_nominale": snapshot.get("scadenza_nominale"),
+        "scadenza_legale": snapshot.get("scadenza_legale"),
+        "conteggi_iva": snapshot.get("conteggi"),
+        "fonte_calcolo": snapshot.get("fonte_calcolo"),
+        "versamento_iva": versamento,
+    }
+
+
+@router.get("/versamento/{anno}/{mese}")
+async def verifica_versamento_iva_mensile(anno: int, mese: int) -> Dict[str, Any]:
+    """Verifica F24 IVA, quietanza e prova bancaria del periodo mensile."""
+    if mese not in range(1, 13):
+        raise HTTPException(status_code=422, detail="Mese non valido")
+    db = Database.get_db()
+    from app.services.iva_liquidation_query import get_iva_period_snapshot
+    snapshot = await get_iva_period_snapshot(db, anno=anno, mese=mese)
+    from app.services.iva_f24_verifica import verifica_versamento_iva
+
+    result = await verifica_versamento_iva(
+        db,
+        anno=anno,
+        mese=mese,
+        debito_liquidazione=snapshot.get("debito_periodo"),
+    )
+    result["stato_calcolo_iva"] = snapshot.get("stato_calcolo")
+    result["fonte_calcolo_iva"] = snapshot.get("fonte_calcolo")
+    return result
+
+
+@router.get("/riepilogo-annuale/{anno}")
+@istantanea(ttl=300)
+async def riepilogo_annuale(anno: int) -> Dict[str, Any]:
+    """Riepilogo IVA dell'anno per categoria + calcolo annuale (§16-17)."""
+    db = Database.get_db()
+    fatture = await _fatture_anno(db, anno)
+    liquidazioni = await db[COLL_LIQ].find(
+        {"periodo": {"$regex": f"^{anno}"}, "stato": {"$in": [liq.CONFERMATA, liq.TRASMESSA]}},
+        {"_id": 0},
+    ).to_list(1000)
+    return {
+        "anno": anno,
+        "categorie": riep.riepilogo_categorie(fatture),
+        "calcolo_annuale": riep.calcolo_annuale(fatture, liquidazioni),
+    }
+
+
+@router.get("/anomalie")
+@istantanea(ttl=300)
+async def anomalie_iva(
+    anno: int = Query(...),
+    mese_corrente: Optional[str] = Query(None, description="'YYYY-MM' per l'avviso 'non usata da mesi'"),
+) -> Dict[str, Any]:
+    """Controlli automatici (§18): anomalie bloccanti e di avviso sull'anno."""
+    db = Database.get_db()
+    fatture = await _fatture_anno(db, anno)
+    res = riep.rileva_anomalie(fatture, mese_corrente)
+    return {
+        "anno": anno,
+        "bloccanti": res["bloccanti"],
+        "avvisi": res["avvisi"],
+        "totale_bloccanti": len(res["bloccanti"]),
+        "totale_avvisi": len(res["avvisi"]),
+    }
+
+
+# ─── Azioni manuali sulle fatture (Fase 4, §19) ─────────────────────────────
+
+# Ogni azione richiede motivazione; l'IVA già utilizzata è protetta (va prima
+# riaperta la liquidazione). Ogni cambio è tracciato (vecchio→nuovo + movimento).
+async def _azione_stato_fattura(
+    fid: str, nuovo_stato: str, tipo_movimento: str, motivo: str, utente: str,
+    extra_set: Optional[Dict[str, Any]] = None, consenti_se_utilizzata: bool = False,
+) -> Dict[str, Any]:
+    if not motivo or not motivo.strip():
+        raise HTTPException(status_code=422, detail="La motivazione e obbligatoria")
+    motivo = motivo.strip()
+    db = Database.get_db()
+    inv = await db[COLL].find_one({"id": fid}, {"_id": 0})
+    if not inv:
+        raise HTTPException(status_code=404, detail="Fattura non trovata")
+    if inv.get("iva_utilizzata") is True and not consenti_se_utilizzata:
+        raise HTTPException(
+            status_code=409,
+            detail="IVA già utilizzata in una liquidazione: riapri la liquidazione prima di modificarla.",
+        )
+    ora = datetime.now(timezone.utc).isoformat()
+    vecchio = inv.get("stato_detrazione_iva")
+    campi = {"stato_detrazione_iva": nuovo_stato, "updated_at": ora}
+    if extra_set:
+        campi.update(extra_set)
+    await db[COLL].update_one({"id": fid}, {"$set": campi})
+    await db[COLL_MOV].insert_one({
+        "id": str(uuid.uuid4()),
+        "fattura_id": fid,
+        "tipo_movimento": tipo_movimento,
+        "periodo": campi.get("periodo_iva_attribuito") or inv.get("periodo_iva_attribuito"),
+        "importo_iva": _iva_detraibile_fattura(inv),
+        "liquidazione_id": None,
+        "motivazione": motivo,
+        "valore_precedente": vecchio,
+        "valore_nuovo": nuovo_stato,
+        "created_at": ora,
+        "created_by": utente,
+    })
+    return {"success": True, "fattura_id": fid, "stato_precedente": vecchio, "stato_nuovo": nuovo_stato}
+
+
+@router.post("/fatture/{fid}/escludi")
+async def escludi_fattura(
+    fid: str, motivo: str = Query(...),
+    current_user: Optional[Dict[str, Any]] = Depends(get_current_user),
+):
+    """Esclude manualmente l'IVA della fattura dal calcolo (§19)."""
+    return await _azione_stato_fattura(
+        fid, "ESCLUSA", liq.MOV_ESCLUSIONE, motivo, _utente_autenticato(current_user),
+        extra_set={"disponibile_per_nuovo_calcolo": False, "motivo_esclusione": motivo},
+    )
+
+
+@router.post("/fatture/{fid}/includi")
+async def includi_fattura(
+    fid: str, motivo: str = Query("Reinclusa manualmente"),
+    current_user: Optional[Dict[str, Any]] = Depends(get_current_user),
+):
+    """Reinserisce nel calcolo una fattura esclusa/rinviata (§19)."""
+    return await _azione_stato_fattura(
+        fid, "DA_INSERIRE", liq.MOV_ATTRIBUZIONE, motivo, _utente_autenticato(current_user),
+        extra_set={"disponibile_per_nuovo_calcolo": True, "motivo_esclusione": None},
+    )
+
+
+@router.post("/fatture/{fid}/rinvia")
+async def rinvia_fattura(
+    fid: str, motivo: str = Query(...),
+    current_user: Optional[Dict[str, Any]] = Depends(get_current_user),
+):
+    """Rinvia l'IVA a un periodo successivo (§19)."""
+    return await _azione_stato_fattura(
+        fid, "RINVIATA", liq.MOV_ESCLUSIONE, motivo, _utente_autenticato(current_user),
+        extra_set={"disponibile_per_nuovo_calcolo": True},
+    )
+
+
+@router.post("/fatture/{fid}/indetraibile")
+async def indetraibile_fattura(
+    fid: str, motivo: str = Query(...),
+    current_user: Optional[Dict[str, Any]] = Depends(get_current_user),
+):
+    """Segna l'IVA come indetraibile per natura/limitazione (§19)."""
+    return await _azione_stato_fattura(
+        fid, "INDETRAIBILE", liq.MOV_RETTIFICA, motivo, _utente_autenticato(current_user),
+        extra_set={"disponibile_per_nuovo_calcolo": False},
+    )
+
+
+@router.post("/fatture/{fid}/recupero-annuale")
+async def recupero_annuale_fattura(
+    fid: str, motivo: str = Query(...),
+    current_user: Optional[Dict[str, Any]] = Depends(get_current_user),
+):
+    """Segna l'IVA come recuperata nella dichiarazione annuale (§19)."""
+    return await _azione_stato_fattura(
+        fid, "RECUPERATA_IN_DICHIARAZIONE_ANNUALE", liq.MOV_RECUPERO_ANNUALE, motivo, _utente_autenticato(current_user),
+    )
+
+
+@router.post("/fatture/{fid}/correggi-periodo")
+async def correggi_periodo_fattura(
+    fid: str, periodo: str = Query(..., description="Nuovo periodo 'YYYY-MM'"),
+    motivo: str = Query(...),
+    current_user: Optional[Dict[str, Any]] = Depends(get_current_user),
+):
+    """Corregge manualmente il periodo IVA attribuito (§19)."""
+    try:
+        datetime.strptime(periodo, "%Y-%m")
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=422, detail="Periodo non valido: usare YYYY-MM") from exc
+    return await _azione_stato_fattura(
+        fid, "DA_INSERIRE", liq.MOV_RETTIFICA, motivo, _utente_autenticato(current_user),
+        extra_set={"periodo_iva_attribuito": periodo, "regola_iva_applicata": "CORREZIONE_MANUALE"},
+    )
+
+
+# ─── Confronto col commercialista (LIPE + prospetti F24) ────────────────────
+# La LIPE e' il documento canonico dell'IVA mensile: quando diverge dal nostro
+# numero, quello giusto e' il suo. Il confronto non aggiusta niente.
+
+@router.post("/lipe/importa", summary="Rilegge le LIPE archiviate e ne deposita i periodi")
+async def lipe_importa(
+    dry_run: bool = Query(True, description="Se True non scrive: dice solo cosa depositerebbe"),
+    current_user: Optional[Dict[str, Any]] = Depends(get_current_user),
+) -> Dict[str, Any]:
+    """Le LIPE inventariate si riscaricano da Drive, si leggono e i loro
+    periodi finiscono in `lipe_periodi`, uno per mese.
+
+    Un periodo la cui aritmetica a segni non torna (`VP6 = VP4 - VP5`,
+    `VP14 = VP6 + VP7 - VP8 - VP9 - VP10 - VP11 + VP12 - VP13`) non viene
+    depositato: finisce fra gli scartati.
+    Una comunicazione ritrasmessa (protocollo piu' alto) sostituisce la
+    precedente sullo stesso periodo.
+    """
+    richiedi_admin(current_user)
+    from app.services import lipe_deposito
+
+    return await lipe_deposito.importa_lipe_archiviate(Database.get_db(), dry_run=dry_run)
+
+
+@router.get("/confronto-commercialista/{anno}", summary="IVA mensile: gestionale vs LIPE vs F24")
+async def confronto_commercialista(anno: int) -> Dict[str, Any]:
+    """Dodici righe, tre colonne: il nostro calcolo, la LIPE del
+    commercialista e il prospetto F24 effettivamente versato.
+
+    Un mese che non sappiamo calcolare non e' uno scostamento, e una LIPE a
+    credito non deve avere nessun F24: l'assenza del versamento e' corretta.
+    """
+    from app.services.confronto_iva_commercialista import confronto_mensile
+
+    return await confronto_mensile(Database.get_db(), anno)

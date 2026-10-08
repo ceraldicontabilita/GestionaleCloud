@@ -1,0 +1,868 @@
+import React, { useEffect, useMemo, useState } from 'react';
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  Cell,
+} from 'recharts';
+import {
+  Wallet,
+  ShoppingCart,
+  Banknote,
+  CreditCard,
+  Landmark,
+  Receipt,
+  CalendarClock,
+  TrendingUp,
+  TrendingDown,
+  HelpCircle,
+  Zap,
+  Clock3,
+} from 'lucide-react';
+import api from '../api';
+import { aggiornatoAlle, getConCopia } from '../lib/cacheGuscio';
+import { useAnnoGlobale, AnnoSelector } from '../contexts/AnnoContext';
+import { formatEuro, COLORS } from '../lib/utils';
+import { euroOppure, dataOppure } from '../lib/vista';
+import { PageLayout } from '../components/PageLayout';
+import AggiornamentoDati from '../components/AggiornamentoDati';
+
+/**
+ * DASHBOARD — ricostruita da zero (11/07/2026, richiesta utente).
+ *
+ * Filosofia: la scegli TU. In cima selezioni Anno e Mese (o "Tutto l'anno")
+ * e OGNI numero della pagina si riferisce al periodo che hai scelto. Non c'è
+ * più una parata di sezioni fisse che decide cosa devi leggere: ci sono card
+ * separate, una per domanda, e delle scorciatoie-domanda che portano la
+ * risposta in evidenza in cima.
+ *
+ * Tutti i dati sono filtrabili per mese lato backend:
+ *  - Fatturato/Costi/Margine → /api/controllo-gestione/costi-ricavi?anno&mese
+ *  - Cassa/Banca            → /api/prima-nota/stats?data_da&data_a
+ *  - IVA                    → /api/verifica-coerenza/iva/{anno}/{mese}
+ *                             (tutto l'anno: /confronto-iva-completo/{anno})
+ *  - Scadenze/F24           → /api/scadenze?anno&mese
+ *  - Grafico 12 mesi        → /api/dashboard/trend-mensile?anno
+ */
+
+const MESI = [
+  'Gennaio', 'Febbraio', 'Marzo', 'Aprile', 'Maggio', 'Giugno',
+  'Luglio', 'Agosto', 'Settembre', 'Ottobre', 'Novembre', 'Dicembre',
+];
+
+const ultimoGiorno = (anno, mese) => new Date(anno, mese, 0).getDate();
+
+export const DATO_NON_DISPONIBILE = 'Dato non disponibile';
+
+/**
+ * Stato della card IVA. Un saldo che il backend non sa calcolare (mese con
+ * dati mancanti, IVA detraibile non classificata) arriva null: e' «Dato non
+ * disponibile», mai 0,00 con «Nessuna IVA da versare».
+ */
+export function statoIva(ivaDaVersare, ivaACredito) {
+  if (ivaDaVersare == null && ivaACredito == null) return { tipo: 'non_disponibile', valore: null };
+  if (ivaDaVersare != null && ivaDaVersare > 0) return { tipo: 'da_versare', valore: ivaDaVersare };
+  if (ivaACredito != null && ivaACredito > 0) return { tipo: 'a_credito', valore: ivaACredito };
+  return { tipo: 'zero', valore: 0 };
+}
+
+export default function Dashboard() {
+  const { anno } = useAnnoGlobale();
+  // 0 = tutto l'anno; 1..12 = mese singolo. È lo stato che comanda tutto.
+  const [mese, setMese] = useState(0);
+
+  const [costiRicavi, setCostiRicavi] = useState(null);
+  const [primaNota, setPrimaNota] = useState(null);
+  const [iva, setIva] = useState(null);
+  const [scadenze, setScadenze] = useState(null);
+  const [trend, setTrend] = useState(null);
+  const [energia, setEnergia] = useState(null);
+  const [erroreEnergia, setErroreEnergia] = useState(false);
+
+  const [loading, setLoading] = useState(true);
+  const [copiaAt, setCopiaAt] = useState(null);
+  const [erroriApi, setErroriApi] = useState([]);
+  // Scorciatoia-domanda selezionata (mostra la risposta grande in cima).
+  const [domanda, setDomanda] = useState(null);
+
+  const etichettaPeriodo = mese ? `${MESI[mese - 1]} ${anno}` : `tutto il ${anno}`;
+
+  useEffect(() => {
+    let attivo = true;
+    const aggiorna = async () => {
+      try {
+        const res = await api.get('/api/dashboard/fascia-energia');
+        if (attivo) {
+          setEnergia(res.data);
+          setErroreEnergia(false);
+        }
+      } catch (e) {
+        if (attivo) setErroreEnergia(true);
+      }
+    };
+    aggiorna();
+    const timer = window.setInterval(aggiorna, 60 * 60 * 1000);
+    return () => {
+      attivo = false;
+      window.clearInterval(timer);
+    };
+  }, []);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    const signal = controller.signal;
+    const vivo = () => !signal.aborted;
+    const falliti = [];
+    const conErrore = nome => e => {
+      if (vivo()) {
+        falliti.push(nome);
+        console.warn(`Dashboard: "${nome}" non disponibile:`, e?.message || e);
+      }
+      return { data: null };
+    };
+
+    // Range date del periodo scelto (mese singolo o intero anno).
+    const dataDa = mese ? `${anno}-${String(mese).padStart(2, '0')}-01` : `${anno}-01-01`;
+    const dataA = mese
+      ? `${anno}-${String(mese).padStart(2, '0')}-${String(ultimoGiorno(anno, mese)).padStart(2, '0')}`
+      : `${anno}-12-31`;
+
+    // IVA e scadenze cambiano endpoint a seconda che ci sia il mese o no.
+    const ivaReq = mese
+      ? api.get(`/api/verifica-coerenza/iva/${anno}/${mese}`, { signal }).catch(conErrore('IVA'))
+      : api
+          .get(`/api/verifica-coerenza/confronto-iva-completo/${anno}`, { signal })
+          .catch(conErrore('IVA'));
+    // Anche la vista annuale deve rispettare l'anno globale. L'endpoint
+    // "prossime" e' relativo a oggi e contaminava il 2025 con scadenze 2026.
+    const scadReq = api
+      .get(`/api/scadenze?anno=${anno}${mese ? `&mese=${mese}` : ''}&include_passate=true&limit=30`, { signal })
+      .catch(conErrore('scadenze'));
+
+    // La copia di questa sessione si vede subito, con l'ora; le risposte
+    // fresche la sostituiscono.
+    const daCopia = setter => (copia, at) => {
+      if (!vivo() || copia == null) return;
+      setter(copia);
+      setCopiaAt(prec => prec || at);
+      setLoading(false);
+    };
+
+    (async () => {
+      setLoading(true);
+      const [crRes, pnRes, ivaRes, scadRes, trendRes] = await Promise.all([
+        getConCopia(
+          `/api/controllo-gestione/costi-ricavi?anno=${anno}${mese ? `&mese=${mese}` : ''}`,
+          { signal }, daCopia(setCostiRicavi),
+        ).catch(conErrore('fatturato e costi')),
+        getConCopia(
+          `/api/prima-nota/stats?data_da=${dataDa}&data_a=${dataA}`, { signal }, daCopia(setPrimaNota),
+        ).catch(conErrore('cassa e banca')),
+        ivaReq,
+        scadReq,
+        getConCopia(
+          `/api/dashboard/trend-mensile?anno=${anno}`, { signal }, daCopia(setTrend),
+        ).catch(conErrore('grafico annuale')),
+      ]);
+      if (!vivo()) return;
+      setCopiaAt(null);
+      setCostiRicavi(crRes.data);
+      setPrimaNota(pnRes.data);
+      setIva(ivaRes.data);
+      setScadenze(scadRes.data);
+      setTrend(trendRes.data);
+      setErroriApi(falliti);
+      setLoading(false);
+    })();
+
+    return () => controller.abort();
+  }, [anno, mese]);
+
+  // ── Valori normalizzati per le card (difensivi sulla forma dei dati) ──
+  const ricavi = costiRicavi?.ricavi?.totale ?? null;
+  const costi = costiRicavi?.costi ?? null;
+  const margine = costiRicavi?.margine ?? null;
+  const cassa = primaNota?.cassa ?? null;
+  const banca = primaNota?.banca ?? null;
+  const sumup = primaNota?.sumup ?? null;
+  const coperturaCorrispettivi = costiRicavi?.copertura_corrispettivi ?? null;
+  const sumupCassaLive = primaNota?.sumup_cassa_live ?? null;
+
+  // IVA: forma diversa fra mese (verifica) e anno (confronto completo).
+  const ivaDaVersare = mese
+    ? iva?.saldo?.iva_da_versare ?? null
+    : iva?.totali?.saldo_annuale != null
+      ? Math.max(iva.totali.saldo_annuale, 0)
+      : null;
+  const ivaACredito = mese
+    ? iva?.saldo?.iva_a_credito ?? null
+    : iva?.totali?.saldo_annuale != null
+      ? Math.max(-iva.totali.saldo_annuale, 0)
+      : null;
+
+  // ── Scorciatoie-domanda: la risposta grande in cima al periodo scelto ──
+  const RISPOSTE = useMemo(
+    () => [
+      {
+        id: 'incassato',
+        label: 'Quanti ricavi ho registrato?',
+        Icon: Wallet,
+        colore: COLORS.success,
+        valore: ricavi,
+        testo: v => `Ricavi imponibili registrati: ${formatEuro(v)} (${etichettaPeriodo}).`,
+      },
+      {
+        id: 'speso',
+        label: 'Quanto ho speso?',
+        Icon: ShoppingCart,
+        colore: COLORS.danger,
+        valore: costi?.totale ?? null,
+        testo: v => `Hai speso ${formatEuro(v)} (${etichettaPeriodo}).`,
+      },
+      {
+        id: 'utile',
+        label: 'Quanto mi è rimasto?',
+        Icon: TrendingUp,
+        colore: COLORS.primary,
+        valore: margine?.importo ?? null,
+        testo: v =>
+          `${v >= 0 ? 'Utile' : 'Perdita'} di ${formatEuro(Math.abs(v))} (${etichettaPeriodo}${
+            margine?.percentuale != null ? `, margine ${margine.percentuale}%` : ''
+          }).`,
+      },
+      {
+        id: 'cassa',
+        label: 'Saldo movimenti cassa?',
+        Icon: Banknote,
+        colore: COLORS.success,
+        valore: cassa?.saldo ?? null,
+        testo: v => `Saldo di cassa ${formatEuro(v)} nel periodo (${etichettaPeriodo}).`,
+      },
+      {
+        id: 'banca',
+        label: 'Saldo movimenti BPM?',
+        Icon: Landmark,
+        colore: COLORS.info,
+        valore: banca?.saldo ?? null,
+        testo: v => `Movimenti netti Banca BPM ${formatEuro(v)} nel periodo (${etichettaPeriodo}); nessun riporto storico presunto.`,
+      },
+      {
+        id: 'iva',
+        label: 'Quanta IVA devo?',
+        Icon: Receipt,
+        colore: COLORS.warning,
+        valore: ivaDaVersare,
+        testo: v =>
+          v > 0
+            ? `IVA da versare ${formatEuro(v)} (${etichettaPeriodo}).`
+            : `Nessuna IVA da versare${
+                ivaACredito ? `, a credito ${formatEuro(ivaACredito)}` : ''
+              } (${etichettaPeriodo}).`,
+      },
+    ],
+    [ricavi, costi, margine, cassa, banca, ivaDaVersare, ivaACredito, etichettaPeriodo]
+  );
+
+  const rispostaAttiva = RISPOSTE.find(r => r.id === domanda);
+  const cardIva = statoIva(ivaDaVersare, ivaACredito);
+
+  return (
+    <PageLayout>
+      {/* ── BARRA FILTRI: Anno (globale) + Mese ── */}
+      <div style={STILI.barraFiltri} data-testid="dashboard-filtri">
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={STILI.etichetta}>Anno</span>
+          <AnnoSelector />
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={STILI.etichetta}>Mese</span>
+          <select
+            value={mese}
+            onChange={e => {
+              setMese(Number(e.target.value));
+              setDomanda(null);
+            }}
+            data-testid="dashboard-mese"
+            style={STILI.selectMese}
+          >
+            <option value={0}>Tutto l'anno</option>
+            {MESI.map((m, i) => (
+              <option key={m} value={i + 1}>
+                {m}
+              </option>
+            ))}
+          </select>
+        </div>
+        <span style={STILI.periodoAttivo}>
+          Stai guardando: <strong>{etichettaPeriodo}</strong>
+        </span>
+      </div>
+
+      {/* ── SCORCIATOIE-DOMANDA ── */}
+      <div style={STILI.domandeWrap} data-testid="dashboard-domande">
+        <span style={{ ...STILI.etichetta, display: 'flex', alignItems: 'center', gap: 5 }}>
+          <HelpCircle size={14} /> Chiedi:
+        </span>
+        {RISPOSTE.map(r => {
+          const attiva = domanda === r.id;
+          return (
+            <button
+              key={r.id}
+              onClick={() => setDomanda(attiva ? null : r.id)}
+              data-testid={`domanda-${r.id}`}
+              style={{
+                ...STILI.bottoneDomanda,
+                background: attiva ? r.colore : '#fff',
+                color: attiva ? '#fff' : COLORS.text,
+                borderColor: attiva ? r.colore : COLORS.border,
+              }}
+            >
+              <r.Icon size={14} />
+              {r.label}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Risposta grande alla domanda scelta */}
+      {rispostaAttiva && (
+        <div
+          style={{ ...STILI.rispostaBox, borderLeft: `5px solid ${rispostaAttiva.colore}` }}
+          data-testid="dashboard-risposta"
+        >
+          <rispostaAttiva.Icon size={26} style={{ color: rispostaAttiva.colore, flexShrink: 0 }} />
+          <div>
+            <div style={{ fontSize: 13, color: COLORS.textMuted }}>{rispostaAttiva.label}</div>
+            <div style={{ fontSize: 22, fontWeight: 800, color: COLORS.text }}>
+              {rispostaAttiva.valore == null
+                ? 'Dato non disponibile'
+                : rispostaAttiva.testo(rispostaAttiva.valore)}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {copiaAt && (
+        <div data-testid="dashboard-copia" style={{ fontSize: 12.5, color: COLORS.textMuted, margin: '0 0 8px' }}>
+          Copia {aggiornatoAlle(copiaAt)}: aggiornamento in corso…
+        </div>
+      )}
+
+      {/* Avviso endpoint in errore (distinto da "nessun dato") */}
+      {erroriApi.length > 0 && (
+        <div style={STILI.avvisoErrori} data-testid="dashboard-api-errors">
+          Sezioni non disponibili in questo momento (errore, non «nessun dato»):{' '}
+          {erroriApi.join(', ')}.
+        </div>
+      )}
+
+      <FasciaEnergiaCard energia={energia} errore={erroreEnergia} />
+
+      <AggiornamentoDati />
+
+      {loading ? (
+        <div style={STILI.loading}>Caricamento di {etichettaPeriodo}…</div>
+      ) : (
+        <div style={STILI.griglia}>
+          {/* FATTURATO / RICAVI */}
+          <CardBox titolo="Fatturato / Ricavi" Icon={Wallet} colore={COLORS.success}>
+            <ValoreGrande valore={ricavi} colore={COLORS.success} />
+            {costiRicavi?.ricavi && (
+              <Riga label="di cui corrispettivi" valore={costiRicavi.ricavi.corrispettivi} />
+            )}
+            <Nota>
+              Ricavi imponibili del periodo; IVA esclusa.
+              {coperturaCorrispettivi?.documenti > 0 && (
+                <> Fonte: {coperturaCorrispettivi.documenti} corrispettivi dal {coperturaCorrispettivi.dal} al {coperturaCorrispettivi.al}.</>
+              )}
+            </Nota>
+          </CardBox>
+
+          {/* ACQUISTI / COSTI */}
+          <CardBox titolo="Acquisti / Costi" Icon={ShoppingCart} colore={COLORS.danger}>
+            <ValoreGrande valore={costi?.totale} colore={COLORS.danger} />
+            {costi && (
+              <>
+                <Riga label="Personale (lordo buste)" valore={costi.personale} />
+                <Riga label="Fatture acquisto nette" valore={costi.acquisti_merce} />
+                <Riga label="Altri costi documentati" valore={costi.altre_uscite} />
+              </>
+            )}
+            {costi && (
+              <Nota>
+                {costi.personale == null
+                  ? `Personale: ${DATO_NON_DISPONIBILE.toLowerCase()}${
+                      costi.personale_motivo ? ` (${costi.personale_motivo})` : ''
+                    }.`
+                  : 'Personale = lordo delle buste paga.'}{' '}
+                Contributi a carico dell'azienda non disponibili: i costi sono sottostimati.
+              </Nota>
+            )}
+          </CardBox>
+
+          {/* MARGINE */}
+          <CardBox
+            titolo={margine?.tipo === 'perdita' ? 'Perdita' : 'Utile / Margine'}
+            Icon={margine?.tipo === 'perdita' ? TrendingDown : TrendingUp}
+            colore={margine?.tipo === 'perdita' ? COLORS.danger : COLORS.primary}
+          >
+            <ValoreGrande
+              valore={margine?.importo}
+              colore={margine?.tipo === 'perdita' ? COLORS.danger : COLORS.primary}
+            />
+            {margine?.percentuale != null && (
+              <Riga label="Margine %" valore={`${margine.percentuale}%`} raw />
+            )}
+            <Nota>
+              Ricavi meno costi del periodo.
+              {margine?.incompleto && ' Senza i contributi datoriali il margine è sovrastimato.'}
+            </Nota>
+          </CardBox>
+
+          {/* CASSA */}
+          <CardBox titolo="Cassa" Icon={Banknote} colore={COLORS.success}>
+            <ValoreGrande valore={cassa?.saldo} colore={COLORS.success} />
+            {cassa && (
+              <>
+                <Riga label="Entrate" valore={cassa.entrate} />
+                <Riga label="Uscite" valore={cassa.uscite} />
+                <Riga label="Movimenti" valore={cassa.movimenti} raw />
+              </>
+            )}
+            <Nota>
+              Saldo dei movimenti di cassa nel periodo.
+              {sumupCassaLive?.applicabile && (
+                <> La giornata SumUp corrente usa il dato live {euroOppure(sumupCassaLive.importo_corrente)} senza riscrivere la prova sorgente.</>
+              )}
+            </Nota>
+          </CardBox>
+
+          {/* BANCA */}
+          <CardBox titolo="Banca BPM — movimenti periodo" Icon={Landmark} colore={COLORS.info}>
+            <ValoreGrande valore={banca?.saldo} colore={COLORS.info} />
+            {banca && (
+              <>
+                <Riga label="Entrate" valore={banca.entrate} />
+                <Riga label="Uscite" valore={banca.uscite} />
+                <Riga label="Movimenti" valore={banca.movimenti} raw />
+              </>
+            )}
+            <Nota>
+              Entrate meno uscite BPM registrate in Prima Nota: non è il saldo certificato
+              dall'estratto conto.
+            </Nota>
+          </CardBox>
+
+          <CardBox titolo="Mastercard SumUp — movimenti periodo" Icon={CreditCard} colore={COLORS.primary}>
+            <ValoreGrande valore={sumup?.saldo} colore={COLORS.primary} />
+            {sumup && (
+              <>
+                <Riga label="Entrate" valore={sumup.entrate} />
+                <Riga label="Uscite" valore={sumup.uscite} />
+                <Riga label="Movimenti" valore={sumup.movimenti} raw />
+              </>
+            )}
+            <Nota>Conto Mastercard separato da Banca BPM e dai crediti verso SumUp.</Nota>
+          </CardBox>
+
+          {/* IVA */}
+          <CardBox titolo="IVA" Icon={Receipt} colore={COLORS.warning}>
+            {cardIva.tipo === 'da_versare' ? (
+              <>
+                <ValoreGrande valore={cardIva.valore} colore={COLORS.warning} />
+                <Nota>IVA da versare nel periodo.</Nota>
+              </>
+            ) : cardIva.tipo === 'a_credito' ? (
+              <>
+                <ValoreGrande valore={cardIva.valore} colore={COLORS.info} />
+                <Nota>IVA a credito nel periodo.</Nota>
+              </>
+            ) : cardIva.tipo === 'non_disponibile' ? (
+              <>
+                <ValoreGrande valore={null} colore={COLORS.textMuted} />
+                <Nota>
+                  Saldo IVA non calcolabile: mancano dati del periodo (liquidazione non
+                  calcolata o IVA detraibile da classificare).
+                </Nota>
+              </>
+            ) : (
+              <>
+                <ValoreGrande valore={0} colore={COLORS.textMuted} />
+                <Nota>Nessuna IVA da versare nel periodo.</Nota>
+              </>
+            )}
+          </CardBox>
+
+          {/* SCADENZE / F24 */}
+          <CardBox
+            titolo="Scadenze / F24"
+            Icon={CalendarClock}
+            colore={COLORS.warning}
+            fullWidth
+          >
+            {scadenze?.scadenze?.length ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {scadenze.scadenze.slice(0, 8).map((s, i) => (
+                  <div key={s.id || i} style={STILI.rigaScadenza}>
+                    <span style={{ fontWeight: 700, minWidth: 92 }}>{dataOppure(s.data)}</span>
+                    <span style={STILI.tagTipo}>{s.tipo}</span>
+                    <span style={{ flex: 1, color: COLORS.text }}>{s.descrizione}</span>
+                    {s.importo ? (
+                      <span style={{ fontWeight: 700 }}>{formatEuro(s.importo)}</span>
+                    ) : null}
+                    {s.urgente && <span style={STILI.tagUrgente}>urgente</span>}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <Nota>Nessuna scadenza {mese ? `in ${MESI[mese - 1]}` : 'nei prossimi mesi'}.</Nota>
+            )}
+          </CardBox>
+
+          {/* GRAFICO ANNO — con il mese selezionato evidenziato */}
+          {trend?.chart_data?.labels?.length > 0 && (
+            <CardBox
+              titolo={`Andamento ${anno} — entrate per mese`}
+              Icon={TrendingUp}
+              colore={COLORS.primary}
+              fullWidth
+            >
+              <ResponsiveContainer width="100%" height={240}>
+                <BarChart
+                  data={trend.chart_data.labels.map((l, i) => ({
+                    mese: l,
+                    entrate: trend.chart_data.entrate?.[i] ?? 0,
+                    uscite: trend.chart_data.uscite?.[i] ?? 0,
+                  }))}
+                  onClick={e => {
+                    if (e?.activeTooltipIndex != null) {
+                      setMese(e.activeTooltipIndex + 1);
+                      setDomanda(null);
+                    }
+                  }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" stroke={COLORS.border} />
+                  <XAxis dataKey="mese" tick={{ fontSize: 11 }} />
+                  <YAxis tick={{ fontSize: 11 }} width={70} tickFormatter={v => formatEuro(v)} />
+                  <Tooltip formatter={v => formatEuro(v)} />
+                  <Bar dataKey="entrate" name="Entrate" radius={[4, 4, 0, 0]}>
+                    {trend.chart_data.labels.map((l, i) => (
+                      <Cell
+                        key={l}
+                        fill={mese === i + 1 ? COLORS.primary : '#efd3c5'}
+                        cursor="pointer"
+                      />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+              <Nota>Tocca una barra per filtrare le card su quel mese.</Nota>
+            </CardBox>
+          )}
+        </div>
+      )}
+    </PageLayout>
+  );
+}
+
+/* ────────────────────────── Componenti card ────────────────────────── */
+
+function CardBox({ titolo, Icon, colore, children, fullWidth = false }) {
+  return (
+    <div style={{ ...STILI.card, ...(fullWidth ? { gridColumn: '1 / -1' } : {}) }}>
+      <div style={STILI.cardHeader}>
+        <span style={{ ...STILI.cardIcona, background: colore }}>
+          <Icon size={16} color="#fff" />
+        </span>
+        <h3 style={STILI.cardTitolo}>{titolo}</h3>
+      </div>
+      {children}
+    </div>
+  );
+}
+
+function ValoreGrande({ valore, colore }) {
+  if (valore == null) {
+    return (
+      <div style={{ fontSize: 18, fontWeight: 700, color: COLORS.textMuted, padding: '6px 0' }}>
+        {DATO_NON_DISPONIBILE}
+      </div>
+    );
+  }
+  return (
+    <div style={{ fontSize: 28, fontWeight: 800, color: colore }}>
+      {formatEuro(valore)}
+    </div>
+  );
+}
+
+function Riga({ label, valore, raw = false }) {
+  return (
+    <div style={STILI.riga}>
+      <span style={{ color: COLORS.textMuted }}>{label}</span>
+      <span style={{ fontWeight: 600, color: COLORS.text }}>
+        {valore == null ? DATO_NON_DISPONIBILE : raw ? valore : formatEuro(valore)}
+      </span>
+    </div>
+  );
+}
+
+function Nota({ children }) {
+  return <div style={STILI.nota}>{children}</div>;
+}
+
+function FasciaEnergiaCard({ energia, errore }) {
+  if (errore) {
+    return (
+      <div style={STILI.avvisoErrori} data-testid="fascia-energia-errore">
+        Fascia energia non disponibile in questo momento. Le altre card restano operative.
+      </div>
+    );
+  }
+  if (!energia) {
+    return <div style={STILI.energiaLoading}>Calcolo della fascia energia in corso...</div>;
+  }
+
+  const colori = { F1: '#5b7a6b', F2: '#dc2626', F3: '#2f7a4f' };
+  const fascia = energia.fascia_attuale;
+  const prossima = new Date(energia.prossima_f3).toLocaleString('it-IT', {
+    weekday: 'long', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit',
+  });
+
+  return (
+    <section
+      style={{ ...STILI.energiaCard, borderLeftColor: colori[fascia] || COLORS.primary }}
+      data-testid="fascia-energia-card"
+      aria-live="polite"
+    >
+      <div style={STILI.energiaTestata}>
+        <span style={{ ...STILI.cardIcona, background: colori[fascia] || COLORS.primary }}>
+          <Zap size={17} color="#fff" />
+        </span>
+        <div style={{ flex: 1 }}>
+          <div style={STILI.energiaSopratitolo}>Promemoria produzione - aggiornamento ogni ora</div>
+          <h2 style={STILI.energiaTitolo}>
+            Ora sei in {fascia}: {energia.azione}
+          </h2>
+          <div style={STILI.energiaMotivo}>{energia.motivo}</div>
+        </div>
+        <div style={STILI.energiaPrezzo}>
+          <strong>{energia.tariffa?.euro_kwh == null ? DATO_NON_DISPONIBILE : `${Number(energia.tariffa.euro_kwh).toFixed(4)} euro/kWh`}</strong>
+          <span>componente energia</span>
+        </div>
+      </div>
+
+      <div style={STILI.energiaDettagli}>
+        <div style={STILI.energiaProssima}>
+          <Clock3 size={16} />
+          {fascia === 'F3' ? 'La fascia piu economica e attiva adesso.' : `Prossima F3: ${prossima}`}
+        </div>
+        <div style={STILI.energiaRegole}>
+          {energia.regole?.map(regola => (
+            <div key={regola.giorni} style={STILI.energiaRegola}>
+              <strong>{regola.giorni}</strong>
+              <span>F1 {regola.F1}</span>
+              <span>F2 {regola.F2}</span>
+              <span>F3 {regola.F3}</span>
+            </div>
+          ))}
+        </div>
+        <div style={STILI.nota}>
+          Nel tuo contratto F3 e la piu economica, F1 e intermedia, F2 e la piu cara.
+          Sabato 07:00-23:00 e F2; domenica e festivi sono F3 tutto il giorno.
+        </div>
+      </div>
+    </section>
+  );
+}
+
+/* ────────────────────────────── Stili ────────────────────────────── */
+
+const STILI = {
+  energiaLoading: {
+    background: '#fff', border: `1px solid ${COLORS.border}`, borderRadius: 12,
+    padding: 16, marginBottom: 14, color: COLORS.textMuted,
+  },
+  energiaCard: {
+    background: '#fff', border: `1px solid ${COLORS.border}`, borderLeft: '6px solid',
+    borderRadius: 12, padding: 16, marginBottom: 14,
+  },
+  energiaTestata: {
+    display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap',
+  },
+  energiaSopratitolo: {
+    fontSize: 11, fontWeight: 800, textTransform: 'uppercase', letterSpacing: 0.5,
+    color: COLORS.textMuted,
+  },
+  energiaTitolo: { margin: '2px 0', fontSize: 20, color: COLORS.text },
+  energiaMotivo: { fontSize: 13, color: COLORS.textMuted },
+  energiaPrezzo: {
+    marginLeft: 'auto', display: 'flex', flexDirection: 'column', textAlign: 'right',
+    color: COLORS.text, fontSize: 14,
+  },
+  energiaDettagli: { marginTop: 12, display: 'flex', flexDirection: 'column', gap: 10 },
+  energiaProssima: {
+    display: 'flex', alignItems: 'center', gap: 7, padding: '8px 10px',
+    background: '#f0fdf4', borderRadius: 8, color: '#166534', fontWeight: 700,
+  },
+  energiaRegole: {
+    display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(230px, 1fr))', gap: 8,
+  },
+  energiaRegola: {
+    display: 'flex', flexDirection: 'column', gap: 3, padding: 10,
+    background: COLORS.bgAlt, border: `1px solid ${COLORS.border}`, borderRadius: 8,
+    color: COLORS.text, fontSize: 12,
+  },
+  barraFiltri: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: 16,
+    background: COLORS.card,
+    border: `1px solid ${COLORS.border}`,
+    borderRadius: 10,
+    padding: '12px 16px',
+    marginBottom: 12,
+  },
+  etichetta: {
+    fontSize: 11,
+    fontWeight: 700,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    color: COLORS.textMuted,
+  },
+  selectMese: {
+    padding: '7px 10px',
+    borderRadius: 8,
+    border: `1px solid ${COLORS.border}`,
+    background: '#fff',
+    color: COLORS.text,
+    fontWeight: 700,
+    fontSize: 14,
+    minWidth: 140,
+  },
+  periodoAttivo: {
+    marginLeft: 'auto',
+    fontSize: 13,
+    color: COLORS.textMuted,
+  },
+  domandeWrap: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 12,
+  },
+  bottoneDomanda: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: 6,
+    padding: '7px 12px',
+    borderRadius: 20,
+    border: `1px solid ${COLORS.border}`,
+    fontSize: 13,
+    fontWeight: 600,
+    cursor: 'pointer',
+    transition: 'all 140ms ease',
+  },
+  rispostaBox: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 14,
+    background: COLORS.card,
+    border: `1px solid ${COLORS.border}`,
+    borderRadius: 10,
+    padding: '14px 18px',
+    marginBottom: 14,
+  },
+  avvisoErrori: {
+    padding: '8px 12px',
+    background: '#fffbeb',
+    border: '1px solid #fcd34d',
+    borderRadius: 8,
+    color: '#92400e',
+    fontSize: 13,
+    marginBottom: 12,
+  },
+  loading: {
+    padding: 40,
+    textAlign: 'center',
+    color: COLORS.textMuted,
+  },
+  griglia: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
+    gap: 14,
+  },
+  card: {
+    background: COLORS.card,
+    border: `1px solid ${COLORS.border}`,
+    borderRadius: 12,
+    padding: 16,
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 8,
+  },
+  cardHeader: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 10,
+    marginBottom: 4,
+  },
+  cardIcona: {
+    width: 30,
+    height: 30,
+    borderRadius: 8,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  cardTitolo: {
+    margin: 0,
+    fontSize: 15,
+    fontWeight: 700,
+    color: COLORS.text,
+  },
+  riga: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    fontSize: 13,
+    paddingTop: 2,
+  },
+  nota: {
+    fontSize: 12,
+    color: COLORS.textMuted,
+    marginTop: 4,
+  },
+  rigaScadenza: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 10,
+    fontSize: 13,
+    padding: '6px 8px',
+    borderRadius: 6,
+    background: COLORS.bgAlt,
+    flexWrap: 'wrap',
+  },
+  tagTipo: {
+    fontSize: 11,
+    fontWeight: 700,
+    padding: '2px 7px',
+    borderRadius: 12,
+    background: COLORS.primarySoft,
+    color: COLORS.primary,
+  },
+  tagUrgente: {
+    fontSize: 11,
+    fontWeight: 700,
+    padding: '2px 7px',
+    borderRadius: 12,
+    background: COLORS.dangerLight,
+    color: COLORS.danger,
+  },
+};

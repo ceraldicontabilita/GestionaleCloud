@@ -1,0 +1,1010 @@
+"""Sincronizzazione canonica assegni da movimenti di estratto conto.
+
+Un addebito ``PRELIEVO ASSEGNO ... NUM:`` e' evidenza bancaria reale:
+deve creare/aggiornare il registro assegni, lasciare una sola scrittura in
+Prima Nota Banca e conservare il collegamento al movimento dell'estratto.
+L'associazione a fattura e' automatica solo quando la candidata e' univoca.
+"""
+from __future__ import annotations
+
+import logging
+import re
+import uuid
+from datetime import datetime, timedelta, timezone
+from typing import Any, Dict, Iterable, List, Optional
+
+from app.routers.bank.assegni_auto_match import TOLL, _f, _load_open_invoices_by_piva
+from app.services.scritture_contabili import (
+    FILTRO_MOVIMENTO_ATTIVO,
+    scrivi_movimento_se_assente,
+)
+from app.services.assegni_fattura_intent import (
+    capienza_assegno_fattura,
+    rata_assegno_disponibile,
+)
+from app.services.payment_allocation_validator import (
+    is_credit_note,
+    to_cents,
+    validate_invoice_allocation,
+)
+from app.services.accounting_relation_writers import record_check_reconciliation
+from app.services.prima_nota_integrity import assorbi_righe_dichiarate
+from app.utils.id_fattura import filtro_id
+
+
+logger = logging.getLogger(__name__)
+
+
+_PATTERN_NUMERO = (
+    r"\bNUM\s*[:.]?\s*(\d{6,})\b",
+    r"\bASSEGNO\s*N[.]?\s*(\d{6,})\b",
+    r"\bVOSTRO\s+ASSEGNO\s+(\d{6,})\b",
+)
+
+
+def chiave_idempotenza_assegno(estratto_conto_id: Any) -> Optional[str]:
+    """``assegno:<estratto_conto_id>:banca_uscita``.
+
+    Una sola riga ATTIVA di Prima Nota Banca per movimento di estratto
+    conto di un assegno. E' la chiave che Postgres rende unica per
+    collezione (indice parziale di ``supabase/migrations/
+    20260903_idempotency_key.sql``), quindi vale anche tra processi con
+    cache diverse: e' cosi' che i 4 assegni dell'audit 03/09/2026 (§1) sono
+    stati scritti due volte, 14:07 e 14:33 dello stesso giorno.
+    """
+    ec_id = str(estratto_conto_id or "").strip()
+    return f"assegno:{ec_id}:banca_uscita" if ec_id else None
+
+
+def estrai_numero_assegno(descrizione: str) -> Optional[str]:
+    """Restituisce il numero bancario senza convertirlo in intero.
+
+    Gli zeri iniziali sono parte del numero (es. ``0208770981``) e non
+    devono essere persi.
+    """
+    for pattern in _PATTERN_NUMERO:
+        match = re.search(pattern, descrizione or "", re.IGNORECASE)
+        if match:
+            from app.services.carnet_assegni import numero_canonico
+
+            return numero_canonico(match.group(1).strip())
+    return None
+
+
+def _numero_equivalente(valore: Any, numero: str) -> bool:
+    corrente = re.sub(r"\D", "", str(valore or ""))
+    atteso = re.sub(r"\D", "", str(numero or ""))
+    return bool(corrente and atteso and (corrente == atteso or corrente.endswith(atteso) or atteso.endswith(corrente)))
+
+
+def _data_iso(valore: Any) -> str:
+    testo = str(valore or "")[:10]
+    if len(testo) == 10 and testo[4] == "-":
+        return testo
+    if len(testo) == 10 and testo[2] == "/":
+        return f"{testo[6:10]}-{testo[3:5]}-{testo[0:2]}"
+    return datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+
+def _invoice_ids_assegno(assegno: Dict[str, Any]) -> List[str]:
+    ids = []
+    for chiave in ("fattura_collegata", "fattura_id"):
+        if assegno.get(chiave):
+            ids.append(str(assegno[chiave]))
+    for link in assegno.get("fatture_collegate") or []:
+        if isinstance(link, dict) and link.get("fattura_id"):
+            ids.append(str(link["fattura_id"]))
+    return list(dict.fromkeys(ids))
+
+
+def _quote_per_fattura(
+    assegno: Dict[str, Any], fattura_id: Optional[str], importo: float,
+) -> Dict[str, float]:
+    """Quanto l'assegno paga di ogni fattura: le quote della scheda, oppure
+    l'intero importo quando la fattura e' una sola."""
+    quote: Dict[str, float] = {}
+    for link in assegno.get("fatture_collegate") or []:
+        if not isinstance(link, dict) or not link.get("fattura_id"):
+            continue
+        quota = round(_f(link.get("quota")), 2)
+        if quota > 0:
+            fid = str(link["fattura_id"])
+            quote[fid] = round(quote.get(fid, 0.0) + quota, 2)
+    if not quote and fattura_id:
+        quote[str(fattura_id)] = round(abs(_f(importo)), 2)
+    return quote
+
+
+async def _fattura_attiva_per_id(db, fattura_id: str) -> Optional[Dict[str, Any]]:
+    """La fattura attiva a cui l'id porta.
+
+    Se l'id e' di una copia archiviata dalla dedup, la copia attiva e' quella
+    indicata da ``duplicate_of`` (o ``doppione_di``), altrimenti l'unica
+    attiva con stesso numero, P.IVA e data. Se non c'e', nessuna: un
+    pagamento non va mai su una copia archiviata.
+    """
+    from app.services.fatture_report_ae import FILTRO_FATTURE_ATTIVE
+
+    attiva = await db["invoices"].find_one(
+        {**filtro_id(fattura_id), **FILTRO_FATTURE_ATTIVE}, {"_id": 0},
+    )
+    if attiva:
+        return attiva
+    copia = await db["invoices"].find_one(filtro_id(fattura_id), {"_id": 0}) or {}
+    if not copia:
+        return None
+    for campo in ("duplicate_of", "doppione_di"):
+        if copia.get(campo):
+            canonica = await db["invoices"].find_one(
+                {**filtro_id(copia[campo]), **FILTRO_FATTURE_ATTIVE}, {"_id": 0},
+            )
+            if canonica:
+                return canonica
+    numero = copia.get("invoice_number") or copia.get("numero_fattura")
+    piva = copia.get("supplier_vat") or copia.get("cedente_piva")
+    data = str(copia.get("invoice_date") or copia.get("data_fattura") or "")[:10]
+    if not (numero and piva and data):
+        return None
+    candidate = await db["invoices"].find(
+        {"invoice_number": numero, "supplier_vat": piva, **FILTRO_FATTURE_ATTIVE},
+        {"_id": 0},
+    ).to_list(10)
+    candidate = [
+        c for c in candidate
+        if c.get("id") != fattura_id and str(c.get("invoice_date") or "")[:10] == data
+    ]
+    return candidate[0] if len(candidate) == 1 else None
+
+
+def _invoice_date_compatibile(fattura: Dict[str, Any], data_movimento: str) -> bool:
+    data_fattura = str(fattura.get("invoice_date") or fattura.get("data_fattura") or "")[:10]
+    try:
+        d_mov = datetime.fromisoformat(data_movimento[:10])
+        d_fatt = datetime.fromisoformat(data_fattura)
+    except (TypeError, ValueError):
+        return True
+    return d_mov - timedelta(days=550) <= d_fatt <= d_mov + timedelta(days=7)
+
+
+async def _fattura_da_prima_nota(db, numero: str, importo: float) -> Optional[Dict[str, Any]]:
+    cursor = db["prima_nota_banca"].find({
+        "importo": {"$gte": importo - TOLL, "$lte": importo + TOLL},
+        "status": {"$nin": ["deleted", "archived"]},
+    }, {"_id": 0})
+    righe = await cursor.to_list(500)
+    con_fattura = [r for r in righe if r.get("invoice_id") or r.get("fattura_id")]
+    per_numero = [r for r in con_fattura if any(
+        _numero_equivalente(r.get(k), numero)
+        for k in ("assegno_numero", "numero_assegno", "description", "descrizione")
+    )]
+    # Solo le righe che portano il numero di QUESTO assegno. Il ripiego sul
+    # solo importo («una riga di Prima Nota da 646,72 con fattura») attaccava
+    # l'assegno n.864 alla fattura gia' pagata dal n.851: importo uguale non
+    # e' lo stesso pagamento (CLAUDE.md, «mai per solo importo»).
+    ids = list(dict.fromkeys(str(r.get("invoice_id") or r.get("fattura_id")) for r in per_numero))
+    if len(ids) != 1:
+        return None
+    return await db["invoices"].find_one(filtro_id(ids[0]), {"_id": 0})
+
+
+async def _fattura_da_numero_assegno_xml(
+    db, numero: str, importo: float, data_movimento: str,
+    per_piva: Optional[Dict[str, List[Dict[str, Any]]]] = None,
+) -> Optional[Dict[str, Any]]:
+    """Trova la fattura che dichiara lo stesso assegno e la stessa quota.
+
+    E' una prova forte anche quando il registro carnet non esiste ancora:
+    numero assegno nell'XML + importo al centesimo + data compatibile.
+    """
+    if per_piva is None:
+        per_piva = await _load_open_invoices_by_piva(db)
+    candidate: List[Dict[str, Any]] = []
+    for fatture in per_piva.values():
+        for fattura in fatture:
+            if not _invoice_date_compatibile(fattura, data_movimento):
+                continue
+            if importo > _f(fattura.get("_residuo")) + TOLL:
+                continue
+            metodo = " ".join(str(fattura.get(campo) or "") for campo in (
+                "metodo_pagamento", "payment_method", "modalita_pagamento",
+                "metodo_pagamento_previsto",
+            ))
+            numero_xml = estrai_numero_assegno(metodo)
+            if not numero_xml or not _numero_equivalente(numero_xml, numero):
+                continue
+            residuo_ok = abs(_f(fattura.get("_residuo")) - importo) <= TOLL
+            rata_ok = any(
+                abs(_f(rata.get("importo")) - importo) <= TOLL
+                for rata in (fattura.get("pagamento_rate") or [])
+                if isinstance(rata, dict)
+            )
+            if residuo_ok or rata_ok:
+                candidate.append(fattura)
+    uniche = {str(f.get("id")): f for f in candidate if f.get("id")}
+    return next(iter(uniche.values())) if len(uniche) == 1 else None
+
+
+async def _fatture_aperte_stesso_importo(
+    db, importo: float, data_movimento: str,
+    per_piva: Optional[Dict[str, List[Dict[str, Any]]]] = None,
+    *, data_pagamento: Optional[str] = None,
+) -> List[Dict[str, Any]]:
+    if per_piva is None:
+        per_piva = await _load_open_invoices_by_piva(db)
+    candidate = []
+    for fatture in per_piva.values():
+        for fattura in fatture:
+            if not _invoice_date_compatibile(fattura, data_movimento):
+                continue
+            if importo > _f(fattura.get("_residuo")) + TOLL:
+                continue
+            residuo_esatto = abs(_f(fattura.get("_residuo")) - importo) <= TOLL
+            # Il piano rate e' prova di una quota solo se l'XML dichiara
+            # MP02 (assegno). Una rata MP05 non diventa assegno per importo.
+            rata_disponibile = rata_assegno_disponibile(
+                fattura, importo, data_pagamento=data_pagamento or data_movimento,
+                max_scarto_centesimi=1,
+            )
+            if residuo_esatto or rata_disponibile:
+                candidate.append(fattura)
+    # Una stessa fattura non deve diventare ambigua per dati duplicati in memoria.
+    return list({str(f["id"]): f for f in candidate if f.get("id")}.values())
+
+
+# Regola del titolare (25/09/2026): «un assegno che arriva in banca oggi paga
+# sempre una fattura di qualche giorno precedente». Fra le fatture aperte
+# dello stesso importo vale quella emessa nei giorni subito prima
+# dell'addebito, e solo se e' l'unica: due fatture nella finestra, o nessuna,
+# restano una scelta del titolare. Esempio reale: Eureka 646,72 € ogni mese,
+# assegno n.851 del 17/04 → fattura 26/D del 07/04; n.864 del 27/04 → 36/D
+# del 24/04 (la 25/D del 20/03 e' fuori finestra per entrambi).
+GIORNI_FATTURA_PRIMA_DELL_ASSEGNO = 15
+LIVELLO_REGOLA_DATE = "REGOLA_TITOLARE_GIORNI_PRECEDENTI"
+
+
+def fattura_dei_giorni_precedenti(
+    candidate: Iterable[Dict[str, Any]], data_movimento: str,
+    giorni: int = GIORNI_FATTURA_PRIMA_DELL_ASSEGNO,
+) -> Optional[Dict[str, Any]]:
+    try:
+        addebito = datetime.fromisoformat(str(data_movimento)[:10])
+    except ValueError:
+        return None
+    nella_finestra = {}
+    for fattura in candidate:
+        try:
+            emessa = datetime.fromisoformat(
+                str(fattura.get("invoice_date") or fattura.get("data_fattura") or "")[:10])
+        except ValueError:
+            continue
+        if addebito - timedelta(days=giorni) <= emessa <= addebito and fattura.get("id"):
+            nella_finestra[str(fattura["id"])] = fattura
+    return next(iter(nella_finestra.values())) if len(nella_finestra) == 1 else None
+
+
+async def _registra_proposte_ambigue(
+    db, assegno: Dict[str, Any], candidate: Iterable[Dict[str, Any]], now: str,
+    data_pagamento: str,
+) -> int:
+    count = 0
+    for fattura in candidate:
+        fid = fattura.get("id")
+        if not fid:
+            continue
+        rata = rata_assegno_disponibile(
+            fattura, assegno.get("importo"), data_pagamento=data_pagamento,
+            max_scarto_centesimi=1,
+        )
+        modalita_xml = sorted({
+            str(r.get("modalita") or "").strip().upper()
+            for r in fattura.get("pagamento_rate") or [] if isinstance(r, dict)
+            and r.get("modalita")
+        })
+        doc = {
+            "id": f"EC-{assegno['id']}-{fid}",
+            "assegno_id": assegno["id"],
+            "assegno_numero": assegno.get("numero"),
+            "fattura_id": fid,
+            "fattura_numero": fattura.get("invoice_number") or fattura.get("numero_fattura"),
+            "fornitore": fattura.get("supplier_name") or fattura.get("cedente_denominazione"),
+            "importo": round(_f(assegno.get("importo")), 2),
+            "tipo_match": "estratto_conto_rata_xml_mp02" if rata else "estratto_conto_importo_ambiguo",
+            "piano_rate_xml": rata,
+            "modalita_pagamento_xml": modalita_xml,
+            "confidenza": 0.5,
+            "nota": (
+                "Rata XML MP02: assegno inferiore di 0,01 euro; conferma "
+                "manuale e residuo di 0,01 euro obbligatori"
+                if rata and rata["scarto_centesimi"] == 1 else
+                "Rata XML MP02 compatibile ma manca il numero fattura sul pagamento: "
+                "conferma manuale necessaria"
+                if rata else
+                "Solo importo compatibile; verificare anche la modalita' XML e "
+                "l'identita' del fornitore prima della conferma"
+            ),
+            "stato": "da_confermare",
+            "source": "estratto_conto",
+            "created_at": now,
+        }
+        await db["proposte_associazione_assegni"].update_one(
+            {"assegno_id": assegno["id"], "fattura_id": fid}, {"$set": doc}, upsert=True,
+        )
+        count += 1
+    return count
+
+
+async def _quote_lato_fattura(db, assegno_id: str) -> List[Dict[str, Any]]:
+    """Le quote di un assegno come le registrano le fatture che paga.
+
+    Sono il lato autorevole: ogni fattura tiene in ``assegni_collegati`` la
+    propria quota di quell'assegno. La scheda dell'assegno ne e' il riassunto.
+    """
+    fatture = await db["invoices"].find(
+        {"assegni_collegati.assegno_id": assegno_id,
+         "status": {"$nin": ["deleted", "archived", "archiviata"]}},
+        {"_id": 0, "id": 1, "invoice_number": 1, "assegni_collegati": 1},
+    ).to_list(50)
+    quote = []
+    for fattura in fatture:
+        for link in fattura.get("assegni_collegati") or []:
+            if isinstance(link, dict) and str(link.get("assegno_id")) == str(assegno_id):
+                quote.append({
+                    "fattura_id": fattura["id"],
+                    "numero_fattura": fattura.get("invoice_number"),
+                    "quota": round(_f(link.get("quota")), 2),
+                    "data_collegamento": link.get("data_collegamento"),
+                    "match_auto": link.get("match_auto", True),
+                    "match_livello": link.get("match_livello") or "EC_UNIVOCO",
+                    "banca_confermata": bool(link.get("banca_confermata")),
+                })
+                break
+    return quote
+
+
+async def _propaga_fattura_pagata_da_assegno(
+    db, fattura_id: Any, importo: float, data_pagamento: str, assegno: Dict[str, Any],
+) -> None:
+    """L'addebito dell'assegno e' la prova: chiude la partita aperta e gli alert della fattura.
+
+    E' lo stesso evento (`fattura.pagata`) che pubblicano il bonifico, la cassa e l'incasso manuale
+    dell'assegno: senza, la fattura risultava pagata con la sua partita ancora aperta. Mai bloccante:
+    la scrittura contabile e' gia' fatta.
+    """
+    try:
+        from app.services.event_bus import EventTypes, propagate_event
+
+        await propagate_event(EventTypes.FATTURA_PAGATA, {
+            "fattura_id": fattura_id,
+            "metodo_pagamento": "assegno",
+            "data_pagamento": data_pagamento,
+            "importo": importo,
+            "assegno_id": assegno.get("id"),
+            "assegno_numero": assegno.get("numero"),
+        }, db, source_module="assegno_estratto_conto")
+    except Exception as exc:  # noqa: BLE001 - un handler rotto non annulla il collegamento
+        logger.exception("fattura.pagata non propagata per l'assegno %s (%s)",
+                         assegno.get("numero"), type(exc).__name__)
+
+
+async def _collega_fattura_univoca(
+    db,
+    assegno: Dict[str, Any],
+    fattura: Dict[str, Any],
+    data_movimento: str,
+    now: str,
+    quota_override: Optional[float] = None,
+    aggiorna_assegno: bool = True,
+    match_livello: str = "EC_UNIVOCO",
+) -> bool:
+    fid = fattura.get("id")
+    if not fid:
+        return False
+    importo = round(_f(quota_override if quota_override is not None else assegno.get("importo")), 2)
+    if is_credit_note(fattura):
+        return False
+    esito_allocazione = validate_invoice_allocation(
+        fattura, to_cents(importo),
+        allocation_id=str(assegno.get("id") or ""),
+    )
+    totale = round(_f(fattura.get("total_amount") or fattura.get("importo_totale")), 2)
+    pagato = round(_f(fattura.get("importo_pagato")), 2)
+    link_esistente = next((
+        link for link in (fattura.get("assegni_collegati") or [])
+        if isinstance(link, dict) and str(link.get("assegno_id")) == str(assegno["id"])
+    ), None)
+    pagamento_gia_applicato = bool(link_esistente and link_esistente.get("banca_confermata"))
+    if not pagamento_gia_applicato and not esito_allocazione["allowed"]:
+        return False
+    if not pagamento_gia_applicato:
+        disponibile, _, _ = capienza_assegno_fattura(
+            fattura, assegno.get("id"), importo,
+        )
+        if not disponibile:
+            return False
+
+    link = {
+        "assegno_id": assegno["id"], "numero": assegno.get("numero"),
+        "quota": importo, "data_collegamento": now, "match_auto": True,
+        "match_livello": match_livello, "banca_confermata": True,
+    }
+    update_fattura: Dict[str, Any] = {
+        "metodo_pagamento_effettivo": "assegno",
+        "data_ultimo_incasso_assegno": data_movimento,
+        "updated_at": now,
+    }
+    # Se l'associazione viene scelta dopo che l'addebito e' gia' arrivato in
+    # banca, la quota va applicata adesso. L'idempotenza dipende dal numero/id
+    # dell'assegno gia' presente nei link della fattura, non dal solo stato
+    # "incassato": due assegni distinti dello stesso importo sono due quote.
+    if not pagamento_gia_applicato:
+        nuovo_pagato = round(min(totale, pagato + importo), 2)
+        update_fattura.update({
+            "importo_pagato": nuovo_pagato,
+            "importo_residuo": round(max(0.0, totale - nuovo_pagato), 2),
+            "payment_status": "paid" if abs(nuovo_pagato - totale) <= TOLL else "partial",
+            "pagato": abs(nuovo_pagato - totale) <= TOLL,
+        })
+        update_doc: Dict[str, Any] = {
+            "$set": update_fattura,
+            "$pull": {"assegni_collegati": {"assegno_id": assegno["id"]}},
+        }
+        await db["invoices"].update_one(filtro_id(fid), update_doc)
+        await db["invoices"].update_one(
+            {"id": fid}, {"$addToSet": {"assegni_collegati": link}},
+        )
+        from app.services.scadenze_rate_service import applica_quota_scadenze
+        await applica_quota_scadenze(
+            db, fattura_id=fid, quota=importo,
+            evidenza_id=f"assegno:{assegno['id']}:{fid}", metodo="assegno",
+            data_pagamento=data_movimento,
+        )
+        await _propaga_fattura_pagata_da_assegno(db, fid, importo, data_movimento, assegno)
+    else:
+        await db["invoices"].update_one(filtro_id(fid), {"$set": update_fattura})
+
+    if aggiorna_assegno:
+        await db["assegni"].update_one(
+            {"id": assegno["id"]},
+            {"$set": {
+                "fattura_collegata": fid, "fattura_id": fid,
+                "fatture_collegate": [{
+                    "fattura_id": fid, "quota": importo, "data_collegamento": now,
+                    "match_auto": True, "match_livello": match_livello,
+                    "banca_confermata": True,
+                }],
+                "numero_fattura": fattura.get("invoice_number") or fattura.get("numero_fattura"),
+                "fornitore_piva": fattura.get("supplier_vat") or fattura.get("partita_iva"),
+                "fornitore_ragione_sociale": fattura.get("supplier_name") or fattura.get("cedente_denominazione"),
+                "beneficiario": assegno.get("beneficiario") or fattura.get("supplier_name") or fattura.get("cedente_denominazione"),
+                "importo_assegnato": importo, "match_auto": True,
+                "match_livello": match_livello, "updated_at": now,
+            }},
+        )
+    return not pagamento_gia_applicato
+
+
+async def collega_assegno_riconciliato_a_fattura(
+    db,
+    assegno: Dict[str, Any],
+    fattura: Dict[str, Any],
+    *,
+    match_auto: bool = False,
+    match_livello: str = "MANUAL_EC",
+) -> Dict[str, Any]:
+    """Completa un collegamento manuale quando l'assegno e' gia' in banca.
+
+    Mantiene distinto ogni assegno tramite ``assegno.id``/``numero`` e
+    aggiorna fattura, Prima Nota e movimento di estratto conto senza creare
+    una seconda riga bancaria.
+    """
+    return await collega_assegno_riconciliato_a_fatture(
+        db,
+        assegno,
+        [{"fattura": fattura, "quota": round(_f(assegno.get("importo")), 2)}],
+        match_auto=match_auto,
+        match_livello=match_livello,
+    )
+
+
+async def collega_assegno_riconciliato_a_fatture(
+    db,
+    assegno: Dict[str, Any],
+    collegamenti: List[Dict[str, Any]],
+    *,
+    match_auto: bool = False,
+    match_livello: str = "MANUAL_EC",
+) -> Dict[str, Any]:
+    """Applica uno o piu' collegamenti espliciti a un assegno gia' addebitato.
+
+    La somma delle quote deve coincidere al centesimo con l'assegno; ogni
+    fattura conserva numero e quota, mentre il movimento banca rimane uno.
+    """
+    movimento_id = assegno.get("movimento_estratto_conto_id") or assegno.get("movimento_id")
+    if not movimento_id:
+        raise ValueError("L'assegno non ha un movimento di estratto conto collegato")
+    movimento = await db["estratto_conto_movimenti"].find_one(
+        {"id": movimento_id}, {"_id": 0}
+    )
+    if not movimento:
+        raise ValueError("Movimento di estratto conto dell'assegno non trovato")
+
+    if not collegamenti:
+        raise ValueError("Indicare almeno una fattura")
+    importo_assegno = round(_f(assegno.get("importo")), 2)
+    totale_quote = round(sum(_f(item.get("quota")) for item in collegamenti), 2)
+    if abs(totale_quote - importo_assegno) > TOLL:
+        raise ValueError("La somma delle fatture deve coincidere al centesimo con l'assegno")
+
+    # Gate canonico prima di qualsiasi scrittura: una fattura non può essere
+    # sovra-attribuita e una nota di credito non è una destinazione di denaro.
+    richieste_per_fattura: Dict[str, int] = {}
+    fatture_per_id: Dict[str, Dict[str, Any]] = {}
+    for item in collegamenti:
+        fattura = item.get("fattura") or {}
+        fid = str(fattura.get("id") or "")
+        quota_cents = to_cents(item.get("quota"))
+        if not fid or quota_cents == 0:
+            raise ValueError("Fattura o quota non valida")
+        fatture_per_id[fid] = fattura
+        if quota_cents > 0:
+            richieste_per_fattura[fid] = richieste_per_fattura.get(fid, 0) + quota_cents
+            if is_credit_note(fattura):
+                raise ValueError("Una nota di credito non può essere pagata con un assegno")
+    for fid, quota_cents in richieste_per_fattura.items():
+        esito = validate_invoice_allocation(
+            fatture_per_id[fid], quota_cents,
+            allocation_id=str(assegno.get("id") or ""),
+        )
+        if not esito["allowed"]:
+            raise ValueError(
+                f"Allocazione rifiutata per {fid}: {esito['reason']} "
+                f"(residuo EUR {esito['residual_cents'] / 100:.2f})"
+            )
+
+    now = datetime.now(timezone.utc).isoformat()
+    data_movimento = _data_iso(movimento.get("data") or assegno.get("data_incasso"))
+    links = []
+    applicate = 0
+    for item in collegamenti:
+        fattura = item.get("fattura") or {}
+        fattura_id = str(fattura.get("id") or "")
+        quota = round(_f(item.get("quota")), 2)
+        if not fattura_id or abs(quota) <= TOLL:
+            raise ValueError("Fattura o quota non valida")
+        if quota > 0:
+            applicata = await _collega_fattura_univoca(
+                db, assegno, fattura, data_movimento, now,
+                quota_override=quota, aggiorna_assegno=False,
+            )
+        else:
+            # La nota di credito netta il debito ma non e' un'ulteriore
+            # uscita bancaria. La si marca applicata allo stesso assegno
+            # senza sommare il valore negativo ai pagamenti monetari.
+            vecchio = next((
+                link for link in (fattura.get("assegni_collegati") or [])
+                if isinstance(link, dict)
+                and str(link.get("assegno_id")) == str(assegno["id"])
+                and link.get("banca_confermata")
+            ), None)
+            applicata = not bool(vecchio)
+            await db["invoices"].update_one(
+                filtro_id(fattura_id),
+                {"$pull": {"assegni_collegati": {"assegno_id": assegno["id"]}}},
+            )
+            await db["invoices"].update_one(
+                filtro_id(fattura_id),
+                {"$addToSet": {"assegni_collegati": {
+                    "assegno_id": assegno["id"], "numero": assegno.get("numero"),
+                    "quota": quota, "data_collegamento": now, "match_auto": match_auto,
+                    "match_livello": match_livello, "banca_confermata": True,
+                }}},
+            )
+        applicate += int(applicata)
+        links.append({
+            "fattura_id": fattura_id,
+            "quota": quota,
+            "data_collegamento": now,
+            "match_auto": match_auto,
+            "match_livello": match_livello,
+            "banca_confermata": True,
+            "numero_fattura": fattura.get("invoice_number") or fattura.get("numero_fattura"),
+        })
+
+    fattura_ids = [link["fattura_id"] for link in links]
+    singola_id = fattura_ids[0] if len(fattura_ids) == 1 else None
+    await db["assegni"].update_one({"id": assegno["id"]}, {"$set": {
+        "fatture_collegate": links,
+        "fattura_collegata": singola_id,
+        "fattura_id": singola_id,
+        "numero_fattura": ", ".join(filter(None, (l.get("numero_fattura") for l in links))),
+        "importo_assegnato": totale_quote,
+        "stato": "incassato",
+        "stato_finanziario": "riconciliato",
+        "match_auto": match_auto,
+        "match_livello": match_livello,
+        "updated_at": now,
+    }})
+    assegno_aggiornato = await db["assegni"].find_one({"id": assegno["id"]}, {"_id": 0}) or assegno
+    pn_id = await _garantisci_prima_nota(
+        db, assegno_aggiornato, movimento, singola_id, now,
+    )
+    # La riga che il titolare aveva dichiarato per queste fatture lascia il
+    # posto a quella dell'assegno addebitato: una sola uscita.
+    quote_per_fattura: Dict[str, float] = {}
+    for link in links:
+        if link["quota"] > 0:
+            quote_per_fattura[link["fattura_id"]] = round(
+                quote_per_fattura.get(link["fattura_id"], 0.0) + link["quota"], 2,
+            )
+    await assorbi_righe_dichiarate(
+        db, quote_per_fattura, sostituita_da=pn_id, movimento_id=movimento_id,
+    )
+    for fattura_id in fattura_ids:
+        await db["invoices"].update_one(filtro_id(fattura_id), {"$set": {
+            "riconciliato": True,
+            "riconciliato_con_ec": True,
+            "stato_finanziario": "riconciliato",
+            "movimento_bancario_id": movimento_id,
+            "prima_nota_id": pn_id,
+            "prima_nota_banca_id": pn_id,
+            "prima_nota_tipo": "banca",
+            "data_riconciliazione": data_movimento,
+            "updated_at": now,
+        }})
+    if len(fattura_ids) > 1:
+        await db["prima_nota_banca"].update_one({"id": pn_id}, {"$set": {
+            "fattura_ids": fattura_ids,
+            "fatture_collegate": links,
+            "invoice_id": None,
+            "fattura_id": None,
+        }})
+    await db["estratto_conto_movimenti"].update_one({"id": movimento_id}, {"$set": {
+        "riconciliato": True,
+        "riconciliato_con": "assegno",
+        "assegno_id": assegno["id"],
+        "assegno_numero": assegno.get("numero"),
+        "prima_nota_banca_id": pn_id,
+        "fattura_id": singola_id,
+        "fattura_ids": fattura_ids,
+        "riconciliato_at": now,
+    }})
+    await db["proposte_associazione_assegni"].update_many(
+        {"assegno_id": assegno["id"]},
+        {"$set": {
+            "stato": "confermata",
+            "fattura_confermata_id": singola_id,
+            "fatture_confermate_ids": fattura_ids,
+            "confirmed_at": now,
+        }},
+    )
+    try:
+        await record_check_reconciliation(
+            db,
+            cheque=assegno_aggiornato,
+            movement=movimento,
+            invoice_links=links,
+        )
+    except Exception:
+        logger.exception(
+            "Errore registrazione relazioni per assegno %s",
+            assegno.get("id"),
+        )
+    return {
+        "collegato": bool(applicate),
+        "quote_applicate": applicate,
+        "assegno_id": assegno["id"],
+        "assegno_numero": assegno.get("numero"),
+        "fattura_id": singola_id,
+        "fattura_ids": fattura_ids,
+        "prima_nota_banca_id": pn_id,
+    }
+
+
+async def _garantisci_prima_nota(
+    db, assegno: Dict[str, Any], movimento: Dict[str, Any], fattura_id: Optional[str], now: str,
+) -> str:
+    ec_id = movimento.get("id")
+    chiave = chiave_idempotenza_assegno(ec_id)
+    query_esistente = {
+        "$or": [
+            {"movimento_estratto_conto_id": ec_id}, {"estratto_conto_id": ec_id},
+            {"assegno_id": assegno["id"]},
+        ],
+        **FILTRO_MOVIMENTO_ATTIVO,
+    }
+    esistente = await db["prima_nota_banca"].find_one(query_esistente, {"_id": 0})
+    provvisorio = str(movimento.get("livello_evidenza") or "") == "provvisoria"
+    if (
+        esistente and provvisorio
+        and esistente.get("estratto_conto_id") not in (None, "", ec_id)
+        and not esistente.get("in_attesa_estratto_ufficiale")
+    ):
+        # La riga e' gia' agganciata alla copia ufficiale dello stesso assegno:
+        # una copia provvisoria (CSV, banca diretta) non la declassa.
+        return esistente["id"]
+    fields = {
+        "tipo": "uscita", "type": "uscita", "importo": round(_f(assegno.get("importo")), 2),
+        "amount": round(_f(assegno.get("importo")), 2), "categoria": "Assegni",
+        "category": "Assegni", "assegno_id": assegno["id"],
+        "assegno_numero": assegno.get("numero"), "numero_assegno": assegno.get("numero"),
+        "estratto_conto_id": ec_id, "movimento_estratto_conto_id": ec_id,
+        "idempotency_key": chiave,
+        "riconciliato": True, "data_riconciliazione": _data_iso(movimento.get("data")),
+        # Da CSV o banca diretta l'addebito e' certo ma la prova ufficiale e' il
+        # PDF della banca: la riga lo dice finche' non arriva.
+        "livello_evidenza": "provvisoria" if provvisorio else "ufficiale",
+        "in_attesa_estratto_ufficiale": provvisorio,
+        "updated_at": now,
+    }
+    if fattura_id:
+        fields.update({"invoice_id": fattura_id, "fattura_id": fattura_id})
+    if esistente:
+        await db["prima_nota_banca"].update_one({"id": esistente["id"]}, {"$set": fields})
+        return esistente["id"]
+    # Scrittura idempotente per movimento di estratto conto: la guardia in
+    # memoria qui sopra vale per un solo processo; ``idempotency_key`` e'
+    # rifiutata da Postgres se un altro processo ha gia' scritto la riga
+    # (audit 03/09/2026, PR 3: 4 assegni registrati due volte, 4.853,99 EUR).
+    pn_id, gia_presente = await scrivi_movimento_se_assente(db, "banca", query_esistente, {
+        **fields,
+        "id": str(uuid.uuid4()), "data": _data_iso(movimento.get("data")),
+        "descrizione": f"Assegno n. {assegno.get('numero', '')} - riscontro estratto conto",
+        "source": "assegno_estratto_conto", "created_at": now,
+    })
+    if gia_presente and pn_id:
+        await db["prima_nota_banca"].update_one({"id": pn_id}, {"$set": fields})
+    return pn_id
+
+
+async def sincronizza_assegni_da_estratto_conto(
+    db,
+    movimento_ids: Optional[List[str]] = None,
+    data_dal: Optional[str] = None,
+    include_provvisori: bool = False,
+) -> Dict[str, Any]:
+    from app.services.bank_evidence import filtro_solo_evidenza_ufficiale
+    risultati: Dict[str, Any] = {
+        "movimenti_analizzati": 0, "assegni_trovati": 0, "assegni_creati": 0,
+        "assegni_esistenti": 0, "assegni_riconciliati": 0,
+        "fatture_associate": 0, "proposte_ambigue": 0, "errori": [], "dettagli": [],
+    }
+    filtri_movimenti: List[Dict[str, Any]] = [
+            {"$or": [
+                # Le banche non usano una causale unica: oltre a PRELIEVO e
+                # VOSTRO ASSEGNO arrivano spesso ADDEBITO/REGOLAMENTO
+                # ASSEGNO. Il numero viene comunque estratto e validato dopo
+                # la query, quindi questa apertura non collega alcuna fattura
+                # per il solo testo o importo.
+                {"descrizione": {"$regex": "ASSEGNO", "$options": "i"}},
+                {"descrizione_originale": {"$regex": "ASSEGNO", "$options": "i"}},
+                {"causale": {"$regex": "ASSEGNO", "$options": "i"}},
+            ]},
+            {"$or": [{"tipo": "uscita"}, {"type": "uscita"}, {"importo": {"$lt": 0}}]},
+    ]
+    if not include_provvisori:
+        filtri_movimenti.insert(0, filtro_solo_evidenza_ufficiale())
+    else:
+        risultati["include_provvisori"] = True
+    ids_richiesti = list(dict.fromkeys(
+        str(movimento_id).strip()
+        for movimento_id in (movimento_ids or [])
+        if str(movimento_id).strip()
+    ))
+    if movimento_ids is not None:
+        risultati["ambito"] = "nuovi_movimenti"
+        if not ids_richiesti:
+            return risultati
+        filtri_movimenti.append({"id": {"$in": ids_richiesti}})
+    else:
+        risultati["ambito"] = "completo"
+        # Prima del giro completo: lo stesso assegno registrato due volte
+        # (due export della banca) diventa una scheda sola.
+        from app.services.assegni_doppioni import unifica as unifica_assegni_doppi
+        from app.services.carnet_assegni import normalizza_numeri
+
+        try:
+            # Prima il numero canonico: «208770369» e «0208770369» sono lo stesso assegno.
+            risultati["assegni_numero_normalizzato"] = (await normalizza_numeri(db))["corrette"]
+        except Exception as exc:  # noqa: BLE001 - il giro continua, il numero resta com'era
+            logger.error("Numeri assegno non normalizzati: %s: %s", type(exc).__name__, exc)
+        try:
+            unione = await unifica_assegni_doppi(db)
+            risultati["assegni_doppi_unificati"] = unione["copie"]
+            risultati["assegni_doppi_in_conflitto"] = unione["in_conflitto"]
+        except Exception as exc:  # noqa: BLE001 - il giro continua, i doppioni restano visibili
+            logger.error("Assegni doppi non unificati: %s: %s", type(exc).__name__, exc)
+    if data_dal:
+        filtri_movimenti.append({"data": {"$gte": str(data_dal)}})
+        risultati["data_dal"] = str(data_dal)
+
+    movimenti = await db["estratto_conto_movimenti"].find(
+        {"$and": filtri_movimenti}, {"_id": 0},
+    ).to_list(10000)
+    movimenti = [
+        movimento for movimento in movimenti
+        if "RILASCIO CARNET" not in (
+            movimento.get("descrizione") or movimento.get("descrizione_originale") or movimento.get("causale") or ""
+        ).upper()
+    ]
+    risultati["movimenti_analizzati"] = len(movimenti)
+
+    # Snapshot unica per tutta la run. Prima le fatture aperte venivano
+    # rilette dal registro fino a due volte per ogni assegno, lasciando il
+    # riprocessamento live bloccato per minuti sullo storico reale.
+    fatture_aperte_per_piva = await _load_open_invoices_by_piva(db) if movimenti else {}
+
+    for movimento in movimenti:
+        try:
+            descrizione = movimento.get("descrizione") or movimento.get("descrizione_originale") or movimento.get("causale") or ""
+            numero = estrai_numero_assegno(descrizione)
+            if not numero:
+                risultati["errori"].append(f"Numero assegno non riconosciuto nel movimento {movimento.get('id')}")
+                continue
+            risultati["assegni_trovati"] += 1
+            now = datetime.now(timezone.utc).isoformat()
+            data_movimento = _data_iso(movimento.get("data") or movimento.get("data_pagamento"))
+            importo = round(abs(_f(movimento.get("importo"))), 2)
+            # Prima la scheda gia' legata a questo movimento; poi quella con lo
+            # stesso numero, che vale solo se l'importo coincide al centesimo.
+            assegno = await db["assegni"].find_one({
+                "$or": [
+                    {"movimento_id": movimento.get("id")},
+                    {"movimento_estratto_conto_id": movimento.get("id")},
+                ]
+            }, {"_id": 0}) or await db["assegni"].find_one({
+                "$or": [{"numero": numero}, {"assegno_numero": numero}],
+            }, {"_id": 0})
+            legato_al_movimento = bool(assegno) and movimento.get("id") in (
+                assegno.get("movimento_id"), assegno.get("movimento_estratto_conto_id"))
+            if (
+                assegno and not legato_al_movimento
+                and assegno.get("importo") not in (None, "")
+                and abs(round(abs(_f(assegno.get("importo"))), 2) - importo) > 0.005
+            ):
+                risultati.setdefault("importo_diverso", []).append({
+                    "numero": numero, "movimento_id": movimento.get("id"), "importo_banca": importo,
+                    "assegno_id": assegno.get("id"), "importo_assegno": _f(assegno.get("importo")),
+                })
+                await db["assegni"].update_one({"id": assegno["id"]}, {"$set": {
+                    "riscontro_banca_da_verificare": {
+                        "movimento_id": movimento.get("id"), "importo_banca": importo,
+                        "motivo": "stesso numero, importo diverso dall'addebito in banca",
+                        "rilevato_il": now,
+                    },
+                }})
+                continue
+            if assegno:
+                risultati["assegni_esistenti"] += 1
+            else:
+                assegno = {
+                    "id": str(uuid.uuid4()), "numero": numero, "importo": importo,
+                    "data": data_movimento, "data_emissione": data_movimento,
+                    "descrizione": descrizione, "movimento_id": movimento.get("id"),
+                    "fonte": "estratto_conto", "banca": movimento.get("banca"),
+                    # Nessuna scheda compilata: numero e importo vengono dalla
+                    # banca; foto, beneficiario e fattura restano da recuperare.
+                    "rilevato_da_banca": True, "documento_da_recuperare": True,
+                    "created_at": now, "updated_at": now,
+                    "livello_evidenza_bancaria": movimento.get("livello_evidenza") or "legacy",
+                    "evidenza_bancaria_ufficiale": bool(
+                        movimento.get("evidenza_bancaria_ufficiale")
+                        or movimento.get("livello_evidenza") in (None, "ufficiale")
+                    ),
+                }
+                await db["assegni"].insert_one(dict(assegno))
+                risultati["assegni_creati"] += 1
+
+            # Un assegno che paga piu' fatture (tre fatture SIRO dello stesso
+            # giorno, un solo assegno) non si riduce mai alla prima: fino al
+            # 25/09/2026 questo giro riscriveva la scheda con una fattura sola
+            # e tutto l'importo. Se le quote sulle fatture fanno l'importo al
+            # centesimo, la scheda si riallinea a loro e basta.
+            quote_fatture = await _quote_lato_fattura(db, assegno["id"])
+            multi_fattura = (
+                len(quote_fatture) > 1
+                and abs(sum(q["quota"] for q in quote_fatture) - importo) <= TOLL
+            )
+            if multi_fattura:
+                await db["assegni"].update_one({"id": assegno["id"]}, {"$set": {
+                    "fatture_collegate": quote_fatture,
+                    "fattura_id": quote_fatture[0]["fattura_id"],
+                    "fattura_collegata": quote_fatture[0]["fattura_id"],
+                    "numero_fattura": ", ".join(str(q["numero_fattura"] or "") for q in quote_fatture),
+                    "importo_assegnato": importo,
+                    "updated_at": now,
+                }})
+                assegno = await db["assegni"].find_one({"id": assegno["id"]}, {"_id": 0}) or assegno
+
+            fattura_ids = _invoice_ids_assegno(assegno)
+            fattura = None
+            if fattura_ids and not multi_fattura:
+                # L'assegno puo' citare la copia che la dedup ha archiviato:
+                # il pagamento va alla copia attiva, mai all'archiviata.
+                fattura = await _fattura_attiva_per_id(db, fattura_ids[0])
+            # Con piu' fatture la Prima Nota porta solo la prima: cercare la
+            # fattura da li' riattaccava l'intero assegno a quella sola.
+            if not fattura and not multi_fattura:
+                fattura = await _fattura_da_prima_nota(db, numero, importo)
+            if not fattura and not multi_fattura:
+                fattura = await _fattura_da_numero_assegno_xml(
+                    db, numero, importo, data_movimento, fatture_aperte_per_piva,
+                )
+            # Un collegamento gia' fatto conserva la sua provenienza (regola
+            # delle date, dichiarazione del titolare): rileggerlo non la cambia.
+            livello = assegno.get("match_livello") or "EC_UNIVOCO"
+            if not fattura and not multi_fattura:
+                data_valuta = _data_iso(movimento.get("data_pagamento") or data_movimento)
+                candidate = await _fatture_aperte_stesso_importo(
+                    db, importo, data_movimento, fatture_aperte_per_piva,
+                    data_pagamento=data_valuta,
+                )
+                fattura = fattura_dei_giorni_precedenti(candidate, data_movimento)
+                if fattura:
+                    livello = LIVELLO_REGOLA_DATE
+                    candidate = []
+                    await db["proposte_associazione_assegni"].update_many(
+                        {"assegno_id": assegno["id"], "stato": "da_confermare"},
+                        {"$set": {"stato": "superata", "superata_da": LIVELLO_REGOLA_DATE,
+                                  "updated_at": now}},
+                    )
+                # L'importo, anche se individua una sola fattura aperta, non e'
+                # prova sufficiente. Il collegamento automatico richiede un
+                # intento assegno->fattura gia' esplicito oppure una Prima Nota
+                # gia' collegata; qui si salvano soltanto proposte da confermare.
+                if candidate:
+                    risultati["proposte_ambigue"] += await _registra_proposte_ambigue(
+                        db, assegno, candidate, now, data_valuta,
+                    )
+
+            nuova_associazione = False
+            if fattura:
+                nuova_associazione = await _collega_fattura_univoca(
+                    db, assegno, fattura, data_movimento, now, match_livello=livello,
+                )
+                if nuova_associazione:
+                    risultati["fatture_associate"] += 1
+                assegno = await db["assegni"].find_one({"id": assegno["id"]}, {"_id": 0}) or assegno
+
+            tutte_le_fatture = _invoice_ids_assegno(assegno)
+            fattura_id = (tutte_le_fatture or [None])[0]
+            pn_id = await _garantisci_prima_nota(db, assegno, movimento, fattura_id, now)
+            # Come nel collegamento esplicito: la riga che il titolare aveva
+            # dichiarato per queste fatture lascia il posto all'addebito.
+            await assorbi_righe_dichiarate(
+                db, _quote_per_fattura(assegno, fattura_id, importo),
+                sostituita_da=pn_id, movimento_id=movimento.get("id"),
+            )
+            for fid_collegata in tutte_le_fatture:
+                await db["invoices"].update_one(filtro_id(fid_collegata), {"$set": {
+                    "riconciliato": True,
+                    "riconciliato_con_ec": True,
+                    "stato_finanziario": "riconciliato",
+                    "movimento_bancario_id": movimento.get("id"),
+                    "prima_nota_id": pn_id,
+                    "prima_nota_banca_id": pn_id,
+                    "prima_nota_tipo": "banca",
+                    "data_riconciliazione": data_movimento,
+                    "updated_at": now,
+                }})
+            await db["assegni"].update_one({"id": assegno["id"]}, {"$set": {
+                "stato": "incassato", "data_incasso": data_movimento,
+                "incassato_confermato_banca": True,
+                "stato_finanziario": "riconciliato",
+                "movimento_estratto_conto_id": movimento.get("id"),
+                "prima_nota_banca_id": pn_id, "confermato": True, "updated_at": now,
+            }})
+            await db["estratto_conto_movimenti"].update_one({"id": movimento.get("id")}, {"$set": {
+                "riconciliato": True, "riconciliato_con": "assegno",
+                "assegno_id": assegno["id"], "assegno_numero": numero,
+                "prima_nota_banca_id": pn_id, "fattura_id": fattura_id,
+                "fattura_ids": tutte_le_fatture,
+                "riconciliato_at": now,
+            }})
+            risultati["assegni_riconciliati"] += 1
+            risultati["dettagli"].append({
+                "numero": numero, "importo": importo, "data": data_movimento,
+                "fattura_id": fattura_id, "movimento_estratto_conto_id": movimento.get("id"),
+            })
+        except Exception as exc:  # un movimento difettoso non blocca tutto il file
+            risultati["errori"].append(f"Movimento {movimento.get('id')}: {exc}")
+    return risultati

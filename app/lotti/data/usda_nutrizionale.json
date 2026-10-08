@@ -1,0 +1,372 @@
+[
+  {
+    "nome": "Farina 00",
+    "aliases": ["farina", "farina 00", "farina bianca", "farina di grano tenero", "farina tipo 0", "farina tipo 00", "farina frumento"],
+    "per_100g": {"kcal": 364, "kj": 1523, "grassi": 1.0, "saturi": 0.2, "carboidrati": 76.3, "zuccheri": 0.3, "fibre": 2.7, "proteine": 10.4, "sale": 0.0}
+  },
+  {
+    "nome": "Farina Integrale",
+    "aliases": ["farina integrale", "farina di grano integrale", "semintegrale"],
+    "per_100g": {"kcal": 340, "kj": 1421, "grassi": 2.5, "saturi": 0.4, "carboidrati": 63.9, "zuccheri": 0.4, "fibre": 9.6, "proteine": 12.5, "sale": 0.0}
+  },
+  {
+    "nome": "Semola di Grano Duro",
+    "aliases": ["semola", "semolato", "semola rimacinata", "farina di semola"],
+    "per_100g": {"kcal": 362, "kj": 1515, "grassi": 1.1, "saturi": 0.2, "carboidrati": 73.8, "zuccheri": 0.6, "fibre": 3.9, "proteine": 12.7, "sale": 0.0}
+  },
+  {
+    "nome": "Farina di Mandorle",
+    "aliases": ["farina di mandorle", "mandorle in polvere", "farina mandorle"],
+    "per_100g": {"kcal": 576, "kj": 2409, "grassi": 49.9, "saturi": 3.8, "carboidrati": 19.7, "zuccheri": 4.4, "fibre": 12.5, "proteine": 21.2, "sale": 0.0}
+  },
+  {
+    "nome": "Amido di Mais",
+    "aliases": ["amido di mais", "maizena", "amido di frumento", "fecola", "fecola di patate", "maizena"],
+    "per_100g": {"kcal": 381, "kj": 1594, "grassi": 0.1, "saturi": 0.0, "carboidrati": 91.3, "zuccheri": 0.0, "fibre": 0.9, "proteine": 0.3, "sale": 0.0}
+  },
+  {
+    "nome": "Burro",
+    "aliases": ["burro", "butter", "burro fresco", "burro chiarificato", "beurre"],
+    "per_100g": {"kcal": 717, "kj": 2999, "grassi": 81.1, "saturi": 51.4, "carboidrati": 0.1, "zuccheri": 0.1, "fibre": 0.0, "proteine": 0.9, "sale": 0.06}
+  },
+  {
+    "nome": "Olio di Girasole",
+    "aliases": ["olio di girasole", "olio girasole", "olio semi girasole"],
+    "per_100g": {"kcal": 884, "kj": 3699, "grassi": 100.0, "saturi": 10.3, "carboidrati": 0.0, "zuccheri": 0.0, "fibre": 0.0, "proteine": 0.0, "sale": 0.0}
+  },
+  {
+    "nome": "Olio di Oliva",
+    "aliases": ["olio di oliva", "olio extravergine", "evo", "olio oliva", "olio evo"],
+    "per_100g": {"kcal": 884, "kj": 3699, "grassi": 100.0, "saturi": 13.8, "carboidrati": 0.0, "zuccheri": 0.0, "fibre": 0.0, "proteine": 0.0, "sale": 0.0}
+  },
+  {
+    "nome": "Strutto",
+    "aliases": ["strutto", "lardo", "saindoux"],
+    "per_100g": {"kcal": 891, "kj": 3729, "grassi": 99.5, "saturi": 39.2, "carboidrati": 0.0, "zuccheri": 0.0, "fibre": 0.0, "proteine": 0.0, "sale": 0.0}
+  },
+  {
+    "nome": "Latte Intero",
+    "aliases": ["latte", "latte intero", "latte fresco", "latte uht", "latte vaccino"],
+    "per_100g": {"kcal": 61, "kj": 255, "grassi": 3.3, "saturi": 1.9, "carboidrati": 4.8, "zuccheri": 4.8, "fibre": 0.0, "proteine": 3.2, "sale": 0.1}
+  },
+  {
+    "nome": "Panna",
+    "aliases": ["panna", "panna fresca", "panna da montare", "panna liquida", "panna al 35%", "panna UHT"],
+    "per_100g": {"kcal": 337, "kj": 1410, "grassi": 35.0, "saturi": 23.0, "carboidrati": 2.8, "zuccheri": 2.8, "fibre": 0.0, "proteine": 2.1, "sale": 0.04}
+  },
+  {
+    "nome": "Ricotta",
+    "aliases": ["ricotta", "ricotta vaccina", "ricotta di bufala"],
+    "per_100g": {"kcal": 174, "kj": 728, "grassi": 13.0, "saturi": 8.0, "carboidrati": 3.0, "zuccheri": 3.0, "fibre": 0.0, "proteine": 11.3, "sale": 0.05}
+  },
+  {
+    "nome": "Mascarpone",
+    "aliases": ["mascarpone"],
+    "per_100g": {"kcal": 429, "kj": 1795, "grassi": 42.0, "saturi": 28.0, "carboidrati": 2.0, "zuccheri": 2.0, "fibre": 0.0, "proteine": 7.3, "sale": 0.05}
+  },
+  {
+    "nome": "Panna Acida",
+    "aliases": ["panna acida", "sour cream", "crème fraîche", "creme fraiche"],
+    "per_100g": {"kcal": 195, "kj": 816, "grassi": 19.0, "saturi": 12.0, "carboidrati": 2.9, "zuccheri": 2.9, "fibre": 0.0, "proteine": 2.4, "sale": 0.05}
+  },
+  {
+    "nome": "Uovo Intero",
+    "aliases": ["uova", "uovo", "uova fresche", "uova intere", "uovo fresco"],
+    "per_100g": {"kcal": 155, "kj": 648, "grassi": 10.6, "saturi": 3.3, "carboidrati": 1.1, "zuccheri": 1.1, "fibre": 0.0, "proteine": 12.6, "sale": 0.37}
+  },
+  {
+    "nome": "Tuorlo d'Uovo",
+    "aliases": ["tuorlo", "tuorli", "tuorlo d'uovo", "rosso d'uovo"],
+    "per_100g": {"kcal": 322, "kj": 1347, "grassi": 26.5, "saturi": 8.5, "carboidrati": 3.6, "zuccheri": 0.6, "fibre": 0.0, "proteine": 15.9, "sale": 0.14}
+  },
+  {
+    "nome": "Albume",
+    "aliases": ["albume", "albumi", "bianco d'uovo", "chiara d'uovo"],
+    "per_100g": {"kcal": 52, "kj": 217, "grassi": 0.2, "saturi": 0.0, "carboidrati": 0.7, "zuccheri": 0.7, "fibre": 0.0, "proteine": 10.9, "sale": 0.52}
+  },
+  {
+    "nome": "Zucchero Semolato",
+    "aliases": ["zucchero", "zucchero semolato", "zucchero bianco", "zucchero da cucina", "saccarosio"],
+    "per_100g": {"kcal": 400, "kj": 1674, "grassi": 0.0, "saturi": 0.0, "carboidrati": 99.8, "zuccheri": 99.8, "fibre": 0.0, "proteine": 0.0, "sale": 0.0}
+  },
+  {
+    "nome": "Zucchero a Velo",
+    "aliases": ["zucchero a velo", "zucchero powdered", "icing sugar"],
+    "per_100g": {"kcal": 398, "kj": 1664, "grassi": 0.0, "saturi": 0.0, "carboidrati": 99.5, "zuccheri": 99.5, "fibre": 0.0, "proteine": 0.1, "sale": 0.0}
+  },
+  {
+    "nome": "Zucchero di Canna",
+    "aliases": ["zucchero di canna", "brown sugar", "demerara", "muscovado"],
+    "per_100g": {"kcal": 380, "kj": 1589, "grassi": 0.0, "saturi": 0.0, "carboidrati": 95.1, "zuccheri": 93.5, "fibre": 0.0, "proteine": 0.0, "sale": 0.02}
+  },
+  {
+    "nome": "Miele",
+    "aliases": ["miele", "honey", "miele millefiori", "miele acacia"],
+    "per_100g": {"kcal": 304, "kj": 1272, "grassi": 0.0, "saturi": 0.0, "carboidrati": 82.4, "zuccheri": 82.1, "fibre": 0.2, "proteine": 0.3, "sale": 0.0}
+  },
+  {
+    "nome": "Sciroppo di Glucosio",
+    "aliases": ["glucosio", "sciroppo di glucosio", "destrosio", "glucose syrup"],
+    "per_100g": {"kcal": 284, "kj": 1188, "grassi": 0.0, "saturi": 0.0, "carboidrati": 71.0, "zuccheri": 71.0, "fibre": 0.0, "proteine": 0.0, "sale": 0.0}
+  },
+  {
+    "nome": "Cioccolato Fondente",
+    "aliases": ["cioccolato fondente", "cioccolato extrafondente", "cioccolato 70%", "cioccolato 55%", "fondente", "dark chocolate", "couverture fondente"],
+    "per_100g": {"kcal": 545, "kj": 2281, "grassi": 31.7, "saturi": 18.8, "carboidrati": 59.4, "zuccheri": 47.9, "fibre": 7.7, "proteine": 4.9, "sale": 0.0}
+  },
+  {
+    "nome": "Cioccolato al Latte",
+    "aliases": ["cioccolato al latte", "milk chocolate", "couverture latte", "cioccolato latte"],
+    "per_100g": {"kcal": 535, "kj": 2238, "grassi": 30.0, "saturi": 17.7, "carboidrati": 59.5, "zuccheri": 54.4, "fibre": 1.4, "proteine": 7.6, "sale": 0.1}
+  },
+  {
+    "nome": "Cioccolato Bianco",
+    "aliases": ["cioccolato bianco", "white chocolate", "couverture bianco"],
+    "per_100g": {"kcal": 539, "kj": 2255, "grassi": 32.1, "saturi": 19.6, "carboidrati": 58.3, "zuccheri": 57.8, "fibre": 0.2, "proteine": 5.9, "sale": 0.1}
+  },
+  {
+    "nome": "Cacao in Polvere",
+    "aliases": ["cacao", "cacao amaro", "cacao in polvere", "cocoa powder", "polvere di cacao"],
+    "per_100g": {"kcal": 228, "kj": 954, "grassi": 13.7, "saturi": 8.1, "carboidrati": 57.9, "zuccheri": 1.8, "fibre": 33.2, "proteine": 19.6, "sale": 0.0}
+  },
+  {
+    "nome": "Nocciole",
+    "aliases": ["nocciole", "pasta di nocciole", "granella di nocciole", "hazelnut", "nocciola in polvere"],
+    "per_100g": {"kcal": 628, "kj": 2629, "grassi": 60.8, "saturi": 4.5, "carboidrati": 16.7, "zuccheri": 4.3, "fibre": 9.7, "proteine": 15.0, "sale": 0.0}
+  },
+  {
+    "nome": "Mandorle",
+    "aliases": ["mandorle", "mandorle pelate", "pasta di mandorle", "granella di mandorle", "almond"],
+    "per_100g": {"kcal": 575, "kj": 2407, "grassi": 49.4, "saturi": 3.7, "carboidrati": 21.6, "zuccheri": 4.4, "fibre": 12.5, "proteine": 21.2, "sale": 0.0}
+  },
+  {
+    "nome": "Pistacchi",
+    "aliases": ["pistacchi", "pistacchio", "pasta di pistacchio", "granella di pistacchio", "pistachio"],
+    "per_100g": {"kcal": 562, "kj": 2352, "grassi": 45.3, "saturi": 5.6, "carboidrati": 27.5, "zuccheri": 7.7, "fibre": 10.3, "proteine": 20.2, "sale": 0.0}
+  },
+  {
+    "nome": "Noci",
+    "aliases": ["noci", "noce", "walnut", "gherigli di noci"],
+    "per_100g": {"kcal": 654, "kj": 2738, "grassi": 65.2, "saturi": 6.1, "carboidrati": 13.7, "zuccheri": 2.6, "fibre": 6.7, "proteine": 15.2, "sale": 0.0}
+  },
+  {
+    "nome": "Pinoli",
+    "aliases": ["pinoli", "pinolo", "pine nuts"],
+    "per_100g": {"kcal": 673, "kj": 2816, "grassi": 68.4, "saturi": 4.9, "carboidrati": 13.1, "zuccheri": 3.6, "fibre": 3.7, "proteine": 13.7, "sale": 0.0}
+  },
+  {
+    "nome": "Uvetta",
+    "aliases": ["uvetta", "uva sultanina", "uva passa", "raisins", "uvetta sultanina"],
+    "per_100g": {"kcal": 299, "kj": 1251, "grassi": 0.5, "saturi": 0.2, "carboidrati": 79.2, "zuccheri": 59.2, "fibre": 3.7, "proteine": 3.1, "sale": 0.11}
+  },
+  {
+    "nome": "Marmellata",
+    "aliases": ["marmellata", "confettura", "jam", "confiture", "marmellata albicocca", "marmellata fragole", "marmellata frutti bosco"],
+    "per_100g": {"kcal": 278, "kj": 1163, "grassi": 0.1, "saturi": 0.0, "carboidrati": 69.5, "zuccheri": 52.0, "fibre": 0.7, "proteine": 0.4, "sale": 0.0}
+  },
+  {
+    "nome": "Panna Montata",
+    "aliases": ["panna montata", "chantilly", "whipped cream"],
+    "per_100g": {"kcal": 257, "kj": 1075, "grassi": 26.7, "saturi": 16.7, "carboidrati": 3.2, "zuccheri": 2.6, "fibre": 0.0, "proteine": 1.9, "sale": 0.04}
+  },
+  {
+    "nome": "Lievito di Birra",
+    "aliases": ["lievito di birra", "lievito fresco", "lievito compresso", "yeast"],
+    "per_100g": {"kcal": 105, "kj": 439, "grassi": 1.8, "saturi": 0.6, "carboidrati": 18.1, "zuccheri": 0.0, "fibre": 8.0, "proteine": 8.4, "sale": 0.0}
+  },
+  {
+    "nome": "Lievito in Polvere",
+    "aliases": ["lievito in polvere", "lievito chimico", "baking powder", "cremor tartaro"],
+    "per_100g": {"kcal": 53, "kj": 222, "grassi": 0.0, "saturi": 0.0, "carboidrati": 27.7, "zuccheri": 0.0, "fibre": 0.2, "proteine": 0.0, "sale": 20.0}
+  },
+  {
+    "nome": "Bicarbonato di Sodio",
+    "aliases": ["bicarbonato", "bicarbonato di sodio", "baking soda"],
+    "per_100g": {"kcal": 0, "kj": 0, "grassi": 0.0, "saturi": 0.0, "carboidrati": 0.0, "zuccheri": 0.0, "fibre": 0.0, "proteine": 0.0, "sale": 69.0}
+  },
+  {
+    "nome": "Sale",
+    "aliases": ["sale", "sale fino", "sale grosso", "sale marino", "sodio"],
+    "per_100g": {"kcal": 0, "kj": 0, "grassi": 0.0, "saturi": 0.0, "carboidrati": 0.0, "zuccheri": 0.0, "fibre": 0.0, "proteine": 0.0, "sale": 97.5}
+  },
+  {
+    "nome": "Vaniglia",
+    "aliases": ["vaniglia", "vanillina", "bacca di vaniglia", "estratto di vaniglia", "pasta di vaniglia", "aroma vaniglia"],
+    "per_100g": {"kcal": 288, "kj": 1205, "grassi": 0.1, "saturi": 0.0, "carboidrati": 12.7, "zuccheri": 12.7, "fibre": 0.0, "proteine": 0.1, "sale": 0.0}
+  },
+  {
+    "nome": "Cannella",
+    "aliases": ["cannella", "cinnamon", "stecca di cannella"],
+    "per_100g": {"kcal": 247, "kj": 1034, "grassi": 1.2, "saturi": 0.3, "carboidrati": 80.6, "zuccheri": 2.2, "fibre": 53.1, "proteine": 4.0, "sale": 0.01}
+  },
+  {
+    "nome": "Buccia di Limone",
+    "aliases": ["limone", "scorza di limone", "buccia di limone", "succo di limone", "zest limone", "limone grattugiato"],
+    "per_100g": {"kcal": 29, "kj": 121, "grassi": 0.3, "saturi": 0.0, "carboidrati": 9.3, "zuccheri": 2.5, "fibre": 2.8, "proteine": 1.1, "sale": 0.0}
+  },
+  {
+    "nome": "Buccia di Arancia",
+    "aliases": ["arancia", "scorza di arancia", "buccia di arancia", "succo di arancia", "arancia grattugiata", "zest arancia"],
+    "per_100g": {"kcal": 47, "kj": 197, "grassi": 0.1, "saturi": 0.0, "carboidrati": 11.8, "zuccheri": 9.4, "fibre": 2.4, "proteine": 0.9, "sale": 0.0}
+  },
+  {
+    "nome": "Mozzarella",
+    "aliases": ["mozzarella", "fior di latte", "mozzarella di bufala", "mozzarella stg"],
+    "per_100g": {"kcal": 253, "kj": 1059, "grassi": 19.9, "saturi": 13.2, "carboidrati": 2.2, "zuccheri": 2.2, "fibre": 0.0, "proteine": 17.1, "sale": 0.49}
+  },
+  {
+    "nome": "Pomodoro",
+    "aliases": ["pomodoro", "pomodori", "salsa di pomodoro", "passata di pomodoro", "pelati", "concentrato di pomodoro"],
+    "per_100g": {"kcal": 18, "kj": 75, "grassi": 0.2, "saturi": 0.0, "carboidrati": 3.5, "zuccheri": 2.6, "fibre": 1.2, "proteine": 0.9, "sale": 0.0}
+  },
+  {
+    "nome": "Prosciutto Cotto",
+    "aliases": ["prosciutto cotto", "prosciutto", "ham", "cotto"],
+    "per_100g": {"kcal": 215, "kj": 900, "grassi": 14.0, "saturi": 5.0, "carboidrati": 1.5, "zuccheri": 0.5, "fibre": 0.0, "proteine": 21.0, "sale": 1.50}
+  },
+  {
+    "nome": "Prosciutto Crudo",
+    "aliases": ["prosciutto crudo", "prosciutto di parma", "crudo", "prosciutto san daniele"],
+    "per_100g": {"kcal": 268, "kj": 1121, "grassi": 18.3, "saturi": 7.0, "carboidrati": 1.0, "zuccheri": 1.0, "fibre": 0.0, "proteine": 25.5, "sale": 2.30}
+  },
+  {
+    "nome": "Salame",
+    "aliases": ["salame", "salamino", "salsiccia", "soppressata"],
+    "per_100g": {"kcal": 406, "kj": 1699, "grassi": 33.8, "saturi": 12.5, "carboidrati": 2.0, "zuccheri": 0.5, "fibre": 0.0, "proteine": 26.4, "sale": 2.50}
+  },
+  {
+    "nome": "Carne Macinata",
+    "aliases": ["carne macinata", "macinato", "ragù", "carne bovina"],
+    "per_100g": {"kcal": 243, "kj": 1017, "grassi": 18.5, "saturi": 7.2, "carboidrati": 0.0, "zuccheri": 0.0, "fibre": 0.0, "proteine": 19.0, "sale": 0.07}
+  },
+  {
+    "nome": "Riso",
+    "aliases": ["riso", "riso arborio", "riso carnaroli", "riso vialone", "riso cotto"],
+    "per_100g": {"kcal": 361, "kj": 1510, "grassi": 0.7, "saturi": 0.2, "carboidrati": 79.0, "zuccheri": 0.0, "fibre": 0.6, "proteine": 7.9, "sale": 0.0}
+  },
+  {
+    "nome": "Pasta",
+    "aliases": ["pasta", "spaghetti", "rigatoni", "penne", "linguine", "tagliatelle", "pasta secca"],
+    "per_100g": {"kcal": 358, "kj": 1497, "grassi": 1.5, "saturi": 0.3, "carboidrati": 73.4, "zuccheri": 3.2, "fibre": 2.7, "proteine": 12.8, "sale": 0.0}
+  },
+  {
+    "nome": "Cipolla",
+    "aliases": ["cipolla", "cipollotto", "scalogno", "onion"],
+    "per_100g": {"kcal": 40, "kj": 167, "grassi": 0.1, "saturi": 0.0, "carboidrati": 9.3, "zuccheri": 4.2, "fibre": 1.7, "proteine": 1.1, "sale": 0.0}
+  },
+  {
+    "nome": "Aglio",
+    "aliases": ["aglio", "aglio fresco", "garlic"],
+    "per_100g": {"kcal": 149, "kj": 623, "grassi": 0.5, "saturi": 0.1, "carboidrati": 33.1, "zuccheri": 1.0, "fibre": 2.1, "proteine": 6.4, "sale": 0.02}
+  },
+  {
+    "nome": "Patate",
+    "aliases": ["patate", "patata", "patate lesse", "purè", "potato"],
+    "per_100g": {"kcal": 77, "kj": 322, "grassi": 0.1, "saturi": 0.0, "carboidrati": 17.5, "zuccheri": 0.8, "fibre": 2.2, "proteine": 2.0, "sale": 0.0}
+  },
+  {
+    "nome": "Spinaci",
+    "aliases": ["spinaci", "spinaci freschi", "spinaci in foglia", "spinach"],
+    "per_100g": {"kcal": 23, "kj": 96, "grassi": 0.4, "saturi": 0.0, "carboidrati": 3.6, "zuccheri": 0.4, "fibre": 2.2, "proteine": 2.9, "sale": 0.08}
+  },
+  {
+    "nome": "Latte Condensato",
+    "aliases": ["latte condensato", "condensed milk", "latte condensato zuccherato"],
+    "per_100g": {"kcal": 321, "kj": 1344, "grassi": 8.7, "saturi": 5.4, "carboidrati": 54.4, "zuccheri": 54.4, "fibre": 0.0, "proteine": 7.9, "sale": 0.15}
+  },
+  {
+    "nome": "Pane Raffermo",
+    "aliases": ["pane raffermo", "pangrattato", "mollica di pane", "pan di spagna", "savoiardi"],
+    "per_100g": {"kcal": 289, "kj": 1209, "grassi": 2.6, "saturi": 0.6, "carboidrati": 54.9, "zuccheri": 2.5, "fibre": 3.1, "proteine": 9.3, "sale": 0.56}
+  },
+  {
+    "nome": "Fragole",
+    "aliases": ["fragole", "fragola", "fragoline", "strawberries"],
+    "per_100g": {"kcal": 32, "kj": 134, "grassi": 0.3, "saturi": 0.0, "carboidrati": 7.7, "zuccheri": 4.9, "fibre": 2.0, "proteine": 0.7, "sale": 0.0}
+  },
+  {
+    "nome": "Albicocche",
+    "aliases": ["albicocche", "albicocca", "apricot", "albicocche secche"],
+    "per_100g": {"kcal": 48, "kj": 201, "grassi": 0.4, "saturi": 0.0, "carboidrati": 11.1, "zuccheri": 9.2, "fibre": 2.0, "proteine": 1.4, "sale": 0.0}
+  },
+  {
+    "nome": "Amarene",
+    "aliases": ["amarene", "amarena", "ciliege amarene", "visciole"],
+    "per_100g": {"kcal": 63, "kj": 264, "grassi": 0.2, "saturi": 0.0, "carboidrati": 16.0, "zuccheri": 12.8, "fibre": 1.6, "proteine": 0.7, "sale": 0.0}
+  },
+  {
+    "nome": "Pera",
+    "aliases": ["pera", "pere", "pears"],
+    "per_100g": {"kcal": 57, "kj": 238, "grassi": 0.1, "saturi": 0.0, "carboidrati": 15.2, "zuccheri": 9.8, "fibre": 3.1, "proteine": 0.4, "sale": 0.0}
+  },
+  {
+    "nome": "Mela",
+    "aliases": ["mela", "mele", "apple", "composta di mele"],
+    "per_100g": {"kcal": 52, "kj": 218, "grassi": 0.2, "saturi": 0.0, "carboidrati": 13.8, "zuccheri": 10.4, "fibre": 2.4, "proteine": 0.3, "sale": 0.0}
+  },
+  {
+    "nome": "Rum",
+    "aliases": ["rum", "rhum", "liquore", "amaretto", "limoncello", "grappa", "alcol"],
+    "per_100g": {"kcal": 231, "kj": 967, "grassi": 0.0, "saturi": 0.0, "carboidrati": 0.1, "zuccheri": 0.1, "fibre": 0.0, "proteine": 0.0, "sale": 0.0}
+  },
+  {
+    "nome": "Acqua",
+    "aliases": ["acqua", "acqua minerale", "water"],
+    "per_100g": {"kcal": 0, "kj": 0, "grassi": 0.0, "saturi": 0.0, "carboidrati": 0.0, "zuccheri": 0.0, "fibre": 0.0, "proteine": 0.0, "sale": 0.0}
+  },
+  {
+    "nome": "Caffè",
+    "aliases": ["caffè", "caffe", "caffè espresso", "coffee", "nescafé", "caffè solubile"],
+    "per_100g": {"kcal": 2, "kj": 8, "grassi": 0.0, "saturi": 0.0, "carboidrati": 0.0, "zuccheri": 0.0, "fibre": 0.0, "proteine": 0.3, "sale": 0.01}
+  },
+  {
+    "nome": "Gelatina",
+    "aliases": ["gelatina", "colla di pesce", "gelatina in fogli", "agar agar", "gelatin", "carragenina"],
+    "per_100g": {"kcal": 335, "kj": 1401, "grassi": 0.1, "saturi": 0.0, "carboidrati": 0.0, "zuccheri": 0.0, "fibre": 0.0, "proteine": 84.0, "sale": 0.48}
+  },
+  {
+    "nome": "Yogurt",
+    "aliases": ["yogurt", "yogurt bianco", "yogurt greco", "yogurt naturale"],
+    "per_100g": {"kcal": 61, "kj": 255, "grassi": 3.3, "saturi": 2.1, "carboidrati": 4.7, "zuccheri": 4.7, "fibre": 0.0, "proteine": 3.5, "sale": 0.05}
+  },
+  {
+    "nome": "Sciroppo d'Acero",
+    "aliases": ["sciroppo d'acero", "maple syrup", "sciroppo acero"],
+    "per_100g": {"kcal": 260, "kj": 1088, "grassi": 0.1, "saturi": 0.0, "carboidrati": 67.0, "zuccheri": 60.5, "fibre": 0.0, "proteine": 0.0, "sale": 0.01}
+  },
+  {
+    "nome": "Cocco",
+    "aliases": ["cocco", "noce di cocco", "farina di cocco", "cocco grattugiato", "latte di cocco"],
+    "per_100g": {"kcal": 354, "kj": 1481, "grassi": 33.5, "saturi": 29.7, "carboidrati": 15.2, "zuccheri": 6.2, "fibre": 9.0, "proteine": 3.3, "sale": 0.02}
+  },
+  {
+    "nome": "Sesamo",
+    "aliases": ["sesamo", "semi di sesamo", "tahini", "pasta di sesamo"],
+    "per_100g": {"kcal": 573, "kj": 2397, "grassi": 49.7, "saturi": 7.0, "carboidrati": 23.5, "zuccheri": 0.3, "fibre": 11.8, "proteine": 17.7, "sale": 0.03}
+  },
+  {
+    "nome": "Papavero",
+    "aliases": ["semi di papavero", "papavero"],
+    "per_100g": {"kcal": 533, "kj": 2230, "grassi": 41.6, "saturi": 4.5, "carboidrati": 28.1, "zuccheri": 2.9, "fibre": 19.5, "proteine": 17.9, "sale": 0.03}
+  },
+  {
+    "nome": "Fiordilatte",
+    "aliases": ["fiordilatte", "provola", "scamorza", "formaggio filante"],
+    "per_100g": {"kcal": 253, "kj": 1059, "grassi": 19.9, "saturi": 13.2, "carboidrati": 2.2, "zuccheri": 2.2, "fibre": 0.0, "proteine": 17.1, "sale": 0.49}
+  },
+  {
+    "nome": "Parmigiano",
+    "aliases": ["parmigiano", "grana padano", "pecorino", "parmigiano reggiano", "formaggio grattugiato"],
+    "per_100g": {"kcal": 392, "kj": 1640, "grassi": 25.9, "saturi": 16.4, "carboidrati": 4.1, "zuccheri": 0.1, "fibre": 0.0, "proteine": 37.9, "sale": 1.60}
+  },
+  {
+    "nome": "Besciamella",
+    "aliases": ["besciamella", "béchamel", "salsa bianca"],
+    "per_100g": {"kcal": 120, "kj": 502, "grassi": 7.5, "saturi": 4.5, "carboidrati": 10.0, "zuccheri": 2.5, "fibre": 0.3, "proteine": 3.3, "sale": 0.4}
+  },
+  {
+    "nome": "Pepe",
+    "aliases": ["pepe", "pepe nero", "pepe bianco", "peperoncino"],
+    "per_100g": {"kcal": 251, "kj": 1050, "grassi": 3.3, "saturi": 1.4, "carboidrati": 63.7, "zuccheri": 0.6, "fibre": 25.3, "proteine": 10.4, "sale": 0.02}
+  }
+]

@@ -1,0 +1,189 @@
+import React, { useCallback, useEffect, useState } from 'react';
+import { QRCodeSVG } from 'qrcode.react';
+import api from '../api';
+import CopiaTesto from '../components/CopiaTesto';
+import { PageHeader } from '../components/ds/PageHeader';
+import { useAuth } from '../contexts/AuthContext';
+
+const card = { background: '#fff', border: '1px solid #e6e3d9', borderRadius: 12, padding: 22, maxWidth: 760, margin: '0 auto' };
+const button = { border: 0, borderRadius: 8, background: '#2c2b28', color: '#fff', padding: '11px 16px', fontWeight: 800, cursor: 'pointer' };
+const input = { width: '100%', boxSizing: 'border-box', border: '1px solid #d0ccbe', borderRadius: 8, padding: '12px 14px', fontSize: 17, letterSpacing: 1, margin: '12px 0' };
+const setupActionRow = { display: 'flex', alignItems: 'stretch', flexWrap: 'wrap', gap: 10, marginTop: 12 };
+
+export default function MFAAdmin() {
+  const { applyMfaStepUp } = useAuth();
+  const [status, setStatus] = useState(null);
+  const [setup, setSetup] = useState(null);
+  const [code, setCode] = useState('');
+  const [recoveryCodes, setRecoveryCodes] = useState([]);
+  const [message, setMessage] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const load = useCallback(async () => {
+    const response = await api.get('/api/auth/mfa/status');
+    setStatus(response.data);
+  }, []);
+
+  useEffect(() => { load().catch(() => setMessage('Impossibile leggere lo stato MFA.')); }, [load]);
+
+  const start = async (regenerate = false) => {
+    setBusy(true); setMessage(''); setCode('');
+    try { setSetup((await api.post(`/api/auth/mfa/setup/start?regenerate=${regenerate}`)).data); }
+    catch (error) { setMessage(error.response?.data?.detail || 'Avvio configurazione non riuscito.'); }
+    finally { setBusy(false); }
+  };
+
+  const updateSetupCode = (value) => {
+    if (value && !/^\d{0,6}$/.test(value)) {
+      setCode('');
+      setMessage("Non inserire qui la chiave lunga: aggiungila all'app Authenticator e digita il codice numerico di 6 cifre generato dall'app.");
+      return;
+    }
+    setCode(value.slice(0, 6));
+    setMessage('');
+  };
+
+  const confirm = async () => {
+    if (busy || code.trim().length !== 6) return;
+    setBusy(true); setMessage('');
+    try {
+      const response = await api.post('/api/auth/mfa/setup/confirm', { code });
+      setRecoveryCodes(response.data.recovery_codes || []);
+      setSetup(null); setCode('');
+      setMessage('MFA attivata. Salva i codici di recupero prima di lasciare la pagina.');
+      await load();
+    } catch (error) {
+      const detail = error.response?.data?.detail;
+      if (!error.response) {
+        setMessage('Il server non ha risposto. La configurazione non è stata modificata: controlla la connessione e riprova con un nuovo codice temporaneo.');
+      } else if (error.response.status === 400 && setup?.setup_id) {
+        setMessage(`Il codice non corrisponde alla configurazione ${setup.setup_id}. Nell'app Authenticator seleziona la voce con questo identificativo oppure genera una nuova configurazione e scansiona il nuovo QR.`);
+      } else {
+        setMessage(detail || 'Impossibile confermare il codice. Riprova con il nuovo codice temporaneo mostrato dall’app Authenticator.');
+      }
+    }
+    finally { setBusy(false); }
+  };
+
+  const stepUp = async () => {
+    setBusy(true); setMessage('');
+    try {
+      const response = await api.post('/api/auth/mfa/step-up', { code });
+      applyMfaStepUp(response.data);
+      setCode(''); setMessage('Sessione verificata con MFA.');
+      await load();
+    } catch (error) { setMessage(error.response?.data?.detail || 'Codice non valido.'); }
+    finally { setBusy(false); }
+  };
+
+  const disable = async () => {
+    if (!window.confirm('Disattivare MFA? Le approvazioni AI saranno bloccate finché non verrà riattivata.')) return;
+    setBusy(true); setMessage('');
+    try {
+      await api.post('/api/auth/mfa/disable', { code });
+      setCode(''); setRecoveryCodes([]); setMessage('MFA disattivata.');
+      await load();
+    } catch (error) { setMessage(error.response?.data?.detail || 'Codice non valido.'); }
+    finally { setBusy(false); }
+  };
+
+  if (!status) return <div style={card}>Caricamento sicurezza...</div>;
+
+  return (
+    <div style={{ padding: 20 }}>
+      <PageHeader title="Sicurezza MFA" style={{ maxWidth: 760, margin: '0 auto', marginBottom: 14 }} />
+      <div style={card}>
+        <p style={{ color: '#5f5c55', lineHeight: 1.55 }}>
+          La verifica in due passaggi protegge l'accesso amministratore e rende obbligatoria una sessione MFA per approvare o rifiutare decisioni AI.
+        </p>
+        <div style={{ padding: 12, borderRadius: 8, background: status.enabled ? '#ecfdf5' : '#fff7ed', color: status.enabled ? '#166534' : '#9a3412', fontWeight: 800 }}>
+          {status.enabled ? 'MFA attiva' : 'MFA non ancora configurata'}
+          {status.enabled && ` · ${status.recovery_codes_remaining} codici di recupero disponibili`}
+        </div>
+        {message && <div style={{ marginTop: 14, padding: 10, background: '#f2f0e9', borderRadius: 8 }}>{message}</div>}
+
+        {!status.enabled && !setup && <button style={{ ...button, marginTop: 18 }} disabled={busy} onClick={() => start(false)}>Configura MFA</button>}
+
+        {setup && (
+          <div style={{ marginTop: 20 }}>
+            <h3>1. Scansiona il codice</h3>
+            {setup.setup_id && (
+              <div style={{ marginBottom: 12, padding: 10, borderRadius: 8, background: '#eef3ef', color: '#4c4a44', fontWeight: 800 }}>
+                Configurazione: {setup.setup_id}. Nell'app usa esclusivamente la voce "Amministratore [{setup.setup_id}]".
+              </div>
+            )}
+            <div style={{ background: '#fff', padding: 14, width: 'fit-content', border: '1px solid #e6e3d9' }}><QRCodeSVG value={setup.otpauth_uri} size={190} /></div>
+            <p style={{ color: '#7a776e', fontSize: 13 }}>Se non puoi scansionarlo, inserisci manualmente questa chiave. Non condividerla.</p>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+              <code style={{ flex: '1 1 260px', wordBreak: 'break-all', background: '#f6f4ee', padding: 10 }}>{setup.secret}</code>
+              <CopiaTesto testo={setup.secret} label="Copia chiave" data-testid="copia-chiave-mfa" />
+            </div>
+            <h3>2. Conferma il primo codice</h3>
+            <p style={{ color: '#5f5c55', lineHeight: 1.5 }}>
+              Apri l'app Authenticator e inserisci qui esclusivamente il codice numerico temporaneo di 6 cifre. Non incollare la chiave lunga in questo campo.
+            </p>
+            <div style={setupActionRow}>
+              <input
+                style={{ ...input, flex: '1 1 260px', width: 'auto', minWidth: 0, margin: 0 }}
+                value={code}
+                onChange={event => updateSetupCode(event.target.value)}
+                onKeyDown={event => {
+                  if (event.key === 'Enter') confirm();
+                }}
+                inputMode="numeric"
+                pattern="[0-9]*"
+                maxLength={6}
+                autoComplete="one-time-code"
+                aria-label="Codice numerico di 6 cifre generato da Authenticator"
+                placeholder="000000"
+              />
+              <button style={{ ...button, flex: '0 0 auto' }} disabled={busy || code.trim().length !== 6} onClick={confirm}>
+                Attiva MFA
+              </button>
+            </div>
+            <p style={{ color: '#5f5c55', fontSize: 13, margin: '8px 0 0' }}>
+              Dopo le 6 cifre premi <strong>Attiva MFA</strong> oppure il tasto Invio.
+            </p>
+            <button
+              style={{ ...button, marginTop: 14, background: '#5f5c55' }}
+              disabled={busy}
+              onClick={() => start(true)}
+            >
+              Genera una nuova configurazione
+            </button>
+            <p style={{ color: '#9a3412', fontSize: 13 }}>
+              Se hai incollato la chiave lunga nel campo sbagliato, genera una nuova configurazione prima di continuare.
+            </p>
+          </div>
+        )}
+
+        {recoveryCodes.length > 0 && (
+          <div style={{ marginTop: 20, padding: 16, border: '2px solid #f59e0b', borderRadius: 10 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
+              <h3 style={{ margin: 0 }}>Codici di recupero — mostrati una sola volta</h3>
+              {/* Si vedono una volta sola: se non li copi ora, sono persi. */}
+              <CopiaTesto
+                testo={recoveryCodes.join('\n')}
+                label="Copia tutti"
+                data-testid="copia-codici-recupero"
+              />
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8, marginTop: 12 }}>
+              {recoveryCodes.map(item => <code key={item} style={{ padding: 8, background: '#fffbeb' }}>{item}</code>)}
+            </div>
+          </div>
+        )}
+
+        {status.enabled && (
+          <div style={{ marginTop: 20 }}>
+            <h3>{status.verified_in_session ? 'Sessione MFA verificata' : 'Verifica questa sessione'}</h3>
+            {!status.verified_in_session && <p style={{ color: '#7a776e' }}>Inserisci un codice per abilitare le approvazioni AI senza uscire dal gestionale.</p>}
+            <input style={input} value={code} onChange={event => setCode(event.target.value.toUpperCase())} autoComplete="one-time-code" placeholder="Codice MFA o recupero" />
+            {!status.verified_in_session && <button style={button} disabled={busy || code.trim().length < 6} onClick={stepUp}>Verifica sessione</button>}
+            <button style={{ ...button, background: '#b0362b', marginLeft: status.verified_in_session ? 0 : 10 }} disabled={busy || code.trim().length < 6} onClick={disable}>Disattiva MFA</button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}

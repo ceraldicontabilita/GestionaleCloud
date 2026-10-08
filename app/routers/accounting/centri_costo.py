@@ -1,0 +1,802 @@
+"""
+Centri di Costo e Utile Obiettivo Router
+Sistema di contabilità analitica per bar-pasticceria
+"""
+from fastapi import APIRouter, HTTPException, Query, Body
+from typing import Dict, Any, List, Optional
+from datetime import datetime, date, timezone
+import calendar
+import math
+from app.database import Database, Collections
+
+router = APIRouter()
+
+# ============== CENTRI DI COSTO ==============
+
+# Struttura centri di costo per i 4 settori operativi reali (scelta utente):
+# Bar/Caffetteria, Pasticceria, Gelateria, Rosticceria.
+CDC_STANDARD = {
+    # Centri Operativi (generano ricavi) — i 4 settori reali
+    "CDC-01": {"nome": "BAR / CAFFETTERIA", "tipo": "operativo", "descrizione": "Vendita caffè, bevande calde/fredde, snack"},
+    "CDC-02": {"nome": "PASTICCERIA", "tipo": "operativo", "descrizione": "Produzione e vendita dolci, torte, pasticcini"},
+    "CDC-03": {"nome": "GELATERIA", "tipo": "operativo", "descrizione": "Produzione e vendita gelato, sorbetti, semifreddi"},
+    "CDC-04": {"nome": "ROSTICCERIA", "tipo": "operativo", "descrizione": "Produzione e vendita gastronomia calda/fredda, tavola calda"},
+
+    # Centri di Supporto (costi da ribaltare)
+    "CDC-90": {"nome": "PERSONALE", "tipo": "supporto", "descrizione": "Costi del personale da ribaltare"},
+    "CDC-91": {"nome": "AMMINISTRAZIONE", "tipo": "supporto", "descrizione": "Costi amministrativi e gestionali"},
+    "CDC-92": {"nome": "MARKETING", "tipo": "supporto", "descrizione": "Pubblicità, promozioni, social"},
+
+    # Centro Struttura (costi fissi)
+    "CDC-99": {"nome": "COSTI GENERALI / STRUTTURA", "tipo": "struttura", "descrizione": "Affitto, utenze, manutenzione"}
+}
+
+# Elenco dei centri operativi (i settori che generano ricavi), usato dal
+# ribaltamento e dai margini.
+CDC_OPERATIVI = ("CDC-01", "CDC-02", "CDC-03", "CDC-04")
+# Centri i cui costi vengono ribaltati sui settori operativi (supporto + struttura).
+CDC_DA_RIBALTARE = ("CDC-90", "CDC-91", "CDC-92", "CDC-99")
+
+# Mapping automatico categoria_contabile → centro di costo (4 settori reali).
+# Le materie prime condivise sono assegnate al settore che ne è consumatore
+# prevalente; casi ambigui puntano al settore più probabile (rivedibile).
+CATEGORIA_TO_CDC = {
+    # BAR / CAFFETTERIA
+    "caffe": "CDC-01",
+    "bevande": "CDC-01",
+    "bevande_alcoliche": "CDC-01",
+    "birra": "CDC-01",
+    "vino": "CDC-01",
+    "bibite": "CDC-01",
+    "snack": "CDC-01",
+
+    # PASTICCERIA (dolci + materie prime prevalenti da pasticceria)
+    "pasticceria": "CDC-02",
+    "dolci": "CDC-02",
+    "torte": "CDC-02",
+    "farine": "CDC-02",
+    "zucchero": "CDC-02",
+    "uova": "CDC-02",
+    "cioccolato": "CDC-02",
+    "latticini": "CDC-02",
+
+    # GELATERIA
+    "gelato": "CDC-03",
+    "frutta": "CDC-03",
+
+    # ROSTICCERIA (gastronomia + materie prime salate + confezionamento asporto)
+    "gastronomia": "CDC-04",
+    "salumi": "CDC-04",
+    "carne": "CDC-04",
+    "pesce": "CDC-04",
+    "alimentari": "CDC-04",
+    "surgelati": "CDC-04",
+    "imballaggi": "CDC-04",
+    "packaging": "CDC-04",
+    "delivery": "CDC-04",
+
+    # PERSONALE
+    "stipendi": "CDC-90",
+    "contributi": "CDC-90",
+    "tfr": "CDC-90",
+    
+    # AMMINISTRAZIONE
+    "consulenze": "CDC-91",
+    "commercialista": "CDC-91",
+    "software": "CDC-91",
+    "canoni_abbonamenti": "CDC-91",
+    
+    # MARKETING
+    "pubblicita": "CDC-92",
+    "marketing": "CDC-92",
+    
+    # COSTI GENERALI
+    "affitto": "CDC-99",
+    "utenze_elettricita": "CDC-99",
+    "utenze_gas": "CDC-99",
+    "utenze_acqua": "CDC-99",
+    "telefonia": "CDC-99",
+    "manutenzione": "CDC-99",
+    "pulizia": "CDC-99",
+    "assicurazioni": "CDC-99",
+    "noleggio_auto": "CDC-99",
+    "carburante": "CDC-99",
+    "ferramenta": "CDC-99",
+    "materiale_edile": "CDC-99"
+}
+
+# Mapping fornitore → centro di costo (per fornitori specifici)
+FORNITORE_TO_CDC = {
+    "KIMBO": "CDC-01",  # Caffè
+    "LAVAZZA": "CDC-01",
+    "ILLY": "CDC-01",
+    "COCA": "CDC-01",
+    "PEPSI": "CDC-01",
+    "PERONI": "CDC-01",
+    "HEINEKEN": "CDC-01",
+    "ENEL": "CDC-99",  # Utenze
+    "EDISON": "CDC-99",
+    "ENI": "CDC-99",
+    "TELECOM": "CDC-99",
+    "TIM": "CDC-99",
+    "VODAFONE": "CDC-99",
+    "ARVAL": "CDC-99",  # Noleggio auto
+    "LEASYS": "CDC-99",
+    "ALD": "CDC-99"
+}
+
+
+@router.get("")
+async def list_centri_costo() -> List[Dict[str, Any]]:
+    """Lista tutti i centri di costo con statistiche."""
+    db = Database.get_db()
+    
+    # Verifica se esistono nel DB, altrimenti usa standard
+    centri = await db["centri_costo"].find({}, {"_id": 0}).to_list(100)
+    
+    if not centri:
+        # Inizializza con struttura standard
+        centri = []
+        for codice, dati in CDC_STANDARD.items():
+            centro = {
+                "codice": codice,
+                **dati,
+                "attivo": True,
+                "created_at": datetime.now(timezone.utc).isoformat()
+            }
+            centri.append(centro.copy())  # Usa copy() per evitare che insert_many modifichi
+        
+        # Salva nel DB (crea copie per evitare mutazione con _id)
+        centri_to_insert = [c.copy() for c in centri]
+        await db["centri_costo"].insert_many(centri_to_insert)
+    
+    # Aggiungi statistiche per ogni centro
+    for centro in centri:
+        codice = centro["codice"]
+        
+        # Conta fatture associate
+        fatture_count = await db[Collections.INVOICES].count_documents({"centro_costo": codice})
+        fatture_totale = 0
+        
+        pipeline = [
+            {"$match": {"centro_costo": codice}},
+            {"$group": {"_id": None, "totale": {"$sum": "$total_amount"}}}
+        ]
+        result = await db[Collections.INVOICES].aggregate(pipeline).to_list(1)
+        if result:
+            fatture_totale = result[0].get("totale", 0)
+        
+        centro["fatture_count"] = fatture_count
+        centro["fatture_totale"] = round(fatture_totale, 2)
+    
+    return centri
+
+
+@router.post("")
+async def create_centro_costo(data: Dict[str, Any] = Body(...)) -> Dict[str, str]:
+    """Crea nuovo centro di costo."""
+    db = Database.get_db()
+    
+    codice = data.get("codice")
+    if not codice:
+        raise HTTPException(status_code=400, detail="Codice centro di costo obbligatorio")
+    
+    # Verifica duplicato
+    existing = await db["centri_costo"].find_one({"codice": codice})
+    if existing:
+        raise HTTPException(status_code=400, detail=f"Centro di costo {codice} già esistente")
+    
+    centro = {
+        "codice": codice,
+        "nome": data.get("nome", codice),
+        "tipo": data.get("tipo", "operativo"),
+        "descrizione": data.get("descrizione", ""),
+        "attivo": True,
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    
+    await db["centri_costo"].insert_one(centro.copy())
+    return {"message": f"Centro di costo {codice} creato", "codice": codice}
+
+
+@router.get("/mapping-categorie")
+async def get_mapping_categorie() -> Dict[str, Any]:
+    """Restituisce il mapping categoria → centro di costo."""
+    return {
+        "categoria_to_cdc": CATEGORIA_TO_CDC,
+        "fornitore_to_cdc": FORNITORE_TO_CDC,
+        "cdc_standard": CDC_STANDARD
+    }
+
+
+@router.post("/assegna-cdc-fatture")
+async def assegna_cdc_fatture(
+    anno: Optional[int] = Query(None),
+    force: bool = Query(False, description="Sovrascrive assegnazioni esistenti")
+) -> Dict[str, Any]:
+    """
+    Assegna automaticamente i centri di costo alle fatture
+    basandosi su categoria_contabile e fornitore.
+    """
+    db = Database.get_db()
+    
+    query = {}
+    if anno:
+        query["invoice_date"] = {"$regex": f"^{anno}"}
+    
+    if not force:
+        query["centro_costo"] = {"$exists": False}
+    
+    fatture = await db[Collections.INVOICES].find(query, {"_id": 1, "categoria_contabile": 1, "supplier_name": 1}).to_list(10000)
+    
+    updated = 0
+    stats = {}
+    
+    for fatt in fatture:
+        cdc = None
+        
+        # 1. Prima prova con categoria
+        categoria = fatt.get("categoria_contabile", "").lower()
+        if categoria in CATEGORIA_TO_CDC:
+            cdc = CATEGORIA_TO_CDC[categoria]
+        
+        # 2. Se non trovato, prova con fornitore
+        if not cdc:
+            supplier = (fatt.get("supplier_name") or "").upper()
+            for key, value in FORNITORE_TO_CDC.items():
+                if key in supplier:
+                    cdc = value
+                    break
+        
+        # 3. Default: costi generali
+        if not cdc:
+            cdc = "CDC-99"
+        
+        # Aggiorna fattura
+        await db[Collections.INVOICES].update_one(
+            {"_id": fatt["_id"]},
+            {"$set": {"centro_costo": cdc, "cdc_auto_assigned": True}}
+        )
+        updated += 1
+        stats[cdc] = stats.get(cdc, 0) + 1
+    
+    return {
+        "message": f"Assegnati {updated} centri di costo",
+        "fatture_aggiornate": updated,
+        "distribuzione": stats
+    }
+
+
+# ============== UTILE OBIETTIVO ==============
+
+@router.get("/utile-obiettivo")
+async def get_utile_obiettivo(anno: int = Query(...)) -> Dict[str, Any]:
+    """
+    Recupera il target di utile e calcola lo stato attuale.
+
+    Ricavi, costi e utile vengono dall'analisi costi/ricavi della Dashboard
+    (``controllo_gestione.get_analisi_costi_ricavi``): corrispettivi validi
+    all'imponibile, fatture attive al netto delle note di credito, lordo del
+    personale. Prima qui si sommava il ``totale`` lordo di tutti i
+    corrispettivi (anche cancellati) e il ``total_amount`` di tutte le
+    fatture (anche le copie archiviate, note di credito come costi), senza
+    personale. Senza un target configurato non si inventa un obiettivo: il
+    target e' None e non ci sono scostamenti.
+    """
+    from app.routers.controllo_gestione import get_analisi_costi_ricavi
+
+    db = Database.get_db()
+
+    target = await db["utile_obiettivo"].find_one({"anno": anno}, {"_id": 0}) or {}
+    utile_target = target.get("utile_target_annuo")
+    configurato = utile_target is not None
+
+    analisi = await get_analisi_costi_ricavi(anno=anno)
+    ricavi_totali = analisi["ricavi"]["totale"]
+    costi_totali = analisi["costi"]["totale"]
+    utile_corrente = analisi["margine"]["importo"]
+
+    # Giorni trascorsi nell'anno
+    oggi = date.today()
+    if oggi.year == anno:
+        giorni_trascorsi = (oggi - date(anno, 1, 1)).days + 1
+    elif anno < oggi.year:
+        giorni_trascorsi = 366 if calendar.isleap(anno) else 365
+    else:
+        giorni_trascorsi = 0
+
+    giorni_lavorativi = target.get("giorni_lavorativi_anno")
+    margine_medio = target.get("margine_medio_atteso")
+    giorni_lavorativi_trascorsi = (
+        int(giorni_trascorsi * (giorni_lavorativi / 365)) if giorni_lavorativi else None
+    )
+    giorni_rimanenti = (
+        max(giorni_lavorativi - giorni_lavorativi_trascorsi, 0)
+        if giorni_lavorativi else None
+    )
+
+    # Proiezione fine anno: solo se l'utile corrente si conosce.
+    utile_proiezione = (
+        round((utile_corrente / giorni_trascorsi) * 365, 2)
+        if utile_corrente is not None and giorni_trascorsi > 0 else None
+    )
+
+    analisi_target: Dict[str, Any] = {
+        "scostamento_target": None,
+        "scostamento_ad_oggi": None,
+        "stato": "TARGET_NON_CONFIGURATO" if not configurato else "DATO_NON_DISPONIBILE",
+        "percentuale_raggiungimento": None,
+        "percentuale_target_annuo": None,
+        "gap_target_annuo": None,
+        "surplus_target_annuo": None,
+        "stato_target_annuo": None,
+        "utile_proiezione_fine_anno": utile_proiezione,
+    }
+    azioni: Dict[str, Any] = {
+        "ricavi_aggiuntivi_necessari": None,
+        "costi_da_ridurre": None,
+        "utile_giornaliero_necessario": None,
+    }
+    utile_target_ad_oggi = None
+
+    if configurato and utile_corrente is not None:
+        scostamento = utile_corrente - utile_target
+        if giorni_lavorativi and giorni_lavorativi_trascorsi is not None:
+            utile_target_ad_oggi = (utile_target / giorni_lavorativi) * giorni_lavorativi_trascorsi
+        scostamento_ad_oggi = (
+            utile_corrente - utile_target_ad_oggi if utile_target_ad_oggi is not None else None
+        )
+        gap_target_annuo = max(utile_target - utile_corrente, 0)
+        analisi_target.update({
+            "scostamento_target": round(scostamento, 2),
+            "scostamento_ad_oggi": (
+                round(scostamento_ad_oggi, 2) if scostamento_ad_oggi is not None else None
+            ),
+            "stato": (
+                None if scostamento_ad_oggi is None
+                else "IN_TARGET" if scostamento_ad_oggi >= 0 else "SOTTO_TARGET"
+            ),
+            "percentuale_raggiungimento": (
+                round((utile_corrente / utile_target_ad_oggi) * 100, 1)
+                if utile_target_ad_oggi else None
+            ),
+            "percentuale_target_annuo": (
+                round((utile_corrente / utile_target) * 100, 1) if utile_target > 0 else None
+            ),
+            "gap_target_annuo": round(gap_target_annuo, 2),
+            "surplus_target_annuo": round(max(utile_corrente - utile_target, 0), 2),
+            "stato_target_annuo": "RAGGIUNTO" if gap_target_annuo == 0 else "DA_RAGGIUNGERE",
+        })
+        if scostamento < 0:
+            azioni = {
+                "ricavi_aggiuntivi_necessari": (
+                    round(abs(scostamento) / margine_medio, 2) if margine_medio else None
+                ),
+                "costi_da_ridurre": round(abs(scostamento), 2),
+                "utile_giornaliero_necessario": (
+                    round(abs(scostamento) / max(giorni_rimanenti, 1), 2)
+                    if giorni_rimanenti is not None else None
+                ),
+            }
+        else:
+            azioni = {
+                "ricavi_aggiuntivi_necessari": 0,
+                "costi_da_ridurre": 0,
+                "utile_giornaliero_necessario": 0,
+            }
+
+    return {
+        "anno": anno,
+        "target": {
+            "utile_target_annuo": utile_target,
+            "utile_target_ad_oggi": (
+                round(utile_target_ad_oggi, 2) if utile_target_ad_oggi is not None else None
+            ),
+            "margine_medio_atteso": margine_medio,
+            "giorni_lavorativi_anno": giorni_lavorativi,
+            "configurato": configurato,
+        },
+        "reale": {
+            "ricavi_totali": ricavi_totali,
+            "costi_totali": costi_totali,
+            "utile_corrente": utile_corrente,
+            "margine_reale": (
+                round(utile_corrente / ricavi_totali, 4)
+                if utile_corrente is not None and ricavi_totali > 0 else None
+            ),
+            "personale": analisi["costi"]["personale"],
+            "personale_incompleto": analisi["costi"]["personale_incompleto"],
+            "personale_motivo": analisi["costi"]["personale_motivo"],
+            "fonte": "controllo_gestione.costi_ricavi",
+        },
+        "analisi": analisi_target,
+        "tempo": {
+            "giorni_trascorsi": giorni_trascorsi,
+            "giorni_lavorativi_trascorsi": giorni_lavorativi_trascorsi,
+            "giorni_rimanenti": giorni_rimanenti,
+        },
+        "azioni_suggerite": azioni,
+    }
+
+
+@router.post("/utile-obiettivo")
+async def set_utile_obiettivo(data: Dict[str, Any] = Body(...)) -> Dict[str, str]:
+    """Imposta il target di utile per un anno.
+
+    Il target lo decide il titolare: senza ``utile_target_annuo`` non si
+    salva (prima si scriveva un 50.000 € mai scelto da nessuno).
+    """
+    db = Database.get_db()
+
+    anno = data.get("anno")
+    if not anno:
+        raise HTTPException(status_code=400, detail="Anno obbligatorio")
+    try:
+        utile_target = float(data.get("utile_target_annuo"))
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=400, detail="Target utile annuo obbligatorio") from None
+    if not math.isfinite(utile_target):
+        raise HTTPException(status_code=400, detail="Target utile annuo non valido")
+
+    target = {
+        "anno": anno,
+        "utile_target_annuo": utile_target,
+        "utile_target_mensile": utile_target / 12,
+        "margine_medio_atteso": data.get("margine_medio_atteso"),
+        "giorni_lavorativi_anno": data.get("giorni_lavorativi_anno"),
+        "note": data.get("note", ""),
+        "configurato": True,
+        "updated_at": datetime.now(timezone.utc).isoformat()
+    }
+
+    await db["utile_obiettivo"].update_one(
+        {"anno": anno},
+        {"$set": target},
+        upsert=True
+    )
+
+    return {"message": f"Target utile {anno} impostato: €{target['utile_target_annuo']:,.2f}"}
+
+
+@router.get("/utile-obiettivo/suggerimenti")
+async def get_suggerimenti_utile(anno: int = Query(...)) -> Dict[str, Any]:
+    """
+    Genera suggerimenti intelligenti per raggiungere l'utile obiettivo.
+    Motore decisionale stile TeamSystem.
+    """
+    db = Database.get_db()
+    
+    # Recupera dati base
+    stato = await get_utile_obiettivo(anno)
+    
+    suggerimenti = []
+    priorita = "NORMALE"
+    
+    scostamento = stato["analisi"]["scostamento_ad_oggi"]
+    if scostamento is None:
+        scostamento = stato["analisi"]["scostamento_target"]
+
+    if scostamento is None:
+        # Nessun target configurato o utile non calcolabile (costo del
+        # personale assente): nessun consiglio costruito su numeri inventati.
+        motivo = (
+            "Imposta un target di utile per ricevere suggerimenti"
+            if not stato["target"]["configurato"]
+            else "Utile non calcolabile: " + str(stato["reale"].get("personale_motivo") or "dati mancanti")
+        )
+        return {
+            "anno": anno,
+            "priorita": None,
+            "suggerimenti": [{"tipo": "INFO", "messaggio": motivo, "azione": None}],
+            "stato_corrente": stato["analisi"]["stato"],
+            "percentuale_raggiungimento": None,
+        }
+
+    if scostamento < 0:
+        priorita = "ALTA" if abs(scostamento) > 5000 else "MEDIA"
+        
+        # Suggerimenti per recuperare
+        ricavi_necessari = stato["azioni_suggerite"]["ricavi_aggiuntivi_necessari"]
+        costi_da_ridurre = stato["azioni_suggerite"]["costi_da_ridurre"]
+        
+        suggerimenti.append({
+            "tipo": "CRITICO",
+            "messaggio": f"Per raggiungere l'utile target mancano €{abs(scostamento):,.2f}",
+            "azione": None
+        })
+        
+        if ricavi_necessari is not None:
+            suggerimenti.append({
+                "tipo": "OPZIONE_A",
+                "messaggio": f"Aumentare i ricavi di €{ricavi_necessari:,.2f} (con margine {stato['target']['margine_medio_atteso']*100:.0f}%)",
+                "azione": "incremento_vendite"
+            })
+        
+        suggerimenti.append({
+            "tipo": "OPZIONE_B",
+            "messaggio": f"Ridurre i costi di €{costi_da_ridurre:,.2f}",
+            "azione": "riduzione_costi"
+        })
+        
+        # Analisi per centro di costo
+        cdc_pipeline = [
+            {"$match": {"invoice_date": {"$regex": f"^{anno}"}, "centro_costo": {"$exists": True}}},
+            {"$group": {"_id": "$centro_costo", "totale": {"$sum": "$total_amount"}}},
+            {"$sort": {"totale": -1}}
+        ]
+        cdc_costi = await db[Collections.INVOICES].aggregate(cdc_pipeline).to_list(10)
+        
+        if cdc_costi:
+            top_cdc = cdc_costi[0]
+            cdc_nome = CDC_STANDARD.get(top_cdc["_id"], {}).get("nome", top_cdc["_id"])
+            suggerimenti.append({
+                "tipo": "ANALISI_CDC",
+                "messaggio": f"Il centro di costo più costoso è {cdc_nome} con €{top_cdc['totale']:,.2f}",
+                "azione": "analizza_cdc",
+                "cdc": top_cdc["_id"]
+            })
+    
+    else:
+        priorita = "BASSA"
+        suggerimenti.append({
+            "tipo": "POSITIVO",
+            "messaggio": f"Sei in linea con l'obiettivo! Surplus di €{scostamento:,.2f}",
+            "azione": None
+        })
+        
+        # Proiezione
+        proiezione = stato["analisi"]["utile_proiezione_fine_anno"]
+        target = stato["target"]["utile_target_annuo"]
+        if proiezione is not None and target and proiezione > target:
+            suggerimenti.append({
+                "tipo": "PROIEZIONE",
+                "messaggio": f"Proiezione fine anno: €{proiezione:,.2f} (+{((proiezione/target)-1)*100:.1f}% vs target)",
+                "azione": None
+            })
+    
+    return {
+        "anno": anno,
+        "priorita": priorita,
+        "suggerimenti": suggerimenti,
+        "stato_corrente": stato["analisi"]["stato"],
+        "percentuale_raggiungimento": stato["analisi"]["percentuale_raggiungimento"]
+    }
+
+
+@router.get("/utile-obiettivo/per-cdc")
+async def get_utile_per_cdc(anno: int = Query(...)) -> Dict[str, Any]:
+    """
+    Analisi utile/margine per centro di costo.
+    """
+    db = Database.get_db()
+    
+    date_start = f"{anno}-01-01"
+    date_end = f"{anno}-12-31"
+    
+    # Costi per CDC
+    costi_pipeline = [
+        {"$match": {"invoice_date": {"$gte": date_start, "$lte": date_end}}},
+        {"$group": {
+            "_id": {"$ifNull": ["$centro_costo", "CDC-99"]},
+            "totale_costi": {"$sum": "$total_amount"},
+            "count": {"$sum": 1}
+        }},
+        {"$sort": {"totale_costi": -1}}
+    ]
+    costi_per_cdc = await db[Collections.INVOICES].aggregate(costi_pipeline).to_list(20)
+    
+    # Ricavi totali (non tracciati per settore: ripartiti come stima più sotto)
+    ricavi_result = await db[Collections.CORRISPETTIVI].aggregate([
+        {"$match": {"data": {"$gte": date_start, "$lte": date_end}}},
+        {"$group": {"_id": None, "totale": {"$sum": "$totale"}}}
+    ]).to_list(1)
+    ricavi_totali = ricavi_result[0]["totale"] if ricavi_result else 0
+    
+    # Costruisci report per CDC
+    report = []
+    costi_totali = sum(c["totale_costi"] for c in costi_per_cdc)
+    
+    for cdc in costi_per_cdc:
+        codice = cdc["_id"]
+        info = CDC_STANDARD.get(codice, {"nome": codice, "tipo": "altro"})
+        
+        # Stima ricavi proporzionali (semplificato)
+        # In un sistema completo, i ricavi sarebbero tracciati per CDC
+        peso_costi = cdc["totale_costi"] / costi_totali if costi_totali > 0 else 0
+        
+        # Solo CDC operativi hanno ricavi
+        if info.get("tipo") == "operativo":
+            ricavi_cdc = ricavi_totali * peso_costi * 1.5  # Stima
+        else:
+            ricavi_cdc = 0
+        
+        margine = ricavi_cdc - cdc["totale_costi"]
+        margine_perc = (margine / ricavi_cdc * 100) if ricavi_cdc > 0 else 0
+        
+        report.append({
+            "codice": codice,
+            "nome": info.get("nome", codice),
+            "tipo": info.get("tipo", "altro"),
+            "costi": round(cdc["totale_costi"], 2),
+            "ricavi_stimati": round(ricavi_cdc, 2),
+            "ricavi_sono_stima": True,  # P2-5: ripartizione ricavi non tracciata per CDC
+            "margine": round(margine, 2),
+            "margine_percentuale": round(margine_perc, 1),
+            "fatture_count": cdc["count"],
+            "stato": "PROFITTO (stima)" if margine > 0 else "PERDITA (stima)"
+        })
+
+    return {
+        "anno": anno,
+        "centri_costo": report,
+        "avviso_ricavi": (
+            "I ricavi per centro di costo sono una STIMA (ripartizione sui costi, "
+            "fattore 1.5): i ricavi reali non sono tracciati per CDC. Margini e "
+            "stato profitto/perdita sono quindi indicativi."
+        ),
+        "totali": {
+            "ricavi": round(ricavi_totali, 2),
+            "costi": round(costi_totali, 2),
+            "margine": round(ricavi_totali - costi_totali, 2)
+        }
+    }
+
+
+
+# ============== RIBALTAMENTO CDC ==============
+
+# Criterio di ribaltamento (scelta utente): i costi di supporto (CDC-90/91/92) e
+# di struttura (CDC-99) vengono ribaltati sui settori operativi in PROPORZIONE AI
+# RICAVI di ciascun settore. Non ci sono più percentuali fisse configurate: la
+# ripartizione segue i ricavi per settore. Poiché i ricavi non sono tracciati per
+# settore, le quote-ricavo sono una STIMA (proxy sui costi diretti, o override
+# manuale in `config_ribaltamento`): il risultato è etichettato come stima.
+
+
+async def _quote_ricavo_per_settore(db) -> Optional[Dict[str, float]]:
+    """Override manuale delle quote-ricavo per settore (somma ~1), se configurato
+    in `config_ribaltamento`. None se assente."""
+    conf = await db["config_ribaltamento"].find_one({"_id": "quote_ricavo_settori"})
+    if not conf:
+        return None
+    quote = {k: float(v) for k, v in (conf.get("quote") or {}).items()
+             if k in CDC_OPERATIVI and float(v) > 0}
+    tot = sum(quote.values())
+    if tot <= 0:
+        return None
+    return {k: v / tot for k, v in quote.items()}
+
+
+@router.post("/ribaltamento/calcola")
+async def calcola_ribaltamento(anno: int = Query(...)) -> Dict[str, Any]:
+    """Ribalta i costi di supporto e struttura sui settori operativi in
+    proporzione ai ricavi di ciascun settore (scelta utente).
+
+    I ricavi per settore non sono tracciati: si usano le quote configurate in
+    `config_ribaltamento` (override manuale) oppure, in mancanza, una stima
+    proporzionale ai costi diretti di ciascun settore. Il campo `ricavi_stima`
+    segnala quando la ripartizione è stimata."""
+    db = Database.get_db()
+
+    date_start = f"{anno}-01-01"
+    date_end = f"{anno}-12-31"
+
+    # 1. Costi per centro di costo
+    costi_pipeline = [
+        {"$match": {"invoice_date": {"$gte": date_start, "$lte": date_end}}},
+        {"$group": {
+            "_id": {"$ifNull": ["$centro_costo", "CDC-99"]},
+            "totale": {"$sum": "$total_amount"},
+            "count": {"$sum": 1}
+        }}
+    ]
+    costi_per_cdc = await db[Collections.INVOICES].aggregate(costi_pipeline).to_list(50)
+    costi_dict = {c["_id"]: c["totale"] for c in costi_per_cdc}
+
+    # 2. Costi diretti dei settori operativi
+    costi_diretti = {cdc: costi_dict.get(cdc, 0) for cdc in CDC_OPERATIVI}
+
+    # 3. Ricavi totali e quote-ricavo per settore
+    ricavi_result = await db[Collections.CORRISPETTIVI].aggregate([
+        {"$match": {"data": {"$gte": date_start, "$lte": date_end}}},
+        {"$group": {"_id": None, "totale": {"$sum": "$totale"}}}
+    ]).to_list(1)
+    ricavi_totali = ricavi_result[0]["totale"] if ricavi_result else 0
+
+    quote_override = await _quote_ricavo_per_settore(db)
+    if quote_override:
+        quote_ricavo = {cdc: quote_override.get(cdc, 0.0) for cdc in CDC_OPERATIVI}
+        ricavi_stima = False
+    else:
+        # Proxy: ricavi per settore ∝ costi diretti (unico segnale di attività
+        # disponibile per settore). Se non ci sono costi diretti, ripartizione equa.
+        tot_diretti = sum(costi_diretti.values())
+        if tot_diretti > 0:
+            quote_ricavo = {cdc: costi_diretti[cdc] / tot_diretti for cdc in CDC_OPERATIVI}
+        else:
+            quote_ricavo = {cdc: 1.0 / len(CDC_OPERATIVI) for cdc in CDC_OPERATIVI}
+        ricavi_stima = True
+    ricavi_cdc = {cdc: ricavi_totali * quote_ricavo[cdc] for cdc in CDC_OPERATIVI}
+
+    # 4. Ribalta supporto + struttura in proporzione ai ricavi
+    ribaltamenti = []
+    totale_ribaltato = {cdc: 0.0 for cdc in CDC_OPERATIVI}
+    for cdc_fonte in CDC_DA_RIBALTARE:
+        costo_fonte = costi_dict.get(cdc_fonte, 0)
+        if costo_fonte == 0:
+            continue
+        for cdc_dest in CDC_OPERATIVI:
+            quota = quote_ricavo[cdc_dest]
+            if quota <= 0:
+                continue
+            importo = costo_fonte * quota
+            totale_ribaltato[cdc_dest] += importo
+            ribaltamenti.append({
+                "da_cdc": cdc_fonte,
+                "da_cdc_nome": CDC_STANDARD.get(cdc_fonte, {}).get("nome", cdc_fonte),
+                "a_cdc": cdc_dest,
+                "a_cdc_nome": CDC_STANDARD.get(cdc_dest, {}).get("nome", cdc_dest),
+                "quota_percentuale": round(quota * 100, 1),
+                "importo_origine": round(costo_fonte, 2),
+                "importo_ribaltato": round(importo, 2)
+            })
+
+    # 5. Costi pieni (diretti + ribaltati) e margini per settore
+    costi_pieni = {cdc: costi_diretti[cdc] + totale_ribaltato[cdc] for cdc in CDC_OPERATIVI}
+    margini = {}
+    for cdc in CDC_OPERATIVI:
+        r = ricavi_cdc[cdc]
+        margini[cdc] = {
+            "cdc": cdc,
+            "nome": CDC_STANDARD.get(cdc, {}).get("nome", cdc),
+            "ricavi": round(r, 2),
+            "quota_ricavo_percentuale": round(quote_ricavo[cdc] * 100, 1),
+            "costi_diretti": round(costi_diretti[cdc], 2),
+            "costi_ribaltati": round(totale_ribaltato[cdc], 2),
+            "costi_pieni": round(costi_pieni[cdc], 2),
+            "margine_diretto": round(r - costi_diretti[cdc], 2),
+            "margine_pieno": round(r - costi_pieni[cdc], 2),
+            "margine_percentuale": round((r - costi_pieni[cdc]) / r * 100, 1) if r > 0 else 0,
+        }
+
+    return {
+        "anno": anno,
+        "criterio": "proporzionale_ai_ricavi",
+        "ricavi_stima": ricavi_stima,
+        "avviso_ricavi": (
+            "Ricavi per settore stimati (proporzionali ai costi diretti): i ricavi "
+            "reali non sono tracciati per settore. Configura le quote reali con "
+            "/ribaltamento/quote-ricavo per un ribaltamento esatto."
+            if ricavi_stima else
+            "Ribaltamento basato sulle quote-ricavo per settore configurate."
+        ),
+        "ribaltamenti": ribaltamenti,
+        "totali_ribaltati": {k: round(v, 2) for k, v in totale_ribaltato.items()},
+        "margini_per_cdc": list(margini.values()),
+        "sintesi": {
+            "ricavi_totali": round(ricavi_totali, 2),
+            "costi_diretti_totali": round(sum(costi_diretti.values()), 2),
+            "costi_ribaltati_totali": round(sum(totale_ribaltato.values()), 2),
+            "margine_aziendale": round(ricavi_totali - sum(costi_pieni.values()), 2)
+        }
+    }
+
+
+@router.post("/ribaltamento/quote-ricavo")
+async def imposta_quote_ricavo(quote: Dict[str, float] = Body(...)) -> Dict[str, Any]:
+    """Imposta le quote-ricavo reali per settore (es. {"CDC-01": 0.4, "CDC-03": 0.3,
+    ...}) usate dal ribaltamento proporzionale. Le quote vengono normalizzate a 1.
+    Senza questa configurazione il ribaltamento usa una stima sui costi diretti."""
+    db = Database.get_db()
+    valide = {k: float(v) for k, v in (quote or {}).items()
+              if k in CDC_OPERATIVI and float(v) >= 0}
+    if not valide or sum(valide.values()) <= 0:
+        raise HTTPException(status_code=400,
+                            detail="Fornire almeno una quota > 0 per un settore operativo valido")
+    await db["config_ribaltamento"].update_one(
+        {"_id": "quote_ricavo_settori"},
+        {"$set": {"quote": valide, "updated_at": datetime.now(timezone.utc).isoformat()}},
+        upsert=True
+    )
+    return {"success": True, "quote_salvate": valide,
+            "settori": {cdc: CDC_STANDARD[cdc]["nome"] for cdc in CDC_OPERATIVI}}

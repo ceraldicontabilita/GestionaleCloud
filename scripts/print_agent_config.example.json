@@ -1,0 +1,9 @@
+{
+  "backend_url": "https://gestionalecloud.onrender.com/lotti",
+  "reparto": "",
+  "poll_secondi": 5,
+  "sumatra_path": "",
+  "stampante_default": "",
+  "escpos_ip": "",
+  "escpos_porta": 9100
+}

@@ -1,0 +1,206 @@
+"""Anno di importazione attivo — impostazione GLOBALE (richiesta utente
+14/07/2026: "puoi mettere in qualche parte un selettore dove selezioni
+l'anno che voglio importare?", un solo selettore condiviso, non uno per
+canale).
+
+Governa il filtro anno applicato all'import di fatture e corrispettivi
+(upload e cartella unica Drive passano dallo stesso smistatore): i documenti con
+data nell'anno attivo entrano nel flusso contabile attivo (Prima Nota,
+scadenzario, alert, magazzino); gli altri anni vengono archiviati per
+sola consultazione. Non tocca l'upload manuale via UI, né AnnoContext.jsx
+(che è solo un filtro di visualizzazione lato frontend, indipendente).
+
+Persistito in `sistema_stato` (stessa collection già usata per lo stato
+dei sync Drive) così sopravvive a riavvii/deploy: deve poter cambiare da
+UI senza un redeploy, quindi non è una variabile d'ambiente.
+"""
+import asyncio
+import logging
+from datetime import datetime, timezone
+from typing import Any, Dict
+
+_CHIAVE = "config_import_anno_attivo"
+_JOB_CHIAVE = "config_import_anno_job"
+_job_lock = asyncio.Lock()
+_job_task = None
+logger = logging.getLogger(__name__)
+
+
+async def get_anno_importazione_attivo(db) -> int:
+    """Anno attivo per l'import automatico. Default: anno solare corrente
+    se non è mai stato impostato esplicitamente."""
+    doc = await db["sistema_stato"].find_one({"chiave": _CHIAVE}, {"_id": 0})
+    if doc and isinstance(doc.get("anno"), int):
+        return doc["anno"]
+    return datetime.now(timezone.utc).year
+
+
+async def set_anno_importazione_attivo(db, anno: int) -> Dict[str, Any]:
+    if not isinstance(anno, int) or anno < 2000 or anno > 2100:
+        raise ValueError("Anno non valido")
+    now = datetime.now(timezone.utc).isoformat()
+    await db["sistema_stato"].update_one(
+        {"chiave": _CHIAVE},
+        {"$set": {"anno": anno, "updated_at": now}},
+        upsert=True,
+    )
+    return {"anno": anno, "updated_at": now}
+
+
+async def promuovi_archivio_anno(db, anno: int) -> Dict[str, Any]:
+    """Promuove nel flusso contabile ATTIVO i documenti dell'anno indicato
+    già presenti in archivio storico (stato_import="archivio_storico").
+
+    Serve al selettore anno (richiesta utente 16/07/2026): quando un file
+    Drive di un anno diverso da quello attivo viene processato, finisce in
+    archivio e il file viene spostato in Elaborate — rilanciare il sync
+    dopo aver cambiato anno non lo ritroverebbe mai nella cartella. La
+    promozione riprende quei documenti dall'archivio e li fa entrare nel
+    flusso attivo come se fossero stati importati ora.
+    """
+    # ── Corrispettivi archiviati: entrano in Prima Nota col writer canonico
+    # (entrata totale + uscita quota POS verso banca + entrata POS banca).
+    from app.routers.invoices.corrispettivi_helpers import _create_prima_nota_movements
+
+    corr_promossi = 0
+    corr_gia_attivi = 0
+    archivio_corr = await db["corrispettivi"].find(
+        {"stato_import": "archivio_storico", "data": {"$regex": f"^{anno}"}},
+        {"_id": 0},
+    ).to_list(10000)
+    for corr in archivio_corr:
+        attivo = await db["corrispettivi"].find_one({
+            "data": corr.get("data"),
+            "stato_import": {"$ne": "archivio_storico"},
+            "entity_status": {"$ne": "deleted"},
+        })
+        if attivo:
+            corr_gia_attivi += 1
+            continue
+        pn = await _create_prima_nota_movements(db, corr)
+        await db["corrispettivi"].update_one(
+            {"id": corr["id"]},
+            {"$set": {
+                "status": "imported",
+                "stato_import": "promosso_da_archivio",
+                "prima_nota_id": pn.get("prima_nota_cassa_id"),
+                "prima_nota_cassa_id": pn.get("prima_nota_cassa_id"),
+                "prima_nota_banca_id": pn.get("prima_nota_banca_id"),
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+            }},
+        )
+        corr_promossi += 1
+
+    # ── Fatture archiviate: si ripassa l'XML originale (salvato all'atto
+    # dell'archiviazione) nella pipeline di import completa — fornitore,
+    # prima nota provvisoria, eventi. La riga storica viene promossa mantenendo
+    # lo stesso ID: parser o side effect falliti non possono cancellare prima
+    # il documento, il suo hash o la provenienza.
+    from app.routers.invoices.fatture_upload import process_xml_bytes
+
+    fatture_promosse = 0
+    fatture_senza_xml = 0
+    fatture_errori = 0
+    archivio_fatture = await db["invoices"].find(
+        {"stato_import": "archivio_storico", "invoice_date": {"$regex": f"^{anno}"}},
+        {"_id": 0},
+    ).to_list(50000)
+    for fatt in archivio_fatture:
+        xml_raw = fatt.get("xml_raw")
+        if not xml_raw:
+            fatture_senza_xml += 1
+            continue
+        esito = await process_xml_bytes(
+            db,
+            xml_raw.encode("utf-8") if isinstance(xml_raw, str) else xml_raw,
+            fatt.get("filename", ""),
+            source="promozione_archivio",
+            applica_filtro_anno=False,
+            promote_existing_id=fatt["id"],
+            promote_invoice_key=fatt.get("invoice_key"),
+        )
+        if esito.get("status") in ("imported", "success", "duplicate", "fattura_emessa") or esito.get("success"):
+            fatture_promosse += 1
+        else:
+            fatture_errori += 1
+
+    return {
+        "anno": anno,
+        "corrispettivi_promossi": corr_promossi,
+        "corrispettivi_gia_attivi": corr_gia_attivi,
+        "fatture_promosse": fatture_promosse,
+        "fatture_senza_xml": fatture_senza_xml,
+        "fatture_errori": fatture_errori,
+    }
+
+
+async def importa_anno_da_drive(db, anno: int) -> Dict[str, Any]:
+    """Import "pulito per anno" (bottone di Documenti > Import):
+
+    1. imposta l'anno di importazione attivo;
+    2. svuota la cartella unica Drive «DATI SOCIETA CERALDI», l'unico ingresso
+       Drive rimasto (i canali per sezione sono smontati: questo bottone li
+       chiamava ancora e rispondeva «Drive fatture non configurato»);
+    3. promuove nel flusso attivo i documenti dell'anno già in archivio.
+    """
+    await set_anno_importazione_attivo(db, anno)
+
+    from app.services import drive_cartella_unica
+
+    if drive_cartella_unica.attivo():
+        drive = await drive_cartella_unica.svuota(db)
+    elif not drive_cartella_unica.radice():
+        drive = {"saltato": "cartella Drive non impostata (GOOGLE_DRIVE_DATI_FOLDER_ID)"}
+    else:
+        drive = {"saltato": "import Drive in pausa (DRIVE_CARTELLA_UNICA_IMPORT=false)"}
+
+    promozione = await promuovi_archivio_anno(db, anno)
+
+    return {"anno": anno, "drive": drive, "promozione_archivio": promozione}
+
+
+async def _salva_stato_job(db, **campi) -> None:
+    await db["sistema_stato"].update_one(
+        {"chiave": _JOB_CHIAVE},
+        {"$set": {**campi, "updated_at": datetime.now(timezone.utc).isoformat()}},
+        upsert=True,
+    )
+
+
+async def _esegui_import_job(db, anno: int) -> None:
+    async with _job_lock:
+        iniziato = datetime.now(timezone.utc).isoformat()
+        await _salva_stato_job(db, stato="in_corso", anno=anno, iniziato_at=iniziato,
+                               terminato_at=None, risultato=None, errore=None)
+        try:
+            risultato = await importa_anno_da_drive(db, anno)
+            await _salva_stato_job(
+                db, stato="completato", anno=anno, iniziato_at=iniziato,
+                terminato_at=datetime.now(timezone.utc).isoformat(),
+                risultato=risultato, errore=None,
+            )
+        except Exception as exc:
+            logger.exception("Import Drive per anno %s fallito", anno)
+            await _salva_stato_job(
+                db, stato="errore", anno=anno, iniziato_at=iniziato,
+                terminato_at=datetime.now(timezone.utc).isoformat(),
+                risultato=None, errore=str(exc),
+            )
+
+
+async def avvia_import_anno(db, anno: int) -> Dict[str, Any]:
+    """Avvia un solo import alla volta senza legarlo al timeout HTTP."""
+    global _job_task
+    stato = await get_stato_import_anno(db)
+    if _job_lock.locked() or (_job_task is not None and not _job_task.done()):
+        return {"started": False, **stato}
+    _job_task = asyncio.create_task(_esegui_import_job(db, anno))
+    return {"started": True, "stato": "avvio", "anno": anno}
+
+
+async def get_stato_import_anno(db) -> Dict[str, Any]:
+    stato = await db["sistema_stato"].find_one({"chiave": _JOB_CHIAVE}, {"_id": 0})
+    if not stato:
+        return {"stato": "mai_avviato"}
+    stato.pop("chiave", None)
+    return stato

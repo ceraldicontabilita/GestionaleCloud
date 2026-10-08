@@ -1,0 +1,606 @@
+"""Import del report ufficiale ``Fatture ricevute``.
+
+Il file esportato dal portale fiscale non contiene gli XML: e' un indice
+ufficiale che permette di misurare gli XML mancanti e di proporre collegamenti
+senza inventare una fattura completa.  Le righe restano quindi separate dalla
+collezione canonica ``invoices`` finche' non arriva il relativo XML.
+
+Il titolare aggiunge al report tre colonne sue (metodo con cui ha pagato,
+«carta di credito», numero dell'assegno): sono i dati veri del pagamento e li
+porta in Prima Nota ``pagamenti_dichiarati_titolare``.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import io
+import logging
+import math
+import re
+import uuid
+from datetime import date, datetime, timezone
+from pathlib import Path
+from typing import Any, Dict, Iterable, List, Set, Tuple
+
+import pandas as pd
+
+from app.constants.fattura_attiva import FILTRO_FATTURA_ATTIVA
+
+logger = logging.getLogger(__name__)
+
+
+COLLECTION_REPORT = "fatture_report_ae"
+
+#: Segnalazione aggregata in ``agenti_segnalazioni``: righe del report il cui
+#: ``invoice_id`` puntava a una fattura che in ``invoices`` non c'e' piu' (una
+#: fattura «sparita», che non e' un XML mai arrivato). Una sola riga, aggiornata
+#: a ogni giro e chiusa quando il conteggio torna a zero.
+TIPO_SEGNALAZIONE_FATTURE_SPARITE = "fatture_report_ae_senza_fattura"
+
+REQUIRED_COLUMNS = {
+    "Numero",
+    "Nome file",
+    "ID SdI",
+    "Data documento",
+    "Fornitore",
+    "P.IVA",
+    "Metodo di pagamento",
+    "Totale documento",
+    "Netto a pagare",
+}
+
+# Colonne che il titolare aggiunge al report: si cercano per nome, senza
+# badare a maiuscole e spazi («assegno numero » nel file vero).
+COLONNE_TITOLARE = {
+    "metodo": ("metodo di pagamento canonico", "metodo pagamento titolare"),
+    "carta": ("carta di credito",),
+    "assegno": ("assegno numero", "numero assegno"),
+}
+
+# Stesso criterio di «fattura attiva» del giornale: una copia archiviata o
+# in collisione non riceve pagamenti (criterio unico in app/constants).
+FILTRO_FATTURE_ATTIVE = FILTRO_FATTURA_ATTIVA
+
+_PROIEZIONE_IDENTITA = {
+    "_id": 0, "id": 1, "filename": 1, "invoice_number": 1, "numero_fattura": 1,
+    "invoice_date": 1, "data_documento": 1, "data_fattura": 1,
+    "supplier_vat": 1, "cedente_piva": 1, "fornitore_partita_iva": 1,
+}
+
+
+def _clean(value: Any) -> Any:
+    if value is None:
+        return None
+    try:
+        if pd.isna(value):
+            return None
+    except (TypeError, ValueError):
+        pass
+    return value
+
+
+def _text(value: Any) -> str:
+    value = _clean(value)
+    if value is None:
+        return ""
+    if isinstance(value, float) and value.is_integer():
+        return str(int(value))
+    return str(value).strip()
+
+
+def _vat(value: Any) -> str:
+    return re.sub(r"\D", "", _text(value))
+
+
+def _number(value: Any) -> float:
+    value = _clean(value)
+    if value in (None, ""):
+        return 0.0
+    if isinstance(value, str):
+        normalized = value.strip().replace(" ", "")
+        if "," in normalized and "." in normalized:
+            normalized = normalized.replace(".", "").replace(",", ".")
+        elif "," in normalized:
+            normalized = normalized.replace(",", ".")
+        value = normalized
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError):
+        return 0.0
+    return round(parsed, 2) if math.isfinite(parsed) else 0.0
+
+
+def _date(value: Any) -> str:
+    value = _clean(value)
+    if value in (None, ""):
+        return ""
+    if isinstance(value, (datetime, date)):
+        return value.strftime("%Y-%m-%d")
+    testo = str(value).strip()
+    # Il portale esporta date italiane (gg/mm/aaaa). Senza dayfirst pandas
+    # legge 01/12/2026 come 12 gennaio: sbaglierebbe il mese, quindi il
+    # periodo IVA e la chiave di aggancio con l'XML canonico.
+    dayfirst = "/" in testo or "-" in testo and not re.match(r"^\d{4}-", testo)
+    try:
+        parsed = pd.to_datetime(testo, errors="coerce", dayfirst=dayfirst)
+    except (TypeError, ValueError):
+        return ""
+    if pd.isna(parsed):
+        return ""
+    return parsed.strftime("%Y-%m-%d")
+
+
+def _invoice_identity(document: Dict[str, Any]) -> Tuple[str, str, str]:
+    piva = _vat(
+        document.get("supplier_vat")
+        or document.get("cedente_piva")
+        or document.get("fornitore_partita_iva")
+    )
+    numero = re.sub(
+        r"[^A-Z0-9]",
+        "",
+        _text(document.get("invoice_number") or document.get("numero_fattura")).upper(),
+    )
+    data_documento = _text(
+        document.get("invoice_date")
+        or document.get("data_documento")
+        or document.get("data_fattura")
+    )[:10]
+    return piva, numero, data_documento
+
+
+def _row_identity(row: Dict[str, Any]) -> Tuple[str, str, str]:
+    return _invoice_identity({
+        "supplier_vat": row.get("P.IVA"),
+        "invoice_number": row.get("Numero"),
+        "invoice_date": _date(row.get("Data documento")),
+    })
+
+
+def _nome_colonna(nome: Any) -> str:
+    return " ".join(str(nome or "").lower().split())
+
+
+async def _indice_fatture_attive(db):
+    fatture = await db["invoices"].find(
+        FILTRO_FATTURE_ATTIVE, _PROIEZIONE_IDENTITA,
+    ).to_list(50000)
+    per_nome_file = {
+        _text(f.get("filename")).lower(): f for f in fatture if _text(f.get("filename"))
+    }
+    per_identita = {
+        _invoice_identity(f): f for f in fatture if all(_invoice_identity(f))
+    }
+    return per_nome_file, per_identita
+
+
+async def collega_righe_a_fatture(
+    db, righe: List[Dict[str, Any]], *, salva: bool = True,
+) -> int:
+    """Riaggancia le righe del report alle fatture attive di adesso.
+
+    L'XML puo' arrivare dopo il report, o la copia agganciata puo' essere
+    stata archiviata dalla dedup: l'aggancio si rifa' a ogni giro invece di
+    fidarsi di quello salvato all'import. Aggiorna le righe in memoria e sul
+    database; ritorna quante sono cambiate.
+    """
+    per_nome_file, per_identita = await _indice_fatture_attive(db)
+    nuovi: List[Tuple[Dict[str, Any], Any]] = []
+    for riga in righe:
+        naturale = (
+            _vat(riga.get("supplier_vat")),
+            re.sub(r"[^A-Z0-9]", "", _text(riga.get("numero_fattura")).upper()),
+            _text(riga.get("data_documento"))[:10],
+        )
+        trovata = (
+            per_nome_file.get(_text(riga.get("filename_xml")).lower())
+            or per_identita.get(naturale)
+        )
+        nuovi.append((riga, trovata.get("id") if trovata else None))
+
+    # Una riga che perde l'aggancio non e' sempre «XML non ancora arrivato»:
+    # se l'id che aveva non esiste piu' in `invoices` (nessuno stato, nemmeno
+    # archiviata o cancellata) la fattura e' sparita. La traccia resta sulla
+    # riga (`fattura_sparita_id`), altrimenti dal giro dopo sarebbe
+    # indistinguibile da una fattura mai arrivata.
+    persi = [
+        riga.get("invoice_id") for riga, invoice_id in nuovi
+        if invoice_id is None and riga.get("invoice_id")
+    ]
+    presenti = await _ids_presenti_in_invoices(db, persi) if persi else set()
+    adesso = datetime.now(timezone.utc).isoformat()
+
+    cambiate = 0
+    for riga, invoice_id in nuovi:
+        precedente = riga.get("invoice_id")
+        aggiornamento: Dict[str, Any] = {}
+        if invoice_id != precedente:
+            aggiornamento.update({"invoice_id": invoice_id, "xml_presente": bool(invoice_id)})
+            if invoice_id is None and precedente and str(precedente) not in presenti:
+                aggiornamento["fattura_sparita_id"] = str(precedente)
+                aggiornamento["fattura_sparita_rilevata_il"] = adesso
+        if invoice_id and riga.get("fattura_sparita_id"):
+            # La fattura e' tornata (XML riacquisito): la traccia si chiude.
+            aggiornamento["fattura_sparita_id"] = None
+        if not aggiornamento:
+            continue
+        riga.update(aggiornamento)
+        cambiate += 1
+        if salva:
+            await db[COLLECTION_REPORT].update_one(
+                {"report_key": riga["report_key"]}, {"$set": aggiornamento},
+            )
+    return cambiate
+
+
+async def _ids_presenti_in_invoices(db, ids: Iterable[Any]) -> Set[str]:
+    """Gli id (testo) che esistono in ``invoices`` in qualunque stato."""
+    from app.utils.id_fattura import filtro_id_in
+
+    cercati = list(dict.fromkeys(str(i) for i in ids if i))
+    presenti: Set[str] = set()
+    for inizio in range(0, len(cercati), 500):
+        blocco = cercati[inizio:inizio + 500]
+        trovate = await db["invoices"].find(
+            filtro_id_in(blocco), {"_id": 0, "id": 1},
+        ).to_list(len(blocco))
+        presenti.update(str(f.get("id")) for f in trovate if f.get("id") is not None)
+    return presenti
+
+
+async def rileva_fatture_sparite(db) -> Dict[str, Any]:
+    """Le righe del report la cui fattura non c'e' piu' in ``invoices``.
+
+    Due casi, entrambi «fattura sparita» e mai «XML non arrivato»:
+    - ``invoice_id`` valorizzato ma nessuna fattura con quell'id, in nessuno
+      stato (la riga non e' ancora passata da ``collega_righe_a_fatture``);
+    - ``invoice_id`` gia' azzerato dal riaggancio con la traccia
+      ``fattura_sparita_id`` lasciata da quel passaggio.
+
+    Marca il primo caso con ``fattura_sparita_id`` (la sola scrittura, sul
+    report: ``invoices`` non si tocca e niente si ricollega da solo).
+    """
+    righe = await db[COLLECTION_REPORT].find(
+        {}, {"_id": 0, "report_key": 1, "invoice_id": 1, "fattura_sparita_id": 1,
+             "totale_documento": 1, "supplier_name": 1, "numero_fattura": 1,
+             "data_documento": 1},
+    ).to_list(100000)
+    presenti = await _ids_presenti_in_invoices(
+        db, (r.get("invoice_id") for r in righe if r.get("invoice_id")),
+    )
+    adesso = datetime.now(timezone.utc).isoformat()
+    sparite: List[Dict[str, Any]] = []
+    for riga in righe:
+        invoice_id = riga.get("invoice_id")
+        if invoice_id:
+            if str(invoice_id) in presenti:
+                continue
+            if not riga.get("fattura_sparita_id"):
+                await db[COLLECTION_REPORT].update_one(
+                    {"report_key": riga["report_key"]},
+                    {"$set": {"fattura_sparita_id": str(invoice_id),
+                              "fattura_sparita_rilevata_il": adesso}},
+                )
+            sparite.append(riga)
+        elif riga.get("fattura_sparita_id"):
+            sparite.append(riga)
+    centesimi = sum(round(float(r.get("totale_documento") or 0) * 100) for r in sparite)
+    return {
+        "conteggio": len(sparite),
+        "totale_importo": round(centesimi / 100, 2),
+        "righe_report": len(righe),
+        "esempi": [
+            {"fornitore": r.get("supplier_name"), "numero": r.get("numero_fattura"),
+             "data": r.get("data_documento"), "totale": r.get("totale_documento"),
+             "invoice_id": r.get("invoice_id") or r.get("fattura_sparita_id")}
+            for r in sparite[:10]
+        ],
+    }
+
+
+async def segnala_fatture_sparite(db) -> Dict[str, Any]:
+    """Una segnalazione aggregata in ``agenti_segnalazioni`` (stesso registro
+    e stesso schema degli altri agenti: ``tipo``/``letta``/``risolta``, upsert
+    con contatore come ``event_bus``). Aggiornata a ogni giro, risolta quando
+    il conteggio torna a zero. Nessuna scrittura su ``invoices``."""
+    rilevazione = await rileva_fatture_sparite(db)
+    adesso = datetime.now(timezone.utc).isoformat()
+    aperta = {"tipo": TIPO_SEGNALAZIONE_FATTURE_SPARITE, "risolta": False}
+    conteggio = rilevazione["conteggio"]
+    if conteggio == 0:
+        esito = await db["agenti_segnalazioni"].update_one(
+            aperta,
+            {"$set": {"risolta": True, "risolta_at": adesso, "risolta_da": "giro_automatico",
+                      "conteggio": 0, "updated_at": adesso}},
+        )
+        return {**rilevazione, "segnalazione": "risolta" if esito.matched_count else "nessuna"}
+    descrizione = (
+        f"{conteggio} righe del report AdE «Fatture ricevute» puntano a fatture che "
+        f"non esistono piu' in invoices (totale € {rilevazione['totale_importo']:.2f}). "
+        "Non e' un XML mai arrivato: la fattura c'era ed e' sparita. Nessun "
+        "ricollegamento automatico: va deciso da dove riacquisire gli XML."
+    )
+    await db["agenti_segnalazioni"].update_one(
+        aperta,
+        {
+            "$set": {
+                "tipo": TIPO_SEGNALAZIONE_FATTURE_SPARITE,
+                "risolta": False,
+                "agente": "fatture_report_ae",
+                "priorita": "urgente",
+                "titolo": f"Fatture sparite: {conteggio} righe del report AdE senza fattura",
+                "descrizione": descrizione,
+                "conteggio": conteggio,
+                "totale_importo": rilevazione["totale_importo"],
+                "righe_report": rilevazione["righe_report"],
+                "esempi": rilevazione["esempi"],
+                "data_rilevazione": adesso,
+                "updated_at": adesso,
+            },
+            "$inc": {"occorrenze": 1},
+            "$setOnInsert": {"id": str(uuid.uuid4()), "letta": False, "created_at": adesso},
+        },
+        upsert=True,
+    )
+    return {**rilevazione, "segnalazione": "aperta"}
+
+
+async def stato_fatture_sparite(db) -> Dict[str, Any]:
+    """Sola lettura: il numero della segnalazione aperta (0 se non ce n'e')."""
+    seg = await db["agenti_segnalazioni"].find_one(
+        {"tipo": TIPO_SEGNALAZIONE_FATTURE_SPARITE, "risolta": False},
+        {"_id": 0, "id": 1, "conteggio": 1, "totale_importo": 1, "data_rilevazione": 1},
+    )
+    if not seg:
+        return {"conteggio": 0}
+    return {"conteggio": int(seg.get("conteggio") or 0), "totale_importo": seg.get("totale_importo"),
+            "data_rilevazione": seg.get("data_rilevazione"), "segnalazione_id": seg.get("id")}
+
+
+def _read_report(content: bytes, filename: str) -> pd.DataFrame:
+    suffix = Path(filename or "").suffix.lower()
+    engine = "xlrd" if suffix == ".xls" else "openpyxl"
+    try:
+        frame = pd.read_excel(io.BytesIO(content), engine=engine, dtype=object)
+    except Exception as exc:
+        raise ValueError(f"Report fatture non leggibile: {exc}") from exc
+    frame.columns = [str(column).strip() for column in frame.columns]
+    missing = sorted(REQUIRED_COLUMNS - set(frame.columns))
+    if missing:
+        raise ValueError(
+            "Il foglio non e' il report Fatture ricevute: colonne mancanti "
+            + ", ".join(missing)
+        )
+    return frame
+
+
+# Intestazioni dell'export grezzo «Fatture ricevute» del portale AdE (csv con
+# `;` e valori tra apici): e' lo stesso indice, con meno colonne dell'xlsx del
+# titolare (niente metodo di pagamento, nome file, totale documento).
+COLONNE_CSV_ADE = {
+    "tipo documento", "numero fattura / documento", "data emissione",
+    "partita iva fornitore", "denominazione fornitore", "sdi/file",
+    "imponibile/importo (totale in euro)", "imposta (totale in euro)",
+}
+
+
+def _valore_csv_ade(value: Any) -> str:
+    testo = _text(value).strip("'").strip()
+    return "" if testo.lower() == "non presente" else testo
+
+
+def e_csv_ade(content: bytes, filename: str) -> bool:
+    """True se e' l'export csv del portale AdE (riconosciuto dalle intestazioni)."""
+    if Path(filename or "").suffix.lower() != ".csv":
+        return False
+    prima_riga = content[:4096].decode("utf-8-sig", errors="ignore").splitlines()[:1]
+    if not prima_riga:
+        return False
+    colonne = {_nome_colonna(c) for c in prima_riga[0].split(";")}
+    return COLONNE_CSV_ADE.issubset(colonne)
+
+
+def _read_csv_ade(content: bytes) -> pd.DataFrame:
+    """Porta l'export csv AdE sui nomi di colonna del report xlsx.
+
+    Gli importi del portale sono senza segno anche per le note di credito: il
+    tipo documento resta quello scritto nel file. Il totale documento non e'
+    nel file e non si inventa qui: lo deriva l'import (imponibile + imposta).
+    """
+    try:
+        grezzo = pd.read_csv(
+            io.BytesIO(content), sep=";", dtype=str, keep_default_na=False,
+            encoding="utf-8-sig",
+        )
+    except Exception as exc:
+        raise ValueError(f"Export fatture AdE non leggibile: {exc}") from exc
+    grezzo.columns = [_nome_colonna(c) for c in grezzo.columns]
+    mancanti = sorted(COLONNE_CSV_ADE - set(grezzo.columns))
+    if mancanti:
+        raise ValueError(
+            "Il csv non e' l'export Fatture ricevute AdE: colonne mancanti "
+            + ", ".join(mancanti)
+        )
+
+    def col(nome: str):
+        return grezzo[nome] if nome in grezzo.columns else [""] * len(grezzo)
+
+    return pd.DataFrame({
+        "Numero": [_valore_csv_ade(v) for v in col("numero fattura / documento")],
+        "Nome file": "",
+        "ID SdI": [_valore_csv_ade(v) for v in col("sdi/file")],
+        "Data documento": [_valore_csv_ade(v) for v in col("data emissione")],
+        "Fornitore": [_valore_csv_ade(v) for v in col("denominazione fornitore")],
+        "P.IVA": [_valore_csv_ade(v) for v in col("partita iva fornitore")],
+        "Codice Fiscale": [_valore_csv_ade(v) for v in col("codice fiscale fornitore")],
+        "Tipo documento": [_valore_csv_ade(v) for v in col("tipo documento")],
+        "Data ricezione": [_valore_csv_ade(v) for v in col("data ricezione")],
+        "Totale imponibile": [_valore_csv_ade(v) for v in col("imponibile/importo (totale in euro)")],
+        "Totale IVA": [_valore_csv_ade(v) for v in col("imposta (totale in euro)")],
+    }, dtype=object)
+
+
+def report_headers_match(content: bytes, filename: str) -> bool:
+    """Riconosce il formato senza modificare dati."""
+    try:
+        frame = _read_report(content, filename)
+    except ValueError:
+        return False
+    return REQUIRED_COLUMNS.issubset(set(frame.columns))
+
+
+async def importa_report_fatture_ricevute(
+    db,
+    content: bytes,
+    filename: str,
+) -> Dict[str, Any]:
+    """Indicizza tutte le righe e misura quali XML canonici sono presenti.
+
+    Non inserisce righe in ``invoices``: il report non contiene l'XML originale
+    e non deve generare IVA, Prima Nota o pagamenti come se fosse una fattura
+    completa.
+    """
+    da_csv_ade = e_csv_ade(content, filename)
+    frame = _read_csv_ade(content) if da_csv_ade else _read_report(content, filename)
+    source_hash = hashlib.sha256(content).hexdigest()
+    now = datetime.now(timezone.utc).isoformat()
+
+    from app.services.pagamenti_dichiarati_titolare import normalizza_metodo_titolare, numero_da_data_excel
+
+    invoices_by_filename, invoices_by_identity = await _indice_fatture_attive(db)
+    colonne = {
+        chiave: next((c for c in frame.columns if _nome_colonna(c) in nomi), None)
+        for chiave, nomi in COLONNE_TITOLARE.items()
+    }
+    con_titolare = 0
+
+    imported = updated = invalid = xml_present = 0
+    details: List[Dict[str, Any]] = []
+    for position, raw in enumerate(frame.to_dict(orient="records"), start=2):
+        numero = _text(raw.get("Numero"))
+        nome_file_xml = Path(_text(raw.get("Nome file"))).name
+        sdi_id = _text(raw.get("ID SdI"))
+        data_documento = _date(raw.get("Data documento"))
+        piva = _vat(raw.get("P.IVA"))
+        if not numero or not data_documento or not (piva or sdi_id):
+            invalid += 1
+            if len(details) < 100:
+                details.append({
+                    "row": position,
+                    "numero_fattura": numero,
+                    "status": "invalid",
+                    "message": "Numero, data o identificativo fiscale/SdI mancante",
+                })
+            continue
+
+        natural = (piva, re.sub(r"[^A-Z0-9]", "", numero.upper()), data_documento)
+        canonical = invoices_by_filename.get(nome_file_xml.lower()) or invoices_by_identity.get(natural)
+        canonical_id = canonical.get("id") if canonical else None
+        if canonical_id:
+            xml_present += 1
+
+        stable = sdi_id or "|".join(natural)
+        report_key = hashlib.sha256(stable.encode("utf-8")).hexdigest()
+        method = _text(raw.get("Metodo di pagamento"))
+        titolare = {}
+        if colonne["metodo"]:
+            metodo_titolare = normalizza_metodo_titolare(
+                raw.get(colonne["metodo"]),
+                raw.get(colonne["carta"]) if colonne["carta"] else None,
+            )
+            assegno_grezzo = raw.get(colonne["assegno"]) if colonne["assegno"] else None
+            assegno = (numero_da_data_excel(assegno_grezzo) or _text(assegno_grezzo)) if colonne["assegno"] else ""
+            titolare = {
+                "metodo_pagamento_titolare": metodo_titolare,
+                "metodo_pagamento_titolare_testo": _text(raw.get(colonne["metodo"])),
+                "assegno_numero_titolare": assegno,
+                "pagata_titolare": _text(raw.get("Pagamenti")).lower() == "pagata",
+            }
+            if metodo_titolare:
+                con_titolare += 1
+        document = {
+            "id": f"AEFR-{report_key[:24]}",
+            "report_key": report_key,
+            "sdi_id": sdi_id,
+            "numero_fattura": numero,
+            "filename_xml": nome_file_xml,
+            "data_ricezione": _date(raw.get("Data ricezione")),
+            "data_documento": data_documento,
+            "anno": int(data_documento[:4]),
+            "tipo_documento": _text(raw.get("Tipo documento")),
+            "supplier_name": _text(raw.get("Fornitore")),
+            "supplier_vat": piva,
+            "supplier_cf": _text(raw.get("Codice Fiscale")),
+            "metodo_pagamento_dichiarato": method,
+            "modalita_pagamento_xml": "MP02" if "MP02" in method.upper() else "",
+            "imponibile": _number(raw.get("Totale imponibile")),
+            "iva": _number(raw.get("Totale IVA")),
+            "totale_documento": _number(raw.get("Totale documento")),
+            "netto_pagare": _number(raw.get("Netto a pagare")),
+            "stato_pagamento_report": _text(raw.get("Pagamenti")),
+            "data_pagamento_report": _date(raw.get("Data pagamento")),
+            "stato_lettura_report": _text(raw.get("Stato")),
+            "xml_presente": bool(canonical_id),
+            "invoice_id": canonical_id,
+            "source": "agenzia_entrate_report_fatture_ricevute",
+            "source_report_filename": Path(filename).name,
+            "source_hash": source_hash,
+            "last_seen_at": now,
+            **titolare,
+        }
+        insert_only = {"created_at": now}
+        if da_csv_ade:
+            # Il csv non ha metodo, netto, stato di pagamento, nome file: se la
+            # riga c'e' gia' dall'xlsx del titolare quei campi non si toccano.
+            # Il totale documento qui e' derivato, mai sovrascrive un valore letto.
+            for chiave in (
+                "metodo_pagamento_dichiarato", "modalita_pagamento_xml",
+                "netto_pagare", "stato_pagamento_report", "data_pagamento_report",
+                "stato_lettura_report", "filename_xml", "totale_documento", "source",
+            ):
+                insert_only[chiave] = document.pop(chiave)
+            insert_only["totale_derivato"] = True
+            insert_only["totale_documento"] = round(document["imponibile"] + document["iva"], 2)
+            insert_only["source"] = "agenzia_entrate_csv_fatture_ricevute"
+            document["fonte_csv_ade"] = True
+        result = await db[COLLECTION_REPORT].update_one(
+            {"report_key": report_key},
+            {"$set": document, "$setOnInsert": insert_only},
+            upsert=True,
+        )
+        if result.upserted_id is not None:
+            imported += 1
+        else:
+            updated += 1
+
+    missing_xml = max(0, imported + updated - xml_present)
+    await db["fatture_report_ae_imports"].update_one(
+        {"source_hash": source_hash},
+        {"$set": {
+            "source_hash": source_hash,
+            "filename": Path(filename).name,
+            "rows": imported + updated,
+            "invalid": invalid,
+            "xml_present": xml_present,
+            "xml_missing": missing_xml,
+            "last_imported_at": now,
+        }, "$setOnInsert": {"created_at": now}},
+        upsert=True,
+    )
+    return {
+        "success": invalid == 0,
+        "partial": invalid > 0 and imported + updated > 0,
+        "workflow": "REPORT_FATTURE_RICEVUTE_AE",
+        "rows": imported + updated,
+        "imported": imported,
+        "updated": updated,
+        "invalid": invalid,
+        "xml_present": xml_present,
+        "xml_missing": missing_xml,
+        "details": details,
+        "pagamenti_dichiarati": con_titolare,
+        "message": (
+            f"Report fatture indicizzato: {imported + updated} righe, "
+            f"{xml_present} XML presenti e {missing_xml} XML da acquisire"
+        ),
+    }

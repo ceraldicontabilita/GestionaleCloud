@@ -1,0 +1,38 @@
+/* ================================================================
+   CERALDI ERP — SPACING, RADIUS, LAYOUT TOKENS
+   Scala 4px. Radius contenuto (≤8px sui dati, ≤14px sui contenitori).
+   ================================================================ */
+
+:root {
+  /* ---- Spaziature (px, scala 4) ---- */
+  --sp-xs:   4px;
+  --sp-sm:   8px;
+  --sp-md:   12px;
+  --sp-lg:   16px;
+  --sp-xl:   20px;
+  --sp-2xl:  24px;
+  --sp-3xl:  32px;
+
+  /* ---- Radius ---- */
+  --radius-sm:   6px;
+  --radius-md:   8px;
+  --radius-lg:   10px;
+  --radius-xl:   14px;
+  --radius-full: 9999px; /* pill / badge / avatar */
+
+  /* ---- Layout ---- */
+  --topnav-height: 54px;
+  --page-pad-x:    24px;
+  --page-pad-y:    16px;
+  --page-pad-x-mobile: 12px;
+  --content-gap:   16px;
+}
+
+.ds-page-layout {
+  padding: var(--page-pad-y) var(--page-pad-x);
+}
+@media (max-width: 768px) {
+  .ds-page-layout {
+    padding: var(--page-pad-y) var(--page-pad-x-mobile);
+  }
+}

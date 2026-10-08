@@ -1,0 +1,11 @@
+{
+  "short_name": "Ceraldi HACCP",
+  "name": "Ceraldi Group — HACCP e Tracciabilità",
+  "icons": [
+    { "src": "favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ],
+  "start_url": ".",
+  "display": "standalone",
+  "theme_color": "#5b7a6b",
+  "background_color": "#faf7f0"
+}

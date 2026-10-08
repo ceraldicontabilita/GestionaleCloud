@@ -1,0 +1,211 @@
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { toast } from 'sonner';
+import api from '../api';
+import { useAnnoGlobale } from '../contexts/AnnoContext';
+import { Badge, Button, Card, StatCard } from '../components/ds';
+import { PageHeader } from '../components/ds/PageHeader';
+import { VisoreOriginale } from '../components/ApriOriginale';
+import { urlOriginale } from '../lib/vista';
+
+const AREAS = [
+  ['tutti', 'Tutti'],
+  ['tributi_locali', 'TARI e tributi locali'],
+  ['riscossione', 'Riscossione AdeR'],
+  ['personale', 'Dimissioni e cessazioni'],
+  ['famiglia', 'Personale / Famiglia'],
+];
+
+const AREA_LABELS = Object.fromEntries(AREAS);
+
+const dateFor = item => {
+  const metadata = item.parsed_metadata || {};
+  return metadata.data_trasmissione || metadata.data_decorrenza_recesso ||
+    item.document_date_display || item.acquired_at || null;
+};
+
+const identityFor = item => {
+  const metadata = item.parsed_metadata || {};
+  if (item.administrative_area === 'famiglia') {
+    return metadata.contribuente || metadata.codice_contribuente || 'Documento personale da identificare';
+  }
+  if (item.administrative_area === 'personale') {
+    return metadata.persona || [metadata.lavoratore_cognome, metadata.lavoratore_nome].filter(Boolean).join(' ') ||
+      metadata.lavoratore_cf || 'Lavoratore da identificare';
+  }
+  if (item.administrative_area === 'tributi_locali') {
+    return metadata.protocollo || metadata.codice_contribuente || 'Posizione TARI da verificare';
+  }
+  if (item.administrative_area === 'riscossione') {
+    return (metadata.numeri_cartella || []).join(', ') || 'Atto AdeR da verificare';
+  }
+  return item.category_label || 'Atto amministrativo';
+};
+
+const expectationLabel = expectation => {
+  const labels = {
+    ESITO_DEFINIZIONE_AGEVOLATA: 'Esito AdER',
+    PIANO_O_IMPORTO_DEFINIZIONE: 'Piano/importo dovuto',
+    PAGAMENTO_CARTELLA: 'Pagamento cartella',
+  };
+  return labels[expectation.expectation_type] || expectation.expectation_type;
+};
+
+export default function AttiAmministrativi() {
+  const initialSearch = typeof window !== 'undefined'
+    ? new URLSearchParams(window.location.search).get('search') || ''
+    : '';
+  const { anno } = useAnnoGlobale();
+  const [selectedYear, setSelectedYear] = useState('');
+  const [area, setArea] = useState('tutti');
+  const [search, setSearch] = useState(initialSearch);
+  const [reviewOnly, setReviewOnly] = useState(false);
+  const [payload, setPayload] = useState({ items: [], counts: {}, total: 0, requires_review: 0, overview: {} });
+  const [loading, setLoading] = useState(true);
+  const resultsRef = useRef(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const params = { limit: 500 };
+      if (area !== 'tutti') params.area = area;
+      if (selectedYear) params.anno = selectedYear;
+      if (search.trim()) params.search = search.trim();
+      if (reviewOnly) params.review_only = true;
+      const response = await api.get('/api/documenti/amministrativi', { params });
+      setPayload(response.data || { items: [], counts: {}, total: 0, requires_review: 0, overview: {} });
+    } catch (error) {
+      setPayload({ items: [], counts: {}, total: 0, requires_review: 0, overview: {} });
+      toast.error('Atti amministrativi non disponibili', {
+        description: error.response?.data?.detail || error.message,
+      });
+    } finally {
+      setLoading(false);
+    }
+  }, [area, reviewOnly, search, selectedYear]);
+
+  useEffect(() => { load(); }, [load]);
+
+  // L'originale lo apre l'endpoint unico (DRV-04): per impronta SHA-256 quando
+  // l'indice la porta, altrimenti per id del documento. Mai un indirizzo Drive da fuori.
+  const [originale, setOriginale] = useState(null);
+  const openDocument = item => setOriginale({
+    url: item.source_kind === 'drive_index' && item.sha256
+      ? urlOriginale({ sha256: item.sha256 }) : urlOriginale({ tipo: 'documento', id: item.id }),
+    titolo: item.filename || 'Documento',
+  });
+
+  const selectedAreaLabel = useMemo(() => AREA_LABELS[area], [area]);
+  const overview = payload.overview || {};
+  const overviewCounts = overview.counts || payload.counts || {};
+  const hasActiveFilters = area !== 'tutti' || Boolean(selectedYear) || Boolean(search.trim()) || reviewOnly;
+
+  const openSection = (nextArea, onlyReview = false) => {
+    setArea(nextArea);
+    setSelectedYear('');
+    setSearch('');
+    setReviewOnly(onlyReview);
+    window.setTimeout(() => {
+      if (typeof resultsRef.current?.scrollIntoView === 'function') {
+        resultsRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    }, 0);
+  };
+
+  const resetFilters = () => openSection('tutti', false);
+
+  return (
+    <div>
+      <PageHeader title="Atti amministrativi" style={{ marginBottom: 14 }} />
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(150px,1fr))', gap: 12, marginBottom: 16 }}>
+        <StatCard label="Atti in archivio" value={overview.total ?? payload.total ?? 0} subtext="Apri tutti" accent="primary" onClick={() => openSection('tutti')} />
+        <StatCard label="TARI" value={overviewCounts.tributi_locali || 0} subtext="Apri sezione" accent="warning" onClick={() => openSection('tributi_locali')} />
+        <StatCard label="AdeR" value={overviewCounts.riscossione || 0} subtext="Apri sezione" accent="primary" onClick={() => openSection('riscossione')} />
+        <StatCard label="Dimissioni" value={overviewCounts.personale || 0} subtext="Apri sezione" accent="accent" onClick={() => openSection('personale')} />
+        <StatCard label="Personale / Famiglia" value={overviewCounts.famiglia || 0} subtext="Escluso dalla contabilità" accent="primary" onClick={() => openSection('famiglia')} />
+        <StatCard label="Da verificare" value={overview.requires_review ?? payload.requires_review ?? 0} subtext="Apri controlli" accent="warning" onClick={() => openSection('tutti', true)} />
+      </div>
+
+      <Card bodyStyle={{ padding: 16, marginBottom: 16 }}>
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'end' }}>
+          <label>Area<br /><select value={area} onChange={event => { setArea(event.target.value); setReviewOnly(false); }} style={{ padding: 9 }}>
+            {AREAS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+          </select></label>
+          <label>Anno<br /><select value={selectedYear} onChange={event => setSelectedYear(event.target.value)} style={{ padding: 9 }}>
+            <option value="">Tutti</option>
+            {[anno, 2025, 2024, 2023, 2022, 2021, 2020, 2019, 2018]
+              .filter((value, index, values) => value && values.indexOf(value) === index)
+              .map(value => <option key={value} value={value}>{value}</option>)}
+          </select></label>
+          <label style={{ flex: '1 1 260px' }}>Cerca nome, CF, P.IVA, contribuente, cliente, contratto, POD/PDR, posizione o file<br />
+            <input value={search} onChange={event => setSearch(event.target.value)} style={{ padding: 9, width: '100%' }} placeholder="es. nome, CF, codice cliente, numero utente, POD/PDR" />
+          </label>
+          <Button variant="secondary" onClick={load} disabled={loading}>Aggiorna</Button>
+          {hasActiveFilters && <Button variant="ghost" onClick={resetFilters} disabled={loading}>Rimuovi filtri</Button>}
+        </div>
+      </Card>
+
+      <div ref={resultsRef} />
+      <Card bodyStyle={{ padding: 16 }}>
+        <h3 style={{ marginTop: 0 }}>{reviewOnly ? 'Da verificare' : selectedAreaLabel} · {selectedYear || 'tutti gli anni'} · {payload.total || 0} risultati</h3>
+        <p style={{ color: '#5f5c55' }}>
+          Gli avvisi indicano un'obbligazione; PEC e moduli provano la trasmissione. Nessuno di questi documenti prova da solo il pagamento o chiude automaticamente un rapporto di lavoro.
+        </p>
+        {area === 'famiglia' && <p style={{ padding: 12, borderRadius: 8, background: '#eef3ef', color: '#4c4a44' }}>
+          Archivio personale separato: questi documenti non entrano in bilanci, costi aziendali, Prima Nota o riconciliazioni.
+        </p>}
+        {loading && <p>Caricamento…</p>}
+        {!loading && payload.items.length === 0 && hasActiveFilters && <p>Nessun risultato per i filtri selezionati. Usa “Rimuovi filtri” oppure scegli una card per aprire la sezione dedicata.</p>}
+        {!loading && payload.items.length === 0 && !hasActiveFilters && <p>Nessun atto amministrativo disponibile nell'archivio.</p>}
+        {payload.items.map(item => {
+          const metadata = item.parsed_metadata || {};
+          return <article key={item.id} style={{ padding: '14px 0', borderTop: '1px solid #e6e3d9' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+              <div>
+                <strong>{identityFor(item)}</strong>{' '}
+                <Badge variant={metadata.requires_review ? 'warning' : 'info'}>{item.category_label || item.category}</Badge>
+                {metadata.requires_review && <Badge variant="warning" style={{ marginLeft: 6 }}>Da verificare</Badge>}
+                {item.accounting_excluded && <Badge variant="info" style={{ marginLeft: 6 }}>Escluso dalla contabilità aziendale</Badge>}
+                <div style={{ color: '#5f5c55', marginTop: 5 }}>{item.filename}</div>
+              </div>
+              <Button size="sm" variant="secondary" onClick={() => openDocument(item)}>Apri originale</Button>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(190px,1fr))', gap: 8, marginTop: 10 }}>
+              <span><small>Area</small><br /><strong>{AREA_LABELS[item.administrative_area] || item.administrative_area}</strong></span>
+              <span><small>Data</small><br /><strong>{dateFor(item) || 'Non estratta'}</strong></span>
+              <span><small>Provenienza</small><br /><strong>{item.source_context?.archive_path || item.source_label}</strong></span>
+              <span><small>Stato documentale</small><br /><strong>{item.status || 'Da verificare'}</strong></span>
+            </div>
+            {item.administrative_area === 'personale' && <div style={{ marginTop: 8, color: '#4c4a44' }}>
+              CF {metadata.lavoratore_cf || 'non estratto'} · decorrenza {metadata.data_decorrenza_recesso || 'non estratta'} · modulo {metadata.codice_modulo || 'non estratto'}
+            </div>}
+            {item.administrative_area === 'tributi_locali' && <div style={{ marginTop: 8, color: '#4c4a44' }}>
+              Anno tributo {metadata.anno_tributo || 'da verificare'} · fase {metadata.fase || 'da verificare'} · contribuente {metadata.codice_contribuente || 'non estratto'}
+            </div>}
+            {item.administrative_area === 'famiglia' && <div style={{ marginTop: 8, color: '#4c4a44' }}>
+              Contribuente {metadata.contribuente || 'da verificare'} · codice {metadata.codice_contribuente || 'non estratto'} · anno tributo {metadata.anno_tributo || 'da verificare'}
+              {metadata.immobile && <> · immobile {metadata.immobile}</>}
+            </div>}
+            {item.administrative_area === 'riscossione' && <div style={{ marginTop: 8, color: '#4c4a44' }}>
+              {metadata.societa_denominazione && <>Società <strong>{metadata.societa_denominazione}</strong> · </>}
+              CF società {metadata.societa_cf || metadata.contribuente_cf || 'da verificare'}
+              {metadata.soggetto_richiedente_cf && <> · richiedente {metadata.soggetto_richiedente_cf}</>}
+              {metadata.soggetto_richiedente_ruolo && <> ({metadata.soggetto_richiedente_ruolo})</>}
+              {metadata.ricevuta_presentazione && <> · ricevuta {metadata.ricevuta_presentazione}</>}
+              {(metadata.numeri_cartella || []).length > 0 && <><br />Cartelle: <strong>{metadata.numeri_cartella.join(', ')}</strong>{metadata.tutti_i_carichi ? ' · tutti i carichi' : ''}</>}
+            </div>}
+            {(metadata.workflow_expectations || item.workflow_expectations || []).length > 0 && <div style={{ marginTop: 10, padding: 10, borderRadius: 8, background: '#fff7ed', color: '#7c2d12' }}>
+              <strong>Informazioni e prove attese</strong>
+              <ul style={{ margin: '6px 0 0', paddingLeft: 20 }}>
+                {(metadata.workflow_expectations || item.workflow_expectations).map((expectation, index) => <li key={`${expectation.expectation_type}-${index}`}>
+                  {expectationLabel(expectation)}: {expectation.status || expectation.expectation_status || 'ATTESO'}
+                  {expectation.discount_deadline && <> · entro {expectation.discount_deadline}</>}
+                </li>)}
+              </ul>
+            </div>}
+          </article>;
+        })}
+      </Card>
+      {originale && <VisoreOriginale url={originale.url} titolo={originale.titolo} onClose={() => setOriginale(null)} />}
+    </div>
+  );
+}

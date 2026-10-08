@@ -1,0 +1,990 @@
+import React, { useMemo, useState } from 'react';
+import { NavLink } from 'react-router-dom';
+import { PageHeader } from '../components/ds';
+import { useIsMobile } from '../lib/utils';
+import {
+  AlertTriangle,
+  Archive,
+  Banknote,
+  BookOpen,
+  Building2,
+  CalendarDays,
+  Car,
+  CheckCircle2,
+  ClipboardList,
+  CreditCard,
+  FileInput,
+  FileText,
+  GitBranch,
+  LayoutDashboard,
+  MessageSquareText,
+  ReceiptText,
+  Settings,
+  ShieldCheck,
+  Users,
+  WalletCards, Menu } from 'lucide-react';
+
+const STAGES = [
+  {
+    id: 'fonti',
+    title: 'Fonti dati',
+    subtitle: 'Drive, Gmail, banca, PayPal, manuale',
+    color: '#4c4a44',
+    items: ['Drive fatture', 'Drive corrispettivi', 'Gmail attendibili', 'Banco BPM', 'PayPal API'],
+  },
+  {
+    id: 'parser',
+    title: 'Parser',
+    subtitle: 'Lettura, deduplica, classificazione',
+    color: '#8a6f47',
+    items: ['XML/P7M', 'PDF F24', 'Quietanze', 'Cedolini', 'Verbali', 'Email body'],
+  },
+  {
+    id: 'record',
+    title: 'Record gestionali',
+    subtitle: 'Entita e posizioni aperte',
+    color: '#2f7a4f',
+    items: ['Fatture', 'Fornitori', 'F24', 'Cedolini', 'POS', 'Verbali', 'Noleggio'],
+  },
+  {
+    id: 'movimenti',
+    title: 'Movimenti',
+    subtitle: 'Cassa, banca e attesi',
+    color: '#8a6410',
+    items: ['Prima nota cassa', 'Prima nota banca', 'Stipendi', 'POS attesi', 'Bonifici'],
+  },
+  {
+    id: 'controlli',
+    title: 'Controlli',
+    subtitle: 'Calendari, regole e conferme',
+    color: '#be123c',
+    items: ['Calendario POS', 'Scadenze agente', 'Trattenute', 'Contratti cessati'],
+  },
+  {
+    id: 'chiusura',
+    title: 'Chiusura',
+    subtitle: 'Riconciliazione, output, chat',
+    color: '#2f7a4f',
+    items: ['Riconciliazione', 'Commercialista', 'Consulente', 'Admin', 'Chat'],
+  },
+];
+
+const AREAS = [
+  {
+    id: 'dashboard',
+    title: 'Dashboard',
+    route: '/',
+    Icon: LayoutDashboard,
+    color: '#4c4a44',
+    group: 'Controllo',
+    purpose: 'Mostra KPI, alert critici, scadenze operative, POS da verificare e documenti aperti.',
+    pages: ['KPI', 'Alert', 'Scadenze operative', 'POS', 'Trattenute da confermare'],
+    inputs: ['Documenti', 'Prima nota', 'Riconciliazione', 'F24', 'Cedolini', 'Verbali'],
+    outputs: ['Priorita operative', 'Link a pagine filtrate', 'Decisioni utente'],
+    links: ['documenti', 'riconciliazione', 'admin'],
+  },
+  {
+    id: 'documenti',
+    title: 'Documenti / Import',
+    route: '/documenti/import',
+    Icon: FileInput,
+    color: '#8a6f47',
+    group: 'Ingresso',
+    purpose:
+      'Porta unica per acquisire, classificare, deduplicare, vedere e riprocessare ogni documento. Archivio (/documenti) e Import (menù Altro → Import Documenti) sono pagine separate.',
+    pages: ['Archivio (pagina Documenti)', 'Import (Altro → Import Documenti)', 'Da classificare', 'Non associati', 'Reprocessing'],
+    inputs: [
+      'Fatture XML/P7M da Drive',
+      'Corrispettivi XML da Drive',
+      'F24 da email',
+      'Quietanze da Drive',
+      'Cedolini da email',
+      'Verbali da email',
+      'Estratti conto',
+      'Scontrini',
+    ],
+    outputs: ['Fatture', 'F24', 'Quietanze', 'Cedolini', 'Corrispettivi', 'Banca', 'Noleggio', 'Admin'],
+    links: ['fatture', 'fiscale', 'cedolini', 'corrispettivi', 'prima-nota', 'noleggio', 'admin'],
+  },
+  {
+    id: 'fatture',
+    title: 'Fatture',
+    route: '/fatture',
+    Icon: FileText,
+    color: '#6f583a',
+    group: 'Ciclo passivo',
+    purpose: 'Legge fatture da Drive, crea fornitori, righe e movimenti secondo metodo pagamento manuale.',
+    pages: ['Fatture ricevute', 'Righe XML', 'Note credito', 'AssoInvoice', 'Scadenza informativa'],
+    inputs: ['XML/P7M da Drive', 'Righe DettaglioLinee', 'Dati fornitore', 'Metodo pagamento'],
+    outputs: ['Fornitori', 'Prima nota', 'Magazzino', 'Noleggio', 'Riconciliazione'],
+    links: ['fornitori', 'prima-nota', 'riconciliazione', 'magazzino', 'noleggio'],
+  },
+  {
+    id: 'fornitori',
+    title: 'Fornitori',
+    route: '/fornitori',
+    Icon: Building2,
+    color: '#c15f3c',
+    group: 'Ciclo passivo',
+    purpose: 'Anagrafica centrale: il metodo pagamento e manuale e decide cassa, banca o provvisoria.',
+    pages: ['Anagrafica', 'Metodo pagamento', 'Fatture collegate', 'Prodotti', 'Note'],
+    inputs: ['Dati XML fattura', 'Scelta manuale metodo', 'Storico pagamenti'],
+    outputs: ['Instradamento fatture', 'Alert metodo mancante', 'Partitario fornitore'],
+    links: ['fatture', 'prima-nota', 'riconciliazione', 'magazzino'],
+  },
+  {
+    id: 'scadenze',
+    title: 'Scadenze',
+    route: '/scadenze',
+    Icon: CalendarDays,
+    color: '#ea580c',
+    group: 'Controllo',
+    purpose: 'Mostra solo scadenze operative. La scadenza fattura non vale salvo pagamento a mezzo agente.',
+    pages: ['Scadenze operative', 'F24', 'Pagamento agente', 'Da verificare'],
+    inputs: ['F24', 'Pagamento a mezzo agente', 'Cartelle', 'Avvisi', 'Regole manuali'],
+    outputs: ['Paga cassa', 'Paga banca', 'Movimento atteso', 'Alert urgenza'],
+    links: ['fatture', 'fiscale', 'prima-nota', 'riconciliazione'],
+  },
+  {
+    id: 'corrispettivi',
+    title: 'Corrispettivi / POS',
+    route: '/riconciliazione/coerenza-pos',
+    Icon: CreditCard,
+    color: '#dc2626',
+    group: 'Incassi',
+    purpose:
+      'Confronta XML, corrispettivo manuale, POS serale e accrediti banca usando il calendario. I corrispettivi si vedono SOLO nel tab Corrispettivi della pagina Fatture; la Coerenza POS è una pagina a sé (Altro → Incassi POS), senza tab di altre sezioni.',
+    pages: ['Corrispettivi (tab in Fatture)', 'POS serale', 'Calendario accrediti', 'Coerenza POS (pagina dedicata)'],
+    inputs: ['XML RT', 'Totale manuale', 'POS serale', 'Accrediti banca', 'Giorni lavorativi/festivi'],
+    outputs: ['Entrata cassa totale', 'Uscita POS', 'POS atteso banca', 'Slittamenti fisiologici', 'Alert reali'],
+    links: ['prima-nota', 'riconciliazione', 'admin', 'controllo'],
+  },
+  {
+    id: 'prima-nota',
+    title: 'Prima Nota',
+    route: '/prima-nota',
+    Icon: BookOpen,
+    color: '#8a6410',
+    group: 'Movimenti',
+    purpose: 'Cassa e banca con saldi progressivi; la cassa registra il corrispettivo totale e l uscita POS.',
+    pages: ['Cassa', 'Banca', 'Provvisoria', 'Pulizia'],
+    inputs: ['Corrispettivi', 'Estratti conto', 'Fatture', 'F24', 'Cedolini', 'Movimenti manuali'],
+    outputs: ['Saldo cassa', 'Saldo banca', 'Movimenti da riconciliare', 'Trasferimenti'],
+    links: ['corrispettivi', 'riconciliazione', 'fiscale', 'contabilita'],
+  },
+  {
+    id: 'riconciliazione',
+    title: 'Riconciliazione',
+    route: '/riconciliazione',
+    Icon: CheckCircle2,
+    color: '#2f7a4f',
+    group: 'Chiusura',
+    purpose:
+      'Collega movimenti reali a fatture, F24, quietanze, cedolini, POS, PayPal, PagoPA e verbali. Gli F24 hanno una pagina dedicata (Altro → F24) che mostra SOLO gli F24.',
+    pages: ['Banca', 'Fatture', 'F24 (pagina dedicata)', 'Cedolini', 'POS', 'PayPal', 'Verbali'],
+    inputs: ['Movimenti banca', 'Partite aperte', 'F24', 'Quietanze', 'Cedolini netti', 'POS attesi', 'Verbali'],
+    outputs: ['Documenti pagati', 'Residui', 'Alert chiusi', 'Trattenute proposte', 'Partitario aggiornato'],
+    links: ['prima-nota', 'fatture', 'fiscale', 'cedolini', 'corrispettivi', 'verbali'],
+  },
+  {
+    id: 'fiscale',
+    title: 'Fiscale',
+    route: '/contabilita/calendario',
+    Icon: ReceiptText,
+    color: '#be123c',
+    group: 'Fisco',
+    purpose: 'F24 genera la posizione; la quietanza documenta l’esito telematico; il pagamento si chiude solo con l’addebito bancario.',
+    pages: ['F24', 'Quietanze', 'Cartelle', 'Avvisi bonari', 'TARI/ADER'],
+    inputs: ['F24 email', 'Quietanze Drive', 'PagoPA', 'Banca', 'Documenti Agenzia'],
+    outputs: ['Scadenze fiscali', 'Movimenti attesi banca', 'Pagamento ufficiale confermato'],
+    links: ['documenti', 'riconciliazione', 'contabilita', 'commercialista'],
+  },
+  {
+    id: 'dipendenti',
+    title: 'Dipendenti',
+    route: null,
+    external: '/hr/',
+    Icon: Users,
+    color: '#5b7a6b',
+    group: 'HR',
+    purpose: 'AppDipendenti portata pari pari dentro il gestionale (/hr, proprio login a PIN): anagrafica, turni, timbrature, ferie, buste paga, TFR, contratti e portale dipendenti.',
+    pages: ['Anagrafica', 'Cedolini', 'Verbali', 'Movimenti', 'Giustificativi'],
+    inputs: ['Cedolini', 'Presenze', 'Bonifici stipendio', 'Verbali driver'],
+    outputs: ['Fascicolo dipendente', 'Alert HR', 'Note consulente', 'Storico paghe'],
+    links: ['cedolini', 'verbali', 'riconciliazione'],
+  },
+  {
+    id: 'menu',
+    title: 'Menu digitale',
+    route: null,
+    external: '/menu/admin',
+    Icon: Menu,
+    color: '#5b7a6b',
+    group: 'Locale',
+    purpose: 'App Menu portata pari pari dentro il gestionale (/menu, login admin proprio): menu pubblico con QR al tavolo, ordini, cassa, cucina, sale, magazzino bar, immagini e backup.',
+    pages: ['Menu pubblico', 'Ordini', 'Cassa', 'Cucina', 'Magazzino', 'Sale', 'Prodotti', 'QR / WiFi', 'Backup'],
+    inputs: ['Catalogo prodotti del Menu', 'Ordini dal QR', 'Ordini di cassa', 'Immagini'],
+    outputs: ['Ordini in lavorazione', 'Incassi cassa', 'Menu pubblico aggiornato', 'QR menu/WiFi', 'Backup JSON'],
+    links: [],
+  },
+  {
+    id: 'cedolini',
+    title: 'Cedolini',
+    // La pagina nativa /salari e' stata rimossa il 03/09/2026: i cedolini si
+    // gestiscono nell'app HR (AppDipendenti) portata pari pari a /hr.
+    route: null,
+    external: '/hr/',
+    Icon: WalletCards,
+    color: '#8a6f47',
+    group: 'HR',
+    purpose: 'Estrae netto, lordo, fiscale, previdenziale, ratei, TFR, presenze ed eventi particolari.',
+    pages: ['Cedolini', 'Parser Zucchetti', 'Sezione fiscale', 'Ratei', 'TFR', 'Stato pagamento'],
+    inputs: ['PDF cedolino/LUL', 'Codice fiscale', 'Matricola', 'Mese/anno', 'Voci corpo cedolino'],
+    outputs: ['Movimento stipendio atteso', 'Dati fiscali interrogabili', 'TFR', 'Riconciliazione stipendi'],
+    links: ['dipendenti', 'riconciliazione', 'prima-nota', 'commercialista'],
+  },
+  {
+    id: 'verbali',
+    title: 'Verbali / Multe',
+    route: '/noleggio',
+    Icon: AlertTriangle,
+    color: '#ef4444',
+    group: 'Veicoli',
+    purpose: 'Legge email e PDF, estrae targa, associa driver, cerca pagamento societa e propone trattenuta.',
+    pages: ['Verbali', 'Parser email', 'Driver', 'Pagamento societa', 'Trattenute'],
+    inputs: ['Email noleggio/Comune/PagoPA', 'PDF verbale', 'Targa', 'Banca', 'PayPal', 'Quietanza'],
+    outputs: ['Driver associato', 'Verbale riconciliato', 'Proposta trattenuta', 'Nota consulente'],
+    links: ['noleggio', 'dipendenti', 'riconciliazione', 'commercialista'],
+  },
+  {
+    id: 'noleggio',
+    title: 'Noleggio Auto',
+    route: '/noleggio',
+    Icon: Car,
+    color: '#4c4a44',
+    group: 'Veicoli',
+    purpose: 'Gestisce flotta, costi, contratti e cessazioni leggendo ultima fattura e assenza fatture oltre 35 giorni.',
+    pages: ['Flotta', 'Costi', 'Contratti', 'Verbali', 'Driver'],
+    inputs: ['Fatture XML DettaglioLinee', 'Verbali', 'Polizze', 'Movimenti banca'],
+    outputs: ['Costo veicolo', 'Contratto attivo/cessato', 'Alert solo se necessario', 'Report auto'],
+    links: ['fatture', 'verbali', 'dipendenti', 'commercialista'],
+  },
+  {
+    id: 'paypal',
+    title: 'PayPal',
+    route: '/integrazioni',
+    Icon: CreditCard,
+    color: '#2f7a4f',
+    group: 'Integrazioni',
+    purpose: 'Fonte primaria API con PAYPAL_CLIENT_ID e PAYPAL_CLIENT_SECRET; email solo fallback documentale.',
+    pages: ['API PayPal', 'Movimenti', 'Riconciliazione', 'Log sync'],
+    inputs: ['PAYPAL_CLIENT_ID', 'PAYPAL_CLIENT_SECRET', 'Transazioni API', 'Email fallback'],
+    outputs: ['paypal_movements', 'Match banca', 'Match PagoPA', 'Match verbali'],
+    links: ['riconciliazione', 'verbali', 'fiscale', 'prima-nota'],
+  },
+  {
+    id: 'magazzino',
+    title: 'Magazzino',
+    route: '/contabilita/previsioni-acquisti',
+    Icon: Archive,
+    color: '#5b7a6b',
+    group: 'Acquisti',
+    purpose: 'Usa righe fattura per prodotti, dizionario articoli, storico acquisti e previsioni.',
+    pages: ['Prodotti', 'Dizionario articoli', 'Previsioni', 'Storico'],
+    inputs: ['Righe fattura', 'Fornitore', 'Quantita', 'Prezzo'],
+    outputs: ['Prodotti', 'Sotto scorta', 'Statistiche acquisti'],
+    links: ['fatture', 'fornitori', 'contabilita'],
+  },
+  {
+    id: 'contabilita',
+    title: 'Contabilita',
+    route: '/contabilita',
+    Icon: ClipboardList,
+    color: '#5f5c55',
+    group: 'Contabilita',
+    purpose: 'Aggrega dati validati in piano conti, bilancio, IVA, budget, cespiti e chiusura.',
+    pages: ['Piano conti', 'Bilancio', 'IVA', 'Budget', 'Cespiti', 'Chiusura'],
+    inputs: ['Fatture', 'Corrispettivi', 'Prima nota', 'F24', 'Stipendi', 'Cespiti'],
+    outputs: ['Bilancio', 'Verifiche', 'Liquidazioni', 'Report'],
+    links: ['fatture', 'prima-nota', 'fiscale', 'commercialista'],
+  },
+  {
+    id: 'commercialista',
+    title: 'Commercialista / Consulente',
+    route: '/strumenti/commercialista',
+    Icon: ShieldCheck,
+    color: '#7a776e',
+    group: 'Output',
+    purpose: 'Prepara pacchetti per commercialista e note per consulente lavoro, incluse trattenute verbali.',
+    pages: ['Prima nota', 'F24/quietanze', 'Cedolini', 'Scontrini', 'Trattenute', 'Report auto'],
+    inputs: ['Dati validati', 'Scontrini admin', 'Trattenute proposte', 'Documenti fiscali'],
+    outputs: ['PDF mensili', 'Excel consulente', 'Report consegna', 'Note busta paga'],
+    links: ['admin', 'contabilita', 'fiscale', 'verbali', 'cedolini'],
+  },
+  {
+    id: 'admin',
+    title: 'Admin',
+    route: '/admin',
+    Icon: Settings,
+    color: '#141413',
+    group: 'Sistema',
+    purpose: 'Configura mittenti, parser, regole, scontrini, differenze corrispettivi, log e reprocessing.',
+    pages: ['Mittenti attendibili', 'Parser', 'Registro scontrini', 'Log', 'Learning'],
+    inputs: ['Differenze corrispettivi', 'Scontrini', 'Regole utente', 'Log sistema'],
+    outputs: ['Configurazioni', 'PDF scontrini', 'Audit', 'Regole apprese'],
+    links: ['documenti', 'corrispettivi', 'commercialista', 'controllo'],
+  },
+  {
+    id: 'chat',
+    title: 'Chat intelligente',
+    route: null,
+    Icon: MessageSquareText,
+    color: '#2f7a4f',
+    group: 'Controllo',
+    purpose: 'Interroga documenti, record, audit log, saldi, POS, cedolini, F24, verbali e riconciliazioni.',
+    pages: ['Domande documentali', 'Memoria', 'Ricerche', 'Risposte con fonte'],
+    inputs: ['Tutti i documenti', 'Record gestionali', 'Audit log', 'Riconciliazioni', 'Calendario POS'],
+    outputs: ['Risposte operative', 'Link documento', 'Azioni consigliate'],
+    links: ['documenti', 'riconciliazione', 'cedolini', 'fiscale', 'verbali'],
+  },
+];
+
+const RELATIONS = [
+  ['Drive fatture', 'Fatture', 'XML/P7M/PDF solo da Drive, mai da Gmail'],
+  ['Fatture', 'Scadenze', 'Solo scadenza operativa se pagamento a mezzo agente'],
+  ['Fatture', 'Fornitori', 'Crea/aggiorna anagrafica e metodo pagamento manuale'],
+  ['Fornitori', 'Prima Nota', 'Cassa/Banca/Misto instrada fattura in cassa, banca o provvisoria'],
+  ['Drive corrispettivi', 'Corrispettivi / POS', 'XML RT con contanti, POS, IVA e totale giornaliero'],
+  ['Corrispettivi / POS', 'Prima Nota Cassa', 'Entrata totale corrispettivo e uscita POS'],
+  ['Corrispettivi / POS', 'Riconciliazione', 'POS atteso con calendario, weekend e festivi'],
+  ['Gmail attendibili', 'Cedolini', 'PDF LUL da Ferrantini/Grazia, collegamento per codice fiscale'],
+  ['Cedolini', 'Riconciliazione', 'Netto stipendio da abbinare a banca o cassa'],
+  ['Cedolini', 'Chat intelligente', 'Fiscale, previdenziale, ratei, TFR ed eventi interrogabili'],
+  ['Email F24', 'Fiscale', 'F24 genera posizione fiscale e movimento atteso banca'],
+  ['Quietanze', 'Fiscale', 'Quietanza associa protocollo e conferma pagamento ufficiale'],
+  ['Estratto conto', 'Prima Nota Banca', 'Movimenti reali con saldo progressivo'],
+  ['PayPal API', 'Riconciliazione', 'API primaria con client id/secret; email come fallback'],
+  ['Email verbale', 'Verbali / Multe', 'Legge corpo email e PDF, estrae targa e numero verbale'],
+  ['Verbali / Multe', 'Dipendenti', 'Targa -> veicolo -> driver valido alla data infrazione'],
+  ['Verbali / Multe', 'Commercialista / Consulente', 'Se pagato dalla societa, proposta trattenuta in busta'],
+  ['Noleggio Auto', 'Fatture', 'Legge ultima fattura e diciture cessazione contratto'],
+  ['Admin', 'Commercialista / Consulente', 'Registro scontrini e differenze interne non contabili'],
+];
+
+const RULES = [
+  {
+    title: 'Fatture e scadenze',
+    Icon: FileText,
+    text: 'La data scadenza fattura resta informativa. Diventa operativa solo con pagamento a mezzo agente o regola confermata.',
+  },
+  {
+    title: 'POS e calendario',
+    Icon: CalendarDays,
+    text: 'La differenza POS mensile va compensata con weekend, festivi e accrediti slittati al mese successivo.',
+  },
+  {
+    title: 'F24 e quietanze',
+    Icon: ReceiptText,
+    text: 'F24 estrae tributi e debito; la quietanza collega il documento; l’estratto conto conferma il pagamento.',
+  },
+  {
+    title: 'Cedolini completi',
+    Icon: WalletCards,
+    text: 'Il parser deve leggere netto, fiscale, previdenziale, ratei, TFR, presenze e voci particolari.',
+  },
+  {
+    title: 'Verbali societa',
+    Icon: AlertTriangle,
+    text: 'Se la societa paga un verbale associato a un driver, il sistema propone recupero in busta paga.',
+  },
+  {
+    title: 'Noleggio cessato',
+    Icon: Car,
+    text: 'Prima di generare alert per fatture mancanti, leggere ultima fattura e contratti cessati, incluso GG782PN.',
+  },
+];
+
+const GROUPS = [
+  'Ingresso',
+  'Ciclo passivo',
+  'Incassi',
+  'Movimenti',
+  'Chiusura',
+  'Fisco',
+  'HR',
+  'Veicoli',
+  'Integrazioni',
+  'Acquisti',
+  'Contabilita',
+  'Output',
+  'Sistema',
+  'Controllo',
+];
+
+function Chip({ children, color = '#7a776e' }) {
+  return <span style={{ ...styles.chip, background: `${color}12`, color }}>{children}</span>;
+}
+
+function LinkButton({ area }) {
+  if (area.external) {
+    return (
+      <a href={area.external} target="_blank" rel="noopener noreferrer" style={styles.openLink}>
+        Apri area
+      </a>
+    );
+  }
+  if (!area.route) return null;
+  return (
+    <NavLink to={area.route} style={styles.openLink}>
+      Apri pagina
+    </NavLink>
+  );
+}
+
+function AreaCard({ area, active, onClick }) {
+  const Icon = area.Icon;
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      style={{
+        ...styles.areaCard,
+        borderColor: active ? area.color : '#e6e3d9',
+        boxShadow: active ? `0 10px 24px ${area.color}22` : '0 2px 8px rgba(20, 20, 19, 0.06)',
+      }}
+    >
+      <div style={styles.areaCardHeader}>
+        <span style={{ ...styles.iconBox, background: `${area.color}12`, color: area.color }}>
+          <Icon size={18} />
+        </span>
+        <div style={{ minWidth: 0 }}>
+          <div style={styles.areaTitle}>{area.title}</div>
+          <div style={styles.areaGroup}>{area.group}</div>
+        </div>
+      </div>
+      <p style={styles.areaPurpose}>{area.purpose}</p>
+      <div style={styles.areaFooter}>
+        <Chip color={area.color}>{area.pages.length} viste</Chip>
+        <Chip color="#7a776e">{area.links.length} link</Chip>
+      </div>
+    </button>
+  );
+}
+
+function InfoBlock({ title, items, color }) {
+  return (
+    <div style={styles.infoBlock}>
+      <h3 style={styles.infoTitle}>{title}</h3>
+      <div style={styles.bulletList}>
+        {items.map(item => (
+          <div key={item} style={styles.bulletItem}>
+            <span style={{ ...styles.dot, background: color }} />
+            <span>{item}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function DetailPanel({ area, relatedAreas, onSelectArea }) {
+  const Icon = area.Icon;
+  return (
+    <div style={styles.detailPanel}>
+      <div style={styles.detailHeader}>
+        <span style={{ ...styles.detailIcon, background: area.color }}>
+          <Icon size={22} />
+        </span>
+        <div>
+          <h2 style={styles.detailTitle}>{area.title}</h2>
+          <p style={styles.detailSubtitle}>{area.purpose}</p>
+        </div>
+        <div style={{ marginLeft: 'auto' }}>
+          <LinkButton area={area} />
+        </div>
+      </div>
+
+      <div style={styles.detailGrid}>
+        <InfoBlock title="Viste interne" items={area.pages} color={area.color} />
+        <InfoBlock title="Riceve da" items={area.inputs} color="#a94f30" />
+        <InfoBlock title="Alimenta" items={area.outputs} color="#2f7a4f" />
+        <div style={styles.infoBlock}>
+          <h3 style={styles.infoTitle}>Collegata a</h3>
+          <div style={styles.linkList}>
+            {relatedAreas.map(linked => (
+              <button
+                key={linked.id}
+                type="button"
+                onClick={() => onSelectArea(linked.id)}
+                style={{ ...styles.relatedLink, borderColor: `${linked.color}35`, color: linked.color }}
+              >
+                {linked.title}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export default function MappaGestionale() {
+  const isMobile = useIsMobile();
+  const [activeId, setActiveId] = useState('documenti');
+  const [group, setGroup] = useState('Tutte');
+
+  const activeArea = AREAS.find(area => area.id === activeId) || AREAS[0];
+  const filteredAreas = group === 'Tutte' ? AREAS : AREAS.filter(area => area.group === group);
+  const relatedAreas = useMemo(
+    () => activeArea.links.map(id => AREAS.find(area => area.id === id)).filter(Boolean),
+    [activeArea]
+  );
+
+  return (
+    <div style={styles.page}>
+      <PageHeader
+        title="Mappa gestionale Ceraldi ERP"
+        subtitle="Da dove arrivano i dati, quali pagine li lavorano e come si chiudono documenti, cassa, banca, POS, F24, cedolini, verbali e PayPal."
+      />
+
+      <section style={styles.flowCard}>
+        <div style={styles.sectionHeader}>
+          <div>
+            <h2 style={styles.sectionTitle}>Flusso operativo principale</h2>
+            <p style={styles.sectionSubtitle}>
+              La costruzione dell app deve seguire questa catena: fonti, parser, record, movimenti,
+              controlli e chiusura.
+            </p>
+          </div>
+        </div>
+        <div style={isMobile ? { ...styles.stageRow, gridTemplateColumns: '1fr', overflowX: 'visible' } : styles.stageRow}>
+          {STAGES.map((stage, index) => (
+            <React.Fragment key={stage.id}>
+              <div style={styles.stage}>
+                <div style={{ ...styles.stageTop, borderColor: stage.color }}>
+                  <span style={{ ...styles.stageNumber, background: stage.color }}>{index + 1}</span>
+                  <div>
+                    <div style={styles.stageTitle}>{stage.title}</div>
+                    <div style={styles.stageSubtitle}>{stage.subtitle}</div>
+                  </div>
+                </div>
+                <div style={styles.stageItems}>
+                  {stage.items.map(item => (
+                    <span key={item}>{item}</span>
+                  ))}
+                </div>
+              </div>
+              {!isMobile && index < STAGES.length - 1 && <div style={styles.arrow}>-&gt;</div>}
+            </React.Fragment>
+          ))}
+        </div>
+      </section>
+
+      <section style={styles.rulesGrid}>
+        {RULES.map(rule => {
+          const Icon = rule.Icon;
+          return (
+            <div key={rule.title} style={styles.rule}>
+              <Icon size={18} />
+              <div>
+                <strong>{rule.title}</strong>
+                <span>{rule.text}</span>
+              </div>
+            </div>
+          );
+        })}
+      </section>
+
+      <section style={styles.controls}>
+        <div style={styles.groupButtons}>
+          {['Tutte', ...GROUPS].map(g => (
+            <button
+              key={g}
+              type="button"
+              onClick={() => setGroup(g)}
+              style={{
+                ...styles.groupButton,
+                background: group === g ? '#c15f3c' : '#fff',
+                color: group === g ? '#fff' : '#5f5c55',
+                borderColor: group === g ? '#c15f3c' : '#e6e3d9',
+              }}
+            >
+              {g}
+            </button>
+          ))}
+        </div>
+      </section>
+
+      <div style={isMobile ? { ...styles.mainGrid, gridTemplateColumns: 'minmax(0, 1fr)' } : styles.mainGrid}>
+        <section>
+          <div style={styles.cardGrid}>
+            {filteredAreas.map(area => (
+              <AreaCard
+                key={area.id}
+                area={area}
+                active={area.id === activeId}
+                onClick={() => setActiveId(area.id)}
+              />
+            ))}
+          </div>
+        </section>
+
+        <aside style={isMobile ? { position: 'static' } : styles.stickyPanel}>
+          <DetailPanel area={activeArea} relatedAreas={relatedAreas} onSelectArea={setActiveId} />
+        </aside>
+      </div>
+
+      <section style={styles.relationSection}>
+        <div style={styles.sectionHeader}>
+          <div>
+            <h2 style={styles.sectionTitle}>Collegamenti chiave tra pagine</h2>
+            <p style={styles.sectionSubtitle}>
+              Tabella guida per routing, stati, parser, azioni utente e riconciliazioni.
+            </p>
+          </div>
+        </div>
+        <div style={styles.tableWrap}>
+          <table style={styles.table}>
+            <thead>
+              <tr>
+                <th>Da</th>
+                <th>A</th>
+                <th>Collegamento operativo</th>
+              </tr>
+            </thead>
+            <tbody>
+              {RELATIONS.map(([from, to, relation]) => (
+                <tr key={`${from}-${to}-${relation}`}>
+                  <td>{from}</td>
+                  <td>{to}</td>
+                  <td>{relation}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+const styles = {
+  page: {
+    minHeight: '100vh',
+    background: '#f2f0e9',
+    padding: 20,
+    color: '#141413',
+    colorScheme: 'light',
+  },
+  flowCard: {
+    background: '#fff',
+    border: '1px solid #e6e3d9',
+    borderRadius: 8,
+    padding: 18,
+    marginBottom: 16,
+    boxShadow: '0 2px 8px rgba(20, 20, 19, 0.06)',
+  },
+  sectionHeader: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    gap: 16,
+    alignItems: 'flex-start',
+    marginBottom: 14,
+  },
+  sectionTitle: {
+    margin: 0,
+    fontSize: 17,
+    color: '#141413',
+    fontWeight: 800,
+  },
+  sectionSubtitle: {
+    margin: '4px 0 0',
+    fontSize: 13,
+    lineHeight: 1.45,
+    color: '#7a776e',
+  },
+  stageRow: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(11, auto)',
+    gap: 8,
+    overflowX: 'auto',
+    alignItems: 'stretch',
+    paddingBottom: 4,
+  },
+  stage: {
+    width: 190,
+    minHeight: 156,
+    border: '1px solid #e6e3d9',
+    borderRadius: 8,
+    padding: 12,
+    background: '#f6f4ee',
+  },
+  stageTop: {
+    display: 'flex',
+    gap: 10,
+    alignItems: 'center',
+    paddingBottom: 10,
+    borderBottom: '2px solid',
+  },
+  stageNumber: {
+    width: 24,
+    height: 24,
+    borderRadius: 999,
+    color: '#fff',
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    fontSize: 12,
+    fontWeight: 800,
+    flexShrink: 0,
+  },
+  stageTitle: {
+    fontSize: 13,
+    fontWeight: 800,
+    color: '#141413',
+  },
+  stageSubtitle: {
+    fontSize: 11,
+    color: '#7a776e',
+    lineHeight: 1.25,
+    marginTop: 2,
+  },
+  stageItems: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: 5,
+    marginTop: 10,
+  },
+  arrow: {
+    alignSelf: 'center',
+    color: '#a19d92',
+    fontSize: 16,
+    fontWeight: 800,
+  },
+  controls: {
+    background: '#fff',
+    border: '1px solid #e6e3d9',
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 16,
+  },
+  groupButtons: {
+    display: 'flex',
+    gap: 8,
+    flexWrap: 'wrap',
+  },
+  groupButton: {
+    border: '1px solid',
+    borderRadius: 999,
+    padding: '6px 11px',
+    fontSize: 12,
+    fontWeight: 700,
+    cursor: 'pointer',
+  },
+  mainGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'minmax(0, 1fr) 410px',
+    gap: 16,
+    alignItems: 'start',
+  },
+  cardGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fill, minmax(min(270px, 100%), 1fr))',
+    gap: 12,
+  },
+  areaCard: {
+    textAlign: 'left',
+    background: '#fff',
+    border: '1px solid',
+    borderRadius: 8,
+    padding: 14,
+    cursor: 'pointer',
+    minHeight: 174,
+  },
+  areaCardHeader: {
+    display: 'flex',
+    gap: 10,
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  iconBox: {
+    width: 36,
+    height: 36,
+    borderRadius: 8,
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  areaTitle: {
+    fontSize: 14,
+    fontWeight: 800,
+    color: '#141413',
+    textShadow: 'none',
+  },
+  areaGroup: {
+    fontSize: 11,
+    color: '#7a776e',
+    marginTop: 2,
+  },
+  areaPurpose: {
+    margin: 0,
+    color: '#5f5c55',
+    fontSize: 12,
+    lineHeight: 1.45,
+  },
+  areaFooter: {
+    display: 'flex',
+    gap: 6,
+    flexWrap: 'wrap',
+    marginTop: 12,
+  },
+  stickyPanel: {
+    position: 'sticky',
+    top: 74,
+  },
+  detailPanel: {
+    background: '#fff',
+    border: '1px solid #e6e3d9',
+    borderRadius: 8,
+    boxShadow: '0 3px 12px rgba(20, 20, 19, 0.08)',
+    overflow: 'hidden',
+  },
+  detailHeader: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 12,
+    padding: 16,
+    borderBottom: '1px solid #e6e3d9',
+    background: '#f6f4ee',
+  },
+  detailIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: 8,
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+    color: '#fff',
+  },
+  detailTitle: {
+    margin: 0,
+    fontSize: 17,
+    color: '#141413',
+  },
+  detailSubtitle: {
+    margin: '3px 0 0',
+    fontSize: 12,
+    color: '#7a776e',
+    lineHeight: 1.35,
+  },
+  openLink: {
+    minHeight: 44,
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: '7px 10px',
+    background: '#c15f3c',
+    color: '#fff',
+    borderRadius: 6,
+    fontSize: 12,
+    fontWeight: 700,
+    textDecoration: 'none',
+    whiteSpace: 'nowrap',
+  },
+  detailGrid: {
+    display: 'grid',
+    gap: 12,
+    padding: 14,
+  },
+  infoBlock: {
+    border: '1px solid #e6e3d9',
+    borderRadius: 8,
+    padding: 12,
+    background: '#fff',
+  },
+  infoTitle: {
+    margin: '0 0 9px',
+    fontSize: 12,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    color: '#7a776e',
+  },
+  bulletList: {
+    display: 'grid',
+    gap: 7,
+  },
+  bulletItem: {
+    display: 'flex',
+    gap: 8,
+    alignItems: 'flex-start',
+    fontSize: 12,
+    lineHeight: 1.35,
+    color: '#4c4a44',
+  },
+  dot: {
+    width: 7,
+    height: 7,
+    borderRadius: 999,
+    marginTop: 5,
+    flexShrink: 0,
+  },
+  linkList: {
+    display: 'flex',
+    gap: 7,
+    flexWrap: 'wrap',
+  },
+  relatedLink: {
+    border: '1px solid',
+    background: '#fff',
+    borderRadius: 999,
+    padding: '5px 9px',
+    fontSize: 11,
+    fontWeight: 800,
+    cursor: 'default',
+  },
+  relationSection: {
+    background: '#fff',
+    border: '1px solid #e6e3d9',
+    borderRadius: 8,
+    padding: 18,
+    marginTop: 16,
+    boxShadow: '0 2px 8px rgba(20, 20, 19, 0.06)',
+  },
+  tableWrap: {
+    overflowX: 'auto',
+    border: '1px solid #e6e3d9',
+    borderRadius: 8,
+  },
+  table: {
+    width: '100%',
+    borderCollapse: 'collapse',
+    fontSize: 13,
+  },
+  rulesGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
+    gap: 12,
+    marginBottom: 16,
+  },
+  rule: {
+    display: 'flex',
+    gap: 10,
+    alignItems: 'flex-start',
+    background: '#fff',
+    border: '1px solid #e6e3d9',
+    borderRadius: 8,
+    padding: 14,
+    color: '#141413',
+  },
+  chip: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    padding: '4px 8px',
+    borderRadius: 999,
+    fontSize: 11,
+    fontWeight: 700,
+    lineHeight: 1.2,
+  },
+};

@@ -1,0 +1,385 @@
+import React, { useState, useEffect } from 'react';
+import { RefreshCw, Search, ShoppingCart, Loader2, Package, TrendingUp, TrendingDown, ChevronUp, ChevronDown } from 'lucide-react';
+import api from '../api';
+import { formatEuro, COLORS, BORDER_RADIUS } from '../lib/utils';
+import { useAnnoGlobale } from '../contexts/AnnoContext';
+import { PageLayout } from '../components/PageLayout';
+import { PageHeader } from '../components/ds/PageHeader';
+import { toast } from 'sonner';
+import { Button, Badge, Card, Input, Select, Tabs, StatCard } from '../components/ds';
+
+export default function PrevisioniAcquisti() {
+  const { anno: annoGlobale } = useAnnoGlobale();
+  const [activeTab, setActiveTab] = useState('statistiche');
+  const [statistiche, setStatistiche] = useState([]);
+  const [previsioni, setPrevisioni] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [popolando, setPopolando] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [settimanePrevisione, setSettimanePrevisione] = useState(4);
+  const [costoTotale, setCostoTotale] = useState(0);
+  const [expandedId, setExpandedId] = useState(null);
+  const [limite, setLimite] = useState(200);
+
+  useEffect(() => {
+    loadData();
+  }, [annoGlobale, activeTab, settimanePrevisione]);
+
+  const loadData = async () => {
+    setLoading(true);
+    try {
+      if (activeTab === 'statistiche') {
+        const res = await api.get(`/api/previsioni-acquisti/statistiche?anno=${annoGlobale}`);
+        setStatistiche(res.data.statistiche || []);
+      } else {
+        const annoRif = annoGlobale - 1;
+        const res = await api.get(
+          `/api/previsioni-acquisti/previsioni?anno_riferimento=${annoRif}&settimane_previsione=${settimanePrevisione}`
+        );
+        setPrevisioni(res.data.previsioni || []);
+        setCostoTotale(res.data.costo_totale_stimato || 0);
+      }
+    } catch (error) {
+      console.error('Errore:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handlePopolaStorico = async () => {
+    setPopolando(true);
+    try {
+      const res = await api.post('/api/previsioni-acquisti/popola-storico');
+      toast.success(
+        `Storico popolato! Fatture processate: ${res.data.fatture_processate}, prodotti registrati: ${res.data.prodotti_registrati}`
+      );
+      loadData();
+    } catch (error) {
+      toast.error(`Errore: ${error.response?.data?.detail || error.message}`);
+    } finally {
+      setPopolando(false);
+    }
+  };
+
+  const filteredData =
+    activeTab === 'statistiche'
+      ? statistiche.filter(s => s.descrizione?.toLowerCase().includes(searchTerm.toLowerCase()))
+      : previsioni.filter(p => p.prodotto?.toLowerCase().includes(searchTerm.toLowerCase()));
+
+  const getTrendVariant = trend => {
+    if (trend === '↑') return 'success';
+    if (trend === '↓') return 'danger';
+    if (trend === 'nuovo') return 'primary';
+    return 'neutral';
+  };
+
+  return (
+    <PageLayout>
+      <div style={{ maxWidth: 1400, margin: '0 auto' }}>
+        <PageHeader
+          title="Previsioni acquisti"
+          actions={<Badge variant="primary">{annoGlobale}</Badge>}
+          style={{ marginBottom: 14 }}
+        />
+
+        {/* Tabs e Controlli */}
+        <div
+          style={{
+            display: 'flex',
+            gap: 8,
+            marginBottom: 16,
+            flexWrap: 'wrap',
+            alignItems: 'center',
+          }}
+        >
+          <Tabs
+            items={[
+              { key: 'statistiche', label: `Statistiche ${annoGlobale}` },
+              { key: 'previsioni', label: 'Previsioni' },
+            ]}
+            value={activeTab}
+            onChange={setActiveTab}
+          />
+
+          <div style={{ flex: 1 }} />
+
+          {activeTab === 'previsioni' && (
+            <Select
+              value={settimanePrevisione}
+              onChange={e => setSettimanePrevisione(Number(e.target.value))}
+            >
+              <option value={1}>1 settimana</option>
+              <option value={2}>2 settimane</option>
+              <option value={4}>4 settimane</option>
+              <option value={8}>8 settimane</option>
+              <option value={12}>12 settimane</option>
+            </Select>
+          )}
+
+          <Button
+            variant="outline"
+            onClick={loadData}
+            disabled={loading}
+            data-testid="refresh-btn"
+          >
+            <RefreshCw size={16} aria-label="Aggiorna" />
+          </Button>
+
+          <Button
+            variant="primary"
+            onClick={handlePopolaStorico}
+            disabled={popolando}
+            data-testid="popola-storico-btn"
+          >
+            {popolando ? 'Popolando...' : 'Popola Storico'}
+          </Button>
+        </div>
+
+        {/* Ricerca */}
+        <div style={{ marginBottom: 16 }}>
+          <Input
+            type="text"
+            iconLeft={<Search size={16} aria-hidden="true" />}
+            value={searchTerm}
+            onChange={e => setSearchTerm(e.target.value)}
+            placeholder="Cerca prodotto (es: caffè, prosecco, farina...)"
+            data-testid="search-input"
+          />
+        </div>
+
+        {/* Riepilogo Previsioni */}
+        {activeTab === 'previsioni' && costoTotale > 0 && (
+          <StatCard
+            icon={<ShoppingCart size={18} aria-hidden="true" />}
+            label={`Costo stimato prossime ${settimanePrevisione} settimane`}
+            value={formatEuro(costoTotale)}
+            accent="primary"
+            style={{ marginBottom: 16 }}
+          />
+        )}
+
+        {/* Lista Prodotti */}
+        <Card
+          title={
+            activeTab === 'statistiche' ? (
+              <>
+                Acquisti documentati {annoGlobale} vs {annoGlobale - 1}
+              </>
+            ) : (
+              <>Acquisti Previsti ({filteredData.length} prodotti)</>
+            )
+          }
+        >
+          {loading ? (
+            <div style={{ textAlign: 'center', padding: 40, color: COLORS.textMuted }}>
+              <Loader2 size={32} aria-hidden="true" style={{ marginBottom: 16 }} />
+              Caricamento...
+            </div>
+          ) : filteredData.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: 40, color: COLORS.textMuted }}>
+              <Package size={48} aria-hidden="true" style={{ marginBottom: 16, opacity: 0.3 }} />
+              <p>Nessun dato trovato</p>
+              <p style={{ fontSize: 13 }}>
+                Clicca &quot;Popola Storico&quot; per importare i dati dalle fatture
+              </p>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {filteredData.slice(0, limite).map((item, idx) => (
+                <div
+                  key={item.id || idx}
+                  style={{
+                    padding: 12,
+                    background: COLORS.bgAlt,
+                    borderRadius: BORDER_RADIUS.md,
+                    border: `1px solid ${COLORS.border}`,
+                  }}
+                  data-testid={`product-item-${idx}`}
+                >
+                  <div
+                    style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      cursor: 'pointer',
+                    }}
+                    onClick={() => setExpandedId(expandedId === item.id ? null : item.id)}
+                  >
+                    <div style={{ flex: 1 }}>
+                      <div
+                        style={{
+                          fontWeight: 'bold',
+                          fontSize: 14,
+                          color: COLORS.text,
+                          marginBottom: 4,
+                        }}
+                      >
+                        {activeTab === 'statistiche' ? item.descrizione : item.prodotto}
+                      </div>
+                      <div
+                        style={{
+                          display: 'flex',
+                          gap: 12,
+                          fontSize: 12,
+                          color: COLORS.textMuted,
+                          flexWrap: 'wrap',
+                        }}
+                      >
+                        {activeTab === 'statistiche' ? (
+                          <>
+                            <span>
+                              {item.quantita_totale?.toFixed(1)} {item.unita_misura}
+                            </span>
+                            <span>Media/gg: {item.media_giornaliera}</span>
+                            <span>Media/sett: {item.media_settimanale}</span>
+                          </>
+                        ) : (
+                          <>
+                            <span>
+                              Prev: {item.quantita_prevista?.toFixed(1)} {item.unita_misura}
+                            </span>
+                            <span>{item.media_settimanale}/sett</span>
+                            <span>{item.costo_stimato == null ? 'Prezzo non noto' : formatEuro(item.costo_stimato)}</span>
+                          </>
+                        )}
+                      </div>
+                    </div>
+
+                    {activeTab === 'statistiche' && item.trend && (
+                      <Badge variant={getTrendVariant(item.trend)}>
+                        {item.trend === 'nuovo' ? (
+                          <>Nuovo nel {annoGlobale}</>
+                        ) : (
+                          <>
+                            {item.trend === '↑' ? <TrendingUp size={12} aria-hidden="true" /> : item.trend === '↓' ? <TrendingDown size={12} aria-hidden="true" /> : null}
+                            {item.variazione_pct > 0 ? '+' : ''}
+                            {item.variazione_pct}%
+                          </>
+                        )}
+                      </Badge>
+                    )}
+
+                    <span style={{ marginLeft: 8 }}>{expandedId === item.id ? <ChevronUp size={14} aria-hidden="true" /> : <ChevronDown size={14} aria-hidden="true" />}</span>
+                  </div>
+
+                  {/* Dettagli espansi */}
+                  {expandedId === item.id && (
+                    <div
+                      style={{
+                        marginTop: 12,
+                        paddingTop: 12,
+                        borderTop: `1px solid ${COLORS.border}`,
+                        fontSize: 12,
+                        color: COLORS.textMuted,
+                      }}
+                    >
+                      {activeTab === 'statistiche' ? (
+                        <div
+                          style={{
+                            display: 'grid',
+                            gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
+                            gap: 8,
+                          }}
+                        >
+                          <div>
+                            <strong>Quantità {annoGlobale}:</strong>{' '}
+                            {item.quantita_anno_corrente?.toFixed(1)} {item.unita_misura}
+                          </div>
+                          <div>
+                            <strong>Quantità {annoGlobale - 1}:</strong>{' '}
+                            {item.quantita_anno_prec?.toFixed(1)} {item.unita_misura}
+                          </div>
+                          <div>
+                            <strong>Differenza:</strong>{' '}
+                            {(item.differenza_quantita || 0) > 0 ? '+' : ''}
+                            {item.differenza_quantita?.toFixed(1)} {item.unita_misura}
+                          </div>
+                          <div>
+                            <strong>Spesa totale:</strong>{' '}
+                            {item.costo_disponibile
+                              ? formatEuro(item.spesa_totale)
+                              : 'Costo non disponibile nei dati XML'}
+                          </div>
+                          <div>
+                            <strong>N. ordini:</strong> {item.num_acquisti}
+                          </div>
+                          <div>
+                            <strong>Ogni:</strong> {item.frequenza_giorni} giorni
+                          </div>
+                          <div>
+                            <strong>Primo:</strong> {item.primo_acquisto}
+                          </div>
+                          <div>
+                            <strong>Ultimo:</strong> {item.ultimo_acquisto}
+                          </div>
+                        </div>
+                      ) : (
+                        <div
+                          style={{
+                            display: 'grid',
+                            gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
+                            gap: 8,
+                          }}
+                        >
+                          <div>
+                            <strong>Anno rif.:</strong> {item.quantita_anno_rif?.toFixed(1)}{' '}
+                            {item.unita_misura}
+                          </div>
+                          <div>
+                            <strong>Prezzo medio:</strong> {item.prezzo_medio == null ? '—' : formatEuro(item.prezzo_medio)}
+                          </div>
+                          <div>
+                            <strong>Ordina ogni:</strong>{' '}
+                            {item.frequenza_ordine_settimane?.toFixed(1)} sett.
+                          </div>
+                          <div>
+                            <strong>Prossimo ordine:</strong> tra{' '}
+                            {item.prossimo_ordine_tra_giorni} gg
+                          </div>
+                          {item.fornitori_abituali?.length > 0 && (
+                            <div style={{ gridColumn: '1 / -1' }}>
+                              <strong>Fornitori:</strong> {item.fornitori_abituali.join(', ')}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+          {filteredData.length > limite && (
+            <div style={{ display: 'flex', justifyContent: 'center', marginTop: 12 }}>
+              <Button variant="secondary" onClick={() => setLimite(l => l + 200)} style={{ minHeight: 44 }}>
+                Mostra altre ({filteredData.length - limite})
+              </Button>
+            </div>
+          )}
+        </Card>
+
+        {/* Info */}
+        <div
+          style={{
+            marginTop: 16,
+            padding: 12,
+            background: COLORS.infoLight,
+            border: `1px solid ${COLORS.info}`,
+            borderRadius: BORDER_RADIUS.md,
+            fontSize: 12,
+            color: COLORS.info,
+          }}
+        >
+          <strong>Come funziona:</strong> Il sistema analizza lo storico acquisti dalle fatture
+          XML. Calcola medie giornaliere/settimanali e confronta con l&apos;anno precedente per
+          suggerirti gli acquisti.
+          <br />
+          <strong>Statistiche:</strong> Mostra consumi dell&apos;anno corrente vs anno
+          precedente.
+          <br />
+          <strong>Previsioni:</strong> Propone quantità da ordinare basate sugli acquisti storici; non presume il consumo senza giacenze.
+        </div>
+      </div>
+    </PageLayout>
+  );
+}

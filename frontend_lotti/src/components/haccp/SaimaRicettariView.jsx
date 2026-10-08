@@ -1,0 +1,182 @@
+import { useState, useEffect, useCallback } from "react";
+import axios from "axios";
+import { FileText, Download, ExternalLink, RefreshCw, BookOpen, Trash2 } from "lucide-react";
+import { API } from "../../utils/constants";
+import { apriDocumentoAutenticato } from "../../auth";
+
+const SEZIONI_COLORI = {
+  "Ricorrenze":          "bg-[#f2f6f3] border-[#cfdfd5]",
+  "Applicazioni Prodotto":"bg-green-50 border-green-200",
+  "Ricette":             "bg-[#eef4ef] border-[#cfdfd5]",
+  "Aggiornato":          "bg-[#faf5ec] border-[#e6d3ab]",
+};
+
+const urlPdfProxy = (ricett) => `${API}/saima/ricettari/pdf-proxy?url=${encodeURIComponent(ricett.url_pdf)}`;
+
+// ── Viewer PDF: il PDF si apre in nuova scheda dal clic su "Visualizza" (dentro
+// il gesto dell'utente, o il blocco popup lo fermerebbe) via proxy backend ──
+const PdfViewer = ({ ricett, onClose }) => {
+  const proxyUrl = urlPdfProxy(ricett);
+
+  return (
+    <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-lg">
+      <div className="flex items-center justify-between p-4 border-b border-gray-100 bg-gray-50">
+        <span className="font-semibold text-sm text-gray-700 flex items-center gap-2">
+          <FileText size={14} className="text-[#5b7a6b]" />
+          {ricett.nome}
+        </span>
+        <button onClick={onClose} className="text-sm px-3 py-1.5 bg-gray-200 text-gray-600 hover:bg-gray-300 rounded-lg">✕ Chiudi</button>
+      </div>
+      <div className="p-8 text-center">
+        <p className="text-gray-600 mb-4">Il PDF si è aperto in una nuova scheda.</p>
+        <div className="flex items-center justify-center gap-3">
+          <button type="button" onClick={() => apriDocumentoAutenticato(proxyUrl)}
+            className="px-4 py-2 bg-[#5b7a6b] text-white rounded-lg text-sm font-medium hover:bg-[#4d6a5c] flex items-center gap-2">
+            <ExternalLink size={14} /> Apri di nuovo
+          </button>
+          <button type="button" onClick={() => apriDocumentoAutenticato(proxyUrl, { scarica: true, nomeFile: `${ricett.nome}.pdf` })}
+            className="px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 flex items-center gap-2">
+            <Download size={14} /> Scarica PDF
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export const SaimaRicettariView = () => {
+  const [ricettari, setRicettari] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [pdfAperto, setPdfAperto] = useState(null);
+
+  const carica = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await axios.get(`${API}/saima/ricettari`);
+      setRicettari(res.data || []);
+    } catch {
+      setRicettari([]);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { carica(); }, [carica]);
+
+  const handleAggiorna = async () => {
+    try {
+      await axios.post(`${API}/saima/ricettari/aggiorna`);
+      setTimeout(carica, 3000);
+    } catch { }
+  };
+
+  // Raggruppa per sezione. MEPA avrà un proprio ricettario separato.
+  const gruppi = ricettari.reduce((acc, r) => {
+    const sez = r.sezione || "Ricorrenze";
+    if (!acc[sez]) acc[sez] = [];
+    acc[sez].push(r);
+    return acc;
+  }, {});
+
+  // Ordine delle sole sezioni SAIMA.
+  const ordineSezioni = ["Ricorrenze", "Applicazioni Prodotto", "Ricette", "Aggiornato"]
+    .concat(Object.keys(gruppi).filter(s => !["Ricorrenze","Applicazioni Prodotto","Ricette","Aggiornato"].includes(s)));
+
+  if (loading) return (
+    <div className="flex items-center justify-center py-16 text-gray-400">
+      <RefreshCw className="animate-spin mr-2" size={18} /> Caricamento ricettari...
+    </div>
+  );
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="bg-[#5b7a6b] text-white rounded-2xl p-4 flex items-center justify-between">
+        <div>
+          <h2 className="text-xl font-bold flex items-center gap-2">
+            <BookOpen size={20} /> Ricettari SAIMA
+          </h2>
+          <p className="text-sm opacity-80 mt-0.5">
+            {ricettari.length} ricettari ufficiali del fornitore
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <button onClick={handleAggiorna}
+            className="text-sm px-3 py-1.5 bg-white/20 hover:bg-white/30 rounded-lg flex items-center gap-1.5 transition-colors">
+            <RefreshCw size={13} /> Aggiorna SAIMA
+          </button>
+        </div>
+      </div>
+
+      {/* Viewer PDF inline */}
+      {pdfAperto && (
+        <PdfViewer ricett={pdfAperto} onClose={() => setPdfAperto(null)} />
+      )}
+
+      {/* Griglia ricettari per sezione */}
+      {ordineSezioni.filter(s => gruppi[s]).map(sezione => (
+        <div key={sezione}>
+          <h3 className="text-sm font-bold text-gray-500 uppercase tracking-wider mb-3 flex items-center gap-2">
+            {sezione}
+            <span className="text-gray-300 font-normal">({gruppi[sezione].length})</span>
+          </h3>
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
+            {gruppi[sezione].map(ricett => (
+              <div
+                key={ricett.id}
+                className={`relative group rounded-xl border-2 ${SEZIONI_COLORI[ricett.sezione] || "bg-gray-50 border-gray-200"} p-4 hover:shadow-md transition-all ${pdfAperto?.id === ricett.id ? "ring-2 ring-[#5b7a6b]" : ""}`}
+              >
+                <div className="flex items-center justify-center mb-3 h-16">
+                  <FileText size={44} className="text-stone-400 opacity-60 group-hover:opacity-90 transition-opacity" />
+                </div>
+                <p className="text-xs font-bold text-gray-700 text-center leading-tight mb-2 line-clamp-2">
+                  {ricett.nome}
+                </p>
+                <div className="flex gap-1.5 justify-center mt-auto">
+                  <button
+                    onClick={() => {
+                      if (pdfAperto?.id === ricett.id) { setPdfAperto(null); return; }
+                      apriDocumentoAutenticato(urlPdfProxy(ricett));
+                      setPdfAperto(ricett);
+                    }}
+                    className="text-[10px] flex-1 py-1 bg-[#5b7a6b] text-white rounded-lg font-medium hover:bg-[#4d6a5c] flex items-center justify-center gap-0.5"
+                    data-testid={`btn-visualizza-pdf-${ricett.id}`}
+                  >
+                    <FileText size={9} /> Visualizza
+                  </button>
+                  <button
+                    type="button"
+                    onClick={e => { e.stopPropagation(); apriDocumentoAutenticato(urlPdfProxy(ricett), { scarica: true, nomeFile: `${ricett.nome}.pdf` }); }}
+                    className="text-[10px] px-2 py-1 bg-white border border-[#b8d0c2] text-[#5b7a6b] rounded-lg font-medium hover:bg-[#f2f6f3] flex items-center"
+                    title="Scarica PDF"
+                    aria-label={`Scarica PDF ${ricett.nome}`}
+                  >
+                    <Download size={9} />
+                  </button>
+                  {ricett.aggiunto_manualmente && (
+                    <button onClick={async e => {
+                      e.stopPropagation();
+                      await axios.delete(`${API}/saima/ricettari/${ricett.id}`);
+                      carica();
+                    }} className="text-[10px] px-1.5 py-1 bg-red-50 border border-red-200 text-red-500 rounded-lg hover:bg-red-100" title="Elimina">
+                      <Trash2 size={9} />
+                    </button>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
+
+      {ricettari.length === 0 && (
+        <div className="text-center py-16 text-gray-400">
+          <BookOpen size={48} className="mx-auto mb-4 opacity-30" />
+          <p>Nessun ricettario disponibile. Clicca "Aggiorna" per scaricare i ricettari.</p>
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default SaimaRicettariView;

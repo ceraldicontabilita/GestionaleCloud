@@ -1,0 +1,430 @@
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { PageHeader } from '../components/ds/PageHeader';
+import {
+  CheckCircle2,
+  ChevronDown,
+  FileCheck2,
+  Loader2,
+  Pencil,
+  RefreshCw,
+  Search,
+  ShieldCheck,
+  X,
+} from 'lucide-react';
+import api from '../api';
+import { useAnnoGlobale } from '../contexts/AnnoContext';
+import { formatDateIT } from '../lib/utils';
+import { euroCentesimiOppure } from '../lib/vista';
+
+const PAGE_SIZE = 200;
+
+const euroCents = euroCentesimiOppure;
+
+const formatDate = (value) => (value ? formatDateIT(value) : '—');
+
+function DecisionModal({ row, categories, onClose, onSaved }) {
+  const previous = row.decision || {};
+  const [category, setCategory] = useState(previous.category || '');
+  const [targetId, setTargetId] = useState(previous.target_id || '');
+  const [note, setNote] = useState(previous.note || '');
+  const [search, setSearch] = useState('');
+  const [candidates, setCandidates] = useState([]);
+  const [loadingCandidates, setLoadingCandidates] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  // Titolare, 28/09/2026: una scelta senza documento (commissione,
+  // trasferimento, altro) vale per tutti i movimenti della stessa famiglia
+  // di causale. Si mostrano prima quanti sono e quali: mai alla cieca.
+  const [simili, setSimili] = useState(null);
+  const [applicaSimili, setApplicaSimili] = useState(false);
+  // «Vedi le fatture» di un fornitore scelto nell'elenco, per collegare il movimento a una fattura precisa.
+  const [fattureFornitore, setFattureFornitore] = useState({});
+  const daSelezionare = useRef(null);
+
+  const selectedCategory = categories.find(item => item.id === category);
+  const requiresTarget = Boolean(selectedCategory?.requires_target);
+
+  useEffect(() => {
+    if (!selectedCategory || requiresTarget) {
+      setSimili(null);
+      setApplicaSimili(false);
+      return;
+    }
+    let vivo = true;
+    api.get(`/api/prima-nota/indice-operazioni/${encodeURIComponent(row.id)}/simili`)
+      .then(response => { if (vivo) setSimili(response.data || { count: 0, samples: [] }); })
+      .catch(() => { if (vivo) setSimili({ count: 0, samples: [], errore: true }); });
+    return () => { vivo = false; };
+  }, [selectedCategory?.id, requiresTarget, row.id]);
+
+  const loadCandidates = useCallback(async (selected, query = '') => {
+    if (!selected?.requires_target) {
+      setCandidates([]);
+      return;
+    }
+    setLoadingCandidates(true);
+    setError('');
+    try {
+      const params = new URLSearchParams({ category: selected.id, limit: '50' });
+      if (query.trim()) params.set('search', query.trim());
+      const response = await api.get(
+        `/api/prima-nota/indice-operazioni/${encodeURIComponent(row.id)}/candidati?${params}`,
+      );
+      setCandidates(response.data?.candidates || []);
+    } catch (requestError) {
+      setError(requestError?.response?.data?.detail || requestError?.message || 'Impossibile leggere i dati collegabili');
+    } finally {
+      setLoadingCandidates(false);
+    }
+  }, [row.id]);
+
+  useEffect(() => {
+    if (!selectedCategory) return;
+    const scelta = daSelezionare.current;
+    daSelezionare.current = null;
+    if (scelta && selectedCategory.id === 'fattura') {
+      // Arrivo da «Vedi le fatture» di un fornitore: la fattura e' gia' scelta, l'elenco e' quello del fornitore.
+      setTargetId(scelta.id);
+      loadCandidates(selectedCategory, scelta.cerca);
+      return;
+    }
+    setTargetId(previous.category === selectedCategory.id ? previous.target_id || '' : '');
+    loadCandidates(selectedCategory);
+  }, [selectedCategory?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const vediFatture = async candidate => {
+    const aperto = fattureFornitore[candidate.id];
+    if (aperto) {
+      setFattureFornitore(prev => { const resto = { ...prev }; delete resto[candidate.id]; return resto; });
+      return;
+    }
+    setFattureFornitore(prev => ({ ...prev, [candidate.id]: { caricamento: true, fatture: [] } }));
+    try {
+      const params = new URLSearchParams({ category: 'fattura', limit: '30', search: candidate.label });
+      const response = await api.get(`/api/prima-nota/indice-operazioni/${encodeURIComponent(row.id)}/candidati?${params}`);
+      setFattureFornitore(prev => ({ ...prev, [candidate.id]: { caricamento: false, fatture: response.data?.candidates || [] } }));
+    } catch (requestError) {
+      setFattureFornitore(prev => ({ ...prev, [candidate.id]: {
+        caricamento: false, fatture: [],
+        errore: requestError?.response?.data?.detail || requestError?.message || 'Fatture non disponibili',
+      } }));
+    }
+  };
+
+  const collegaAFattura = (fattura, fornitore) => {
+    daSelezionare.current = { id: fattura.id, cerca: fornitore.label };
+    setSearch(fornitore.label);
+    setCategory('fattura');
+  };
+
+  const save = async () => {
+    if (!category) {
+      setError('Scegli prima la natura dell’operazione.');
+      return;
+    }
+    if (requiresTarget && !targetId) {
+      setError('Scegli il dato esatto da collegare.');
+      return;
+    }
+    setSaving(true);
+    setError('');
+    try {
+      await api.put(`/api/prima-nota/indice-operazioni/${encodeURIComponent(row.id)}`, {
+        category,
+        target_id: targetId || null,
+        note,
+        expected_version: Number(previous.version || 0),
+        applica_a_simili: Boolean(applicaSimili && !requiresTarget && simili?.count),
+      });
+      await onSaved();
+      onClose();
+    } catch (requestError) {
+      setError(requestError?.response?.data?.detail || requestError?.message || 'Salvataggio non riuscito');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="operation-index-modal-backdrop" role="presentation" onMouseDown={onClose}>
+      <section
+        className="operation-index-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Classifica operazione bancaria"
+        onMouseDown={event => event.stopPropagation()}
+      >
+        <header className="operation-index-modal-header">
+          <div>
+            <h2>Classifica e collega</h2>
+            <p>{formatDate(row.date)} · {euroCents(row.amount_cents)}</p>
+          </div>
+          <button type="button" className="icon-button" onClick={onClose} aria-label="Chiudi"><X size={20} /></button>
+        </header>
+
+        <div className="operation-source-box">
+          <strong>Movimento originale</strong>
+          <span>{row.description || 'Descrizione non disponibile'}</span>
+        </div>
+        <p data-testid="a-cosa-serve" style={{ margin: '10px 20px 0', fontSize: 12.5, color: '#5f5c55', lineHeight: 1.45 }}>
+          La banca ha registrato questo movimento ma il gestionale non ha saputo dire a che cosa si riferisce:
+          qui lo dici tu. La scelta resta come indicazione e <b>non crea pagamenti né scritture</b>.
+          {row.type === 'entrata' && (
+            <> È un’<b>entrata</b>: di solito è un rimborso, un acconto di un cliente o l’incasso del POS, non il pagamento di una fattura d’acquisto.</>
+          )}
+        </p>
+
+        <div className="operation-step">
+          <div className="operation-step-title"><span>1</span> Che cos’è?</div>
+          <div className="category-grid">
+            {categories.map(item => (
+              <button
+                type="button"
+                key={item.id}
+                className={`category-choice ${category === item.id ? 'selected' : ''}`}
+                onClick={() => setCategory(item.id)}
+              >
+                <strong>{item.label}</strong>
+                <small>{item.help}</small>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {selectedCategory && (
+          <div className="operation-step">
+            <div className="operation-step-title"><span>2</span> {requiresTarget ? 'A quale dato preciso va collegata?' : 'Aggiungi una nota, se serve'}</div>
+            {requiresTarget && (
+              <>
+                <div className="candidate-search">
+                  <Search size={16} />
+                  <input
+                    value={search}
+                    onChange={event => setSearch(event.target.value)}
+                    onKeyDown={event => { if (event.key === 'Enter') loadCandidates(selectedCategory, search); }}
+                    placeholder="Cerca nome, numero fattura, targa, driver, periodo…"
+                  />
+                  <button type="button" onClick={() => loadCandidates(selectedCategory, search)}>Cerca</button>
+                </div>
+                <div className="candidate-list" data-testid="manual-index-candidates">
+                  {loadingCandidates && <div className="candidate-empty"><Loader2 size={18} className="animate-spin" /> Caricamento…</div>}
+                  {!loadingCandidates && candidates.length === 0 && (
+                    <div className="candidate-empty">Nessun dato mostrato. Prova una ricerca più precisa.</div>
+                  )}
+                  {!loadingCandidates && candidates.map(candidate => (
+                    <React.Fragment key={candidate.id}>
+                      <label className={`candidate-row ${targetId === candidate.id ? 'selected' : ''}`}>
+                        <input
+                          type="radio"
+                          name="operation-target"
+                          checked={targetId === candidate.id}
+                          onChange={() => setTargetId(candidate.id)}
+                        />
+                        <span className="candidate-main">
+                          <strong>{candidate.label}</strong>
+                          <small>{[
+                            formatDate(candidate.date),
+                            candidate.amount_cents ? euroCents(candidate.amount_cents) : '',
+                            candidate.details?.payment_method
+                              ? `Metodo fornitore: ${candidate.details.payment_method}`
+                              : '',
+                          ].filter(Boolean).join(' · ')}</small>
+                        </span>
+                        {selectedCategory.id === 'fornitore' && (
+                          <button
+                            type="button" className="row-action" style={{ marginLeft: 'auto', minHeight: 36 }}
+                            aria-expanded={Boolean(fattureFornitore[candidate.id])}
+                            onClick={event => { event.preventDefault(); vediFatture(candidate); }}
+                          >
+                            {fattureFornitore[candidate.id] ? 'Chiudi le fatture' : 'Vedi le fatture'}
+                          </button>
+                        )}
+                      </label>
+                      {fattureFornitore[candidate.id] && (
+                        <div style={{ padding: '4px 10px 10px 34px', background: '#faf9f5', borderBottom: '1px solid #f6f4ee' }} data-testid="fatture-del-fornitore">
+                          {fattureFornitore[candidate.id].caricamento && <small>Cerco le fatture…</small>}
+                          {fattureFornitore[candidate.id].errore && <small style={{ color: '#9f1239' }}>{fattureFornitore[candidate.id].errore}</small>}
+                          {!fattureFornitore[candidate.id].caricamento && !fattureFornitore[candidate.id].errore
+                            && fattureFornitore[candidate.id].fatture.length === 0 && (
+                            <small>Nessuna fattura trovata per questo fornitore: il movimento resta collegato solo al fornitore.</small>
+                          )}
+                          {fattureFornitore[candidate.id].fatture.map(fattura => (
+                            <div key={fattura.id} style={{ display: 'flex', gap: 10, alignItems: 'center', padding: '6px 0', borderTop: '1px solid #f0ede4', flexWrap: 'wrap' }}>
+                              <span style={{ flex: 1, minWidth: 180 }}>
+                                <strong style={{ fontSize: 12.5 }}>{fattura.details?.invoice_number ? `Fatt. ${fattura.details.invoice_number}` : fattura.label}</strong>
+                                <small style={{ display: 'block', color: '#7a776e' }}>{[
+                                  formatDate(fattura.date),
+                                  fattura.amount_cents ? euroCents(fattura.amount_cents) : '',
+                                ].filter(Boolean).join(' · ')}</small>
+                              </span>
+                              <button
+                                type="button" className="row-action" style={{ minHeight: 36 }}
+                                onClick={() => collegaAFattura(fattura, candidate)}
+                              >
+                                Collega a questa fattura
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </React.Fragment>
+                  ))}
+                </div>
+              </>
+            )}
+            {!requiresTarget && simili && simili.count > 0 && (
+              <label className="manual-note" data-testid="applica-simili" style={{ display: 'flex', gap: 10, alignItems: 'flex-start', cursor: 'pointer' }}>
+                <input
+                  type="checkbox"
+                  checked={applicaSimili}
+                  onChange={event => setApplicaSimili(event.target.checked)}
+                  style={{ width: 20, height: 20, marginTop: 2 }}
+                />
+                <span>
+                  <strong>Applica anche ai {simili.count} movimenti simili</strong> ancora da classificare
+                  {simili.family ? <> («{simili.family}»)</> : null}.
+                  <small style={{ display: 'block', marginTop: 4, color: '#7a776e' }}>
+                    {simili.samples.slice(0, 4).map(item => (
+                      `${formatDate(item.date)} · ${euroCents(item.amount_cents)} · ${item.description}`
+                    )).join(' — ')}
+                    {simili.count > 4 ? ` — e altri ${simili.count - 4}` : ''}
+                  </small>
+                </span>
+              </label>
+            )}
+            <label className="manual-note">
+              Nota facoltativa
+              <textarea value={note} maxLength={500} onChange={event => setNote(event.target.value)} placeholder="Scrivi qui una precisazione utile…" />
+            </label>
+          </div>
+        )}
+
+        {error && <div className="operation-index-error">{String(error)}</div>}
+
+        <footer className="operation-index-modal-footer">
+          <div><ShieldCheck size={16} /> Nessuna scrittura o stato “pagato” viene creato automaticamente.</div>
+          <button type="button" className="secondary-button" onClick={onClose}>Annulla</button>
+          <button type="button" className="primary-button" onClick={save} disabled={saving || !category || (requiresTarget && !targetId)}>
+            {saving ? <Loader2 size={16} className="animate-spin" /> : <FileCheck2 size={16} />}
+            Conferma scelta
+          </button>
+        </footer>
+      </section>
+    </div>
+  );
+}
+
+export default function VerificaMovimentiBanca() {
+  const { anno } = useAnnoGlobale();
+  const [data, setData] = useState(null);
+  const [rows, setRows] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [error, setError] = useState('');
+  const [typeFilter, setTypeFilter] = useState('all');
+  // La vista operativa parte dalle sole eccezioni: i movimenti con prova EC
+  // confermata non devono costringere l'operatore a rieseguire un passaggio.
+  const [statusFilter, setStatusFilter] = useState('da_classificare');
+  const [search, setSearch] = useState('');
+  const [selectedRow, setSelectedRow] = useState(null);
+
+  const load = useCallback(async ({ append = false, offset = 0 } = {}) => {
+    append ? setLoadingMore(true) : setLoading(true);
+    setError('');
+    try {
+      const params = new URLSearchParams({ anno: String(anno), limit: String(PAGE_SIZE), offset: String(offset) });
+      if (typeFilter !== 'all') params.set('tipo', typeFilter);
+      // Lo stato si filtra sul server, prima della paginazione: filtrarlo qui
+      // guardava solo le righe gia' caricate e nascondeva il resto.
+      if (statusFilter !== 'all') params.set('stato', statusFilter);
+      if (search.trim()) params.set('search', search.trim());
+      const response = await api.get(`/api/prima-nota/indice-operazioni?${params}`);
+      setData(response.data);
+      setRows(current => append ? [...current, ...(response.data?.rows || [])] : response.data?.rows || []);
+    } catch (requestError) {
+      setError(requestError?.response?.data?.detail || requestError?.message || 'Errore nel caricamento delle operazioni');
+    } finally {
+      setLoading(false);
+      setLoadingMore(false);
+    }
+  }, [anno, search, typeFilter, statusFilter]);
+
+  useEffect(() => { load(); }, [anno, typeFilter, statusFilter]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const visibleRows = rows;
+
+  const categories = data?.categories || [];
+  const canLoadMore = rows.length < Number(data?.total_rows || 0);
+
+  return (
+    <div className="operation-index-page" data-testid="manual-operation-index">
+      <style>{`
+        .operation-index-page{padding:0;color:#2c2b28}.operation-index-hero{display:flex;justify-content:space-between;gap:16px;align-items:flex-start;padding:18px;border:1px solid #e6e3d9;border-left:5px solid #8f4128;border-radius:12px;background:#fff;margin-bottom:14px}.operation-index-hero h1{font-size:20px;margin:0 0 5px}.operation-index-hero p{font-size:13px;color:#5f5c55;margin:0;max-width:780px;line-height:1.5}.manual-only-badge{display:flex;align-items:center;gap:7px;background:#eaf7ef;color:#166534;border:1px solid #b7e4c7;padding:8px 11px;border-radius:999px;font-size:12px;font-weight:800;white-space:nowrap}.operation-filters{display:grid;grid-template-columns:minmax(220px,1fr) auto auto auto;gap:8px;padding:10px;background:#fff;border:1px solid #e6e3d9;border-radius:10px;margin-bottom:12px}.operation-search{display:flex;align-items:center;gap:8px;border:1px solid #e6e3d9;border-radius:8px;padding:0 10px}.operation-search input{width:100%;border:0;outline:0;padding:9px 0;font-size:13px}.compact-select,.filter-button{min-height:38px;border:1px solid #e6e3d9;border-radius:8px;background:#fff;padding:0 11px;color:#4c4a44}.filter-button{display:inline-flex;align-items:center;gap:6px;cursor:pointer;font-weight:700}.operation-summary{display:flex;gap:8px;align-items:center;justify-content:space-between;font-size:12px;color:#7a776e;margin:8px 2px}.operation-table-shell{overflow:auto;background:#fff;border:1px solid #e6e3d9;border-radius:12px}.operation-table{width:100%;border-collapse:collapse;font-size:13px;min-width:900px}.operation-table th{padding:10px 12px;text-align:left;background:#faf9f5;color:#5f5c55;font-size:11px;text-transform:uppercase;letter-spacing:.04em}.operation-table td{padding:10px 12px;border-top:1px solid #f6f4ee;vertical-align:middle}.operation-description{max-width:580px;line-height:1.35}.type-pill,.decision-pill{display:inline-flex;align-items:center;border-radius:999px;padding:3px 8px;font-size:11px;font-weight:800}.type-pill.in{background:#e2f0e7;color:#166534}.type-pill.out{background:#f8e5e2;color:#991b1b}.decision-pill.linked{background:#e2f0e7;color:#166534}.decision-pill.classified{background:#eef3ef;color:#8f4128}.decision-pill.empty{background:#f2f0e9;color:#7a776e}.row-action{display:inline-flex;align-items:center;gap:6px;border:1px solid #8f4128;background:#fff;color:#8f4128;border-radius:7px;padding:6px 9px;font-weight:800;cursor:pointer}.load-more{display:flex;justify-content:center;margin:14px}.operation-index-empty{padding:48px;text-align:center;background:#fff;border:1px solid #e6e3d9;border-radius:12px;color:#5f5c55}.operation-index-error{background:#fff1f2;color:#9f1239;border:1px solid #fecdd3;border-radius:8px;padding:10px 12px;font-size:13px;margin:10px 0}.operation-index-modal-backdrop{position:fixed;inset:0;background:rgba(20, 20, 19,.58);z-index:1200;display:flex;align-items:center;justify-content:center;padding:20px}.operation-index-modal{width:min(900px,100%);max-height:92vh;overflow:auto;background:#fff;border-radius:14px;box-shadow:0 24px 70px rgba(20, 20, 19,.35)}.operation-index-modal-header{display:flex;justify-content:space-between;align-items:flex-start;padding:18px 20px;border-bottom:1px solid #e6e3d9;position:sticky;top:0;background:#fff;z-index:2}.operation-index-modal-header h2{margin:0;font-size:20px}.operation-index-modal-header p{margin:4px 0 0;color:#5f5c55}.icon-button{border:0;background:#f2f0e9;border-radius:8px;padding:7px;cursor:pointer}.operation-source-box{margin:16px 20px 0;padding:12px;background:#f6f4ee;border:1px solid #e6e3d9;border-radius:9px;display:grid;gap:4px;font-size:13px}.operation-step{padding:18px 20px 0}.operation-step-title{display:flex;align-items:center;gap:8px;font-weight:900;margin-bottom:10px}.operation-step-title>span{display:grid;place-items:center;width:23px;height:23px;border-radius:50%;background:#8f4128;color:#fff;font-size:12px}.category-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}.category-choice{text-align:left;border:1px solid #e6e3d9;background:#fff;border-radius:9px;padding:10px;cursor:pointer;display:grid;gap:3px}.category-choice small{color:#7a776e;line-height:1.3}.category-choice.selected{border-color:#5b7a6b;background:#eef3ef;box-shadow:0 0 0 1px #5b7a6b}.candidate-search{display:flex;align-items:center;gap:8px;border:1px solid #e6e3d9;border-radius:8px;padding-left:10px}.candidate-search input{flex:1;border:0;outline:0;padding:10px 0}.candidate-search button{align-self:stretch;border:0;background:#8f4128;color:#fff;padding:0 15px;font-weight:800;border-radius:0 7px 7px 0}.candidate-list{border:1px solid #e6e3d9;border-radius:9px;margin-top:8px;max-height:260px;overflow:auto}.candidate-row{display:flex;gap:9px;align-items:flex-start;padding:10px;border-bottom:1px solid #f6f4ee;cursor:pointer}.candidate-row:last-child{border-bottom:0}.candidate-row.selected{background:#eef3ef}.candidate-main{display:grid;gap:2px}.candidate-main small{color:#7a776e}.candidate-empty{padding:22px;text-align:center;color:#7a776e;display:flex;justify-content:center;gap:7px}.manual-note{display:grid;gap:5px;font-size:12px;font-weight:800;margin-top:10px}.manual-note textarea{min-height:70px;resize:vertical;border:1px solid #e6e3d9;border-radius:8px;padding:9px;font:inherit;font-weight:400}.operation-index-modal-footer{display:flex;align-items:center;gap:8px;padding:16px 20px;margin-top:18px;border-top:1px solid #e6e3d9;position:sticky;bottom:0;background:#fff}.operation-index-modal-footer>div{display:flex;align-items:center;gap:6px;color:#166534;font-size:11px;margin-right:auto}.primary-button,.secondary-button{display:inline-flex;align-items:center;justify-content:center;gap:6px;border-radius:8px;padding:9px 13px;font-weight:800;cursor:pointer}.primary-button{background:#8f4128;color:#fff;border:1px solid #8f4128}.primary-button:disabled{opacity:.45;cursor:not-allowed}.secondary-button{background:#fff;color:#4c4a44;border:1px solid #d0ccbe}
+        @media(max-width:760px){.operation-index-hero{padding:13px;display:grid}.manual-only-badge{width:max-content}.operation-filters{grid-template-columns:1fr 1fr}.operation-search{grid-column:1/-1}.operation-table-shell{border:0;background:transparent;overflow:visible}.operation-table{display:block;min-width:0}.operation-table thead{display:none}.operation-table tbody{display:grid;gap:8px}.operation-table tr{display:grid;grid-template-columns:1fr auto;gap:7px;background:#fff;border:1px solid #e6e3d9;border-radius:10px;padding:11px}.operation-table td{border:0;padding:0}.operation-table td:nth-child(1),.operation-table td:nth-child(2){display:inline-block}.operation-table td:nth-child(3){grid-column:1/-1}.operation-table td:nth-child(4){grid-column:2;grid-row:1;text-align:right!important}.operation-table td:nth-child(5),.operation-table td:nth-child(6){grid-column:1/-1}.row-action{width:100%;justify-content:center}.category-grid{grid-template-columns:1fr 1fr}.operation-index-modal-backdrop{padding:0;align-items:flex-end}.operation-index-modal{border-radius:14px 14px 0 0;max-height:96vh}.operation-index-modal-footer{flex-wrap:wrap}.operation-index-modal-footer>div{width:100%}.primary-button,.secondary-button{flex:1}}
+      `}</style>
+
+      <PageHeader
+        title="Eccezioni da riconciliare"
+        subtitle="Qui restano solo i movimenti per cui l'estratto conto non dice con certezza a quale documento o soggetto appartengono."
+        style={{ marginBottom: 14 }}
+        actions={<div className="manual-only-badge"><ShieldCheck size={16} /> Automatico con prova · manuale per eccezione</div>}
+      />
+
+      <div className="operation-filters">
+        <div className="operation-search">
+          <Search size={16} />
+          <input value={search} onChange={event => setSearch(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') load(); }} placeholder="Cerca nella causale…" />
+        </div>
+        <select className="compact-select" value={typeFilter} onChange={event => setTypeFilter(event.target.value)} aria-label="Tipo movimento">
+          <option value="all">Entrate e uscite</option><option value="entrata">Solo entrate</option><option value="uscita">Solo uscite</option>
+        </select>
+        <select className="compact-select" value={statusFilter} onChange={event => setStatusFilter(event.target.value)} aria-label="Stato indice">
+          <option value="all">Tutti gli stati</option><option value="riconciliato_banca">Riconciliati da EC</option><option value="da_classificare">Da classificare</option><option value="classificato">Classificati</option><option value="collegato_indice">Collegati</option>
+        </select>
+        <button type="button" className="filter-button" onClick={() => load()} disabled={loading}>{loading ? <Loader2 size={15} className="animate-spin" /> : <RefreshCw size={15} />} Aggiorna</button>
+      </div>
+
+      <div className="operation-summary">
+        <span><strong>{rows.length}</strong> di <strong>{data?.total_rows || 0}</strong> operazioni caricate · anno {anno}</span>
+        <span>{visibleRows.length} visibili con i filtri</span>
+      </div>
+
+      {error && <div className="operation-index-error">{String(error)}</div>}
+      {loading && rows.length === 0 && <div className="operation-index-empty"><Loader2 className="animate-spin" /> Caricamento operazioni…</div>}
+      {!loading && visibleRows.length === 0 && <div className="operation-index-empty"><CheckCircle2 size={28} /> Nessuna operazione per questi filtri.</div>}
+
+      {visibleRows.length > 0 && (
+        <div className="operation-table-shell">
+          <table className="operation-table">
+            <thead><tr><th>Data</th><th>Tipo</th><th>Operazione bancaria</th><th style={{ textAlign: 'right' }}>Importo</th><th>Indice scelto</th><th>Azione</th></tr></thead>
+            <tbody>
+              {visibleRows.map(row => {
+                const decision = row.decision;
+                return (
+                  <tr key={row.id}>
+                    <td>{formatDate(row.date)}</td>
+                    <td><span className={`type-pill ${row.type === 'entrata' ? 'in' : 'out'}`}>{row.type === 'entrata' ? 'Entrata' : 'Uscita'}</span></td>
+                    <td className="operation-description">{row.description || '—'}</td>
+                    <td style={{ textAlign: 'right', fontWeight: 900, color: row.type === 'entrata' ? '#2f7a4f' : '#dc2626' }}>{euroCents(row.amount_cents)}</td>
+                    <td>
+                      {row.bank_reconciled && <span className="decision-pill linked">Riconciliato da EC</span>}
+                      {!row.bank_reconciled && !decision && <span className="decision-pill empty">Da classificare</span>}
+                      {!row.bank_reconciled && decision && <span className={`decision-pill ${decision.target_id ? 'linked' : 'classified'}`}>{decision.category_label}</span>}
+                      {decision?.target_label && <div style={{ fontSize: 11, color: '#5f5c55', marginTop: 4 }}>{decision.target_label}</div>}
+                      {row.bank_evidence?.kind && <div style={{ fontSize: 11, color: '#5f5c55', marginTop: 4 }}>Prova: {row.bank_evidence.kind}</div>}
+                    </td>
+                    <td>{row.bank_reconciled ? <span style={{ fontSize: 12, color: '#166534', fontWeight: 800 }}>Nessuna azione richiesta</span> : <button type="button" className="row-action" onClick={() => setSelectedRow(row)}>{decision ? <Pencil size={14} /> : <ChevronDown size={14} />}{decision ? 'Modifica' : 'Classifica'}</button>}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {canLoadMore && <div className="load-more"><button type="button" className="filter-button" onClick={() => load({ append: true, offset: rows.length })} disabled={loadingMore}>{loadingMore ? <Loader2 size={15} className="animate-spin" /> : null} Carica altre operazioni</button></div>}
+
+      {selectedRow && <DecisionModal row={selectedRow} categories={categories} onClose={() => setSelectedRow(null)} onSaved={() => load()} />}
+    </div>
+  );
+}

@@ -1,0 +1,3628 @@
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import ReactDOM from 'react-dom';
+import { useNavigate, Link } from 'react-router-dom';
+import api from '../api';
+import { toast } from 'sonner';
+import { useConfirm } from '../components/ui/ConfirmDialog';
+import { useAnnoGlobale } from '../contexts/AnnoContext';
+import Portal from '../components/Portal';
+import ModalFattura from '../components/ModalFattura';
+import { PageHeader } from '../components/ds/PageHeader';
+import { MenuOperazioni } from '../components/ds/MenuOperazioni';
+import {
+  formatDateIT,
+  STYLES,
+  COLORS,
+  SHADOWS,
+  BORDER_RADIUS,
+  FONT,
+  button,
+  badge,
+  useIsMobile,
+  RG,
+  pagePad,
+} from '../lib/utils';
+import { useHashState } from '../hooks/useHashState';
+import { isSupplierIncomplete } from '../domain/suppliers';
+import { CopyLinkButton } from '../components/CopyLinkButton';
+import {
+  Button,
+  Badge,
+  StatCard,
+  TableWrap,
+  Table,
+  Th,
+  Td,
+  ListaAdattiva,
+} from '../components/ds';
+import {
+  Search,
+  Edit2,
+  Plus,
+  FileText,
+  Building2,
+  Phone,
+  CreditCard,
+  AlertCircle,
+  Check,
+  X,
+  TrendingUp,
+  RefreshCw,
+  Trash2,
+  Printer,
+  ChevronDown,
+  TriangleAlert,
+} from 'lucide-react';
+import { ePagata } from '../utils/statoFattura';
+import MagazzinoFornitore from '../components/MagazzinoFornitore';
+import MetodoDalFornitore from '../components/MetodoDalFornitore';
+import DoppioniFornitori from '../components/DoppioniFornitori';
+import { euroOppure } from '../lib/vista';
+
+// Hook per debounce
+function useDebounce(value, delay) {
+  const [debouncedValue, setDebouncedValue] = useState(value);
+
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedValue(value);
+    }, delay);
+
+    return () => {
+      clearTimeout(handler);
+    };
+  }, [value, delay]);
+
+  return debouncedValue;
+}
+
+// Dizionario Metodi di Pagamento — SOLO 3: cassa, banca, misto.
+// Coerente con la mappa già usata dal backend per instradare le fatture in
+// Prima Nota (app/routers/suppliers_module/common.py::PAYMENT_METHODS):
+// contanti->cassa, {assegno,bonifico,rid,carta}->banca, misto->provvisorio.
+// "certo" è stato rimosso: il sistema non saprebbe dove imputare
+// automaticamente il pagamento in quel caso, quindi non è un canale valido.
+const METODI_PAGAMENTO = {
+  cassa: { label: 'Cassa', bg: COLORS.successLight, color: COLORS.success },
+  banca: { label: 'Banca', bg: COLORS.infoLight, color: COLORS.info },
+  misto: { label: 'Misto', bg: COLORS.gray[200], color: COLORS.primary },
+};
+
+// Valori legacy ancora presenti sui fornitori già salvati prima della
+// semplificazione a 3 metodi — tradotti in sola lettura per continuare a
+// mostrare/filtrare correttamente i dati esistenti senza una migrazione.
+// DEVE restare allineata alla regola unica del backend
+// (app/engines/prima_nota_engine.py): ogni strumento che transita dal
+// conto corrente -> banca; contanti/contrassegno -> cassa.
+const METODO_LEGACY_A_CANONICO = {
+  contanti: 'cassa',
+  contante: 'cassa',
+  cash: 'cassa',
+  contrassegno: 'cassa',
+  assegno: 'banca',
+  bonifico: 'banca',
+  'bonifico bancario': 'banca',
+  bancario: 'banca',
+  bancomat: 'banca',
+  rid: 'banca',
+  riba: 'banca',
+  sepa: 'banca',
+  sdd: 'banca',
+  mav: 'banca',
+  rav: 'banca',
+  carta: 'banca',
+  'carta di credito': 'banca',
+  paypal: 'banca',
+  stripe: 'banca',
+  domiciliazione: 'banca',
+};
+
+// Canale (cassa/banca/misto) da un valore grezzo, anche legacy.
+const canaleCanonico = raw => {
+  const key = (raw || '').toLowerCase().trim();
+  return METODO_LEGACY_A_CANONICO[key] || key;
+};
+
+// Metodo canonico (cassa/banca/misto) di un fornitore, a partire dal valore
+// grezzo salvato (anche legacy).
+const metodoCanonico = supplier => canaleCanonico(supplier?.metodo_pagamento);
+
+const getMetodo = key => METODI_PAGAMENTO[key] || METODI_PAGAMENTO.banca;
+
+// Identificatore da usare nelle chiamate API: id applicativo, altrimenti
+// P.IVA (anche nei campi legacy). I fornitori storici possono NON avere il
+// campo 'id': prima la PUT andava a /api/suppliers/undefined e rispondeva
+// 404 "Fornitore non trovato" (segnalato dall'utente sul cambio metodo
+// dalla lista "Fatture senza metodo").
+const idFornitore = s => s?.id || s?.partita_iva || s?.piva || s?.vat_number || '';
+
+// Anno dell'ultima fattura ricevuta (per capire se il fornitore è attuale
+// o solo ricorrente/storico). ultima_fattura_data arriva dal backend come
+// "YYYY-MM-DD..." — basta il prefisso anno.
+const annoUltimaFattura = s => {
+  const d = s?.ultima_fattura_data;
+  if (!d || typeof d !== 'string' || d.length < 4) return null;
+  const anno = parseInt(d.slice(0, 4), 10);
+  return Number.isFinite(anno) ? anno : null;
+};
+
+// Il salvataggio generico non porta lo stato «nel magazzino / fuori»: si cambia solo dal
+// controllo dedicato (anteprima, motivo, storico).
+const datiScheda = ({
+  esclude_magazzino,
+  magazzino_origine,
+  magazzino_motivo,
+  magazzino_motivo_testo,
+  magazzino_deciso_il,
+  magazzino_deciso_da,
+  storico_magazzino,
+  ...resto
+}) => resto;
+
+const emptySupplier = {
+  ragione_sociale: '',
+  partita_iva: '',
+  codice_fiscale: '',
+  indirizzo: '',
+  cap: '',
+  comune: '',
+  provincia: '',
+  nazione: 'IT',
+  telefono: '',
+  email: '',
+  pec: '',
+  iban: '',
+  iban_lista: [], // Lista di IBAN aggiuntivi estratti dalle fatture
+  metodo_pagamento: 'banca',
+  esclude_cassa_banca: false,
+  cessato: false,
+  note: '',
+};
+
+// Modale Fornitore
+function SupplierModal({ isOpen, onClose, supplier, onSave, saving }) {
+  const isMobile = useIsMobile();
+  const [form, setForm] = useState(emptySupplier);
+  const [loadingOpenAPI, setLoadingOpenAPI] = useState(false);
+  const [openAPIError, setOpenAPIError] = useState(null);
+  const [loadingXML, setLoadingXML] = useState(false);
+  const [xmlMsg, setXmlMsg] = useState(null);
+  const isNew = !supplier?.id;
+
+  useEffect(() => {
+    if (isOpen && supplier) {
+      setForm({
+        ...emptySupplier,
+        ...supplier,
+        ragione_sociale: supplier.ragione_sociale || supplier.nome || supplier.denominazione || '',
+        partita_iva: supplier.partita_iva || supplier.piva || '',
+        esclude_cassa_banca: supplier.esclude_cassa_banca ?? Boolean(supplier.cessato),
+      });
+    } else if (isOpen) {
+      setForm(emptySupplier);
+    }
+    setOpenAPIError(null);
+    setXmlMsg(null);
+  }, [isOpen, supplier]);
+
+  const handleChange = (field, value) => {
+    setForm(prev => ({ ...prev, [field]: value }));
+  };
+
+  // Carica dati da OpenAPI.it
+  const handleLoadFromOpenAPI = async () => {
+    const piva = form.partita_iva?.replace(/\s/g, '');
+    if (!piva || piva.length !== 11) {
+      setOpenAPIError('Inserisci una Partita IVA valida (11 cifre)');
+      return;
+    }
+
+    setLoadingOpenAPI(true);
+    setOpenAPIError(null);
+
+    try {
+      const res = await api.get(`/api/openapi-imprese/info/${piva}`);
+      if (res.data.success) {
+        const mapped = res.data.campi_mappati;
+        // Aggiorna form con dati OpenAPI
+        setForm(prev => ({
+          ...prev,
+          ragione_sociale: mapped.ragione_sociale || prev.ragione_sociale,
+          codice_fiscale: mapped.codice_fiscale || prev.codice_fiscale,
+          indirizzo: mapped.indirizzo || prev.indirizzo,
+          cap: mapped.cap || prev.cap,
+          comune: mapped.citta || prev.comune,
+          provincia: mapped.provincia || prev.provincia,
+          pec: mapped.pec || prev.pec,
+          codice_sdi: mapped.codice_sdi || prev.codice_sdi,
+        }));
+      }
+    } catch (err) {
+      setOpenAPIError(err.response?.data?.detail || 'Errore nel recupero dati');
+    } finally {
+      setLoadingOpenAPI(false);
+    }
+  };
+
+  // Popola dati mancanti dagli XML delle fatture
+  const handlePopolaDaXml = async () => {
+    const fId = supplier?.id || form.partita_iva;
+    if (!fId) return;
+    setLoadingXML(true);
+    setXmlMsg(null);
+    try {
+      const res = await api.post(`/api/anagrafica-fornitori/popola-fornitore/${fId}`);
+      const d = res.data;
+      if (d.success && d.dati_estratti) {
+        const dati = d.dati_estratti;
+        setForm(prev => ({
+          ...prev,
+          telefono: dati.telefono || prev.telefono,
+          email: dati.email || prev.email,
+          indirizzo: dati.indirizzo || prev.indirizzo,
+          cap: dati.cap || prev.cap,
+          comune: dati.comune || prev.comune,
+          provincia: dati.provincia || prev.provincia,
+          ragione_sociale: dati.ragione_sociale || prev.ragione_sociale,
+        }));
+        setXmlMsg(
+          `Estratti da ${d.xml_letti} fatture: ${(d.campi_aggiornati ?? []).join(', ') || 'nessun campo nuovo'}`
+        );
+      } else {
+        setXmlMsg(d.message || 'Nessun dato trovato negli XML');
+      }
+    } catch (err) {
+      setXmlMsg('Errore nel leggere le fatture XML del fornitore');
+    } finally {
+      setLoadingXML(false);
+    }
+  };
+
+  const handleSubmit = () => {
+    if (!form.ragione_sociale) {
+      toast.warning('Inserisci la ragione sociale');
+      return;
+    }
+    onSave(form);
+  };
+
+  if (!isOpen) return null;
+
+  return (
+    <Portal>
+      <div
+        style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(0,0,0,0.5)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 99999,
+          padding: '20px',
+        }}
+        onClick={onClose}
+      >
+        <div
+          style={{
+            backgroundColor: COLORS.card,
+            borderRadius: BORDER_RADIUS.lg,
+            width: '100%',
+            maxWidth: '600px',
+            maxHeight: '85vh',
+            overflow: 'hidden',
+            boxShadow: SHADOWS.modal,
+          }}
+          onClick={e => e.stopPropagation()}
+        >
+          {/* Header */}
+          <div
+            style={{
+              background: COLORS.primary,
+              padding: '20px 24px',
+              color: 'white',
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div>
+                <h2 style={{ margin: 0, fontSize: '20px', fontWeight: 600 }}>
+                  {isNew ? 'Nuovo Fornitore' : 'Modifica Anagrafica'}
+                </h2>
+                <p style={{ margin: '4px 0 0', opacity: 0.9, fontSize: '14px' }}>
+                  {isNew ? 'Inserisci i dati del fornitore' : form.ragione_sociale}
+                </p>
+              </div>
+              <Button
+                variant="ghost"
+                onClick={onClose}
+                aria-label="Chiudi"
+                style={{
+                  background: 'rgba(255,255,255,0.2)',
+                  minWidth: '40px',
+                  minHeight: '40px',
+                  padding: 0,
+                  color: 'white',
+                }}
+              >
+                <X size={20} />
+              </Button>
+            </div>
+          </div>
+
+          {/* Form */}
+          <div style={{ padding: '24px', overflowY: 'auto', maxHeight: 'calc(85vh - 140px)' }}>
+            <div style={{ display: 'grid', gap: '16px' }}>
+              {/* Alert dati mancanti */}
+              {!isNew && (!form.email || !form.telefono) && (
+                <div
+                  style={{
+                    padding: '12px 16px',
+                    background: COLORS.warningLight,
+                    border: `1px solid ${COLORS.warning}`,
+                    borderRadius: BORDER_RADIUS.lg,
+                    display: 'flex',
+                    alignItems: 'flex-start',
+                    justifyContent: 'space-between',
+                    gap: '12px',
+                  }}
+                >
+                  <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-start', flex: 1 }}>
+                    <AlertCircle
+                      size={18}
+                      color={COLORS.warning}
+                      style={{ flexShrink: 0, marginTop: 2 }}
+                    />
+                    <div>
+                      <div
+                        style={{
+                          fontSize: '13px',
+                          fontWeight: 600,
+                          color: COLORS.warning,
+                          marginBottom: '2px',
+                        }}
+                      >
+                        Dati mancanti:{' '}
+                        {[!form.email && 'Email', !form.telefono && 'Telefono']
+                          .filter(Boolean)
+                          .join(', ')}
+                      </div>
+                      <div style={{ fontSize: '12px', color: COLORS.warning }}>
+                        Compilare manualmente o usa "Cerca in fatture" per leggere dagli XML
+                      </div>
+                    </div>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="warning"
+                    size="sm"
+                    onClick={handlePopolaDaXml}
+                    disabled={loadingXML}
+                    style={{ flexShrink: 0, whiteSpace: 'nowrap' }}
+                  >
+                    {loadingXML ? 'Ricerca...' : 'Cerca in fatture'}
+                  </Button>
+                </div>
+              )}
+
+              {/* Messaggio esito lettura XML */}
+              {xmlMsg && (
+                <div
+                  style={{
+                    padding: '10px 14px',
+                    background: COLORS.successLight,
+                    border: `1px solid ${COLORS.success}`,
+                    borderRadius: BORDER_RADIUS.md,
+                    fontSize: '12px',
+                    color: COLORS.success,
+                  }}
+                >
+                  {xmlMsg}
+                </div>
+              )}
+              <div>
+                <label
+                  style={{
+                    display: 'block',
+                    fontSize: '13px',
+                    fontWeight: 500,
+                    color: COLORS.gray[700],
+                    marginBottom: '6px',
+                  }}
+                >
+                  Ragione Sociale *
+                </label>
+                <input
+                  type="text"
+                  value={form.ragione_sociale || ''}
+                  onChange={e => handleChange('ragione_sociale', e.target.value)}
+                  style={{
+                    width: '100%',
+                    padding: '10px 14px',
+                    border: `1px solid ${COLORS.border}`,
+                    borderRadius: BORDER_RADIUS.md,
+                    fontSize: '14px',
+                    boxSizing: 'border-box',
+                  }}
+                  placeholder="Nome azienda"
+                />
+              </div>
+
+              {/* P.IVA e CF */}
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr',
+                  gap: '12px',
+                }}
+              >
+                <div>
+                  <label
+                    style={{
+                      display: 'block',
+                      fontSize: '13px',
+                      fontWeight: 500,
+                      color: COLORS.gray[700],
+                      marginBottom: '6px',
+                    }}
+                  >
+                    Partita IVA
+                  </label>
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <input
+                      type="text"
+                      value={form.partita_iva || ''}
+                      onChange={e => handleChange('partita_iva', e.target.value)}
+                      style={{
+                        flex: 1,
+                        padding: '10px 14px',
+                        border: `1px solid ${COLORS.border}`,
+                        borderRadius: BORDER_RADIUS.md,
+                        fontSize: '14px',
+                        fontFamily: 'monospace',
+                        boxSizing: 'border-box',
+                      }}
+                      placeholder="01234567890"
+                    />
+                    <Button
+                      type="button"
+                      variant="primary"
+                      size="sm"
+                      onClick={handleLoadFromOpenAPI}
+                      disabled={loadingOpenAPI || !form.partita_iva}
+                      title="Carica dati da Camera di Commercio"
+                      style={{ whiteSpace: 'nowrap' }}
+                      data-testid="btn-load-openapi"
+                    >
+                      <RefreshCw size={14} className={loadingOpenAPI ? 'animate-spin' : ''} />
+                      {loadingOpenAPI ? '...' : 'Auto'}
+                    </Button>
+                  </div>
+                  {openAPIError && (
+                    <p style={{ margin: '4px 0 0', fontSize: '12px', color: COLORS.danger }}>
+                      {openAPIError}
+                    </p>
+                  )}
+                </div>
+                <div>
+                  <label
+                    style={{
+                      display: 'block',
+                      fontSize: '13px',
+                      fontWeight: 500,
+                      color: COLORS.gray[700],
+                      marginBottom: '6px',
+                    }}
+                  >
+                    Codice Fiscale
+                  </label>
+                  <input
+                    type="text"
+                    value={form.codice_fiscale || ''}
+                    onChange={e => handleChange('codice_fiscale', e.target.value.toUpperCase())}
+                    style={{
+                      width: '100%',
+                      padding: '10px 14px',
+                      border: `1px solid ${COLORS.border}`,
+                      borderRadius: BORDER_RADIUS.md,
+                      fontSize: '14px',
+                      fontFamily: 'monospace',
+                      boxSizing: 'border-box',
+                    }}
+                  />
+                </div>
+              </div>
+
+              {/* Indirizzo */}
+              <div>
+                <label
+                  style={{
+                    display: 'block',
+                    fontSize: '13px',
+                    fontWeight: 500,
+                    color: COLORS.gray[700],
+                    marginBottom: '6px',
+                  }}
+                >
+                  Indirizzo
+                </label>
+                <input
+                  type="text"
+                  value={form.indirizzo || ''}
+                  onChange={e => handleChange('indirizzo', e.target.value)}
+                  style={{
+                    width: '100%',
+                    padding: '10px 14px',
+                    border: `1px solid ${COLORS.border}`,
+                    borderRadius: BORDER_RADIUS.md,
+                    fontSize: '14px',
+                    boxSizing: 'border-box',
+                  }}
+                  placeholder="Via, numero civico"
+                />
+              </div>
+
+              {/* CAP, Comune, Provincia */}
+              <div style={{ display: 'grid', gridTemplateColumns: '100px 1fr 80px', gap: '12px' }}>
+                <div>
+                  <label
+                    style={{
+                      display: 'block',
+                      fontSize: '13px',
+                      fontWeight: 500,
+                      color: COLORS.gray[700],
+                      marginBottom: '6px',
+                    }}
+                  >
+                    CAP
+                  </label>
+                  <input
+                    type="text"
+                    value={form.cap || ''}
+                    onChange={e => handleChange('cap', e.target.value)}
+                    style={{
+                      width: '100%',
+                      padding: '10px 14px',
+                      border: `1px solid ${COLORS.border}`,
+                      borderRadius: BORDER_RADIUS.md,
+                      fontSize: '14px',
+                      boxSizing: 'border-box',
+                    }}
+                    maxLength={5}
+                  />
+                </div>
+                <div>
+                  <label
+                    style={{
+                      display: 'block',
+                      fontSize: '13px',
+                      fontWeight: 500,
+                      color: COLORS.gray[700],
+                      marginBottom: '6px',
+                    }}
+                  >
+                    Comune
+                  </label>
+                  <input
+                    type="text"
+                    value={form.comune || ''}
+                    onChange={e => handleChange('comune', e.target.value)}
+                    style={{
+                      width: '100%',
+                      padding: '10px 14px',
+                      border: `1px solid ${COLORS.border}`,
+                      borderRadius: BORDER_RADIUS.md,
+                      fontSize: '14px',
+                      boxSizing: 'border-box',
+                    }}
+                  />
+                </div>
+                <div>
+                  <label
+                    style={{
+                      display: 'block',
+                      fontSize: '13px',
+                      fontWeight: 500,
+                      color: COLORS.gray[700],
+                      marginBottom: '6px',
+                    }}
+                  >
+                    Prov
+                  </label>
+                  <input
+                    type="text"
+                    value={form.provincia || ''}
+                    onChange={e => handleChange('provincia', e.target.value.toUpperCase())}
+                    style={{
+                      width: '100%',
+                      padding: '10px 14px',
+                      border: `1px solid ${COLORS.border}`,
+                      borderRadius: BORDER_RADIUS.md,
+                      fontSize: '14px',
+                      boxSizing: 'border-box',
+                    }}
+                    maxLength={2}
+                  />
+                </div>
+              </div>
+
+              {/* Telefono, Email */}
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr',
+                  gap: '12px',
+                }}
+              >
+                <div>
+                  <label
+                    style={{
+                      display: 'block',
+                      fontSize: '13px',
+                      fontWeight: 500,
+                      color: COLORS.gray[700],
+                      marginBottom: '6px',
+                    }}
+                  >
+                    Telefono
+                  </label>
+                  <input
+                    type="tel"
+                    value={form.telefono || ''}
+                    onChange={e => handleChange('telefono', e.target.value)}
+                    style={{
+                      width: '100%',
+                      padding: '10px 14px',
+                      border: `1px solid ${COLORS.border}`,
+                      borderRadius: BORDER_RADIUS.md,
+                      fontSize: '14px',
+                      boxSizing: 'border-box',
+                    }}
+                  />
+                </div>
+                <div>
+                  <label
+                    style={{
+                      display: 'block',
+                      fontSize: '13px',
+                      fontWeight: 500,
+                      color: COLORS.gray[700],
+                      marginBottom: '6px',
+                    }}
+                  >
+                    Email
+                  </label>
+                  <input
+                    type="email"
+                    value={form.email || ''}
+                    onChange={e => handleChange('email', e.target.value)}
+                    style={{
+                      width: '100%',
+                      padding: '10px 14px',
+                      border: `1px solid ${COLORS.border}`,
+                      borderRadius: BORDER_RADIUS.md,
+                      fontSize: '14px',
+                      boxSizing: 'border-box',
+                    }}
+                  />
+                </div>
+              </div>
+
+              {/* Metodo pagamento e giorni */}
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr',
+                  gap: '12px',
+                }}
+              >
+                <div>
+                  <label
+                    style={{
+                      display: 'block',
+                      fontSize: '13px',
+                      fontWeight: 500,
+                      color: COLORS.gray[700],
+                      marginBottom: '6px',
+                    }}
+                  >
+                    Metodo Pagamento
+                  </label>
+                  <select
+                    value={canaleCanonico(form.metodo_pagamento) || 'banca'}
+                    onChange={e => handleChange('metodo_pagamento', e.target.value)}
+                    style={{
+                      width: '100%',
+                      padding: '10px 14px',
+                      border: `1px solid ${COLORS.border}`,
+                      borderRadius: BORDER_RADIUS.md,
+                      fontSize: '14px',
+                      backgroundColor: 'white',
+                      boxSizing: 'border-box',
+                    }}
+                  >
+                    {Object.entries(METODI_PAGAMENTO).map(([key, val]) => (
+                      <option key={key} value={key}>
+                        {val.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                {!isNew && (
+                  <div>
+                    <label
+                      htmlFor="metodo-valido-dal"
+                      style={{
+                        display: 'block',
+                        fontSize: '13px',
+                        fontWeight: 500,
+                        color: COLORS.gray[700],
+                        marginBottom: '6px',
+                      }}
+                    >
+                      Metodo valido dal
+                    </label>
+                    <input
+                      id="metodo-valido-dal"
+                      type="date"
+                      value={String(form.metodo_pagamento_dal || '').slice(0, 10)}
+                      onChange={e => handleChange('metodo_pagamento_dal', e.target.value)}
+                      data-testid="metodo-valido-dal"
+                      style={{
+                        width: '100%',
+                        minHeight: 44,
+                        padding: '10px 14px',
+                        border: `1px solid ${COLORS.border}`,
+                        borderRadius: BORDER_RADIUS.md,
+                        fontSize: '14px',
+                        boxSizing: 'border-box',
+                      }}
+                    />
+                    <div style={{ marginTop: 4, fontSize: 11.5, color: COLORS.textMuted }}>
+                      Le fatture da questa data in poi seguono il metodo. Dopo il salvataggio, dalla
+                      scheda si applica alle fatture già importate.
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* IBAN e lista IBAN aggiuntivi */}
+              <div>
+                <label
+                  style={{
+                    display: 'block',
+                    fontSize: '13px',
+                    fontWeight: 500,
+                    color: COLORS.gray[700],
+                    marginBottom: '6px',
+                  }}
+                >
+                  IBAN Principale
+                </label>
+                <input
+                  type="text"
+                  value={form.iban || ''}
+                  onChange={e =>
+                    handleChange('iban', e.target.value.toUpperCase().replace(/\s/g, ''))
+                  }
+                  style={{
+                    width: '100%',
+                    padding: '10px 14px',
+                    border: `1px solid ${COLORS.border}`,
+                    borderRadius: BORDER_RADIUS.md,
+                    fontSize: '14px',
+                    fontFamily: 'monospace',
+                    boxSizing: 'border-box',
+                  }}
+                  placeholder="IT60X0542811101000000123456"
+                />
+                {/* Lista IBAN aggiuntivi */}
+                {form.iban_lista && form.iban_lista.length > 0 && (
+                  <div
+                    style={{
+                      marginTop: '8px',
+                      padding: '10px',
+                      background: COLORS.bgAlt,
+                      borderRadius: BORDER_RADIUS.sm,
+                    }}
+                  >
+                    <div style={{ fontSize: '12px', color: COLORS.textMuted, marginBottom: '6px' }}>
+                      IBAN aggiuntivi (da fatture):
+                    </div>
+                    {(form.iban_lista ?? []).map((iban, idx) => (
+                      <div
+                        key={idx}
+                        style={{
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                          padding: '4px 8px',
+                          background: 'white',
+                          borderRadius: BORDER_RADIUS.sm,
+                          marginBottom: '4px',
+                          fontSize: '12px',
+                          fontFamily: 'monospace',
+                        }}
+                      >
+                        <span>{iban}</span>
+                        <Button
+                          type="button"
+                          variant="info"
+                          size="sm"
+                          onClick={() => handleChange('iban', iban)}
+                          style={{ padding: '2px 8px', fontSize: '11px' }}
+                        >
+                          Usa come principale
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Nel magazzino / fuori dal magazzino non si cambia da questo modulo: il
+                controllo a un tocco sta sulla card (anteprima, motivo, storico). */}
+
+              <div
+                style={{
+                  display: 'grid',
+                  gap: 10,
+                  padding: '14px 16px',
+                  border: `1px solid ${COLORS.warning}`,
+                  borderRadius: BORDER_RADIUS.lg,
+                  background: COLORS.warningLight,
+                }}
+              >
+                <label
+                  style={{
+                    display: 'flex',
+                    alignItems: 'flex-start',
+                    gap: 10,
+                    fontSize: 13,
+                    fontWeight: 700,
+                    color: COLORS.gray[800],
+                    cursor: 'pointer',
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={!!form.esclude_cassa_banca}
+                    onChange={e => handleChange('esclude_cassa_banca', e.target.checked)}
+                    data-testid="check-esclude-cassa-banca"
+                    style={{ marginTop: 2 }}
+                  />
+                  <span>
+                    Escludi da Prima Nota Cassa e Banca
+                    <span
+                      style={{
+                        display: 'block',
+                        marginTop: 4,
+                        fontSize: 12,
+                        lineHeight: 1.45,
+                        fontWeight: 500,
+                        color: COLORS.textMuted,
+                      }}
+                    >
+                      La fattura resta sempre registrata in Contabilità e conteggiata ai fini IVA.
+                      Non viene creata né proposta come movimento di Cassa o Banca.
+                    </span>
+                  </span>
+                </label>
+              </div>
+
+              {/* Fornitore cessato: escluso dalla lista e automaticamente
+                  escluso dai registri finanziari. Dati fiscali e fatture restano. */}
+              <label
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  fontSize: '13px',
+                  fontWeight: 500,
+                  color: COLORS.gray[700],
+                  cursor: 'pointer',
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={!!form.cessato}
+                  onChange={e => {
+                    const cessato = e.target.checked;
+                    setForm(prev => ({
+                      ...prev,
+                      cessato,
+                      esclude_cassa_banca: cessato ? true : prev.esclude_cassa_banca,
+                    }));
+                  }}
+                  data-testid="check-fornitore-cessato"
+                />
+                Fornitore cessato (nascosto dalla lista; fatture e dati IVA conservati)
+              </label>
+            </div>
+          </div>
+
+          {/* Footer */}
+          <div
+            style={{
+              padding: '16px 24px',
+              borderTop: `1px solid ${COLORS.border}`,
+              display: 'flex',
+              justifyContent: 'flex-end',
+              gap: '12px',
+              backgroundColor: COLORS.bgAlt,
+            }}
+          >
+            <Button variant="secondary" onClick={onClose}>
+              Annulla
+            </Button>
+            <Button variant="primary" onClick={handleSubmit} disabled={saving}>
+              {saving ? (
+                'Salvataggio...'
+              ) : (
+                <>
+                  <Check size={16} /> Salva
+                </>
+              )}
+            </Button>
+          </div>
+        </div>
+      </div>
+    </Portal>
+  );
+}
+
+// Badge metodo pagamento (cassa/banca/misto) cliccabile con menu a comparsa:
+// stessa logica della vecchia card fornitore, riusata per riga in ListaAdattiva.
+function MetodoBadge({ supplier, onChangeMetodo }) {
+  // NIENTE default fittizio: se il metodo non è impostato, la riga lo deve
+  // DIRE (prima mostrava "Bonifico" e il filtro "senza metodo" sembrava rotto)
+  const metodoKey = supplier.metodo_pagamento ? metodoCanonico(supplier) : '';
+  const metodo = metodoKey
+    ? getMetodo(metodoKey)
+    : { label: 'Da impostare', color: COLORS.warning };
+  const [showMetodoMenu, setShowMetodoMenu] = useState(false);
+  const [updating, setUpdating] = useState(false);
+  const [menuPosition, setMenuPosition] = useState({ top: 0, left: 0 });
+  const buttonRef = React.useRef(null);
+
+  const handleMetodoChange = async newMetodo => {
+    if (newMetodo === metodoKey) {
+      setShowMetodoMenu(false);
+      return;
+    }
+    setUpdating(true);
+    setShowMetodoMenu(false);
+    await onChangeMetodo(idFornitore(supplier), newMetodo);
+    setUpdating(false);
+  };
+
+  const openMenu = () => {
+    if (buttonRef.current) {
+      const rect = buttonRef.current.getBoundingClientRect();
+      const menuHeight = 280; // altezza stimata del menu
+      const spaceBelow = window.innerHeight - rect.bottom;
+
+      // Se non c'è spazio sotto, posiziona sopra
+      if (spaceBelow < menuHeight) {
+        setMenuPosition({
+          top: rect.top - menuHeight - 4,
+          left: rect.right - 170,
+        });
+      } else {
+        setMenuPosition({
+          top: rect.bottom + 4,
+          left: rect.right - 170,
+        });
+      }
+    }
+    setShowMetodoMenu(true);
+  };
+
+  return (
+    <>
+      {/* Resta un <button> nativo (non <Button>) perché serve un ref DOM
+          reale per calcolare la posizione del menu a comparsa. */}
+      <button
+        ref={buttonRef}
+        onClick={openMenu}
+        disabled={updating}
+        style={{
+          padding: '6px 12px',
+          borderRadius: BORDER_RADIUS.sm,
+          fontSize: '12px',
+          fontWeight: 600,
+          backgroundColor: metodo.bg,
+          color: metodo.color,
+          border: `2px solid ${metodo.color}20`,
+          cursor: updating ? 'wait' : 'pointer',
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: '4px',
+          transition: 'all 0.2s',
+          opacity: updating ? 0.6 : 1,
+          fontFamily: FONT.family,
+        }}
+        title="Clicca per cambiare metodo pagamento"
+      >
+        <CreditCard size={12} />
+        {updating ? '...' : metodo.label}
+        <ChevronDown size={12} aria-hidden style={{ marginLeft: '2px' }} />
+      </button>
+
+      {/* Menu dropdown con Portal - fuori dalla riga */}
+      {showMetodoMenu && (
+        <Portal>
+          {/* Overlay per chiudere */}
+          <div
+            style={{
+              position: 'fixed',
+              inset: 0,
+              zIndex: 99998,
+              background: 'transparent',
+            }}
+            onClick={() => setShowMetodoMenu(false)}
+          />
+          {/* Menu */}
+          <div
+            style={{
+              position: 'fixed',
+              top: menuPosition.top,
+              left: menuPosition.left,
+              backgroundColor: 'white',
+              borderRadius: BORDER_RADIUS.lg,
+              boxShadow: SHADOWS.xl,
+              border: `1px solid ${COLORS.border}`,
+              overflow: 'hidden',
+              zIndex: 99999,
+              minWidth: '160px',
+            }}
+          >
+            <div
+              style={{
+                padding: '8px 12px',
+                borderBottom: `1px solid ${COLORS.bg}`,
+                fontSize: '11px',
+                color: COLORS.textSubtle,
+                fontWeight: 600,
+              }}
+            >
+              METODO PAGAMENTO
+            </div>
+            {Object.entries(METODI_PAGAMENTO).map(([key, val]) => (
+              <Button
+                key={key}
+                variant="ghost"
+                onClick={() => handleMetodoChange(key)}
+                style={{
+                  width: '100%',
+                  borderRadius: 0,
+                  padding: '7px 12px',
+                  backgroundColor: metodoKey === key ? val.bg : 'white',
+                  color: val.color,
+                  justifyContent: 'flex-start',
+                }}
+              >
+                <span
+                  style={{
+                    width: '10px',
+                    height: '10px',
+                    borderRadius: BORDER_RADIUS.full,
+                    backgroundColor: val.color,
+                  }}
+                />
+                {val.label}
+                {metodoKey === key && <Check size={16} style={{ marginLeft: 'auto' }} />}
+              </Button>
+            ))}
+          </div>
+        </Portal>
+      )}
+    </>
+  );
+}
+
+// Azioni per riga fornitore in formato compatto da tabella/card: le STESSE
+// azioni della vecchia card (fatturato anno e anno-1, cerca P.IVA, schede
+// tecniche, estratto fatture, modifica, elimina).
+function AzioniFornitore({
+  supplier,
+  selectedYear,
+  isMobile,
+  onEdit,
+  onDelete,
+  onViewInvoices,
+  onSearchPiva,
+  onShowFatturato,
+  onToggleCessato,
+}) {
+  const piva = supplier.partita_iva || supplier.piva || null;
+  const hasPiva = !!piva;
+  const [searching, setSearching] = useState(false);
+  const [loadingFatturato, setLoadingFatturato] = useState(false);
+
+  const handleShowFatturato = async anno => {
+    setLoadingFatturato(true);
+    await onShowFatturato(supplier, anno);
+    setLoadingFatturato(false);
+  };
+
+  const handleSearchPiva = async () => {
+    if (!piva) return;
+    setSearching(true);
+    await onSearchPiva(supplier);
+    setSearching(false);
+  };
+
+  const actionStyle = {
+    minHeight: 28,
+    padding: isMobile ? '4px 7px' : '5px 9px',
+    fontSize: isMobile ? 10.5 : 11,
+  };
+
+  // Tutte le azioni sono visibili. Su mobile diventano chip compatti su due
+  // righe invece di un menu nascosto che obbliga ad aprire ogni fornitore.
+  return (
+    <div
+      data-testid={`azioni-visibili-${idFornitore(supplier)}`}
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: isMobile ? 'flex-start' : 'flex-end',
+        flexWrap: 'wrap',
+        gap: 5,
+        minWidth: 0,
+      }}
+    >
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={() => handleShowFatturato(selectedYear)}
+        disabled={loadingFatturato}
+        title={`Visualizza fatturato ${selectedYear}`}
+        data-testid={`btn-fatturato-${supplier.id}`}
+        style={actionStyle}
+      >
+        <TrendingUp size={13} /> {loadingFatturato ? '...' : selectedYear}
+      </Button>
+      <Button
+        variant="secondary"
+        size="sm"
+        onClick={() => handleShowFatturato(selectedYear - 1)}
+        disabled={loadingFatturato}
+        title={`Visualizza fatturato ${selectedYear - 1}`}
+        style={actionStyle}
+      >
+        {selectedYear - 1}
+      </Button>
+      {hasPiva && (
+        <Button
+          variant="secondary"
+          size="sm"
+          onClick={handleSearchPiva}
+          disabled={searching}
+          title="Cerca dati della partita IVA"
+          style={actionStyle}
+        >
+          <Search size={13} /> {searching ? 'Ricerca...' : 'P.IVA'}
+        </Button>
+      )}
+      <Button
+        variant="secondary"
+        size="sm"
+        onClick={() => onViewInvoices(supplier)}
+        title="Apri estratto fatture"
+        style={actionStyle}
+      >
+        <FileText size={13} /> Fatture
+      </Button>
+      <Button
+        variant="secondary"
+        size="sm"
+        onClick={() => onEdit(supplier)}
+        title="Modifica anagrafica"
+        data-testid={`btn-modifica-${idFornitore(supplier)}`}
+        style={actionStyle}
+      >
+        <Edit2 size={13} /> Modifica
+      </Button>
+      {onToggleCessato && (
+        <Button
+          variant={supplier.cessato ? 'success' : 'secondary'}
+          size="sm"
+          onClick={() => onToggleCessato(supplier)}
+          data-testid={`btn-toggle-cessato-${idFornitore(supplier)}`}
+          style={actionStyle}
+        >
+          {supplier.cessato ? 'Riattiva' : 'Cessa'}
+        </Button>
+      )}
+      <Button
+        variant="danger"
+        size="sm"
+        onClick={() => onDelete(idFornitore(supplier))}
+        title="Elimina fornitore"
+        style={actionStyle}
+      >
+        <X size={13} /> Elimina
+      </Button>
+    </div>
+  );
+}
+
+function SupplierCard({
+  supplier,
+  selectedYear,
+  isMobile,
+  onEdit,
+  onDelete,
+  onViewInvoices,
+  onSearchPiva,
+  onShowFatturato,
+  onToggleCessato,
+  onChangeMetodo,
+  onMagazzinoFatto,
+  onMetodoDal,
+}) {
+  const nome = supplier.ragione_sociale || supplier.denominazione || supplier.nome || 'Fornitore';
+  const piva = supplier.partita_iva || supplier.piva || supplier.vat_number || 'Non disponibile';
+  const esclusoFinanziario = supplier.esclude_cassa_banca || supplier.cessato;
+  const incompleto = isSupplierIncomplete(supplier);
+  const anno = annoUltimaFattura(supplier);
+
+  const labelStyle = {
+    display: 'block',
+    marginBottom: 3,
+    color: COLORS.textSubtle,
+    fontSize: 10.5,
+    fontWeight: 700,
+    letterSpacing: '0.04em',
+    textTransform: 'uppercase',
+  };
+  const valueStyle = {
+    color: COLORS.gray[800],
+    fontSize: 13,
+    lineHeight: 1.35,
+    overflowWrap: 'anywhere',
+  };
+  const sectionStyle = {
+    minWidth: 0,
+    padding: isMobile ? '7px 8px' : '8px 10px',
+    borderRadius: BORDER_RADIUS.md,
+    background: COLORS.bgAlt,
+    border: `1px solid ${COLORS.border}`,
+  };
+
+  return (
+    <div data-testid={`supplier-card-${idFornitore(supplier)}`}>
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'flex-start',
+          gap: 8,
+          flexWrap: isMobile ? 'nowrap' : 'wrap',
+          paddingBottom: 6,
+          borderBottom: `1px solid ${COLORS.border}`,
+        }}
+      >
+        <div style={{ minWidth: 0, flex: '1 1 260px' }}>
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 7,
+              flexWrap: 'wrap',
+              color: COLORS.primary,
+              fontSize: isMobile ? 14 : 16,
+              fontWeight: 800,
+              lineHeight: 1.3,
+            }}
+          >
+            <span style={{ overflowWrap: 'anywhere' }}>{nome}</span>
+            {supplier.cessato && <Badge variant="danger">CESSATO</Badge>}
+            {esclusoFinanziario && (
+              <Badge variant="warning" data-testid="badge-escluso-cassa-banca">
+                Fuori Cassa/Banca · IVA inclusa
+              </Badge>
+            )}
+            {incompleto && <AlertCircle size={15} color={COLORS.warning} title="Dati incompleti" />}
+          </div>
+          <div style={{ marginTop: 2, color: COLORS.textMuted, fontSize: isMobile ? 10.5 : 12 }}>
+            P.IVA <span style={{ fontFamily: 'monospace' }}>{piva}</span>
+            {supplier.piva_da_verificare && (
+              <Badge
+                variant="warning"
+                title={supplier.piva_motivo || 'P.IVA da verificare'}
+                data-testid="badge-piva-da-verificare"
+                style={{ marginLeft: 6, fontSize: 10, padding: '2px 6px' }}
+              >
+                P.IVA da verificare
+              </Badge>
+            )}
+            {supplier.comune && (
+              <span>
+                {' '}
+                · {supplier.comune}
+                {supplier.provincia ? ` (${supplier.provincia})` : ''}
+              </span>
+            )}
+          </div>
+        </div>
+        <div style={{ textAlign: 'right', flexShrink: 0 }}>
+          <span style={labelStyle}>Acquistato</span>
+          <div
+            style={{
+              color: COLORS.primary,
+              fontSize: isMobile ? 15 : 18,
+              fontWeight: 800,
+              fontVariantNumeric: 'tabular-nums',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            {euroOppure(supplier.fatture_totale)}
+          </div>
+        </div>
+      </div>
+
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: isMobile
+            ? 'repeat(2, minmax(0, 1fr))'
+            : '1.2fr 1fr 1fr',
+          gap: 6,
+          marginTop: 6,
+        }}
+      >
+        <div style={{ ...sectionStyle, gridColumn: isMobile ? '1 / -1' : 'auto' }}>
+          <span style={labelStyle}>Contatti e coordinate</span>
+          <div style={{ ...valueStyle, fontSize: isMobile ? 11.5 : 13 }}>
+            {supplier.email || 'Email non registrata'}
+          </div>
+          <div style={{ ...valueStyle, marginTop: 2, fontFamily: 'monospace', fontSize: isMobile ? 10.5 : 12 }}>
+            {supplier.iban || 'IBAN non registrato'}
+          </div>
+        </div>
+
+        <div style={sectionStyle}>
+          <span style={labelStyle}>Fatture</span>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
+            <div>
+              <div style={{ ...valueStyle, fontWeight: 800 }}>{supplier.fatture_count || 0}</div>
+              <span style={{ ...labelStyle, marginTop: 3, marginBottom: 0 }}>Numero</span>
+            </div>
+            <div>
+              <div
+                style={{
+                  ...valueStyle,
+                  color: COLORS.success,
+                  fontWeight: 800,
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                {euroOppure(supplier.fatture_pagate)}
+              </div>
+              <span style={{ ...labelStyle, marginTop: 3, marginBottom: 0 }}>Pagato</span>
+            </div>
+            <div>
+              <div
+                style={{
+                  ...valueStyle,
+                  color: (supplier.fatture_non_pagate || 0) > 0 ? COLORS.danger : COLORS.textMuted,
+                  fontWeight: 800,
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                {euroOppure(supplier.fatture_non_pagate)}
+              </div>
+              <span style={{ ...labelStyle, marginTop: 3, marginBottom: 0 }}>Residuo</span>
+            </div>
+          </div>
+        </div>
+
+        <div style={sectionStyle}>
+          <span style={labelStyle}>Impostazioni operative</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            <MetodoBadge supplier={supplier} onChangeMetodo={onChangeMetodo} />
+            {supplier.metodo_pagamento_dal && (
+              <span style={{ ...valueStyle, fontSize: 12 }} data-testid="metodo-dal-testo">
+                dal {formatDateIT(supplier.metodo_pagamento_dal)}
+              </span>
+            )}
+            {metodoCanonico(supplier) === 'cassa' && supplier.metodo_pagamento_dal && (
+              <Button
+                variant="secondary"
+                size="sm"
+                data-testid={`btn-applica-metodo-dal-${idFornitore(supplier)}`}
+                onClick={() => onMetodoDal(supplier)}
+                style={{ minHeight: 40, fontSize: 11.5 }}
+              >
+                Applica alle fatture
+              </Button>
+            )}
+            {anno && (
+              <Badge variant={anno >= selectedYear ? 'success' : 'neutral'}>Ultima {anno}</Badge>
+            )}
+          </div>
+        </div>
+      </div>
+
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'flex-start',
+          alignItems: 'center',
+          gap: 6,
+          flexWrap: 'wrap',
+          marginTop: 6,
+        }}
+      >
+        <MagazzinoFornitore
+          fornitore={supplier}
+          id={idFornitore(supplier)}
+          onFatto={vista => onMagazzinoFatto(idFornitore(supplier), vista)}
+          compatto={isMobile}
+        />
+        <AzioniFornitore
+          supplier={supplier}
+          selectedYear={selectedYear}
+          isMobile={isMobile}
+          onEdit={onEdit}
+          onDelete={onDelete}
+          onViewInvoices={onViewInvoices}
+          onSearchPiva={onSearchPiva}
+          onShowFatturato={onShowFatturato}
+          onToggleCessato={onToggleCessato}
+        />
+      </div>
+    </div>
+  );
+}
+
+export default function Fornitori() {
+  // Sotto 1180px la tabella completa non e' leggibile: su tablet e
+  // smartphone usiamo direttamente le card responsive.
+  const isMobile = useIsMobile(1180);
+  const confirm = useConfirm();
+  const { anno: selectedYear } = useAnnoGlobale();
+  const navigate = useNavigate();
+  const [suppliers, setSuppliers] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  // Deep link: search e metodo sincronizzati con URL hash
+  // es: /fornitori#search=rossi&metodo=bonifico
+  const [hs, setHs] = useHashState({ search: '', metodo: 'tutti' });
+  const search = hs.search;
+  const setSearch = v => setHs('search', v);
+  const filterMetodo = hs.metodo || 'tutti';
+  const setFilterMetodo = v => setHs('metodo', v);
+
+  const [filterIncomplete, setFilterIncomplete] = useState(false);
+  const [filterSenzaMetodo, setFilterSenzaMetodo] = useState(false);
+  // I fornitori cessati sono nascosti di default: questo chip li fa vedere
+  const [mostraCessati, setMostraCessati] = useState(false);
+  // Magazzino: tutti | inclusi | esclusi
+  const [filtroMagazzino, setFiltroMagazzino] = useState('tutti');
+  const [metodoDalFornitore, setMetodoDalFornitore] = useState(null);
+  // Fattura aperta in visualizzazione (ModalFattura) dall'estratto
+  const [fatturaView, setFatturaView] = useState(null);
+  // PR #5e850c8: filtri avanzati backend
+  const [filterAnzianita, setFilterAnzianita] = useState('tutti'); // tutti | nuovo | storico
+  const [giorniNuovo, setGiorniNuovo] = useState(90);
+  const [filtroProdotto, setFiltroProdotto] = useState('');
+  const debouncedProdotto = useDebounce(filtroProdotto, 500);
+  const [totaliFiltrati, setTotaliFiltrati] = useState({
+    totale_fornitori: 0,
+    attivi: 0,
+  });
+  const [modalOpen, setModalOpen] = useState(false);
+  const [currentSupplier, setCurrentSupplier] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [popolandoTutti, setPopolandoTutti] = useState(false);
+
+  // Debounce search per evitare troppe chiamate API
+  const debouncedSearch = useDebounce(search, 500);
+
+  // Ref per abort controller
+  const abortControllerRef = useRef(null);
+
+  // Carica dati quando il debounced search cambia
+  useEffect(() => {
+    // Cancella richiesta precedente
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
+    const fetchData = async () => {
+      try {
+        setLoading(true);
+        const params = new URLSearchParams();
+        if (debouncedSearch) params.append('search', debouncedSearch);
+        params.append('limit', '1000'); // Carica tutti i fornitori
+        // PR #5e850c8: filtri avanzati
+        if (filterAnzianita !== 'tutti') params.append('stato_anagrafica', filterAnzianita);
+        if (giorniNuovo && giorniNuovo !== 90) params.append('giorni_nuovo', String(giorniNuovo));
+        if (debouncedProdotto && debouncedProdotto.trim())
+          params.append('prodotto', debouncedProdotto.trim());
+
+        const res = await api.get(`/api/suppliers/filtered?${params}`, {
+          signal: controller.signal,
+        });
+        // Endpoint /filtered restituisce {items, count, totali, ...}
+        setSuppliers(res.data.items || []);
+        setTotaliFiltrati(
+          res.data.totali || {
+            totale_fornitori: 0,
+            attivi: 0,
+          }
+        );
+      } catch (error) {
+        if (error.name !== 'CanceledError' && error.code !== 'ERR_CANCELED') {
+          console.error('Error loading suppliers:', error);
+        }
+      } finally {
+        if (!controller.signal.aborted) {
+          setLoading(false);
+        }
+      }
+    };
+
+    fetchData();
+
+    return () => {
+      controller.abort();
+    };
+  }, [debouncedSearch, filterAnzianita, giorniNuovo, debouncedProdotto]);
+
+  // Funzione per ricaricare i dati (usata dopo save/delete)
+  const reloadData = useCallback(async () => {
+    try {
+      setLoading(true);
+      const params = new URLSearchParams();
+      if (debouncedSearch) params.append('search', debouncedSearch);
+      params.append('limit', '1000');
+      if (filterAnzianita !== 'tutti') params.append('stato_anagrafica', filterAnzianita);
+      if (giorniNuovo && giorniNuovo !== 90) params.append('giorni_nuovo', String(giorniNuovo));
+      if (debouncedProdotto && debouncedProdotto.trim())
+        params.append('prodotto', debouncedProdotto.trim());
+
+      const res = await api.get(`/api/suppliers/filtered?${params}`);
+      setSuppliers(res.data.items || []);
+      setTotaliFiltrati(
+        res.data.totali || {
+          totale_fornitori: 0,
+          attivi: 0,
+        }
+      );
+    } catch (error) {
+      console.error('Error reloading suppliers:', error);
+    } finally {
+      setLoading(false);
+    }
+  }, [debouncedSearch, filterAnzianita, giorniNuovo, debouncedProdotto]);
+
+  const cessatiCount = suppliers.filter(s => s.cessato).length;
+
+  const filteredSuppliers = suppliers.filter(s => {
+    // Fornitori cessati: il sistema li salta nella visualizzazione
+    // (richiesta utente 10/07); restano visibili attivando il chip "Cessati".
+    if (s.cessato && !mostraCessati) return false;
+    if (filterMetodo !== 'tutti') {
+      // niente default fittizio: senza metodo NON è "banca"
+      if (!s.metodo_pagamento) return false;
+      if (metodoCanonico(s) !== filterMetodo) return false;
+    }
+    if (filtroMagazzino === 'inclusi' && s.esclude_magazzino) return false;
+    if (filtroMagazzino === 'esclusi' && !s.esclude_magazzino) return false;
+    if (filterIncomplete && !isSupplierIncomplete(s)) return false;
+    if (filterSenzaMetodo) {
+      // 'misto' è un metodo scelto esplicitamente (uno dei 4 di METODI_PAGAMENTO),
+      // non equivale a "nessun metodo impostato".
+      const m = (s.metodo_pagamento || '').toLowerCase().trim();
+      const senzaMetodo = !m || m === 'da_configurare' || m === 'altro';
+      if (!senzaMetodo) return false;
+    }
+    return true;
+  });
+
+  // Salvataggio completo fornitore
+  const handleSave = async formData => {
+    setSaving(true);
+    try {
+      let response;
+      if (currentSupplier?.id) {
+        // UPDATE nel database
+        response = await api.put(`/api/suppliers/${currentSupplier.id}`, datiScheda(formData));
+      } else {
+        // INSERT nel database
+        response = await api.post('/api/suppliers', {
+          denominazione: formData.ragione_sociale,
+          ...formData,
+        });
+      }
+
+
+      setModalOpen(false);
+      if (currentSupplier?.id) {
+        // Modifica: aggiorna SOLO la riga sul posto, senza ricaricare tutta
+        // la lista (il ricaricamento faceva perdere pagina e posizione).
+        const chiave = idFornitore(currentSupplier);
+        setSuppliers(prev =>
+          prev.map(s => (idFornitore(s) === chiave ? { ...s, ...formData } : s))
+        );
+      } else {
+        reloadData(); // Nuovo fornitore: serve il ricaricamento completo
+      }
+      setCurrentSupplier(null);
+    } catch (error) {
+      toast.error('Errore salvataggio: ' + (error.response?.data?.detail || error.message));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Cambio rapido metodo pagamento - salva SUBITO nel database
+  const handleChangeMetodo = async (supplierId, newMetodo) => {
+    const ok = await confirm({
+      title: 'Conferma metodo pagamento',
+      message: `Impostare il metodo ${newMetodo} per questo fornitore?`,
+      confirmText: 'Salva',
+      cancelText: 'Annulla',
+    });
+    if (ok === false) return;
+    const payload = { metodo_pagamento: newMetodo };
+    try {
+      const response = await api.put(`/api/suppliers/${supplierId}`, payload);
+      const confirmed = response.data?.supplier || payload;
+
+      // Aggiorna lo stato locale immediatamente
+      setSuppliers(prev =>
+        prev.map(s => (idFornitore(s) === supplierId ? { ...s, ...confirmed } : s))
+      );
+    } catch (error) {
+      toast.error(
+        'Errore aggiornamento metodo: ' + (error.response?.data?.detail || error.message)
+      );
+    }
+  };
+
+  // Dopo una scelta «nel magazzino / fuori» (anteprima + motivo + conferma, fatta dentro
+  // MagazzinoFornitore) la lista prende lo stato nuovo restituito dal backend.
+  const handleMagazzinoFatto = (supplierId, vista) => {
+    if (!vista) return;
+    setSuppliers(prev => prev.map(s => (idFornitore(s) === supplierId ? { ...s, ...vista } : s)));
+    setEstrattoModal(prev =>
+      prev.fornitore && idFornitore(prev.fornitore) === supplierId
+        ? { ...prev, fornitore: { ...prev.fornitore, ...vista } }
+        : prev
+    );
+  };
+
+  // Toggle "cessato" dal menù ⋯: il fornitore sparisce dalla lista (o
+  // ricompare) senza ricaricare la pagina; le fatture storiche restano.
+  const handleToggleCessato = async supplier => {
+    const chiave = idFornitore(supplier);
+    const nuovoValore = !supplier.cessato;
+    const nome = supplier.ragione_sociale || supplier.denominazione || supplier.nome || chiave;
+    if (
+      nuovoValore &&
+      !(await confirm({
+        title: 'Segna fornitore come cessato',
+        message: `Segnare "${nome}" come CESSATO? Il fornitore sparisce dalla lista e viene escluso da Cassa/Banca; fatture, registrazione contabile e IVA restano conservate.`,
+        variant: 'warning',
+      }))
+    ) {
+      return;
+    }
+    try {
+      const payload = {
+        cessato: nuovoValore,
+        ...(nuovoValore ? { esclude_cassa_banca: true } : {}),
+      };
+      await api.put(`/api/suppliers/${chiave}`, payload);
+      setSuppliers(prev => prev.map(s => (idFornitore(s) === chiave ? { ...s, ...payload } : s)));
+    } catch (error) {
+      toast.error('Errore aggiornamento stato: ' + (error.response?.data?.detail || error.message));
+    }
+  };
+
+  // Eliminazione fornitore dal database
+  const handleDelete = async (id, forceDelete = false) => {
+    if (!forceDelete) {
+      const supplier = suppliers.find(s => idFornitore(s) === id);
+      const nome =
+        supplier?.ragione_sociale || supplier?.nome || supplier?.name || 'questo fornitore';
+      if (
+        !(await confirm({
+          title: 'Elimina fornitore',
+          message: `Eliminare definitivamente "${nome}"? Questa operazione non può essere annullata.`,
+          variant: 'danger',
+        }))
+      ) {
+        return;
+      }
+    }
+    try {
+      const url = forceDelete ? `/api/suppliers/${id}?force=true` : `/api/suppliers/${id}`;
+      await api.delete(url);
+      // Rimozione locale: niente ricaricamento completo (spinner + perdita
+      // della posizione in lista)
+      setSuppliers(prev => prev.filter(s => idFornitore(s) !== id));
+      setTotaliFiltrati(prev => ({
+        ...prev,
+        totale_fornitori: Math.max(0, (prev.totale_fornitori || 1) - 1),
+      }));
+    } catch (error) {
+      const errorMsg =
+        error.response?.data?.detail || error.response?.data?.message || error.message;
+      if (error.response?.status === 400 && errorMsg.includes('fatture collegate')) {
+        const supplier = suppliers.find(s => idFornitore(s) === id);
+        const nome =
+          supplier?.ragione_sociale || supplier?.nome || supplier?.name || 'questo fornitore';
+        if (
+          await confirm({
+            title: 'Eliminazione forzata',
+            message: `"${nome}" ha fatture collegate. Eliminare comunque (eliminazione forzata)?`,
+            variant: 'danger',
+          })
+        ) {
+          handleDelete(id, true);
+        }
+      } else {
+        toast.error('Errore eliminazione: ' + errorMsg);
+      }
+    }
+  };
+
+  const handleViewInvoices = supplier => {
+    // Apre il modale con estratto fatture invece di navigare
+    handleViewInvoicesModal(supplier);
+  };
+
+  // Ricostruzione una tantum (richiesta utente 14/07/2026): completa IBAN
+  // (via metodo/anagrafica), email, telefono, comune, indirizzo dei
+  // fornitori con dati mancanti leggendo le fatture XML già in archivio.
+  // Non distruttivo: aggiorna solo i campi vuoti, mai quelli già valorizzati.
+  const handlePopolaTuttiXml = async () => {
+    if (
+      !(await confirm({
+        title: 'Popola dati mancanti da XML',
+        message:
+          'Rilegge le fatture XML dei fornitori con dati incompleti (email, telefono, comune, indirizzo) e completa SOLO i campi vuoti. Può richiedere qualche secondo. Procedere?',
+      }))
+    ) {
+      return;
+    }
+    setPopolandoTutti(true);
+    try {
+      const res = await api.post('/api/anagrafica-fornitori/popola-tutti');
+      toast.success(res.data.message || 'Popolamento completato');
+      // Ricarica la lista per mostrare subito i campi aggiornati
+      await reloadData();
+    } catch (error) {
+      toast.error('Errore nel popolamento: ' + (error.response?.data?.detail || error.message));
+    } finally {
+      setPopolandoTutti(false);
+    }
+  };
+
+  // Ricerca dati azienda tramite Partita IVA
+  const handleSearchPiva = async supplier => {
+    const piva = supplier.partita_iva || supplier.piva;
+    if (!piva) {
+      toast.warning('Questo fornitore non ha una Partita IVA');
+      return;
+    }
+
+    try {
+      const res = await api.get(`/api/suppliers/search-piva/${piva}`);
+      const data = res.data;
+
+      if (data.found) {
+        // Prepara i dati da aggiornare (solo campi vuoti)
+        const updates = {};
+        if (!supplier.ragione_sociale && data.ragione_sociale) {
+          updates.ragione_sociale = data.ragione_sociale;
+        }
+        if (!supplier.indirizzo && data.indirizzo) {
+          updates.indirizzo = data.indirizzo;
+        }
+        if (!supplier.cap && data.cap) {
+          updates.cap = data.cap;
+        }
+        if (!supplier.comune && data.comune) {
+          updates.comune = data.comune;
+        }
+        if (!supplier.provincia && data.provincia) {
+          updates.provincia = data.provincia;
+        }
+
+        if (Object.keys(updates).length > 0) {
+          // Aggiorna automaticamente (solo la riga, senza ricaricare la lista)
+          const chiave = idFornitore(supplier);
+          await api.put(`/api/suppliers/${chiave}`, updates);
+          setSuppliers(prev =>
+            prev.map(s => (idFornitore(s) === chiave ? { ...s, ...updates } : s))
+          );
+        } else {
+          toast.info(
+            `Nessun dato nuovo trovato per ${supplier.ragione_sociale || supplier.partita_iva}: dati già completi o non disponibili su VIES.`
+          );
+        }
+      } else {
+        toast.warning(`Partita IVA ${supplier.partita_iva} non trovata nel database VIES`, {
+          description: 'VIES contiene solo aziende registrate per operazioni intracomunitarie UE.',
+        });
+      }
+    } catch (error) {
+      toast.error('Errore ricerca: ' + (error.response?.data?.detail || error.message));
+    }
+  };
+
+  // Stato per modale fatturato
+  const [fatturatoModal, setFatturatoModal] = useState({
+    open: false,
+    fornitore: null,
+    data: null,
+    loading: false,
+  });
+
+  // Stato per modale estratto fatture
+  const [estrattoVisibili, setEstrattoVisibili] = useState(200);
+  const [estrattoModal, setEstrattoModal] = useState({
+    open: false,
+    fornitore: null,
+    data: null,
+    loading: false,
+    filtri: {
+      anno: selectedYear,
+      data_da: '',
+      data_a: '',
+      importo_min: '',
+      importo_max: '',
+      tipo: 'tutti',
+    },
+  });
+
+  // Mostra fatturato fornitore per anno
+  const handleShowFatturato = async (supplier, anno) => {
+    if (!(supplier.partita_iva || supplier.piva || supplier.vat_number)) {
+      toast.warning('Questo fornitore non ha una Partita IVA');
+      return;
+    }
+
+    setFatturatoModal({ open: true, fornitore: supplier, data: null, loading: true });
+
+    try {
+      const res = await api.get(`/api/suppliers/${idFornitore(supplier)}/fatturato?anno=${anno}`);
+      setFatturatoModal({ open: true, fornitore: supplier, data: res.data, loading: false });
+    } catch (error) {
+      toast.error(
+        'Errore caricamento fatturato: ' + (error.response?.data?.detail || error.message)
+      );
+      setFatturatoModal({ open: false, fornitore: null, data: null, loading: false });
+    }
+  };
+
+  // Mostra estratto fatture fornitore. Default: TUTTI gli anni (richiesta
+  // utente 10/07 — non solo l'anno globale); anno esplicito solo quando si
+  // arriva dal riepilogo fatturato di un anno preciso.
+  const handleViewInvoicesModal = async (supplier, anno = '') => {
+    if (!idFornitore(supplier)) {
+      toast.warning('Questo fornitore non ha una Partita IVA');
+      return;
+    }
+
+    setEstrattoModal({
+      open: true,
+      fornitore: supplier,
+      data: null,
+      loading: true,
+      filtri: {
+        anno,
+        data_da: '',
+        data_a: '',
+        importo_min: '',
+        importo_max: '',
+        tipo: 'tutti',
+      },
+    });
+
+    try {
+      const res = await api.get(
+        `/api/suppliers/${idFornitore(supplier)}/fatture${anno ? `?anno=${anno}` : ''}`
+      );
+      setEstrattoModal(prev => ({ ...prev, data: res.data, loading: false }));
+    } catch (error) {
+      toast.error('Errore caricamento fatture: ' + (error.response?.data?.detail || error.message));
+      setEstrattoModal(prev => ({ ...prev, open: false, loading: false }));
+    }
+  };
+
+  // Ricarica estratto con filtri
+  const reloadEstratto = async () => {
+    if (!estrattoModal.fornitore) return;
+
+    setEstrattoModal(prev => ({ ...prev, loading: true }));
+
+    try {
+      const { anno, data_da, data_a, importo_min, importo_max, tipo } = estrattoModal.filtri;
+      const params = new URLSearchParams();
+      if (anno) params.append('anno', anno);
+      if (data_da) params.append('data_da', data_da);
+      if (data_a) params.append('data_a', data_a);
+      if (importo_min) params.append('importo_min', importo_min);
+      if (importo_max) params.append('importo_max', importo_max);
+      if (tipo && tipo !== 'tutti') params.append('tipo', tipo);
+
+      const res = await api.get(
+        `/api/suppliers/${idFornitore(estrattoModal.fornitore)}/fatture?${params.toString()}`
+      );
+      setEstrattoModal(prev => ({ ...prev, data: res.data, loading: false }));
+    } catch (error) {
+      toast.error('Errore: ' + (error.response?.data?.detail || error.message));
+      setEstrattoModal(prev => ({ ...prev, loading: false }));
+    }
+  };
+
+  // Elimina una fattura direttamente dall'Estratto Fatture (richiesta utente
+  // 14/07/2026). L'endpoint DELETE /api/fatture/{id} applica le business
+  // rules (blocca fatture pagate/con Prima Nota senza force=true): se il
+  // primo tentativo torna 400, si propone la conferma esplicita.
+  const eliminaFatturaEstratto = async (fattura, force = false) => {
+    if (
+      !(await confirm({
+        title: force ? 'Elimina comunque' : 'Elimina fattura',
+        message: force
+          ? `"${fattura.numero}" ha registrazioni collegate (Prima Nota/magazzino/scadenze): eliminarla comunque? Verranno rimosse anche quelle.`
+          : `Eliminare definitivamente la fattura ${fattura.numero || fattura.id}? Questa operazione non può essere annullata.`,
+        variant: 'danger',
+      }))
+    ) {
+      return;
+    }
+    try {
+      await api.delete(`/api/fatture/${fattura.id}${force ? '?force=true' : ''}`);
+      toast.success('Fattura eliminata');
+      reloadEstratto();
+    } catch (error) {
+      const status = error.response?.status;
+      const detail = error.response?.data?.detail || error.message;
+      if (status === 400 && !force) {
+        // Business rule bloccante (es. fattura pagata/con Prima Nota):
+        // ripropone la stessa azione con force=true invece di un vicolo cieco.
+        eliminaFatturaEstratto(fattura, true);
+      } else {
+        toast.error('Errore eliminazione: ' + detail);
+      }
+    }
+  };
+
+  const stats = {
+    total: suppliers.length,
+    withInvoices: suppliers.filter(s => (s.fatture_count || 0) > 0).length,
+    incomplete: suppliers.filter(s => isSupplierIncomplete(s)).length,
+    cash: suppliers.filter(s => canaleCanonico(s.metodo_pagamento) === 'cassa').length,
+    fuoriMagazzino: suppliers.filter(s => s.esclude_magazzino).length,
+  };
+
+  return (
+    <div
+      style={{
+        minHeight: '100vh',
+        backgroundColor: COLORS.bg,
+        padding: isMobile ? '12px 10px' : '16px',
+        position: 'relative',
+      }}
+    >
+      <div style={{ maxWidth: '1400px', margin: '0 auto' }}>
+        <PageHeader
+          title="Fornitori"
+          actions={
+            <>
+              <MenuOperazioni
+                size="md"
+                voci={[
+                  { id: 'btn-aggiorna-fornitori', label: loading ? 'Caricamento...' : 'Aggiorna', Icon: RefreshCw, onClick: reloadData, disabled: loading },
+                  {
+                    id: 'btn-popola-tutti-xml', label: popolandoTutti ? 'Popolamento...' : 'Popola dati mancanti da XML',
+                    Icon: FileText, onClick: handlePopolaTuttiXml, disabled: popolandoTutti,
+                    title: 'Rilegge le fatture XML dei fornitori con dati mancanti e completa email, telefono, comune, indirizzo — non tocca i campi già valorizzati',
+                  },
+                ]}
+              />
+              <Button
+                variant="primary"
+                onClick={() => {
+                  setCurrentSupplier(null);
+                  setModalOpen(true);
+                }}
+                style={{ minHeight: 40 }}
+              >
+                <Plus size={18} /> Nuovo Fornitore
+              </Button>
+            </>
+          }
+          pastiglie={[
+            { etichetta: 'Totale fornitori', valore: stats.total },
+            { etichetta: 'Con fatture', valore: stats.withInvoices },
+            {
+              etichetta: 'Dati incompleti',
+              valore: stats.incomplete,
+              tono: stats.incomplete > 0 ? 'attenzione' : 'ok',
+            },
+            { etichetta: 'Pagamento cassa', valore: stats.cash },
+            { etichetta: 'Fuori dal magazzino', valore: stats.fuoriMagazzino },
+          ]}
+          style={{ marginBottom: 14 }}
+        />
+
+        <DoppioniFornitori onMerged={reloadData} />
+
+        {/* PR #5e850c8: Badge contatori filtri avanzati (navy/gold) */}
+        <div
+          style={{
+            display: 'flex',
+            gap: '8px',
+            marginBottom: '16px',
+            flexWrap: 'wrap',
+          }}
+          data-testid="filter-badges"
+        >
+          <Badge
+            variant="primary"
+            style={{
+              padding: '8px 14px',
+              background: COLORS.primary,
+              color: COLORS.card,
+              fontSize: 13,
+              textTransform: 'none',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+            }}
+            data-testid="badge-totale"
+          >
+            <span style={{ opacity: 0.85 }}>Totale</span>
+            <span style={{ color: COLORS.card, fontWeight: 800, fontSize: 16 }}>
+              {totaliFiltrati.totale_fornitori}
+            </span>
+          </Badge>
+          <Badge
+            variant="neutral"
+            style={{
+              padding: '8px 14px',
+              background: COLORS.bg,
+              color: COLORS.primary,
+              fontSize: 13,
+              textTransform: 'none',
+              border: `1px solid ${COLORS.border}`,
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+            }}
+            data-testid="badge-attivi"
+          >
+            <span>Attivi</span>
+            <span style={{ fontSize: 16 }}>{totaliFiltrati.attivi}</span>
+          </Badge>
+          {cessatiCount > 0 && (
+            <Badge
+              variant="neutral"
+              onClick={() => setMostraCessati(v => !v)}
+              data-testid="badge-cessati"
+              title={
+                mostraCessati
+                  ? 'Clicca per nascondere di nuovo i fornitori cessati'
+                  : 'I fornitori cessati sono nascosti: clicca per vederli'
+              }
+              style={{
+                padding: '8px 14px',
+                background: mostraCessati ? COLORS.dangerLight : COLORS.bg,
+                color: mostraCessati ? COLORS.danger : COLORS.textMuted,
+                fontSize: 13,
+                textTransform: 'none',
+                border: `1px solid ${mostraCessati ? COLORS.danger : COLORS.border}`,
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                cursor: 'pointer',
+              }}
+            >
+              <span>Cessati</span>
+              <span style={{ fontSize: 16 }}>{cessatiCount}</span>
+            </Badge>
+          )}
+          <div
+            role="radiogroup"
+            aria-label="Filtro magazzino"
+            data-testid="filtro-magazzino"
+            style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}
+          >
+            {[
+              ['tutti', 'Tutti', stats.total],
+              ['inclusi', 'Nel magazzino', stats.total - stats.fuoriMagazzino],
+              ['esclusi', 'Fuori dal magazzino', stats.fuoriMagazzino],
+            ].map(([valore, etichetta, n]) => (
+              <button
+                key={valore}
+                type="button"
+                role="radio"
+                aria-checked={filtroMagazzino === valore}
+                data-testid={`filtro-magazzino-${valore}`}
+                onClick={() => setFiltroMagazzino(valore)}
+                style={{
+                  minHeight: 44,
+                  padding: '8px 14px',
+                  fontSize: 13,
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  borderRadius: BORDER_RADIUS.md,
+                  border: `1px solid ${filtroMagazzino === valore ? COLORS.primary : COLORS.border}`,
+                  background: filtroMagazzino === valore ? COLORS.primary : COLORS.card,
+                  color: filtroMagazzino === valore ? '#fff' : COLORS.text,
+                }}
+              >
+                {etichetta} · {n}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Tabs */}
+        {/* Search & Filters */}
+        <div
+          style={{
+            backgroundColor: COLORS.card,
+            borderRadius: BORDER_RADIUS.lg,
+            padding: isMobile ? '9px' : '11px',
+            marginBottom: '10px',
+            boxShadow: SHADOWS.sm,
+            border: `1px solid ${COLORS.border}`,
+          }}
+        >
+          <div style={{ display: 'flex', gap: '7px', flexWrap: 'wrap', alignItems: 'center' }}>
+            {/* Search */}
+            <div style={{ flex: '2 1 230px', minWidth: isMobile ? '100%' : '230px', position: 'relative' }}>
+              <Search
+                size={18}
+                style={{
+                  position: 'absolute',
+                  left: '12px',
+                  top: '50%',
+                  transform: 'translateY(-50%)',
+                  color: COLORS.textSubtle,
+                }}
+              />
+              <input
+                type="text"
+                placeholder="Cerca fornitore..."
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '8px 10px 8px 36px',
+                  border: `1px solid ${COLORS.border}`,
+                  borderRadius: BORDER_RADIUS.md,
+                  fontSize: '14px',
+                  boxSizing: 'border-box',
+                }}
+              />
+            </div>
+
+            {/* Filter Metodo - usa METODI_PAGAMENTO */}
+            <select
+              value={filterMetodo}
+              onChange={e => setFilterMetodo(e.target.value)}
+              style={{
+                padding: '8px 10px',
+                border: `1px solid ${COLORS.border}`,
+                borderRadius: BORDER_RADIUS.md,
+                fontSize: '14px',
+                backgroundColor: 'white',
+                minWidth: '132px',
+              }}
+            >
+              <option value="tutti">Tutti i metodi</option>
+              {Object.entries(METODI_PAGAMENTO).map(([key, val]) => (
+                <option key={key} value={key}>
+                  {val.label}
+                </option>
+              ))}
+            </select>
+
+            {/* Filter Incomplete */}
+            <label
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '7px 9px',
+                border: `1px solid ${COLORS.border}`,
+                borderRadius: BORDER_RADIUS.md,
+                cursor: 'pointer',
+                fontSize: '12px',
+                backgroundColor: filterIncomplete ? COLORS.warningLight : 'white',
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={filterIncomplete}
+                onChange={e => setFilterIncomplete(e.target.checked)}
+                style={{ width: '16px', height: '16px' }}
+              />
+              Solo incompleti
+            </label>
+
+            {/* Filter Senza Metodo Pagamento — per risalire ai fornitori di fatture non auto-confermate */}
+            <label
+              title="Mostra solo i fornitori SENZA metodo di pagamento predefinito (le loro fatture non vengono auto-confermate)"
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '7px 9px',
+                border: filterSenzaMetodo
+                  ? `1px solid ${COLORS.warning}`
+                  : `1px solid ${COLORS.border}`,
+                borderRadius: BORDER_RADIUS.md,
+                cursor: 'pointer',
+                fontSize: '12px',
+                fontWeight: filterSenzaMetodo ? 700 : 400,
+                backgroundColor: filterSenzaMetodo ? COLORS.warningLight : 'white',
+                color: filterSenzaMetodo ? COLORS.warning : COLORS.gray[700],
+              }}
+              data-testid="filter-senza-metodo-pagamento"
+            >
+              <input
+                type="checkbox"
+                checked={filterSenzaMetodo}
+                onChange={e => setFilterSenzaMetodo(e.target.checked)}
+                style={{ width: '16px', height: '16px', accentColor: COLORS.warning }}
+              />
+              <TriangleAlert size={14} aria-hidden style={{ verticalAlign: '-2px' }} /> Senza metodo
+            </label>
+
+            <CopyLinkButton style={{ flexShrink: 0 }} />
+          </div>
+
+          {/* PR #5e850c8: riga filtri avanzati (navy/gold) */}
+          <div
+            style={{
+              display: 'flex',
+              gap: '7px',
+              flexWrap: 'wrap',
+              alignItems: 'center',
+              marginTop: '8px',
+              paddingTop: '8px',
+              borderTop: `1px solid ${COLORS.border}`,
+            }}
+            data-testid="filtri-avanzati-row"
+          >
+            {/* Segmented: Anzianità */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexWrap: 'wrap' }}>
+              <span style={{ fontSize: 11.5, color: COLORS.primary, fontWeight: 700 }}>
+                Anzianità:
+              </span>
+              {[
+                { k: 'tutti', l: 'Tutti' },
+                { k: 'nuovo', l: 'Nuovi' },
+                { k: 'storico', l: 'Storici' },
+              ].map(opt => (
+                <Button
+                  key={opt.k}
+                  type="button"
+                  variant={filterAnzianita === opt.k ? 'primary' : 'secondary'}
+                  size="sm"
+                  onClick={() => setFilterAnzianita(opt.k)}
+                  data-testid={`filter-anzianita-${opt.k}`}
+                  style={{
+                    minHeight: 30,
+                    padding: '5px 8px',
+                    
+                  }}
+                >
+                  {opt.l}
+                </Button>
+              ))}
+            </div>
+
+            {/* Soglia giorni — visibile solo se Nuovi o Storici selezionato */}
+            {(filterAnzianita === 'nuovo' || filterAnzianita === 'storico') && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                <span style={{ fontSize: 11.5, color: COLORS.primary, fontWeight: 700 }}>
+                  Soglia giorni:
+                </span>
+                <input
+                  type="number"
+                  min={1}
+                  max={3650}
+                  value={giorniNuovo}
+                  onChange={e => {
+                    const v = parseInt(e.target.value, 10);
+                    setGiorniNuovo(Number.isFinite(v) && v > 0 ? v : 90);
+                  }}
+                  data-testid="filter-giorni-nuovo"
+                  style={{
+                    padding: '6px 10px',
+                    border: `1px solid ${COLORS.border}`,
+                    borderRadius: BORDER_RADIUS.sm,
+                    fontSize: 13,
+                    width: 80,
+                  }}
+                />
+              </div>
+            )}
+
+            {/* Ricerca prodotto venduto */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flex: '1 1 190px' }}>
+              <span style={{ fontSize: 11.5, color: COLORS.primary, fontWeight: 700 }}>
+                Prodotto:
+              </span>
+              <input
+                type="text"
+                value={filtroProdotto}
+                onChange={e => setFiltroProdotto(e.target.value)}
+                placeholder='es. "olio"'
+                data-testid="filter-prodotto"
+                style={{
+                  padding: '6px 10px',
+                  border: `1px solid ${COLORS.border}`,
+                  borderRadius: BORDER_RADIUS.sm,
+                  fontSize: 13,
+                  flex: 1,
+                  minWidth: 140,
+                }}
+              />
+              {filtroProdotto && (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setFiltroProdotto('')}
+                  data-testid="filter-prodotto-clear"
+                  style={{ padding: '4px 8px', fontSize: 12 }}
+                  title="Pulisci"
+                  aria-label="Pulisci"
+                >
+                  <X size={14} aria-hidden />
+                </Button>
+              )}
+            </div>
+
+            {/* Reset filtri avanzati */}
+            {(filterAnzianita !== 'tutti' || giorniNuovo !== 90 || filtroProdotto) && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setFilterAnzianita('tutti');
+                  setGiorniNuovo(90);
+                  setFiltroProdotto('');
+                }}
+                data-testid="filtri-avanzati-reset"
+                style={{ borderColor: COLORS.accent, color: COLORS.accent }}
+              >
+                Reset filtri avanzati
+              </Button>
+            )}
+
+            {/* L'auto-conferma delle fatture per metodo fornitore è AUTOMATICA:
+                avviene all'import di ogni fattura e col job ogni 30 minuti. */}
+          </div>
+        </div>
+
+        {/* Results Count */}
+        <div style={{ marginBottom: '8px', fontSize: '12px', color: COLORS.textMuted }}>
+          {filteredSuppliers.length === suppliers.length
+            ? `${suppliers.length} fornitori`
+            : `${filteredSuppliers.length} di ${suppliers.length} fornitori`}
+        </div>
+
+        {/* Cards Grid */}
+        {loading && suppliers.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: '60px' }}>
+            <div
+              style={{
+                width: '40px',
+                height: '40px',
+                border: `4px solid ${COLORS.border}`,
+                borderTopColor: COLORS.primary,
+                borderRadius: '50%',
+                animation: 'spin 1s linear infinite',
+                margin: '0 auto',
+              }}
+            />
+            <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+          </div>
+        ) : filteredSuppliers.length === 0 ? (
+          <div
+            style={{
+              backgroundColor: COLORS.card,
+              borderRadius: BORDER_RADIUS.lg,
+              padding: '60px',
+              textAlign: 'center',
+              boxShadow: SHADOWS.sm,
+            }}
+          >
+            <Building2 size={48} color={COLORS.border} style={{ marginBottom: '16px' }} />
+            <h3 style={{ margin: '0 0 8px', color: COLORS.gray[700] }}>Nessun fornitore trovato</h3>
+            <p style={{ color: COLORS.textMuted, margin: 0 }}>
+              {suppliers.length === 0
+                ? 'Aggiungi il primo fornitore'
+                : 'Modifica i filtri di ricerca'}
+            </p>
+          </div>
+        ) : (
+          /* Card informative su ogni formato: la tabella larga comprimeva
+             nome, IBAN, importi e azioni rendendo difficile la lettura. */
+          <div
+            style={{
+              backgroundColor: COLORS.card,
+              borderRadius: BORDER_RADIUS.lg,
+              boxShadow: SHADOWS.sm,
+              padding: '10px',
+            }}
+          >
+            <ListaAdattiva
+              testId="lista-fornitori"
+              dati={filteredSuppliers}
+              pageSize={50}
+              cardBreakpoint={1180}
+              // la pagina si azzera SOLO cambiando i filtri: correggere o
+              // eliminare un fornitore dalla seconda pagina non riporta
+              // più alla prima (richiesta utente 18/07)
+              resetKey={`${hs.search}|${hs.metodo}|${filtroMagazzino}|${filterIncomplete}|${filterSenzaMetodo}|${filterAnzianita}|${giorniNuovo}|${mostraCessati}`}
+              chiave={(s, i) => idFornitore(s) || i}
+              renderCard={s => (
+                <SupplierCard
+                  supplier={s}
+                  selectedYear={selectedYear}
+                  isMobile={isMobile}
+                  onEdit={sup => {
+                    setCurrentSupplier(sup);
+                    setModalOpen(true);
+                  }}
+                  onDelete={handleDelete}
+                  onViewInvoices={handleViewInvoices}
+                  onSearchPiva={handleSearchPiva}
+                  onShowFatturato={handleShowFatturato}
+                  onToggleCessato={handleToggleCessato}
+                  onChangeMetodo={handleChangeMetodo}
+                  onMagazzinoFatto={handleMagazzinoFatto}
+                  onMetodoDal={setMetodoDalFornitore}
+                />
+              )}
+              colonne={[
+                {
+                  key: 'ragione_sociale',
+                  label: 'Fornitore',
+                  ruoloCard: 'titolo',
+                  render: s => {
+                    const nome =
+                      s.ragione_sociale || s.denominazione || s.nome || s.name || 'Senza nome';
+                    const incompleto = isSupplierIncomplete(s);
+                    return (
+                      <span
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          flexWrap: 'wrap',
+                          gap: 6,
+                          minWidth: 0,
+                          lineHeight: 1.25,
+                          overflowWrap: 'anywhere',
+                        }}
+                      >
+                        {nome}
+                        {s.cessato && (
+                          <Badge variant="danger" style={{ fontSize: 10, padding: '2px 6px' }}>
+                            CESSATO
+                          </Badge>
+                        )}
+                        {incompleto && (
+                          <span title="Dati incompleti" style={{ display: 'inline-flex' }}>
+                            <AlertCircle size={14} color={COLORS.warning} />
+                          </span>
+                        )}
+                      </span>
+                    );
+                  },
+                  tdStyle: {
+                    fontWeight: 600,
+                    color: COLORS.gray[800],
+                    fontSize: 14,
+                    minWidth: 180,
+                    maxWidth: 260,
+                    whiteSpace: 'normal',
+                  },
+                },
+                {
+                  // Vincolo mobile: P.IVA mai nelle card
+                  key: 'partita_iva',
+                  label: 'P.IVA',
+                  mono: true,
+                  ruoloCard: 'omesso',
+                  render: s => (
+                    <span title={s.piva_motivo || undefined}>
+                      {s.partita_iva || s.piva || '-'}
+                      {s.piva_da_verificare ? ' · da verificare' : ''}
+                    </span>
+                  ),
+                  tdStyle: { fontSize: 13, color: COLORS.textMuted },
+                },
+                {
+                  // Vincolo mobile: IBAN mai nelle card
+                  key: 'iban',
+                  label: 'IBAN',
+                  mono: true,
+                  ruoloCard: 'omesso',
+                  hideDesktop: true,
+                  render: s => s.iban || '-',
+                  tdStyle: { fontSize: 12, color: COLORS.textMuted },
+                },
+                {
+                  key: 'email',
+                  label: 'Email',
+                  ruoloCard: 'omesso',
+                  hideDesktop: true,
+                  render: s => s.email || '-',
+                  tdStyle: { fontSize: 13, color: COLORS.textMuted },
+                },
+                {
+                  key: 'comune',
+                  label: 'Località',
+                  ruoloCard: 'dettaglio',
+                  render: s =>
+                    s.comune ? `${s.comune}${s.provincia ? ` (${s.provincia})` : ''}` : '-',
+                  tdStyle: { fontSize: 13, color: COLORS.textMuted },
+                },
+                {
+                  key: 'fatture_count',
+                  label: 'Fatture',
+                  align: 'center',
+                  ruoloCard: 'dettaglio',
+                  render: s => s.fatture_count || 0,
+                },
+                {
+                  key: 'fatture_totale',
+                  label: 'Acquistato',
+                  align: 'right',
+                  ruoloCard: 'dettaglio',
+                  iconaCard: 'Totale',
+                  render: s => euroOppure(s.fatture_totale),
+                  tdStyle: { fontWeight: 600 },
+                },
+                {
+                  key: 'fatture_pagate',
+                  label: 'Pagato',
+                  align: 'right',
+                  ruoloCard: 'dettaglio',
+                  iconaCard: 'Pagato',
+                  render: s => (
+                    <span style={{ color: COLORS.success, fontWeight: 600 }}>
+                      {euroOppure(s.fatture_pagate)}
+                    </span>
+                  ),
+                },
+                {
+                  key: 'fatture_non_pagate',
+                  label: 'Residuo',
+                  align: 'right',
+                  ruoloCard: 'dettaglio',
+                  iconaCard: 'Residuo',
+                  render: s => (
+                    <span
+                      style={{
+                        color: (s.fatture_non_pagate || 0) > 0 ? COLORS.danger : COLORS.textMuted,
+                        fontWeight: 700,
+                      }}
+                    >
+                      {euroOppure(s.fatture_non_pagate)}
+                    </span>
+                  ),
+                },
+                {
+                  // Anno dell'ULTIMA fattura: a colpo d'occhio si vede se il
+                  // fornitore è attuale (verde = fattura nell'anno globale)
+                  // o solo storico/ricorrente (richiesta utente 10/07).
+                  key: 'ultima_fattura',
+                  label: 'Ultima fatt.',
+                  align: 'center',
+                  ruoloCard: 'dettaglio',
+                  render: s => {
+                    const anno = annoUltimaFattura(s);
+                    if (!anno) return <span style={{ color: COLORS.textSubtle }}>—</span>;
+                    const attuale = anno >= selectedYear;
+                    return (
+                      <Badge
+                        variant={attuale ? 'success' : 'neutral'}
+                        title={
+                          attuale
+                            ? `Fornitore attuale: ultima fattura nel ${anno}`
+                            : `Ultima fattura nel ${anno} (nessuna nel ${selectedYear})`
+                        }
+                        style={{
+                          fontSize: 11,
+                          padding: '3px 8px',
+                          ...(attuale
+                            ? {}
+                            : { background: COLORS.gray[200], color: COLORS.textMuted }),
+                        }}
+                      >
+                        {anno}
+                      </Badge>
+                    );
+                  },
+                },
+                {
+                  key: 'metodo_pagamento',
+                  label: 'Metodo',
+                  align: 'center',
+                  ruoloCard: 'dettaglio',
+                  render: s => <MetodoBadge supplier={s} onChangeMetodo={handleChangeMetodo} />,
+                },
+                {
+                  key: 'esclude_magazzino',
+                  label: 'Magazzino',
+                  align: 'center',
+                  ruoloCard: 'dettaglio',
+                  iconaCard: ' ',
+                  render: s => (
+                    <MagazzinoFornitore
+                      fornitore={s}
+                      id={idFornitore(s)}
+                      onFatto={vista => handleMagazzinoFatto(idFornitore(s), vista)}
+                      compatto
+                    />
+                  ),
+                },
+                {
+                  key: 'azioni',
+                  label: 'Azioni',
+                  align: 'center',
+                  ruoloCard: 'azioni',
+                  render: s => (
+                    <AzioniFornitore
+                      supplier={s}
+                      selectedYear={selectedYear}
+                      isMobile={isMobile}
+                      onEdit={sup => {
+                        setCurrentSupplier(sup);
+                        setModalOpen(true);
+                      }}
+                      onDelete={handleDelete}
+                      onViewInvoices={handleViewInvoices}
+                      onSearchPiva={handleSearchPiva}
+                      onShowFatturato={handleShowFatturato}
+                      onToggleCessato={handleToggleCessato}
+                    />
+                  ),
+                },
+              ]}
+            />
+          </div>
+        )}
+      </div>
+
+      <SupplierModal
+        isOpen={modalOpen}
+        onClose={() => {
+          setModalOpen(false);
+          setCurrentSupplier(null);
+        }}
+        supplier={currentSupplier}
+        onSave={handleSave}
+        saving={saving}
+      />
+
+      {metodoDalFornitore && (
+        <MetodoDalFornitore
+          fornitore={metodoDalFornitore}
+          id={idFornitore(metodoDalFornitore)}
+          onChiudi={() => setMetodoDalFornitore(null)}
+          onFatto={reloadData}
+        />
+      )}
+
+      {/* Visore fattura in-page, aperto dal bottone 👁 Vedi dell'estratto */}
+      {fatturaView && (
+        <ModalFattura
+          fatturaId={fatturaView.id}
+          numero={fatturaView.numero}
+          onClose={() => setFatturaView(null)}
+        />
+      )}
+
+      {/* Modale Fatturato */}
+      {fatturatoModal.open && (
+        <Portal>
+          <div
+            style={{
+              position: 'fixed',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              backgroundColor: 'rgba(0,0,0,0.5)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              zIndex: 99999,
+              padding: '20px',
+            }}
+            onClick={() => setFatturatoModal({ open: false, data: null, loading: false })}
+          >
+            <div
+              style={{
+                backgroundColor: COLORS.card,
+                borderRadius: BORDER_RADIUS.lg,
+                width: '100%',
+                maxWidth: '500px',
+                overflow: 'hidden',
+                boxShadow: SHADOWS.modal,
+              }}
+              onClick={e => e.stopPropagation()}
+            >
+              {/* Header */}
+              <div
+                style={{
+                  background: COLORS.primary,
+                  padding: '20px 24px',
+                  color: 'white',
+                }}
+              >
+                <div
+                  style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+                >
+                  <div>
+                    <h2
+                      style={{
+                        margin: 0,
+                        fontSize: '18px',
+                        fontWeight: 600,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                      }}
+                    >
+                      <TrendingUp size={20} /> Fatturato {fatturatoModal.data?.anno || selectedYear}
+                    </h2>
+                    <p style={{ margin: '4px 0 0', opacity: 0.9, fontSize: '14px' }}>
+                      {fatturatoModal.data?.fornitore || ''}
+                    </p>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    onClick={() => setFatturatoModal({ open: false, data: null, loading: false })}
+                    style={{
+                      background: 'rgba(255,255,255,0.2)',
+                      minWidth: '40px',
+                      minHeight: '40px',
+                      padding: 0,
+                      color: 'white',
+                    }}
+                    data-testid="close-fatturato-modal"
+                  >
+                    <X size={20} />
+                  </Button>
+                </div>
+              </div>
+
+              {/* Content */}
+              <div style={{ padding: '24px' }}>
+                {fatturatoModal.loading ? (
+                  <div style={{ textAlign: 'center', padding: '40px' }}>
+                    <div
+                      style={{
+                        width: '40px',
+                        height: '40px',
+                        border: `4px solid ${COLORS.border}`,
+                        borderTopColor: COLORS.info,
+                        borderRadius: '50%',
+                        animation: 'spin 1s linear infinite',
+                        margin: '0 auto',
+                      }}
+                    />
+                    <p style={{ marginTop: '16px', color: COLORS.textMuted }}>
+                      Caricamento fatturato...
+                    </p>
+                  </div>
+                ) : fatturatoModal.data ? (
+                  <div>
+                    {/* Totale Principale */}
+                    <div
+                      style={{
+                        background: COLORS.infoLight,
+                        borderRadius: BORDER_RADIUS.lg,
+                        padding: '20px',
+                        marginBottom: '20px',
+                        textAlign: 'center',
+                      }}
+                    >
+                      <div style={{ fontSize: '14px', color: COLORS.primary, marginBottom: '4px' }}>
+                        TOTALE FATTURATO {fatturatoModal.data?.anno ?? ''}
+                      </div>
+                      <div
+                        style={{
+                          fontSize: '32px',
+                          fontWeight: 700,
+                          color: COLORS.primary,
+                          fontFamily: FONT.mono,
+                        }}
+                      >
+                        {euroOppure(fatturatoModal.data.totale_fatturato)}
+                      </div>
+                      <div style={{ fontSize: '14px', color: COLORS.primary, marginTop: '8px' }}>
+                        {fatturatoModal.data?.numero_fatture ?? 0} fatture
+                      </div>
+                    </div>
+
+                    {/* Stats Grid */}
+                    <div
+                      style={{
+                        display: 'grid',
+                        gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr',
+                        gap: '12px',
+                        marginBottom: '20px',
+                      }}
+                    >
+                      <StatCard
+                        label="Pagate"
+                        value={(fatturatoModal.data?.fatture_pagate ?? 0) || 0}
+                        subtext={euroOppure(fatturatoModal.data.importo_pagato)}
+                        accent="success"
+                      />
+                      <StatCard
+                        label="Da Pagare"
+                        value={(fatturatoModal.data?.fatture_non_pagate ?? 0) || 0}
+                        subtext={euroOppure(fatturatoModal.data.importo_non_pagato)}
+                        accent="danger"
+                      />
+                    </div>
+
+                    {/* Dettaglio Mensile (se disponibile) */}
+                    {fatturatoModal.data.dettaglio_mensile &&
+                      (fatturatoModal.data?.dettaglio_mensile?.length || 0) > 0 && (
+                        <div>
+                          <div
+                            style={{
+                              fontSize: '13px',
+                              fontWeight: 600,
+                              color: COLORS.gray[700],
+                              marginBottom: '8px',
+                            }}
+                          >
+                            Dettaglio Mensile
+                          </div>
+                          <div style={{ maxHeight: '200px', overflowY: 'auto' }}>
+                            {(fatturatoModal.data?.dettaglio_mensile ?? []).map((m, idx) => (
+                              <div
+                                key={idx}
+                                style={{
+                                  display: 'flex',
+                                  justifyContent: 'space-between',
+                                  padding: '8px 12px',
+                                  borderBottom: `1px solid ${COLORS.bg}`,
+                                  fontSize: '13px',
+                                }}
+                              >
+                                <span style={{ color: COLORS.textMuted }}>{m.mese_nome}</span>
+                                <span style={{ fontWeight: 600, color: COLORS.gray[800] }}>
+                                  {euroOppure(m.totale)}
+                                  <span
+                                    style={{
+                                      fontWeight: 400,
+                                      color: COLORS.textSubtle,
+                                      marginLeft: '8px',
+                                    }}
+                                  >
+                                    ({m.numero_fatture} fatt.)
+                                  </span>
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                    {(fatturatoModal.data?.numero_fatture ?? 0) === 0 && (
+                      <div
+                        style={{ textAlign: 'center', color: COLORS.textMuted, padding: '20px' }}
+                      >
+                        Nessuna fattura registrata per questo anno
+                      </div>
+                    )}
+
+                    {/* Dal riepilogo alle fatture VERE: apre l'estratto del
+                        fornitore già filtrato sull'anno del fatturato, da cui
+                        ogni fattura si può visualizzare col bottone 👁 Vedi */}
+                    {fatturatoModal.fornitore && (fatturatoModal.data?.numero_fatture ?? 0) > 0 && (
+                      <div style={{ textAlign: 'center', marginTop: 16 }}>
+                        <Button
+                          variant="primary"
+                          data-testid="btn-fatturato-vedi-fatture"
+                          onClick={() => {
+                            const fornitore = fatturatoModal.fornitore;
+                            const anno = fatturatoModal.data?.anno || selectedYear;
+                            setFatturatoModal({
+                              open: false,
+                              fornitore: null,
+                              data: null,
+                              loading: false,
+                            });
+                            handleViewInvoicesModal(fornitore, anno);
+                          }}
+                        >
+                          Vedi le fatture ({fatturatoModal.data?.numero_fatture ?? 0})
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                ) : null}
+              </div>
+            </div>
+          </div>
+        </Portal>
+      )}
+
+      {/* MODALE ESTRATTO FATTURE */}
+      {estrattoModal.open && (
+        <Portal>
+          <div
+            onClick={() => setEstrattoModal(prev => ({ ...prev, open: false }))}
+            style={{
+              position: 'fixed',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              backgroundColor: 'rgba(0,0,0,0.5)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              zIndex: 10000,
+            }}
+          >
+            <div
+              onClick={e => e.stopPropagation()}
+              id="estratto-fatture-content"
+              style={{
+                backgroundColor: COLORS.card,
+                borderRadius: BORDER_RADIUS.lg,
+                width: '95%',
+                maxWidth: '1200px',
+                maxHeight: '90vh',
+                overflow: 'hidden',
+                boxShadow: SHADOWS.modal,
+                display: 'flex',
+                flexDirection: 'column',
+              }}
+            >
+              {/* Header */}
+              <div
+                style={{
+                  padding: '20px 24px',
+                  borderBottom: `1px solid ${COLORS.border}`,
+                  background: COLORS.primary,
+                  color: 'white',
+                }}
+              >
+                <div
+                  style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+                >
+                  <div>
+                    <div style={{ fontSize: '20px', fontWeight: 700 }}>Estratto Fatture</div>
+                    <div style={{ fontSize: '14px', opacity: 0.9, marginTop: 4 }}>
+                      {estrattoModal.fornitore?.ragione_sociale ||
+                        estrattoModal.fornitore?.nome ||
+                        estrattoModal.fornitore?.denominazione}
+                      {' • '}
+                      {estrattoModal.fornitore?.partita_iva}
+                    </div>
+                  </div>
+                  {/* Stesso controllo della lista, anche da dentro l'estratto */}
+                  {estrattoModal.fornitore && (
+                    <div style={{ marginLeft: 'auto', marginRight: 12 }}>
+                      <MagazzinoFornitore
+                        fornitore={estrattoModal.fornitore}
+                        id={idFornitore(estrattoModal.fornitore)}
+                        onFatto={vista =>
+                          handleMagazzinoFatto(idFornitore(estrattoModal.fornitore), vista)
+                        }
+                        compatto
+                      />
+                    </div>
+                  )}
+                  <Button
+                    variant="ghost"
+                    onClick={() => setEstrattoModal(prev => ({ ...prev, open: false }))}
+                    style={{
+                      width: '40px',
+                      height: '40px',
+                      padding: 0,
+                      borderRadius: BORDER_RADIUS.full,
+                      background: 'rgba(255,255,255,0.2)',
+                      color: 'white',
+                      fontSize: '18px',
+                    }}
+                  >
+                    ×
+                  </Button>
+                </div>
+              </div>
+
+              {/* Filtri */}
+              <div
+                style={{
+                  padding: '16px 24px',
+                  borderBottom: `1px solid ${COLORS.border}`,
+                  background: COLORS.bgAlt,
+                  display: 'flex',
+                  flexWrap: 'wrap',
+                  gap: 12,
+                  alignItems: 'flex-end',
+                }}
+              >
+                <div>
+                  <label
+                    style={{
+                      fontSize: 11,
+                      color: COLORS.textMuted,
+                      display: 'block',
+                      marginBottom: 4,
+                    }}
+                  >
+                    Anno
+                  </label>
+                  <select
+                    value={estrattoModal.filtri.anno || ''}
+                    onChange={e =>
+                      setEstrattoModal(prev => ({
+                        ...prev,
+                        filtri: {
+                          ...prev.filtri,
+                          anno: e.target.value ? parseInt(e.target.value) : null,
+                        },
+                      }))
+                    }
+                    style={{
+                      padding: '8px 12px',
+                      border: `1px solid ${COLORS.border}`,
+                      borderRadius: BORDER_RADIUS.sm,
+                      fontSize: 13,
+                    }}
+                  >
+                    <option value="">Tutti</option>
+                    {[...Array(5)].map((_, i) => {
+                      const y = new Date().getFullYear() - i;
+                      return (
+                        <option key={y} value={y}>
+                          {y}
+                        </option>
+                      );
+                    })}
+                  </select>
+                </div>
+                <div>
+                  <label
+                    style={{
+                      fontSize: 11,
+                      color: COLORS.textMuted,
+                      display: 'block',
+                      marginBottom: 4,
+                    }}
+                  >
+                    Data Da
+                  </label>
+                  <input
+                    type="date"
+                    value={estrattoModal.filtri.data_da}
+                    onChange={e =>
+                      setEstrattoModal(prev => ({
+                        ...prev,
+                        filtri: { ...prev.filtri, data_da: e.target.value },
+                      }))
+                    }
+                    style={{
+                      padding: '8px 12px',
+                      border: `1px solid ${COLORS.border}`,
+                      borderRadius: BORDER_RADIUS.sm,
+                      fontSize: 13,
+                    }}
+                  />
+                </div>
+                <div>
+                  <label
+                    style={{
+                      fontSize: 11,
+                      color: COLORS.textMuted,
+                      display: 'block',
+                      marginBottom: 4,
+                    }}
+                  >
+                    Data A
+                  </label>
+                  <input
+                    type="date"
+                    value={estrattoModal.filtri.data_a}
+                    onChange={e =>
+                      setEstrattoModal(prev => ({
+                        ...prev,
+                        filtri: { ...prev.filtri, data_a: e.target.value },
+                      }))
+                    }
+                    style={{
+                      padding: '8px 12px',
+                      border: `1px solid ${COLORS.border}`,
+                      borderRadius: BORDER_RADIUS.sm,
+                      fontSize: 13,
+                    }}
+                  />
+                </div>
+                <div>
+                  <label
+                    style={{
+                      fontSize: 11,
+                      color: COLORS.textMuted,
+                      display: 'block',
+                      marginBottom: 4,
+                    }}
+                  >
+                    Importo Min
+                  </label>
+                  <input
+                    type="number"
+                    placeholder="€"
+                    value={estrattoModal.filtri.importo_min}
+                    onChange={e =>
+                      setEstrattoModal(prev => ({
+                        ...prev,
+                        filtri: { ...prev.filtri, importo_min: e.target.value },
+                      }))
+                    }
+                    style={{
+                      padding: '8px 12px',
+                      border: `1px solid ${COLORS.border}`,
+                      borderRadius: BORDER_RADIUS.sm,
+                      fontSize: 13,
+                      width: 100,
+                    }}
+                  />
+                </div>
+                <div>
+                  <label
+                    style={{
+                      fontSize: 11,
+                      color: COLORS.textMuted,
+                      display: 'block',
+                      marginBottom: 4,
+                    }}
+                  >
+                    Importo Max
+                  </label>
+                  <input
+                    type="number"
+                    placeholder="€"
+                    value={estrattoModal.filtri.importo_max}
+                    onChange={e =>
+                      setEstrattoModal(prev => ({
+                        ...prev,
+                        filtri: { ...prev.filtri, importo_max: e.target.value },
+                      }))
+                    }
+                    style={{
+                      padding: '8px 12px',
+                      border: `1px solid ${COLORS.border}`,
+                      borderRadius: BORDER_RADIUS.sm,
+                      fontSize: 13,
+                      width: 100,
+                    }}
+                  />
+                </div>
+                <div>
+                  <label
+                    style={{
+                      fontSize: 11,
+                      color: COLORS.textMuted,
+                      display: 'block',
+                      marginBottom: 4,
+                    }}
+                  >
+                    Tipo
+                  </label>
+                  <select
+                    value={estrattoModal.filtri.tipo}
+                    onChange={e =>
+                      setEstrattoModal(prev => ({
+                        ...prev,
+                        filtri: { ...prev.filtri, tipo: e.target.value },
+                      }))
+                    }
+                    style={{
+                      padding: '8px 12px',
+                      border: `1px solid ${COLORS.border}`,
+                      borderRadius: BORDER_RADIUS.sm,
+                      fontSize: 13,
+                    }}
+                  >
+                    <option value="tutti">Tutti</option>
+                    <option value="fattura">Solo Fatture</option>
+                    <option value="nota_credito">Solo Note Credito</option>
+                  </select>
+                </div>
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={reloadEstratto}
+                  disabled={estrattoModal.loading}
+                >
+                  <Search size={14} aria-hidden /> Filtra
+                </Button>
+              </div>
+
+              {/* Content */}
+              <div style={{ flex: 1, overflow: 'auto', padding: '16px 24px' }}>
+                {estrattoModal.loading ? (
+                  <div style={{ textAlign: 'center', padding: 40 }}>
+                    <div
+                      className="spinner"
+                      style={{ width: 40, height: 40, margin: '0 auto' }}
+                    ></div>
+                    <p style={{ marginTop: 16, color: COLORS.textMuted }}>Caricamento fatture...</p>
+                  </div>
+                ) : estrattoModal.data ? (
+                  <>
+                    {/* Totali */}
+                    <div
+                      style={{
+                        display: 'grid',
+                        gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
+                        gap: 12,
+                        marginBottom: 20,
+                      }}
+                    >
+                      <StatCard
+                        label="Documenti"
+                        value={estrattoModal.data.totali?.numero_documenti || 0}
+                        accent="primary"
+                      />
+                      <StatCard
+                        label="Totale"
+                        value={euroOppure(estrattoModal.data.totali?.importo_totale)}
+                        accent="success"
+                      />
+                      <StatCard
+                        label="Note Credito"
+                        value={`- ${euroOppure(estrattoModal.data.totali?.note_credito)}`}
+                        accent="danger"
+                      />
+                      <StatCard
+                        label="Netto"
+                        value={euroOppure(estrattoModal.data.totali?.netto)}
+                        accent="warning"
+                      />
+                    </div>
+
+                    {/* Tabella Fatture */}
+                    <TableWrap>
+                      <Table>
+                        <thead>
+                          <tr>
+                            <Th>Data</Th>
+                            <Th>Numero</Th>
+                            <Th>Tipo</Th>
+                            <Th align="right">Imponibile</Th>
+                            <Th align="right">IVA</Th>
+                            <Th align="right">Totale</Th>
+                            <Th align="center">Metodo Pag.</Th>
+                            <Th align="center">Stato</Th>
+                            <Th align="center">Azioni</Th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {(estrattoModal.data.estratto || []).slice(0, estrattoVisibili).map((f, idx) => (
+                            <tr
+                              key={f.id || idx}
+                              style={{
+                                borderBottom: `1px solid ${COLORS.border}`,
+                                background: f.is_nota_credito
+                                  ? COLORS.dangerLight
+                                  : idx % 2 === 0
+                                    ? 'white'
+                                    : COLORS.bgAlt,
+                              }}
+                            >
+                              <Td>{formatDateIT(f.data)}</Td>
+                              <Td style={{ fontWeight: 500 }}>{f.numero}</Td>
+                              <Td>
+                                {f.is_nota_credito ? (
+                                  <Badge variant="danger">NC</Badge>
+                                ) : (
+                                  <Badge variant="info">{f.tipo_documento}</Badge>
+                                )}
+                              </Td>
+                              <Td align="right" mono>
+                                {euroOppure(f.imponibile)}
+                              </Td>
+                              <Td align="right" mono>
+                                {euroOppure(f.iva)}
+                              </Td>
+                              <Td align="right" mono style={{ fontWeight: 600 }}>
+                                {/* il backend manda la nota di credito gia' negativa */}
+                                {euroOppure(f.importo_totale)}
+                              </Td>
+                              <Td align="center">
+                                <Badge
+                                  variant={
+                                    f.metodo_pagamento === 'cassa' ||
+                                    f.metodo_pagamento === 'contanti'
+                                      ? 'success'
+                                      : 'info'
+                                  }
+                                >
+                                  {f.metodo_pagamento || '-'}
+                                </Badge>
+                              </Td>
+                              <Td align="center">
+                                {f.riconciliato ? (
+                                  <Badge
+                                    variant="success"
+                                    style={{ background: COLORS.success, color: 'white' }}
+                                  >
+                                    <Check size={11} aria-hidden /> RICONCILIATA
+                                  </Badge>
+                                ) : ePagata(f) ? (
+                                  <Badge
+                                    variant="success"
+                                    style={{ background: COLORS.success, color: 'white' }}
+                                  >
+                                    Pagata
+                                  </Badge>
+                                ) : (
+                                  <Badge
+                                    variant="warning"
+                                    style={{ background: COLORS.warning, color: 'white' }}
+                                  >
+                                    Da pagare
+                                  </Badge>
+                                )}
+                              </Td>
+                              <Td align="center">
+                                <div style={{ display: 'flex', gap: 4, justifyContent: 'center' }}>
+                                  {/* VEDI la fattura vera e propria (visore
+                                      in-page, come nella pagina Fatture) */}
+                                  {f.id && (
+                                    <Button
+                                      variant="primary"
+                                      size="sm"
+                                      onClick={() => setFatturaView({ id: f.id, numero: f.numero })}
+                                      data-testid={`btn-vedi-fattura-${f.id}`}
+                                      style={{ padding: '3px 8px', fontSize: 10 }}
+                                      title="Visualizza la fattura"
+                                    >
+                                      Vedi
+                                    </Button>
+                                  )}
+                                  {!ePagata(f) && !f.is_nota_credito && (
+                                    <>
+                                      <Button
+                                        variant="success"
+                                        size="sm"
+                                        onClick={async () => {
+                                          if (
+                                            !(await confirm({
+                                              title: 'Pagamento in cassa',
+                                              message: `Confermi pagamento CASSA di ${euroOppure(f.importo_totale)} per fattura ${f.numero}?`,
+                                            }))
+                                          )
+                                            return;
+                                          try {
+                                            await api.post('/api/fatture-ricevute/paga-manuale', {
+                                              fattura_id: f.id,
+                                              metodo: 'cassa',
+                                              importo: f.importo_totale,
+                                              fornitore:
+                                                estrattoModal.fornitore?.ragione_sociale ||
+                                                estrattoModal.fornitore?.denominazione ||
+                                                '',
+                                              numero_fattura: f.numero || '',
+                                              data_pagamento: new Date()
+                                                .toISOString()
+                                                .split('T')[0],
+                                            });
+                                            // Aggiorna SOLO la riga: il ricaricamento
+                                            // completo faceva perdere la posizione
+                                            // nella lista (bug utente 17/07/2026)
+                                            setEstrattoModal(prev => ({
+                                              ...prev,
+                                              data: {
+                                                ...prev.data,
+                                                estratto: (prev.data?.estratto || []).map(x =>
+                                                  x.id === f.id
+                                                    ? {
+                                                        ...x,
+                                                        pagato: true,
+                                                        metodo_pagamento: 'cassa',
+                                                      }
+                                                    : x
+                                                ),
+                                              },
+                                            }));
+                                          } catch (e) {
+                                            toast.error(
+                                              'Errore: ' + (e.response?.data?.detail || e.message)
+                                            );
+                                          }
+                                        }}
+                                        style={{ padding: '3px 8px', fontSize: 10 }}
+                                        title="Segna come pagata in contanti"
+                                      >
+                                        Cassa
+                                      </Button>
+                                      <Button
+                                        variant="info"
+                                        size="sm"
+                                        onClick={async () => {
+                                          if (
+                                            !(await confirm({
+                                              title: 'Pagamento in banca',
+                                              message: `Confermi pagamento BANCA di ${euroOppure(f.importo_totale)} per fattura ${f.numero}?`,
+                                            }))
+                                          )
+                                            return;
+                                          try {
+                                            await api.post('/api/fatture-ricevute/paga-manuale', {
+                                              fattura_id: f.id,
+                                              metodo: 'banca',
+                                              importo: f.importo_totale,
+                                              fornitore:
+                                                estrattoModal.fornitore?.ragione_sociale ||
+                                                estrattoModal.fornitore?.denominazione ||
+                                                '',
+                                              numero_fattura: f.numero || '',
+                                              data_pagamento: new Date()
+                                                .toISOString()
+                                                .split('T')[0],
+                                            });
+                                            // Aggiorna SOLO la riga: il ricaricamento
+                                            // completo faceva perdere la posizione
+                                            // nella lista (bug utente 17/07/2026)
+                                            setEstrattoModal(prev => ({
+                                              ...prev,
+                                              data: {
+                                                ...prev.data,
+                                                estratto: (prev.data?.estratto || []).map(x =>
+                                                  x.id === f.id
+                                                    ? {
+                                                        ...x,
+                                                        pagato: true,
+                                                        metodo_pagamento: 'banca',
+                                                      }
+                                                    : x
+                                                ),
+                                              },
+                                            }));
+                                          } catch (e) {
+                                            toast.error(
+                                              'Errore: ' + (e.response?.data?.detail || e.message)
+                                            );
+                                          }
+                                        }}
+                                        style={{ padding: '3px 8px', fontSize: 10 }}
+                                        title="Segna come pagata con bonifico"
+                                      >
+                                        Banca
+                                      </Button>
+                                    </>
+                                  )}
+                                  {/* Elimina fattura direttamente dall'estratto
+                                    (richiesta utente 14/07/2026): stessa
+                                    validazione business-rule del backend —
+                                    fatture pagate/con Prima Nota richiedono
+                                    conferma esplicita "forza comunque". */}
+                                  {f.id && (
+                                    <Button
+                                      variant="danger"
+                                      size="sm"
+                                      onClick={() => eliminaFatturaEstratto(f)}
+                                      data-testid={`btn-elimina-fattura-${f.id}`}
+                                      style={{ padding: '3px 8px', fontSize: 10 }}
+                                      title="Elimina fattura"
+                                      aria-label="Elimina fattura"
+                                    >
+                                      <Trash2 size={13} aria-hidden />
+                                    </Button>
+                                  )}
+                                </div>
+                              </Td>
+                            </tr>
+                          ))}
+                          {(!estrattoModal.data.estratto ||
+                            estrattoModal.data.estratto.length === 0) && (
+                            <tr>
+                              <Td
+                                colSpan={9}
+                                align="center"
+                                style={{ padding: 40, color: COLORS.textMuted }}
+                              >
+                                Nessuna fattura trovata con i filtri selezionati
+                              </Td>
+                            </tr>
+                          )}
+                        </tbody>
+                      </Table>
+                    </TableWrap>
+                    {(estrattoModal.data.estratto || []).length > estrattoVisibili && (
+                      <div style={{ textAlign: 'center', padding: 12 }}>
+                        <Button type="button" variant="secondary" onClick={() => setEstrattoVisibili(v => v + 200)}>
+                          Mostra altre ({(estrattoModal.data.estratto || []).length - estrattoVisibili})
+                        </Button>
+                      </div>
+                    )}
+                  </>
+                ) : null}
+              </div>
+
+              {/* Footer */}
+              <div
+                style={{
+                  padding: '16px 24px',
+                  borderTop: `1px solid ${COLORS.border}`,
+                  background: COLORS.bgAlt,
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                }}
+              >
+                <div style={{ fontSize: 12, color: COLORS.textMuted }}>
+                  Metodo pagamento predefinito fornitore:{' '}
+                  <strong>
+                    {estrattoModal.data?.fornitore?.metodo_pagamento_predefinito || '-'}
+                  </strong>
+                </div>
+                <div style={{ display: 'flex', gap: 12 }}>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => {
+                      const modal = document.getElementById('estratto-fatture-content');
+                      if (!modal) {
+                        window.print();
+                        return;
+                      }
+                      const printWin = window.open('', '_blank');
+                      printWin.document.write(`<html><head><title>Estratto Fatture</title><style>
+                      body{font-family:Arial,sans-serif;padding:20px}
+                      table{width:100%;border-collapse:collapse;font-size:12px}
+                      th,td{border:1px solid #ddd;padding:8px;text-align:left}
+                      th{background:${COLORS.primary};color:white}
+                    </style></head><body>${modal.innerHTML}</body></html>`);
+                      printWin.document.close();
+                      printWin.print();
+                    }}
+                  >
+                    <Printer size={14} aria-hidden /> Stampa
+                  </Button>
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    onClick={() => setEstrattoModal(prev => ({ ...prev, open: false }))}
+                  >
+                    Chiudi
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </Portal>
+      )}
+    </div>
+  );
+}

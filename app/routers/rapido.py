@@ -1,0 +1,176 @@
+"""
+Inserimento Rapido — endpoint per operazioni quick-entry dalla pagina InserimentoRapido.
+"""
+from fastapi import APIRouter, HTTPException, Body
+from typing import Dict, Any
+from datetime import datetime, timezone
+import uuid
+import logging
+
+from app.database import Database
+from app.services.scritture_contabili import scrivi_movimento
+
+logger = logging.getLogger(__name__)
+router = APIRouter()
+
+
+@router.get("/dipendenti-attivi")
+async def dipendenti_attivi() -> Dict[str, Any]:
+    """Bug corretto: ritornava una list nuda ma il frontend
+    (InserimentoRapido.jsx) legge `res.data?.dipendenti` — il dropdown
+    dipendente restava sempre vuoto (nessun errore visibile, solo lista
+    sempre a []), anche con dipendenti attivi realmente in anagrafica."""
+    db = Database.get_db()
+    dips = await db["dipendenti"].find(
+        {"$or": [{"attivo": True}, {"attivo": {"$exists": False}}], "merged_into": {"$exists": False}},
+        {"_id": 0, "id": 1, "nome_completo": 1, "nome": 1, "cognome": 1}
+    ).sort("nome_completo", 1).to_list(200)
+    return {"dipendenti": dips}
+
+
+@router.get("/ultimi-inserimenti")
+async def ultimi_inserimenti(limit: int = 5) -> Dict[str, Any]:
+    """Stesso bug di dipendenti_attivi: list nuda vs `res.data?.inserimenti`
+    atteso dal frontend — la sezione "Ultimi Inserimenti" non compariva mai."""
+    db = Database.get_db()
+    recenti = await db["prima_nota_cassa"].find(
+        {"source": {"$regex": "rapido"}},
+        {"_id": 0}
+    ).sort("created_at", -1).limit(limit).to_list(limit)
+    return {"inserimenti": recenti}
+
+
+@router.post("/corrispettivo")
+async def rapido_corrispettivo(payload: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
+    db = Database.get_db()
+    importo = float(payload.get("importo", 0))
+    if importo <= 0:
+        raise HTTPException(status_code=400, detail="Importo deve essere > 0")
+
+    mov_id = str(uuid.uuid4())
+    movimento = {
+        "id": mov_id,
+        "data": payload.get("data", datetime.now().strftime("%Y-%m-%d")),
+        "tipo": "entrata",
+        "importo": importo,
+        "descrizione": payload.get("descrizione", f"Corrispettivo rapido {payload.get('data', '')}"),
+        "categoria": "Corrispettivi",
+        "source": "rapido_corrispettivo",
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    await scrivi_movimento(db, "cassa", movimento)
+    return {"success": True, "id": mov_id, "message": "Corrispettivo registrato in cassa"}
+
+
+@router.post("/versamento-banca")
+async def rapido_versamento(payload: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
+    """Un versamento in banca sposta contanti dalla Cassa al Conto: va
+    registrato su ENTRAMBI i registri (prima creava solo l'uscita in cassa,
+    senza mai far comparire il corrispondente accredito in banca)."""
+    db = Database.get_db()
+    importo = float(payload.get("importo", 0))
+    if importo <= 0:
+        raise HTTPException(status_code=400, detail="Importo deve essere > 0")
+
+    data = payload.get("data", datetime.now().strftime("%Y-%m-%d"))
+    descrizione = payload.get("descrizione", "Versamento in banca")
+    mov_id = str(uuid.uuid4())
+    await scrivi_movimento(db, "cassa", {
+        "id": mov_id,
+        "data": data,
+        "tipo": "uscita", "importo": importo,
+        "descrizione": descrizione,
+        "categoria": "Versamento Banca", "source": "rapido_versamento",
+        "created_at": datetime.now(timezone.utc).isoformat()
+    })
+    mov_banca_id = str(uuid.uuid4())
+    await scrivi_movimento(db, "banca", {
+        "id": mov_banca_id,
+        "data": data,
+        "tipo": "entrata", "importo": importo,
+        "descrizione": descrizione,
+        "categoria": "Versamento Banca", "source": "rapido_versamento",
+        "movimento_cassa_id": mov_id,
+        "created_at": datetime.now(timezone.utc).isoformat()
+    })
+    return {"success": True, "id": mov_id, "id_banca": mov_banca_id, "message": "Versamento registrato"}
+
+
+@router.post("/apporto-soci")
+async def rapido_apporto(payload: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
+    db = Database.get_db()
+    importo = float(payload.get("importo", 0))
+    if importo <= 0:
+        raise HTTPException(status_code=400, detail="Importo deve essere > 0")
+
+    # Il frontend invia conto_dare='BANCA'/'CASSA' in base al toggle
+    # "Destinazione": prima veniva ignorato e l'apporto finiva sempre in cassa
+    # anche scegliendo "Banca".
+    registro_apporto = "banca" if payload.get("conto_dare") == "BANCA" else "cassa"
+
+    mov_id = str(uuid.uuid4())
+    await scrivi_movimento(db, registro_apporto, {
+        "id": mov_id,
+        "data": payload.get("data", datetime.now().strftime("%Y-%m-%d")),
+        "tipo": "entrata", "importo": importo,
+        "descrizione": payload.get("descrizione", "Finanziamento soci"),
+        "categoria": "Finanziamento soci", "source": "rapido_apporto_soci",
+        "created_at": datetime.now(timezone.utc).isoformat()
+    })
+    return {"success": True, "id": mov_id, "message": "Apporto soci registrato"}
+
+
+
+
+@router.post("/acconto-dipendente")
+async def rapido_acconto(payload: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
+    db = Database.get_db()
+    importo = float(payload.get("importo", 0))
+    dip_id = payload.get("dipendente_id", "")
+    if importo <= 0 or not dip_id:
+        raise HTTPException(status_code=400, detail="dipendente_id e importo richiesti")
+
+    # Il frontend non invia mai un campo 'nome' (solo dipendente_id/importo/
+    # data/note): la descrizione riportava sempre "Acconto a dipendente "
+    # senza nome. Recupera il nome dall'anagrafica.
+    dipendente = await db["dipendenti"].find_one(
+        {"id": dip_id}, {"_id": 0, "nome_completo": 1, "nome": 1, "cognome": 1}
+    )
+    nome_dipendente = ""
+    if dipendente:
+        nome_dipendente = dipendente.get("nome_completo") or " ".join(
+            p for p in (dipendente.get("nome"), dipendente.get("cognome")) if p
+        )
+
+    mov_id = str(uuid.uuid4())
+    await scrivi_movimento(db, "cassa", {
+        "id": mov_id, "data": payload.get("data", datetime.now().strftime("%Y-%m-%d")),
+        "tipo": "uscita", "importo": importo,
+        "descrizione": f"Acconto a dipendente {nome_dipendente}".strip(),
+        "categoria": "Acconti dipendenti", "dipendente_id": dip_id,
+        "note": payload.get("note", ""),
+        "source": "rapido_acconto",
+        "created_at": datetime.now(timezone.utc).isoformat()
+    })
+    return {"success": True, "id": mov_id, "message": "Acconto registrato"}
+
+
+@router.post("/presenza")
+async def rapido_presenza(payload: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
+    db = Database.get_db()
+    dip_id = payload.get("dipendente_id", "")
+    if not dip_id:
+        raise HTTPException(status_code=400, detail="dipendente_id richiesto")
+
+    doc = {
+        "id": str(uuid.uuid4()),
+        "dipendente_id": dip_id,
+        "data": payload.get("data", datetime.now().strftime("%Y-%m-%d")),
+        "tipo": payload.get("tipo", "presente"),
+        "ore": float(payload.get("ore", 8)),
+        "note": payload.get("note", ""),
+        "source": "rapido",
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    await db["presenze_giornaliere"].insert_one(doc)
+    return {"success": True, "id": doc["id"], "message": "Presenza registrata"}

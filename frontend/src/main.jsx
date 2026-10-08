@@ -1,0 +1,165 @@
+import React, { Suspense, lazy } from "react";
+import ReactDOM from "react-dom/client";
+import { createBrowserRouter, RouterProvider, Navigate } from "react-router-dom";
+import { QueryClientProvider } from "@tanstack/react-query";
+import App from "./App.jsx";
+import "./styles.css";
+import "./index.css";
+import "./styles/ds/ds.css"; // Ceraldi design-system tokens (canonical) — authoritative
+import { AnnoProvider } from "./contexts/AnnoContext.jsx";
+import { AuthProvider, RequireAuth, RequireAdmin } from "./contexts/AuthContext.jsx";
+import { GuscioProvider } from "./contexts/GuscioContext.jsx";
+import { queryClient } from "./lib/queryClient.js";
+import { ConfirmProvider } from "./components/ui/ConfirmDialog.jsx";
+import { Toaster } from "./components/ui/sonner.jsx";
+import ErrorBoundary from "./components/ErrorBoundary.jsx";
+import Login from "./pages/Login.jsx";
+import { COLORS } from "./lib/utils.js";
+import { avviaTabelleCard } from "./lib/tabelleCard.js";
+
+const PageLoader = () => (
+  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '60vh', flexDirection: 'column', gap: 16 }}>
+    <div style={{ width: 48, height: 48, border: `4px solid ${COLORS.border}`, borderTop: `4px solid ${COLORS.primary}`, borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
+    <span style={{ color: COLORS.textMuted, fontSize: 14 }}>Caricamento...</span>
+    <style>{`@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }`}</style>
+  </div>
+);
+
+// === HUB PAGES (consolidated) ===
+const DashboardHub = lazy(() => import("./pages/hub/DashboardHub.jsx"));
+const FornitoriHub = lazy(() => import("./pages/hub/FornitoriHub.jsx"));
+const PrimaNotaHub = lazy(() => import("./pages/hub/PrimaNotaHub.jsx"));
+const VeicoliHub = lazy(() => import("./pages/hub/VeicoliHub.jsx"));
+const ContabilitaHub = lazy(() => import("./pages/hub/ContabilitaHub.jsx"));
+const DocumentiHub = lazy(() => import("./pages/hub/DocumentiHub.jsx"));
+const StrumentiHub = lazy(() => import("./pages/hub/StrumentiHub.jsx"));
+const IntegrazioniHub = lazy(() => import("./pages/hub/IntegrazioniHub.jsx"));
+const AdminHub     = lazy(() => import("./pages/hub/AdminHub.jsx"));
+const Utenti       = lazy(() => import("./pages/Utenti.jsx"));
+const RiconciliazioneHub = lazy(() => import("./pages/hub/RiconciliazioneHub.jsx"));
+const FattureHub = lazy(() => import("./pages/hub/FattureHub.jsx"));
+
+// === STANDALONE PAGES ===
+const InserimentoRapido = lazy(() => import("./pages/InserimentoRapido.jsx"));
+const Scadenze = lazy(() => import("./pages/Scadenze.jsx"));
+const DistintaBonifici = lazy(() => import("./pages/DistintaBonifici.jsx"));
+const GestioneRiservata = lazy(() => import("./pages/GestioneRiservata.jsx"));
+const DettaglioVerbale = lazy(() => import("./pages/DettaglioVerbale.jsx"));
+const ImpostazioniF24Email = lazy(() => import("./pages/ImpostazioniF24Email.jsx"));
+const ImpostazioniAI = lazy(() => import("./pages/ImpostazioniAI.jsx"));
+const MappaGestionale = lazy(() => import("./pages/MappaGestionale.jsx"));
+const AgentiPage = lazy(() => import("./pages/Agenti.jsx"));
+const LearningMachine = lazy(() => import("./pages/LearningMachine.jsx"));
+const PaginaNonTrovata = lazy(() => import("./pages/PaginaNonTrovata.jsx"));
+const GestioneIVA = lazy(() => import("./pages/GestioneIVA.jsx"));
+const FattureEstereVerifica = lazy(() => import("./pages/FattureEstereVerifica.jsx"));
+const SituazioneFiscale = lazy(() => import("./pages/SituazioneFiscale.jsx"));
+// Viste 1.6 (MINI-08): un indirizzo stabile per ogni F24, tributo, busta e protocollo.
+const F24Scheda = lazy(() => import("./pages/F24Scheda.jsx"));
+const TributoCodice = lazy(() => import("./pages/TributoCodice.jsx"));
+const CedolinoScheda = lazy(() => import("./pages/CedolinoScheda.jsx"));
+const ProtocolloScheda = lazy(() => import("./pages/ProtocolloScheda.jsx"));
+
+// HR (AppDipendenti), Menu e Lotti NON sono pagine di questa SPA: sono app
+// portate pari pari, servite dal backend a /hr/, /menu/ e /lotti/ (link a
+// pagina intera in navigation.config.js). Le vecchie pagine native
+// "Cedolini paga" (/salari) e "Tracciabilità" (/tracciabilita) sono state
+// rimosse il 03/09/2026: erano doppioni di /hr e /lotti.
+
+const LazyPage = ({ children }) => (
+  <Suspense fallback={<PageLoader />}>{children}</Suspense>
+);
+
+// L'anno operativo e' un dato autenticato: il provider non deve interrogare
+// endpoint protetti sulla pagina pubblica di login (prima produceva un 401 su
+// ogni apertura della SPA e rumore E2E/console).
+const AuthenticatedApp = () => (
+  <RequireAuth>
+    <AnnoProvider>
+      <GuscioProvider>
+        <App />
+      </GuscioProvider>
+    </AnnoProvider>
+  </RequireAuth>
+);
+
+const router = createBrowserRouter([
+  { path: "/login", element: <Login /> },
+  { path: "/gestione-riservata", element: <LazyPage><GestioneRiservata /></LazyPage> },
+  {
+    path: "/",
+    element: <AuthenticatedApp />,
+    children: [
+      // Route canoniche: ogni hub gestisce internamente le proprie sottosezioni.
+      { index: true, element: <LazyPage><DashboardHub /></LazyPage> },
+      { path: "dashboard/*", element: <LazyPage><DashboardHub /></LazyPage> },
+      { path: "rapido", element: <LazyPage><InserimentoRapido /></LazyPage> },
+      { path: "fatture/import", element: <Navigate to="/documenti/import" replace /> },
+      { path: "fatture/*", element: <LazyPage><FattureHub /></LazyPage> },
+      { path: "fornitori/*", element: <LazyPage><FornitoriHub /></LazyPage> },
+      { path: "prima-nota/*", element: <LazyPage><PrimaNotaHub /></LazyPage> },
+      { path: "noleggio/*", element: <LazyPage><VeicoliHub /></LazyPage> },
+      { path: "verbali-noleggio/:numeroVerbale", element: <LazyPage><DettaglioVerbale /></LazyPage> },
+      { path: "verbali-noleggio/:prefisso/:numero", element: <LazyPage><DettaglioVerbale /></LazyPage> },
+      { path: "contabilita/*", element: <LazyPage><ContabilitaHub /></LazyPage> },
+      { path: "learning-machine/*", element: <LazyPage><LearningMachine /></LazyPage> },
+      { path: "scadenze/*", element: <LazyPage><Scadenze /></LazyPage> },
+      { path: "distinta-bonifici", element: <LazyPage><DistintaBonifici /></LazyPage> },
+      { path: "riconciliazione/*", element: <LazyPage><RiconciliazioneHub /></LazyPage> },
+      { path: "documenti/*", element: <LazyPage><DocumentiHub /></LazyPage> },
+      { path: "strumenti/*", element: <LazyPage><StrumentiHub /></LazyPage> },
+      { path: "agenti", element: <RequireAdmin><LazyPage><AgentiPage /></LazyPage></RequireAdmin> },
+      { path: "impostazioni-f24-email", element: <RequireAdmin><LazyPage><ImpostazioniF24Email /></LazyPage></RequireAdmin> },
+      { path: "impostazioni-ai", element: <LazyPage><ImpostazioniAI /></LazyPage> },
+      { path: "integrazioni/*", element: <LazyPage><IntegrazioniHub /></LazyPage> },
+      { path: "admin/*", element: <RequireAdmin><LazyPage><AdminHub /></LazyPage></RequireAdmin> },
+      { path: "utenti", element: <RequireAdmin><LazyPage><Utenti /></LazyPage></RequireAdmin> },
+      { path: "mappa-gestionale", element: <LazyPage><MappaGestionale /></LazyPage> },
+      { path: "iva/*", element: <LazyPage><GestioneIVA /></LazyPage> },
+      { path: "situazione-fiscale/*", element: <RequireAdmin><LazyPage><SituazioneFiscale /></LazyPage></RequireAdmin> },
+      // Viste per id: indirizzi canonici e stabili, aprono anche da un link condiviso.
+      { path: "fiscale/f24/:id", element: <RequireAdmin><LazyPage><F24Scheda /></LazyPage></RequireAdmin> },
+      { path: "fiscale/tributi/:codice", element: <RequireAdmin><LazyPage><TributoCodice /></LazyPage></RequireAdmin> },
+      { path: "personale/cedolini/:id", element: <RequireAdmin><LazyPage><CedolinoScheda /></LazyPage></RequireAdmin> },
+      { path: "protocollo/:id", element: <RequireAdmin><LazyPage><ProtocolloScheda /></LazyPage></RequireAdmin> },
+      { path: "protocollo/:anno/:progressivo", element: <RequireAdmin><LazyPage><ProtocolloScheda /></LazyPage></RequireAdmin> },
+      { path: "fatture-estere-verifica", element: <LazyPage><FattureEstereVerifica /></LazyPage> },
+
+      { path: "*", element: <LazyPage><PaginaNonTrovata /></LazyPage> },
+    ]
+  }
+]);
+
+// React.StrictMode RIMOSSO: in dev mode causava mount→unmount→remount su ogni componente,
+// facendo eseguire tutti i useEffect DUE VOLTE (spinner → dati → spinner → dati).
+// L'utente vedeva un "reload" ad ogni navigazione. Non ha effetto sui build di produzione.
+avviaTabelleCard();
+
+ReactDOM.createRoot(document.getElementById("root")).render(
+  <ErrorBoundary>
+    <QueryClientProvider client={queryClient}>
+      <AuthProvider>
+        <ConfirmProvider>
+          <RouterProvider router={router} />
+          <Toaster richColors position="top-right" />
+        </ConfirmProvider>
+      </AuthProvider>
+    </QueryClientProvider>
+  </ErrorBoundary>
+);
+
+// Service Worker: registrazione minima solo per abilitare "Installa app"
+// (PWA) su Chrome/Android. Non fa cache di nulla (vedi service-worker.js),
+// quindi non può servire contenuti stale dopo un deploy. Il browser rifà
+// sempre il fetch dello script del SW bypassando l'eventuale SW attivo,
+// quindi questa registrazione sostituisce da sé il vecchio kill-switch
+// (o un SW ancora più vecchio con cache) su qualunque dispositivo.
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker
+      .register('/service-worker.js')
+      .catch(e => console.warn('Service worker non registrato (Installa app non disponibile):', e));
+  });
+}
+
+

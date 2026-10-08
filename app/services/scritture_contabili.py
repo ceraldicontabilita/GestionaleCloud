@@ -1,0 +1,2246 @@
+"""
+MOTORE UNICO DI SCRITTURA CONTABILE — Fase A (decisione utente 18/07/2026:
+"subito, per gradi").
+
+Ogni movimento di Prima Nota deve nascere da qui: un solo punto che valida
+e scrive, così le regole del modello non possono divergere tra i flussi.
+La migrazione è graduale: i writer storici vengono portati qui uno alla
+volta (primo: corrispettivi/POS) e un test-guardia vieta di aggiungerne
+di nuovi altrove.
+
+REGOLA CANONICA POS (utente, 18/07/2026 — confermata a voce e definitiva):
+- CASSA entrata  = totale corrispettivo del giorno (contanti + POS, da XML);
+- CASSA uscita "POS <CIRCUITO> Verso Banca" = il POS REALE del terminale,
+  UNA RIGA PER CIRCUITO (POS NUMIA inserito a mano, POS SUMUP scritto
+  dall'API). I circuiti non si fondono mai in un'unica riga.
+- NIENTE USCITA POS DALL'XML (decisione utente 07/08/2026, che SUPERA la
+  regola del 18/07/2026): l'XML non sa quanta parte sia passata da Numia e
+  quanta da SumUp, quindi non scrive mai un trasferimento per circuito e la
+  giornata resta "attende_chiusura_pos_reale".
+- CREDITO POS DA XML (decisione del titolare 02/10/2026): senza chiusura del
+  terminale l'XML apre comunque il credito verso il gestore per il suo
+  ``pagato_elettronico``, sul gruppo 15.07 (circuito non noto, mai
+  inventato), marcato ``senza_chiusura_terminale`` e ``fonte_credito="xml"``.
+  La chiusura del terminale lo SOSTITUISCE (non lo affianca) se i totali
+  coincidono al centesimo, altrimenti resta e porta la differenza;
+  l'accredito in banca al centesimo lo chiude. Reimport dell'XML = nessuna
+  seconda riga.
+- BANCA entrata  = la STESSA cifra del suo circuito, come CREDITO verso il
+  gestore (source "trasferimento_pos", conto 15.07.xx), non come denaro già
+  sul conto. MAI una seconda registrazione indipendente.
+- L'ACCREDITO dell'estratto conto NON crea mai un'entrata: RICONCILIA il
+  trasferimento del suo giorno di vendita (causale NUMIA "DEL gg/mm/aa").
+- L'elettronico XML resta il confronto FISCALE: la differenza col POS
+  reale è il "NON BATTUTO" (battuto in meno sul registratore), esposto
+  con saldo progressivo in Coerenza POS per recuperarlo nei giorni dopo.
+"""
+import logging
+import hashlib
+import re
+import uuid
+from contextlib import asynccontextmanager
+from datetime import datetime, timezone
+from decimal import ROUND_HALF_UP, Decimal
+from typing import Any, Dict, List, Optional
+
+
+@asynccontextmanager
+async def _transazione_registro(db):
+    """Serializza una scrittura composta nel registro Drive/Supabase."""
+    transaction = getattr(db, "transaction", None)
+    if not callable(transaction):
+        yield None
+        return
+    async with transaction():
+        yield None
+
+
+@asynccontextmanager
+async def _batch_scritture_registro(db):
+    """Accorpa un job massivo in un solo flush per foglio Drive/Supabase.
+
+    I doppi di test e gli adapter compatibili che non espongono
+    ``batch_writes`` continuano a funzionare senza un ramo speciale nei
+    chiamanti. Il runtime in memoria deduplica inoltre i batch annidati.
+    """
+    batch_writes = getattr(db, "batch_writes", None)
+    if not callable(batch_writes):
+        yield None
+        return
+    async with batch_writes():
+        yield None
+
+
+def _sessione(session) -> Dict[str, Any]:
+    return {"session": session} if session is not None else {}
+
+from app.services import conti_pos
+from app.services.expectation_policy import (
+    ExpectationStatus,
+    expectation_evidence_fields,
+    expectation_fields,
+)
+
+logger = logging.getLogger(__name__)
+
+REGISTRI = {"cassa": "prima_nota_cassa", "banca": "prima_nota_banca"}
+
+# Marca le righe che sono CREDITI verso un gestore di incassi e non denaro
+# gia' sul conto. Serve a tenerle fuori dai saldi bancari reali senza doverle
+# riconoscere dal codice di conto, che puo' cambiare.
+NATURA_CREDITO_POS = "credito_pos"
+
+# Chi ha aperto il credito POS: la chiusura del terminale (o l'API/export del
+# gestore) oppure il solo XML del registratore, quando il terminale non ha
+# ancora risposto. Le righe scritte prima del 02/10/2026 non hanno il campo:
+# sono tutte del terminale.
+FONTE_CREDITO_TERMINALE = "terminale"
+FONTE_CREDITO_XML = "xml"
+# Stato del credito da XML rispetto alla chiusura del terminale.
+CREDITO_XML_SENZA_TERMINALE = "senza_chiusura_terminale"
+CREDITO_XML_SOSTITUITO = "sostituito_da_chiusura_terminale"
+CREDITO_XML_DIFFERENZA = "differenza_con_chiusura_terminale"
+# Quota POS letta dall'XML: NON e' il ``quota_pos_fonte="xml"`` delle righe
+# del vecchio ripiego (che ``bonifica_pos_xml`` archivia).
+QUOTA_POS_FONTE_XML = "elettronico_xml"
+
+_SOURCE_CHIUSURA_XML = frozenset({
+    "xml", "xml_import", "corrispettivo_import", "corrispettivo_xml",
+    "sincronizzazione", "corrispettivi_sync", "zip_upload",
+})
+
+_OPERATION_ID_FIELDS = (
+    "operation_id", "idempotency_key", "estratto_conto_id",
+    "movimento_bancario_id", "assegno_id", "transazione_paypal_id",
+    "paypal_transaction_id", "sumup_transaction_id", "corrispettivo_id",
+    "bonifico_id", "f24_id", "quietanza_id", "documento_id",
+)
+
+
+def calcola_operation_hash(registro: str, mov: Dict[str, Any]) -> Optional[str]:
+    """Identita stabile della singola operazione, non del documento collegato.
+
+    ``fattura_id`` e' intenzionalmente escluso: una fattura puo' essere
+    saldata da piu' assegni, bonifici o rate. Senza una prova originaria
+    immutabile non inventiamo un hash e non deduplichiamo automaticamente.
+    """
+    source = str(mov.get("source") or mov.get("fonte") or "").strip().lower()
+    external = None
+    external_field = None
+    for field in _OPERATION_ID_FIELDS:
+        value = mov.get(field)
+        if value not in (None, ""):
+            external_field, external = field, str(value).strip()
+            break
+
+    # Gli archivi assegni storici spesso espongono il numero solo nella
+    # descrizione. Il numero assegno e' identita dell'operazione; data/importo
+    # e fattura non lo sono.
+    if external is None and "assegn" in source:
+        text = str(mov.get("descrizione") or mov.get("description") or "")
+        match = re.search(r"(?:ASSEGNO\s*(?:N\.?|NUM(?:ERO)?[:.]?)?\s*)(\d{6,})", text, re.I)
+        if match:
+            external_field, external = "numero_assegno", match.group(1)
+
+    if external is None:
+        return None
+    # Una prova bancaria puo' essere ripartita su piu' fatture: le righe di
+    # allocazione condividono l'operation ID, ma hanno target contabili
+    # diversi e non devono collassare tra loro.
+    allocation_target = str(
+        mov.get("invoice_id") or mov.get("fattura_id")
+        or mov.get("allocation_id") or mov.get("quota_id") or ""
+    ).strip()
+    raw = f"v1|{registro}|{source}|{external_field}|{external}|target:{allocation_target}"
+    return "OP-" + hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
+class ScritturaNonValida(ValueError):
+    pass
+
+
+# ---------------------------------------------------------------------------
+# Denaro: SOLO Decimal (CLAUDE.md §12). I tre helper qui sotto sono l'unico
+# punto di contatto fra i documenti (JSON/PostgREST, che portano numeri) e
+# l'aritmetica del motore. Ogni somma, differenza, confronto o arrotondamento
+# intermedio passa da ``_decimale``/``_cents``; ``_euro`` e' l'UNICA conversione
+# Decimal -> float, da usare soltanto al momento di serializzare un campo.
+# ---------------------------------------------------------------------------
+_CENTESIMO = Decimal("0.01")
+_ZERO = Decimal("0.00")
+
+
+def _decimale(valore: Any) -> Optional[Decimal]:
+    """Importo al centesimo (ROUND_HALF_UP) come Decimal.
+
+    ``None`` e stringa vuota sono DATO MANCANTE e tornano ``None``: non
+    diventano mai uno zero. Un valore non numerico e' un errore di dato e
+    solleva ``ScritturaNonValida`` (un ``ValueError``, come il vecchio
+    ``float(...)``). Il passaggio da ``str`` evita di ereditare il rumore
+    binario di un float gia' in memoria (0.1 + 0.2 -> 0.30, non 0.30000000004).
+    """
+    if valore is None or (isinstance(valore, str) and not valore.strip()):
+        return None
+    if isinstance(valore, bool):
+        raise ScritturaNonValida(f"importo non numerico: {valore!r}")
+    try:
+        return Decimal(str(valore).strip()).quantize(_CENTESIMO, rounding=ROUND_HALF_UP)
+    except (ArithmeticError, ValueError) as exc:
+        raise ScritturaNonValida(f"importo non numerico: {valore!r}") from exc
+
+
+def _decimale_o_zero(valore: Any) -> Decimal:
+    """Come ``_decimale`` ma per gli ACCUMULI (somme di componenti), dove un
+    componente assente contribuisce esplicitamente zero. Non usarlo per un
+    importo che rappresenta un fatto sconosciuto."""
+    dec = _decimale(valore)
+    return _ZERO if dec is None else dec
+
+
+def _cents(valore: Any) -> int:
+    """Importo in centesimi interi, via Decimal: mai un confronto fra float.
+
+    Mantiene il contratto storico: dato mancante o non numerico -> 0
+    centesimi (i chiamanti confrontano gruppi letti dal database e un
+    rifiuto qui farebbe saltare l'intero riesame)."""
+    try:
+        dec = _decimale(valore)
+    except ScritturaNonValida:
+        return 0
+    return 0 if dec is None else int(dec.scaleb(2))
+
+
+def _euro(valore: Optional[Decimal]) -> Optional[float]:
+    """UNICA conversione Decimal -> float, SOLO per serializzare un campo
+    persistito o restituito via JSON (``importo`` resta un numero a 2
+    decimali per PostgREST e per il resto del sistema). Mai usarla per
+    calcolare: il risultato non si somma, non si confronta, non si arrotonda.
+    ``None`` resta ``None``: un dato mancante non si serializza come zero."""
+    if valore is None:
+        return None
+    return float(valore.quantize(_CENTESIMO, rounding=ROUND_HALF_UP))
+
+
+def _euro_da_cents(cents: int) -> float:
+    """Serializza centesimi interi come numero a 2 decimali (via ``_euro``)."""
+    return _euro(Decimal(int(cents)).scaleb(-2))
+
+
+def _valida(mov: Dict[str, Any], richiedi_categoria: bool = True) -> None:
+    data = str(mov.get("data") or "")
+    if len(data) < 10 or data[4] != "-":
+        raise ScritturaNonValida(f"data non valida: {data!r}")
+    importo = _decimale(mov.get("importo"))
+    if importo is None or importo <= _ZERO:
+        raise ScritturaNonValida(f"importo non positivo: {mov.get('importo')!r}")
+    if mov.get("tipo") not in ("entrata", "uscita"):
+        raise ScritturaNonValida(f"tipo non valido: {mov.get('tipo')!r}")
+    if richiedi_categoria and not mov.get("categoria"):
+        raise ScritturaNonValida("categoria mancante")
+    if not mov.get("source"):
+        raise ScritturaNonValida("source mancante (tracciabilità obbligatoria)")
+
+
+def _prepara_documento(
+    mov: Dict[str, Any], registro: Optional[str] = None,
+    richiedi_categoria: bool = True,
+) -> Dict[str, Any]:
+    """Valida un movimento e riempie i campi con default stabili (id,
+    alias amount/date/type/category/description, created_at). Estratta da
+    scrivi_movimento per essere riusabile anche da chi deve scrivere con
+    un upsert atomico invece di un insert diretto (vedi registra_corrispettivo).
+
+    Audit del commercialista 03/09/2026 (PR 7): ogni riga porta i conti del
+    piano CEE ufficiale — `conto_contabile` (tesoreria: 19.01.01 Banca c/c,
+    19.03.03 Cassa, oppure il conto esplicito 19.01.05 / 15.07.xx / 75.01.07.xx
+    dei circuiti POS) e `conto_contropartita` dedotto dalla categoria
+    (Fatture/Assegni/PayPal → 33.03.01, Stipendi → 39.07.01, Commissioni →
+    75.01.07.xx, ...). Un conto fuori dal piano ufficiale viene rifiutato.
+    """
+    _valida(mov, richiedi_categoria)
+    doc = dict(mov)
+    doc.setdefault("id", str(uuid.uuid4()))
+    # Gia' validato > 0 da ``_valida``: qui si normalizza al centesimo e si
+    # serializza (unico punto Decimal -> float del documento).
+    doc["importo"] = _euro(_decimale(doc["importo"]))
+    doc.setdefault("amount", doc["importo"])
+    doc.setdefault("date", doc["data"])
+    doc.setdefault("type", doc["tipo"])
+    doc.setdefault("category", doc.get("categoria"))
+    doc.setdefault("description", doc.get("descrizione", ""))
+    doc.setdefault("created_at", datetime.now(timezone.utc).isoformat())
+    if registro:
+        from app.services.mapping_piano_conti import completa_conti_prima_nota
+        try:
+            doc.update(completa_conti_prima_nota(registro, doc))
+        except ValueError as exc:
+            raise ScritturaNonValida(str(exc)) from exc
+    return doc
+
+
+async def scrivi_movimento(
+    db, registro: str, mov: Dict[str, Any], session=None,
+    ricollocazione: bool = False,
+) -> str:
+    """Unico punto di INSERT nei registri di Prima Nota: valida e scrive.
+    Ritorna l'id del movimento creato. ``session`` serve a chi scrive dentro
+    una transazione gia' aperta. ``ricollocazione=True`` e' per la STESSA riga
+    spostata da un registro all'altro: una riga senza categoria resta nella
+    coda da classificare, non viene rifiutata ne' le si inventa una categoria."""
+    if registro not in REGISTRI:
+        raise ScritturaNonValida(f"registro sconosciuto: {registro}")
+    doc = _prepara_documento(mov, registro, richiedi_categoria=not ricollocazione)
+    operation_hash = doc.get("operation_hash") or calcola_operation_hash(registro, doc)
+    try:
+        if operation_hash:
+            doc["operation_hash"] = operation_hash
+            collection = db[REGISTRI[registro]]
+            query = {"operation_hash": operation_hash, "status": {"$nin": ["deleted", "archived"]}}
+            if hasattr(collection, "find_one_and_update"):
+                precedente = await collection.find_one_and_update(
+                    query, {"$setOnInsert": doc}, upsert=True, **_sessione(session),
+                )
+            else:  # fake minimali dei test storici
+                precedente = await collection.find_one(query)
+                if precedente is None:
+                    await collection.insert_one(dict(doc), **_sessione(session))
+            return (precedente or doc).get("id")
+        await db[REGISTRI[registro]].insert_one(dict(doc), **_sessione(session))
+        return doc["id"]
+    except Exception as exc:  # noqa: BLE001 - solo il rifiuto per chiave
+        chiave = doc.get("idempotency_key")
+        if not (chiave and _e_rifiuto_remoto_per_chiave(exc)):
+            raise
+        # Un altro processo ha gia' scritto questa identita': Postgres ha
+        # rifiutato la riga e il runtime ha riallineato la cache. Si torna
+        # l'id della riga esistente, come per un duplicato in-process.
+        esistente = getattr(exc, "id_esistente_per_chiave", {}).get(chiave)
+        documento = getattr(exc, "documento_esistente_per_chiave", {}).get(chiave) or {}
+        logger.error(
+            "Scrittura %s rifiutata da Postgres: chiave %s gia' usata dalla riga %s",
+            registro, chiave, esistente,
+        )
+        return documento.get("id") or esistente
+
+
+async def scrivi_movimenti_batch(
+    db, registro: str, movimenti: List[Dict[str, Any]],
+) -> Dict[str, Any]:
+    """Scrive un lotto con una sola ``insert_many`` (import massivi da estratto
+    conto). Ogni riga e' validata e completata come in ``scrivi_movimento``;
+    le non valide non si scrivono e tornano con il motivo.
+    ``{"scritte": n, "rifiutate": [{"id", "motivo"}]}``.
+    """
+    if registro not in REGISTRI:
+        raise ScritturaNonValida(f"registro sconosciuto: {registro}")
+    valide: List[Dict[str, Any]] = []
+    rifiutate: List[Dict[str, Any]] = []
+    for mov in movimenti:
+        try:
+            valide.append(_prepara_documento(mov, registro))
+        except ScritturaNonValida as exc:
+            rifiutate.append({"id": mov.get("id"), "motivo": str(exc)})
+    if valide:
+        await db[REGISTRI[registro]].insert_many(valide)
+    return {"scritte": len(valide), "rifiutate": rifiutate}
+
+
+#: Registro stipendi: righe di competenza/dovuto per dipendente e periodo, non
+#: movimenti di tesoreria. Per questo non passa da ``scrivi_movimento`` (che
+#: pretende entrata/uscita e il conto di cassa o banca) ma ha lo stesso unico
+#: punto di INSERT.
+COLLEZIONE_SALARI = "prima_nota_salari"
+
+_CAMPI_IDENTITA_SALARI = (
+    "dipendente_id", "employee_id", "codice_fiscale", "dipendente_nome",
+    "nome_dipendente", "dipendente",
+)
+
+
+def _valida_riga_salari(riga: Dict[str, Any]) -> None:
+    if not riga.get("source"):
+        raise ScritturaNonValida("source mancante (tracciabilità obbligatoria)")
+    if not any(riga.get(c) for c in _CAMPI_IDENTITA_SALARI):
+        raise ScritturaNonValida("dipendente non identificato (id, codice fiscale o nome)")
+    anno, mese = riga.get("anno"), riga.get("mese")
+    data = str(riga.get("data") or "")
+    periodo_ok = bool(anno) and mese is not None
+    data_ok = len(data) >= 10 and data[4] == "-"
+    if not (periodo_ok or data_ok):
+        raise ScritturaNonValida("periodo mancante (anno/mese o data ISO)")
+
+
+async def scrivi_riga_salari(
+    db, riga: Dict[str, Any], anti_duplicato: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """Unico punto di INSERT in ``prima_nota_salari``.
+
+    Valida (fonte, dipendente, periodo) e scrive. Se ``anti_duplicato`` e'
+    dato e una riga attiva lo soddisfa, non scrive: restituisce quella.
+    Gli importi non vengono toccati: un valore assente resta assente, mai
+    trasformato in zero. Ritorna ``{"id", "creata", "esistente"}``.
+    """
+    _valida_riga_salari(riga)
+    collezione = db[COLLEZIONE_SALARI]
+    if anti_duplicato:
+        esistente = await collezione.find_one(anti_duplicato)
+        if esistente:
+            return {"id": esistente.get("id"), "creata": False, "esistente": esistente}
+    doc = dict(riga)
+    doc.setdefault("id", str(uuid.uuid4()))
+    doc.setdefault("created_at", datetime.now(timezone.utc).isoformat())
+    await collezione.insert_one(dict(doc))
+    return {"id": doc["id"], "creata": True, "esistente": None}
+
+
+async def scrivi_righe_salari(db, righe: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """Come ``scrivi_riga_salari`` per un lotto: una sola ``insert_many`` sulle
+    righe valide; le non valide non si scrivono e tornano con il motivo
+    (nessuna scrittura parziale nascosta). ``{"scritte": n, "rifiutate": [...]}``.
+    """
+    valide: List[Dict[str, Any]] = []
+    rifiutate: List[Dict[str, Any]] = []
+    for riga in righe:
+        try:
+            _valida_riga_salari(riga)
+        except ScritturaNonValida as exc:
+            rifiutate.append({"id": riga.get("id"), "motivo": str(exc)})
+            continue
+        doc = dict(riga)
+        doc.setdefault("id", str(uuid.uuid4()))
+        doc.setdefault("created_at", datetime.now(timezone.utc).isoformat())
+        valide.append(doc)
+    if valide:
+        await db[COLLEZIONE_SALARI].insert_many(valide)
+    return {"scritte": len(valide), "rifiutate": rifiutate}
+
+
+FILTRO_MOVIMENTO_ATTIVO: Dict[str, Any] = {
+    "status": {"$nin": ["deleted", "archived"]},
+    "entity_status": {"$ne": "deleted"},
+}
+
+#: Chiusura RT viva: fuori le giornate ritirate/archiviate (stesso criterio di
+#: ``conto_economico_gestionale.FILTRO_CORRISPETTIVI_VALIDI``).
+FILTRO_CORRISPETTIVO_ATTIVO: Dict[str, Any] = {
+    "status": {"$nin": ["deleted", "archived", "archiviata"]},
+    "entity_status": {"$ne": "deleted"},
+}
+
+
+def chiave_idempotenza_corrispettivo(
+    corrispettivo_id: Any, tipo: str, gestore: Any = None,
+) -> Optional[str]:
+    """Chiave deterministica di ogni scrittura derivata da un corrispettivo.
+
+    E' la stessa chiave che Postgres rende UNICA per collezione (indice
+    parziale su ``(collection, idempotency_key)`` tra le righe attive, vedi
+    ``supabase/migrations/20260903_idempotency_key.sql``): due processi con
+    cache diverse non possono piu' scrivere entrambi la stessa giornata.
+
+    - ``cassa_entrata``  -> ``corr:<id>:cassa_entrata`` (una per corrispettivo);
+    - ``cassa_uscita``   -> ``corr:<id>:cassa_uscita:<gestore>`` (una per circuito);
+    - ``banca_credito``  -> ``corr:<id>:banca_credito:<gestore>`` (una per circuito).
+
+    Senza ``corrispettivo_id`` non esiste una chiave: si torna alla sola
+    guardia storica per data/matricola, non si inventa un'identita'.
+    """
+    corr_id = str(corrispettivo_id or "").strip()
+    if not corr_id:
+        return None
+    if tipo == "cassa_entrata":
+        return f"corr:{corr_id}:cassa_entrata"
+    if tipo in ("cassa_uscita", "banca_credito"):
+        return f"corr:{corr_id}:{tipo}:{normalizza_gestore_pos(gestore)}"
+    raise ValueError(f"tipo di scrittura sconosciuto: {tipo!r}")
+
+
+def _e_rifiuto_remoto_per_chiave(exc: BaseException) -> bool:
+    """True se il runtime Supabase ha rifiutato la riga per chiave gia' usata."""
+    return type(exc).__name__ == "DocumentoDuplicatoRemoto"
+
+
+async def _scrivi_se_assente(db, registro: str, query_esistente: Dict[str, Any],
+                              mov: Dict[str, Any]) -> tuple:
+    """Come scrivi_movimento, ma con la guardia di idempotenza (query_esistente)
+    applicata in UNA SOLA operazione atomica verso Drive/Supabase (find_one_and_update
+    con upsert=True), non in due chiamate separate (find_one poi insert_one).
+
+    Prima di questa funzione, registra_corrispettivo faceva le due chiamate
+    separatamente: due richieste concorrenti per lo stesso corrispettivo
+    potevano superare entrambe il controllo "esiste già?" prima che una delle
+    due avesse scritto, creando un movimento duplicato in Prima Nota Cassa
+    (vietato dalla regola canonica POS). L'upsert atomico chiede al database
+    stesso di fare "controlla e scrivi" come un'unica azione indivisibile.
+
+    Tre livelli di guardia, dal piu' vicino al piu' lontano:
+
+    1. ``idempotency_key`` (se il movimento ne ha una): una riga attiva con la
+       stessa chiave nella cache vince sempre, anche se la guardia storica
+       per data/matricola non la riconoscerebbe;
+    2. la guardia storica ``query_esistente`` in upsert atomico (processo);
+    3. il rifiuto di Postgres: se un ALTRO processo ha gia' scritto la chiave
+       (cache diversa, deploy sovrapposto, scheduler + web), il runtime
+       Supabase segnala il rifiuto, ripristina la cache e qui si restituisce
+       l'id della riga esistente invece di quella mai scritta.
+
+    Ritorna (id_movimento, era_gia_esistente).
+    """
+    if registro not in REGISTRI:
+        raise ScritturaNonValida(f"registro sconosciuto: {registro}")
+    doc = _prepara_documento(mov, registro)
+    collection = db[REGISTRI[registro]]
+    chiave = doc.get("idempotency_key")
+    if chiave:
+        per_chiave = await collection.find_one(
+            {"idempotency_key": chiave, **FILTRO_MOVIMENTO_ATTIVO},
+        )
+        if per_chiave:
+            return per_chiave.get("id"), True
+    try:
+        precedente = await collection.find_one_and_update(
+            query_esistente,
+            {"$setOnInsert": doc},
+            upsert=True,
+        )
+    except Exception as exc:  # noqa: BLE001 - solo il rifiuto per chiave
+        if not (chiave and _e_rifiuto_remoto_per_chiave(exc)):
+            raise
+        esistente = getattr(exc, "id_esistente_per_chiave", {}).get(chiave)
+        documento = getattr(exc, "documento_esistente_per_chiave", {}).get(chiave) or {}
+        logger.error(
+            "Scrittura %s rifiutata da Postgres: chiave %s gia' usata dalla riga %s "
+            "(scritta da un altro processo); restituita la riga esistente",
+            registro, chiave, esistente,
+        )
+        return documento.get("id") or esistente, True
+    if precedente:
+        return precedente.get("id"), True
+    return doc["id"], False
+
+
+def _campo_chiave(chiave: Optional[str]) -> Dict[str, str]:
+    """``{"idempotency_key": chiave}`` oppure niente, mai una chiave vuota."""
+    return {"idempotency_key": chiave} if chiave else {}
+
+
+async def scrivi_movimento_se_assente(
+    db,
+    registro: str,
+    query_esistente: Dict[str, Any],
+    mov: Dict[str, Any],
+) -> tuple:
+    """Writer pubblico e idempotente per i motori di riconciliazione.
+
+    Mantiene un solo punto di scrittura in Prima Nota e impedisce che due
+    riprocessamenti concorrenti della stessa prova bancaria producano righe
+    duplicate. Ritorna ``(id_movimento, era_gia_esistente)``.
+    """
+    return await _scrivi_se_assente(db, registro, query_esistente, mov)
+
+
+async def _leggi_tutti(cursor, n: int = 100):
+    """Compat: cursori repository asincroni e doppi dei test (to_list)."""
+    if hasattr(cursor, "to_list"):
+        return await cursor.to_list(n)
+    return [c async for c in cursor]
+
+
+GESTORE_POS_DEFAULT = conti_pos.NUMIA
+
+
+def normalizza_gestore_pos(valore: Any) -> str:
+    """Nome canonico del circuito POS.
+
+    Le righe storiche senza campo, o con il vecchio nome "nexi", appartengono
+    tutte a NUMIA: e' l'unico provider POS esistito finora. L'alias evita di
+    dover riscrivere la contabilita' gia' registrata.
+    """
+    return conti_pos.normalizza(valore)
+
+
+def filtro_gestore_pos(gestore: str) -> Dict[str, Any]:
+    """Filtro repository per gestore.
+
+    Le chiusure gia' registrate non hanno il campo ``gestore``: appartengono
+    tutte a Nexi, unico terminale fino ad ora. Vanno quindi intercettate dal
+    filtro del gestore predefinito, altrimenti un secondo inserimento
+    creerebbe una riga parallela e raddoppierebbe il POS del giorno.
+    """
+    gestore = normalizza_gestore_pos(gestore)
+    if gestore == GESTORE_POS_DEFAULT:
+        # Comprende il nome storico "nexi" e le righe senza campo: sono tutte
+        # dello stesso terminale. Ometterle creerebbe una riga parallela e
+        # raddoppierebbe il POS del giorno.
+        return {"$or": [
+            {"gestore": {"$in": [gestore, "nexi", None, ""]}},
+            {"gestore": {"$exists": False}},
+        ]}
+    return {"gestore": gestore}
+
+
+# Fonti del dato POS, in ordine di attendibilita' crescente (decisione utente
+# 07/08/2026). Il manuale alimenta subito la Prima Nota ma resta provvisorio:
+# quando arriva l'Excel ufficiale o il terminale, la nuova evidenza CONFERMA
+# se coincide e SEGNALA se no. Mai una sovrascrittura silenziosa, mai un
+# secondo movimento: sono evidenze successive dello stesso ciclo.
+FONTE_MANUALE = "manuale"
+FONTE_EXCEL = "excel"
+#: Ricostruzione dagli accrediti dell'estratto conto, per il circuito che non
+#: ha ne' API ne' chiusura digitata (NUMIA). E' il denaro davvero arrivato,
+#: sommato per giorno operativo (`DEL gg/mm/aa`): piu' solido di un numero
+#: digitato a fine serata, meno del totale letto sul terminale, che vede
+#: anche resi e storni prima che la banca li compensi.
+FONTE_ESTRATTO_CONTO = "estratto_conto"
+FONTE_TERMINALE = "terminale"
+FONTE_API = "api"
+PRIORITA_FONTE = {
+    FONTE_MANUALE: 1, FONTE_EXCEL: 2, FONTE_ESTRATTO_CONTO: 2,
+    FONTE_TERMINALE: 3, FONTE_API: 3,
+}
+
+
+def metadati_fonte_pos(fonte: str, gestore: str) -> Dict[str, str]:
+    """Descrive senza ambiguita' chi ha prodotto il fatto POS.
+
+    ``excel`` indica esclusivamente l'export storico del gestore Numia: non e'
+    un estratto conto bancario e non e' un inserimento manuale. SumUp usa
+    invece l'API ufficiale; la chiusura Numia corrente resta manuale e viene
+    digitata dall'operatore a fine serata.
+    """
+    fonte = str(fonte or FONTE_MANUALE).strip().lower()
+    gestore = normalizza_gestore_pos(gestore)
+    if fonte == FONTE_API:
+        return {
+            "source": "api_gestore_pos",
+            "quota_pos_fonte": (
+                "api_sumup" if gestore == conti_pos.SUMUP
+                else "api_gestore_pos"
+            ),
+            "expectation_owner": (
+                "sumup_api" if gestore == conti_pos.SUMUP
+                else f"{gestore}_api"
+            ),
+        }
+    if fonte == FONTE_EXCEL:
+        return {
+            "source": "import_storico_numia",
+            "quota_pos_fonte": "export_numia_storico",
+            "expectation_owner": "numia_provider_export",
+        }
+    if fonte == FONTE_ESTRATTO_CONTO:
+        return {
+            "source": "ricostruzione_estratto_conto",
+            "quota_pos_fonte": "accrediti_estratto_conto",
+            "expectation_owner": f"{gestore}_bank_statement",
+        }
+    if fonte == FONTE_TERMINALE:
+        return {
+            "source": "terminale_gestore_pos",
+            "quota_pos_fonte": "terminale_reale",
+            "expectation_owner": f"{gestore}_terminal",
+        }
+    return {
+        "source": "inserimento_manuale_terminale",
+        "quota_pos_fonte": "chiusura_manuale",
+        "expectation_owner": (
+            "numia_terminal_closure"
+            if gestore == conti_pos.NUMIA
+            else f"{gestore}_manual"
+        ),
+    }
+
+
+def descrizione_trasferimento_pos(data: str, gestore: str, quota_pos_fonte: str) -> str:
+    """Dicitura operativa coerente con la fonte reale del POS.
+
+    La chiusura corrente Numia e' manuale; il pregresso arriva dagli export
+    Numia su Drive; SumUp arriva dall'API. Sono fatti diversi e la descrizione
+    deve renderli distinguibili senza reintrodurre il nome Nexi.
+    """
+    origine = {
+        "export_numia_storico": "export storico Numia Drive",
+        "api_sumup": "dato API SumUp",
+        "terminale_reale": "chiusura terminale",
+        "chiusura_manuale": "chiusura terminale",
+    }.get(str(quota_pos_fonte or "").strip(), "dato POS")
+    return (
+        f"POS {conti_pos.sigla(gestore)} {conti_pos.data_italiana(data)} "
+        f"→ Banca ({origine})"
+    )
+
+
+STATO_PROVVISORIO = "provvisorio_operativo"
+STATO_CONFERMATO = "confermato"
+STATO_DIFFERENZA = "differenza_da_verificare"
+
+
+def valuta_evidenza(precedente: Optional[Dict[str, Any]], importo: Any,
+                    fonte: str) -> Dict[str, Any]:
+    """Confronta la nuova evidenza con quella gia' registrata.
+
+    Ritorna l'importo che deve finire in Prima Nota, lo stato del dato e tutti
+    i valori visti per fonte. Il valore precedente non viene mai perso: se le
+    due evidenze divergono resta consultabile accanto alla nuova, e la
+    giornata si dichiara da verificare invece di far sparire il disaccordo.
+
+    ``importo`` puo' arrivare come float, str o Decimal: i confronti e la
+    differenza sono calcolati in Decimal; i valori restituiti sono numeri a
+    2 decimali pronti per il documento (``_euro``).
+    """
+    fonte = str(fonte or FONTE_MANUALE).strip().lower()
+    importo_dec = _decimale(importo)
+    if importo_dec is None:
+        raise ScritturaNonValida("importo dell'evidenza POS mancante")
+    valori = dict((precedente or {}).get("valori_per_fonte") or {})
+    # Il documento precedente puo' essere anteriore a questa tracciatura:
+    # senza questo innesto il valore gia' registrato andrebbe perso proprio
+    # nel caso che conta, cioe' quando le due evidenze non coincidono.
+    fonte_gia_nota = str((precedente or {}).get("fonte_dato") or "").strip().lower()
+    if fonte_gia_nota and fonte_gia_nota not in valori:
+        precedente_importo = _decimale((precedente or {}).get("importo"))
+        if precedente_importo is not None:
+            valori[fonte_gia_nota] = _euro(precedente_importo)
+    valori[fonte] = _euro(importo_dec)
+
+    fonte_prec = str((precedente or {}).get("fonte_dato") or "").strip().lower()
+    importo_prec = _decimale((precedente or {}).get("importo"))
+    if precedente is None or importo_prec is None or not fonte_prec:
+        stato = (STATO_PROVVISORIO if fonte == FONTE_MANUALE
+                 else STATO_CONFERMATO)
+        return {"importo": _euro(importo_dec), "fonte_dato": fonte,
+                "stato_dato": stato, "valori_per_fonte": valori,
+                "differenza": None}
+
+    differenza = importo_dec - importo_prec
+    if fonte == fonte_prec or abs(differenza) <= _CENTESIMO:
+        # Stessa fonte che si corregge, oppure evidenza che conferma.
+        stato = (STATO_PROVVISORIO if fonte == FONTE_MANUALE == fonte_prec
+                 else STATO_CONFERMATO)
+        vincente = importo_dec if fonte == fonte_prec else max(
+            (importo_dec, fonte), (importo_prec, fonte_prec),
+            key=lambda v: PRIORITA_FONTE.get(v[1], 0))[0]
+        return {"importo": _euro(vincente), "fonte_dato": fonte,
+                "stato_dato": stato, "valori_per_fonte": valori,
+                "differenza": _euro(_ZERO) if fonte != fonte_prec else None}
+
+    # Fonti diverse con importi diversi: vince la piu' attendibile, ma il
+    # disaccordo resta scritto e la giornata va verificata a mano.
+    piu_attendibile = max(
+        (importo_dec, fonte), (importo_prec, fonte_prec),
+        key=lambda v: PRIORITA_FONTE.get(v[1], 0))
+    return {
+        "importo": _euro(piu_attendibile[0]),
+        "fonte_dato": piu_attendibile[1],
+        "stato_dato": STATO_DIFFERENZA,
+        "valori_per_fonte": valori,
+        "differenza": _euro(differenza),
+    }
+
+
+async def pos_reale_del_giorno(db, data: str) -> Dict[str, Any]:
+    """POS reale del giorno, scomposto per circuito.
+
+    Si costruisce ESCLUSIVAMENTE da fonti reali — chiusure dei terminali,
+    API ufficiali, statement dei provider. Mai dall'elettronico XML: l'XML e'
+    la fonte fiscale dei corrispettivi e non sa dire quanto sia passato da
+    Nexi e quanto da SumUp (decisione utente 07/08/2026).
+
+    Ritorna sempre la scomposizione, cosi' chi la usa non puo' confondere
+    "600 in tutto" con "500 Nexi + 100 SumUp"::
+
+        {"per_circuito": {"nexi": 500.0, "sumup": 100.0},
+         "nexi": 500.0, "sumup": 100.0, "altri": 0.0,
+         "totale_pos_reale": 600.0, "disponibile": True}
+
+    ``disponibile`` e' False quando nessun terminale ha ancora risposto: in
+    quel caso ``totale_pos_reale`` e' None e la giornata resta in attesa,
+    perche' un dato mancante non e' uno zero.
+    """
+    # Accumuli in Decimal: una chiusura registrata senza importo contribuisce
+    # zero alla SOMMA del circuito (e' un componente, non un fatto ignoto).
+    per_circuito: Dict[str, Decimal] = {}
+    trovata = False
+    try:
+        righe = await _leggi_tutti(db["chiusure_pos_manuali"].find(
+            {"data": data},
+            {"_id": 0, "importo": 1, "totale": 1, "source": 1, "gestore": 1},
+        ))
+        per_gestore: Dict[str, List[Dict[str, Any]]] = {}
+        for riga in righe:
+            per_gestore.setdefault(
+                normalizza_gestore_pos(riga.get("gestore")), []
+            ).append(riga)
+        for circuito, componenti in per_gestore.items():
+            trovata = True
+            # Un inserimento/correzione dalla UI e' un totale giornaliero e
+            # prevale sugli eventuali componenti storici importati da CSV.
+            override = next((c for c in reversed(componenti)
+                             if c.get("source") == "inserimento_manuale_terminale"), None)
+            if override is not None:
+                valore = _decimale(override.get("importo"))
+                parziale = (valore if valore is not None
+                            else _decimale_o_zero(override.get("totale")))
+            else:
+                parziale = sum(
+                    (_decimale(c.get("importo")) or _decimale_o_zero(c.get("totale"))
+                     for c in componenti),
+                    _ZERO,
+                )
+            per_circuito[circuito] = per_circuito.get(circuito, _ZERO) + parziale
+        if not trovata:
+            # Chiusure importate in prima_nota_banca con source
+            # import_manuale_pos (vecchio flusso pos.xlsx). E' comunque una
+            # fonte REALE — l'export del terminale — non l'XML.
+            for c in await _leggi_tutti(db["prima_nota_banca"].find(
+                    {"data": data, "source": "import_manuale_pos"},
+                    {"_id": 0, "importo": 1})):
+                trovata = True
+                per_circuito[GESTORE_POS_DEFAULT] = (
+                    per_circuito.get(GESTORE_POS_DEFAULT, _ZERO)
+                    + _decimale_o_zero(c.get("importo")))
+    except AttributeError:
+        # backend/fake senza le collezioni delle chiusure
+        return {"per_circuito": {}, "totale_pos_reale": None,
+                "disponibile": False, "nexi": None, "sumup": None,
+                "altri": _euro(_ZERO)}
+
+    noti = set(conti_pos.circuiti_attivi())
+    # Serializzazione (numeri a 2 decimali): da qui in giu' niente aritmetica.
+    esito: Dict[str, Any] = {
+        "per_circuito": {c: _euro(v) for c, v in per_circuito.items()},
+        # Zero e' un valore valido: significa che quel terminale non ha
+        # incassato. Solo l'assenza totale di fonti lascia il dato indefinito.
+        "totale_pos_reale": _euro(sum(per_circuito.values(), _ZERO)) if trovata else None,
+        "disponibile": trovata,
+        "altri": _euro(sum((v for c, v in per_circuito.items() if c not in noti), _ZERO)),
+    }
+    for circuito in noti:
+        esito[circuito] = _euro(per_circuito.get(circuito))
+    return esito
+
+
+def e_chiusura_xml(corr_doc: Dict[str, Any]) -> bool:
+    """La giornata e' una chiusura del registratore (XML), non una riga
+    manuale o storica senza documento. Stesso criterio di
+    ``pos_corrispettivi_check._e_corrispettivo_xml``."""
+    if corr_doc.get("stato") == "definitivo_xml":
+        return True
+    if corr_doc.get("data_import_xml") or corr_doc.get("totale_xml") is not None:
+        return True
+    if str(corr_doc.get("source") or "").strip().lower() in _SOURCE_CHIUSURA_XML:
+        return True
+    nome_file = str(corr_doc.get("filename") or "").strip().lower()
+    return bool(corr_doc.get("content_hash") and nome_file.endswith(".xml"))
+
+
+async def crediti_pos_da_xml_del_giorno(db, data: str) -> List[Dict[str, Any]]:
+    """Crediti POS aperti dal solo XML, ancora attivi, per il giorno di vendita."""
+    try:
+        return await _leggi_tutti(db["prima_nota_banca"].find({
+            "source": "trasferimento_pos",
+            "fonte_credito": FONTE_CREDITO_XML,
+            "$or": [{"giorno_vendita": data}, {"data": data}],
+            **FILTRO_MOVIMENTO_ATTIVO,
+        }), 10)
+    except AttributeError:
+        # backend/fake senza la collezione
+        return []
+
+
+async def _sostituisci_credito_xml(
+    db, data: str, totale_terminale: float, banca_id: Optional[str], now: str,
+) -> Optional[Dict[str, Any]]:
+    """La chiusura del terminale SOSTITUISCE il credito aperto dall'XML.
+
+    Se la somma dei terminali del giorno coincide al centesimo con la quota
+    elettronica dell'XML, il credito da XML si ritira (``archived``,
+    ``sostituito_da``: resta per l'audit, esce dai registri e dai saldi) e gli
+    accrediti che gia' lo provavano si riesaminano verso la riga del
+    terminale. Altrimenti resta, con la differenza scritta sopra: due numeri
+    diversi non si fondono in silenzio e li guarda il titolare in Coerenza POS.
+    """
+    righe = await crediti_pos_da_xml_del_giorno(db, data)
+    if not righe:
+        return None
+    cents_xml = sum(_cents(r.get("importo")) for r in righe)
+    cents_terminale = _cents(totale_terminale)
+    differenza = _euro_da_cents(cents_terminale - cents_xml)
+    esito = {
+        "importo_xml": _euro_da_cents(cents_xml),
+        "importo_terminale": _euro_da_cents(cents_terminale),
+        "differenza": differenza,
+        "righe": [r.get("id") for r in righe],
+    }
+    if cents_xml == cents_terminale:
+        ids_accrediti: List[str] = []
+        for riga in righe:
+            ids_accrediti.extend(riga.get("estratto_conto_ids") or [])
+            await db["prima_nota_banca"].update_one(
+                {"id": riga.get("id")},
+                {"$set": {
+                    "status": "archived", "deleted": True,
+                    "deleted_reason": CREDITO_XML_SOSTITUITO,
+                    "deleted_at": now, "updated_at": now,
+                    "stato_credito_xml": CREDITO_XML_SOSTITUITO,
+                    "sostituito_da": banca_id,
+                    "expectation_status": ExpectationStatus.SUPERATO.value,
+                }},
+            )
+        # L'accredito che provava il credito da XML prova ora quello del
+        # terminale: si ricalcola il gruppo col motore unico, mai a mano.
+        if ids_accrediti:
+            await _riesamina_accrediti_collegati(db, list(dict.fromkeys(ids_accrediti)))
+        esito["stato"] = CREDITO_XML_SOSTITUITO
+    else:
+        for riga in righe:
+            await db["prima_nota_banca"].update_one(
+                {"id": riga.get("id")},
+                {"$set": {
+                    "stato_credito_xml": CREDITO_XML_DIFFERENZA,
+                    "differenza_terminale": differenza,
+                    "importo_terminale": _euro_da_cents(cents_terminale),
+                    "updated_at": now,
+                }},
+            )
+        esito["stato"] = CREDITO_XML_DIFFERENZA
+    await _marca_credito_xml(db, data, esito["stato"], esito["differenza"])
+    return esito
+
+
+async def _marca_credito_xml(db, data: str, stato: str, differenza: Optional[float]) -> None:
+    """Annota sulla chiusura viva lo stato del suo credito da XML (servizio,
+    come ``_marca_stato_pos``: non puo' far fallire una scrittura)."""
+    try:
+        await db["corrispettivi"].update_many(
+            {"data": data, **FILTRO_CORRISPETTIVO_ATTIVO},
+            {"$set": {"credito_pos_xml_stato": stato,
+                      "credito_pos_xml_differenza": differenza}},
+        )
+    except Exception:
+        logger.debug("Stato del credito da XML non annotato per %s", data, exc_info=True)
+
+
+async def chiusura_pos_del_giorno(db, data: str) -> Optional[float]:
+    """Solo il TOTALE del POS reale del giorno, o None se nessuna fonte.
+
+    Comodita' per chi deve confrontare un unico numero. Chi deve scrivere in
+    contabilita' usa ``pos_reale_del_giorno``: i circuiti non condividono mai
+    un trasferimento, quindi servono gli importi separati.
+    """
+    return (await pos_reale_del_giorno(db, data))["totale_pos_reale"]
+
+
+async def registra_chiusura_pos_reale(
+    db,
+    data: str,
+    importo: float,
+    *,
+    gestore: str = GESTORE_POS_DEFAULT,
+    fonte: str = FONTE_MANUALE,
+    note: str = "",
+    actor: Optional[Dict[str, Any]] = None,
+    solo_evidenza: bool = False,
+) -> Dict[str, Any]:
+    """Salva il POS reale letto dal terminale.
+
+    La fonte dipende dal circuito e dal periodo: SumUp arriva dall'API
+    ufficiale; Numia corrente viene inserito manualmente dalla chiusura serale;
+    Numia storico viene ricostruito dagli export operativi del gestore su
+    Drive. Tutte e tre le fonti creano il fatto e l'attesa bancaria. Il payout
+    o l'accredito reale resta un'evidenza successiva distinta.
+
+    ``solo_evidenza`` e' riservato a diagnostiche che non devono materializzare
+    scritture; non va usato dai tre flussi operativi sopra. L'elettronico XML
+    resta invariato sul corrispettivo e viene usato soltanto per il confronto
+    fiscale. In un'unica operazione logica vengono mantenuti coerenti:
+
+    - ``chiusure_pos_manuali``: verita' manuale del terminale;
+    - credito verso il gestore POS in Prima Nota Banca, che verra'
+      riconciliato dall'estratto conto reale.
+
+    L'importo zero e' esplicito: archivia gli eventuali trasferimenti
+    sintetici del giorno e impedisce il fallback al valore XML.
+
+    Con piu' circuiti (Numia, SumUp, ...) ``importo`` e' la chiusura del
+    singolo ``gestore`` e ogni circuito ha il SUO credito, con un
+    ``trasferimento_id`` proprio: gli accrediti arrivano
+    separati (NUMIA sul conto BPM, payout sul conto SumUp) e una riga unica
+    col totale non sarebbe riconciliabile con nessuno dei due.
+
+    Restano invece sul TOTALE del giorno, perche' descrivono la giornata e non
+    il singolo terminale, il riparto contanti/elettronico dell'entrata Cassa e
+    ``corrispettivi.pos_reale_serale``. L'entrata Cassa resta una sola, quella
+    del corrispettivo XML: nessun circuito genera un secondo ricavo.
+    """
+    data = str(data or "")[:10]
+    try:
+        datetime.strptime(data, "%Y-%m-%d")
+    except (TypeError, ValueError) as exc:
+        raise ScritturaNonValida(f"data non valida: {data!r}") from exc
+    importo_dec = _decimale(importo)
+    if importo_dec is None:
+        raise ScritturaNonValida(f"importo non numerico: {importo!r}")
+    if importo_dec < _ZERO:
+        raise ScritturaNonValida("l'importo POS reale non puo' essere negativo")
+
+    actor = actor or {}
+    now = datetime.now(timezone.utc).isoformat()
+    user_id = actor.get("sub") or actor.get("user_id") or "unknown"
+    user_email = actor.get("email") or ""
+    user_name = actor.get("name") or user_email or user_id
+
+    gestore = normalizza_gestore_pos(gestore)
+    # Solo le righe di QUESTO terminale: senza il filtro, registrare SumUp
+    # sovrascriverebbe la chiusura Nexi dello stesso giorno.
+    filtro_chiusura = {"data": data, **filtro_gestore_pos(gestore)}
+    precedente_doc = await db["chiusure_pos_manuali"].find_one(
+        filtro_chiusura,
+        {"_id": 0, "importo": 1, "totale": 1, "id": 1,
+         "fonte_dato": 1, "valori_per_fonte": 1},
+    )
+    # L'evidenza nuova non sovrascrive mai in silenzio quella gia' registrata:
+    # conferma se coincide, segnala se no, e conserva entrambi i valori.
+    evidenza = valuta_evidenza(precedente_doc, importo_dec, fonte)
+    # ``importo`` e' il valore serializzato (2 decimali) che finisce nei
+    # documenti; ogni confronto/differenza sotto passa da ``_cents``.
+    importo = evidenza["importo"]
+    importo_precedente = None
+    if precedente_doc is not None:
+        precedente_dec = _decimale(precedente_doc.get("importo"))
+        if precedente_dec is None:
+            # Chiusura storica senza ``importo``: il suo ``totale`` e' il dato;
+            # se manca anche quello, il precedente era registrato a zero.
+            precedente_dec = _decimale_o_zero(precedente_doc.get("totale"))
+        importo_precedente = _euro(precedente_dec)
+
+    chiusura_id = (precedente_doc or {}).get("id") or str(uuid.uuid4())
+    metadati_fonte = metadati_fonte_pos(evidenza["fonte_dato"], gestore)
+    campi_chiusura = {
+        "importo": importo,
+        "totale": importo,
+        "gestore": gestore,
+        "fonte_dato": evidenza["fonte_dato"],
+        "stato_dato": evidenza["stato_dato"],
+        "valori_per_fonte": evidenza["valori_per_fonte"],
+        "differenza_fonti": evidenza["differenza"],
+        "source": metadati_fonte["source"],
+        "note": note,
+        "updated_at": now,
+        "updated_by": user_id,
+    }
+    # Niente upsert con ``$or``: il repository non sa dedurre il record da creare
+    # da un filtro alternativo. Il ramo viene deciso qui, esplicitamente.
+    if precedente_doc is not None:
+        await db["chiusure_pos_manuali"].update_one(
+            {"id": chiusura_id}, {"$set": campi_chiusura}
+        )
+    else:
+        await db["chiusure_pos_manuali"].insert_one({
+            **campi_chiusura,
+            "id": chiusura_id,
+            "data": data,
+            "created_at": now,
+        })
+
+    # Prima Nota vede una sola uscita POS al giorno: il totale dei terminali.
+    totale_giorno = await chiusura_pos_del_giorno(db, data)
+    if totale_giorno is None:
+        totale_giorno = importo
+
+    action = "created" if importo_precedente is None else (
+        "noop" if _cents(importo_precedente) == _cents(importo) else "updated"
+    )
+    # Delta per l'audit, in centesimi: un precedente assente e' "da zero".
+    delta_audit = _euro_da_cents(_cents(importo) - _cents(importo_precedente))
+    if solo_evidenza:
+        if action != "noop":
+            try:
+                await db["pos_chiusure_audit"].insert_one({
+                    "id": str(uuid.uuid4()),
+                    "collection_target": "chiusure_pos_manuali",
+                    "data_riferimento": data,
+                    "gestore": gestore,
+                    "action": action,
+                    "importo_precedente": importo_precedente,
+                    "importo_nuovo": importo,
+                    "delta": delta_audit,
+                    "user_id": user_id,
+                    "user_email": user_email,
+                    "user_name": user_name,
+                    "note": note,
+                    "origine": "evidenza_api_pos",
+                    "timestamp": now,
+                })
+            except Exception:
+                logger.exception("Audit evidenza POS fallito")
+        return {
+            "success": True,
+            "action": action,
+            "data": data,
+            "gestore": gestore,
+            "fonte_dato": evidenza["fonte_dato"],
+            "stato_dato": evidenza["stato_dato"],
+            "differenza_fonti": evidenza["differenza"],
+            "importo": importo,
+            "importo_precedente": importo_precedente,
+            "importo_totale_giorno": totale_giorno,
+            "chiusura_id": chiusura_id,
+            "prima_nota_cassa_id": None,
+            "prima_nota_banca_id": None,
+            "trasferimento_id": None,
+            "solo_evidenza": True,
+        }
+
+    # Solo una chiusura ATTIVA: la riga ritirata (sostituita dall'XML) resta
+    # per l'audit ma non e' piu' la giornata, e il credito POS non puo'
+    # agganciarsi a lei.
+    corr = await db["corrispettivi"].find_one(
+        {"data": data, **FILTRO_CORRISPETTIVO_ATTIVO},
+        {"_id": 0, "id": 1, "totale": 1, "pagato_elettronico": 1}
+    )
+    corr_id = (corr or {}).get("id")
+    # Non sovrascrivere mai pagato_elettronico: e' il valore fiscale XML.
+    await db["corrispettivi"].update_many(
+        {"data": data, **FILTRO_CORRISPETTIVO_ATTIVO},
+        {"$set": {"pos_reale_serale": totale_giorno,
+                  "pos_stato": "pos_reale_disponibile",
+                  "pos_reale_fonte": "fonti_pos_reali",
+                  "pos_reale_updated_at": now}},
+    )
+
+    filtro_attivo = {"status": {"$nin": ["deleted", "archived"]}}
+    # Bonifica conservativa di qualunque rappresentazione storica POS in
+    # Cassa per la giornata. Non la cancelliamo: resta consultabile nell'audit.
+    await db["prima_nota_cassa"].update_many(
+        {"data": data, "tipo": "uscita", **filtro_attivo,
+         "$or": [
+             {"categoria": {"$in": list(conti_pos.CATEGORIE_USCITA_POS)}},
+             {"category": {"$in": list(conti_pos.CATEGORIE_USCITA_POS)}},
+             {"source": {"$in": ["corrispettivo_pos", "trasferimento_pos"]}},
+         ]},
+        {"$set": {"status": "archived", "deleted": True,
+                  "deleted_reason": "pos_non_movimenta_contanti",
+                  "deleted_at": now, "updated_at": now}},
+    )
+    # Il POS non genera mai un'uscita Cassa. Per ogni circuito resta soltanto
+    # il credito verso il gestore, distinto dalla liquidita' bancaria reale.
+    # ``and_gestore`` isola le righe di questo circuito; per Nexi comprende
+    # anche quelle storiche prive del campo, che sono sue.
+    and_gestore = [filtro_gestore_pos(gestore)]
+    cassa_query = {
+        "data": data,
+        "tipo": "uscita",
+        "$and": and_gestore + [{"$or": [
+            {"categoria": {"$in": conti_pos.CATEGORIE_USCITA_POS}},
+            {"category": {"$in": conti_pos.CATEGORIE_USCITA_POS}},
+            {"source": {"$in": ["corrispettivo_import",
+                                  "conferma_corrispettivo_manuale"]}},
+        ]}],
+        **filtro_attivo,
+    }
+    banca_query = {
+        "data": data,
+        "source": {"$in": ["trasferimento_pos", "chiusura_pos_mobile",
+                             "corrispettivo_pos"]},
+        "$and": and_gestore,
+        **filtro_attivo,
+    }
+    cassa_mov = await db["prima_nota_cassa"].find_one(cassa_query)
+    banca_mov = await db["prima_nota_banca"].find_one(banca_query)
+    trasferimento_id = (
+        (cassa_mov or {}).get("trasferimento_id")
+        or (banca_mov or {}).get("trasferimento_id")
+        or str(uuid.uuid4())
+    )
+
+    cassa_id = None
+    banca_id = (banca_mov or {}).get("id")
+
+    circuito = gestore.upper()
+    # Zero archivia SOLO la coppia di questo circuito: se SumUp e' a zero ma
+    # Nexi no, il trasferimento Nexi del giorno deve restare in piedi.
+    if _cents(importo) == 0:
+        motivo = "chiusura_terminale_pos_zero"
+        if cassa_mov:
+            await db["prima_nota_cassa"].update_one(
+                {"id": cassa_mov.get("id")},
+                {"$set": {"status": "deleted", "deleted": True,
+                          "deleted_reason": motivo, "deleted_at": now,
+                          "updated_at": now}},
+            )
+        if banca_mov:
+            await db["prima_nota_banca"].update_one(
+                {"id": banca_id},
+                {"$set": {"status": "deleted", "deleted": True,
+                          "deleted_reason": motivo, "deleted_at": now,
+                          "updated_at": now}},
+            )
+    else:
+        if cassa_mov:
+            await db["prima_nota_cassa"].update_one(
+                {"id": cassa_mov.get("id")},
+                {"$set": {"status": "archived", "deleted": True,
+                          "deleted_reason": "pos_non_movimenta_contanti",
+                          "deleted_at": now, "updated_at": now}},
+            )
+
+        # Accredito gia' provato dall'estratto conto (assente = nessuno).
+        cents_accreditato = _cents((banca_mov or {}).get("accreditato_ec"))
+        # Tolleranza storica: il solo arrotondamento di un centesimo.
+        quadrato = (cents_accreditato > 0
+                    and abs(cents_accreditato - _cents(importo)) <= 1)
+        # Non e' denaro in banca: e' un credito verso il gestore, con un conto
+        # e un saldo propri. Diventera' liquidita' solo quando il gestore
+        # versera' davvero — su BPM per Nexi, sulla Mastercard per SumUp.
+        etichetta_circuito = conti_pos.etichetta(gestore)
+        descrizione_banca = (f"Credito verso {etichetta_circuito} — POS "
+                             f"{conti_pos.data_italiana(data)}")
+        banca_fields = {
+            "importo": importo,
+            "amount": importo,
+            "categoria": "Corrispettivi POS",
+            "category": "Corrispettivi POS",
+            "descrizione": descrizione_banca,
+            "description": descrizione_banca,
+            "source": "trasferimento_pos",
+            "natura": NATURA_CREDITO_POS,
+            "conto_contabile": conti_pos.conto_credito(gestore),
+            "conto_nome": conti_pos.descrizione_conto(
+                conti_pos.conto_credito(gestore)),
+            "gestore": gestore,
+            "circuito": circuito,
+            "quota_pos_fonte": metadati_fonte["quota_pos_fonte"],
+            "trasferimento_id": trasferimento_id,
+            "operation_id": trasferimento_id,
+            "giorno_vendita": data,
+            "riconciliato": quadrato,
+            # Credito POS atteso finche' l'accredito reale non lo conferma:
+            # il saldo contabile lo comprende, ma resta marcato come non
+            # ancora transitato sul conto.
+            "in_transito": not quadrato,
+            "stato_riconciliazione": "riconciliato" if quadrato else "da_verificare",
+            "updated_at": now,
+            "status": "active",
+            "deleted": False,
+            **expectation_fields(
+                expectation_type="pos_bank_credit",
+                owner=metadati_fonte["expectation_owner"],
+                source_fact_id=chiusura_id,
+                satisfied=quadrato,
+            ),
+        }
+        if corr_id:
+            banca_fields["corrispettivo_id"] = corr_id
+        if banca_mov:
+            await db["prima_nota_banca"].update_one(
+                {"id": banca_id}, {"$set": banca_fields}
+            )
+        else:
+            nuovo_movimento_banca = {
+                "data": data,
+                "tipo": "entrata",
+                "importo": importo,
+                "categoria": "Corrispettivi POS",
+                "descrizione": banca_fields["descrizione"],
+                "source": "trasferimento_pos",
+                "natura": NATURA_CREDITO_POS,
+                "conto_contabile": conti_pos.conto_credito(gestore),
+                "conto_nome": conti_pos.descrizione_conto(
+                    conti_pos.conto_credito(gestore)),
+                "gestore": gestore,
+                "circuito": circuito,
+                "quota_pos_fonte": metadati_fonte["quota_pos_fonte"],
+                "trasferimento_id": trasferimento_id,
+                "operation_id": trasferimento_id,
+                "giorno_vendita": data,
+                "riconciliato": False,
+                "in_transito": True,
+                **expectation_fields(
+                    expectation_type="pos_bank_credit",
+                    owner=metadati_fonte["expectation_owner"],
+                    source_fact_id=chiusura_id,
+                ),
+            }
+            if corr_id:
+                nuovo_movimento_banca["corrispettivo_id"] = corr_id
+                nuovo_movimento_banca["idempotency_key"] = (
+                    chiave_idempotenza_corrispettivo(corr_id, "banca_credito", gestore)
+                )
+            banca_id = await scrivi_movimento(
+                db, "banca", nuovo_movimento_banca
+            )
+
+    # Il credito che l'XML aveva aperto senza terminale viene SOSTITUITO da
+    # quello del terminale (totali uguali al centesimo) o resta con la
+    # differenza scritta: mai due crediti per lo stesso incasso.
+    credito_xml = await _sostituisci_credito_xml(
+        db, data, totale_giorno, banca_id if importo > 0 else None, now)
+
+    # Una chiusura corretta DOPO che l'accredito l'aveva riconciliata cambia
+    # l'importo atteso: le righe dell'estratto conto agganciate non possono
+    # restare «riconciliate» verso un credito che ora non quadra (o che non
+    # c'e' piu', se la chiusura e' a zero). Si ricalcola il gruppo, con lo
+    # stesso motore dell'accredito.
+    ids_accrediti = list((banca_mov or {}).get("estratto_conto_ids") or [])
+    if ids_accrediti and gestore == conti_pos.NUMIA and action != "noop":
+        await _riesamina_accrediti_collegati(db, ids_accrediti)
+
+    # L'entrata Cassa e' la sola quota contanti dell'XML: il totale dei
+    # terminali si annota a parte e non la tocca. Fino al 28/09/2026 qui si
+    # sottraeva il POS dall'importo della riga come se fosse il totale del
+    # giorno, e la copia dei contanti diventava negativa (181 giornate).
+    entrata_cassa = await db["prima_nota_cassa"].find_one({
+        "data": data,
+        "tipo": "entrata",
+        "categoria": "Corrispettivi",
+        **filtro_attivo,
+    })
+    if entrata_cassa:
+        await db["prima_nota_cassa"].update_one(
+            {"id": entrata_cassa.get("id")},
+            {"$set": {
+                "pos_reale_giorno": totale_giorno,
+                "quota_pos_fonte": "fonti_pos_reali",
+                "updated_at": now,
+            }},
+        )
+
+    if action != "noop":
+        try:
+            await db["pos_chiusure_audit"].insert_one({
+                "id": str(uuid.uuid4()),
+                "collection_target": "chiusure_pos_manuali",
+                "data_riferimento": data,
+                "gestore": gestore,
+                "action": action,
+                "importo_precedente": importo_precedente,
+                "importo_nuovo": importo,
+                "delta": delta_audit,
+                "user_id": user_id,
+                "user_email": user_email,
+                "user_name": user_name,
+                "note": note,
+                "origine": "coerenza_pos_inline",
+                "timestamp": now,
+            })
+        except Exception:
+            logger.exception("Audit chiusura POS reale fallito")
+
+    return {
+        "success": True,
+        "action": action,
+        "data": data,
+        "gestore": gestore,
+        "fonte_dato": evidenza["fonte_dato"],
+        "stato_dato": evidenza["stato_dato"],
+        "differenza_fonti": evidenza["differenza"],
+        "importo": importo,
+        "importo_precedente": importo_precedente,
+        "importo_totale_giorno": totale_giorno,
+        "chiusura_id": chiusura_id,
+        "prima_nota_cassa_id": cassa_id,
+        "prima_nota_banca_id": banca_id,
+        "trasferimento_id": trasferimento_id if _cents(totale_giorno) > 0 else None,
+        "credito_xml": credito_xml,
+    }
+
+
+async def _apri_credito_pos_da_xml(
+    db, corr_doc: Dict[str, Any], data: str, elettronico: Decimal,
+    anno: int, mese: int,
+) -> tuple:
+    """Senza chiusura del terminale l'XML apre il credito verso il gestore.
+
+    Il circuito non si conosce e non si inventa: conto 15.07 (gruppo),
+    ``gestore=CIRCUITO_NON_NOTO``, ``senza_chiusura_terminale``. Una riga per
+    chiusura RT (chiave ``corr:<id>:banca_credito:pos_da_xml``): il reimport
+    dello stesso XML la ritrova, non ne scrive una seconda.
+    """
+    filtro_attivo = dict(FILTRO_MOVIMENTO_ATTIVO)
+    corr_id = corr_doc.get("id")
+    query = {
+        "data": data, "tipo": "entrata", "source": "trasferimento_pos",
+        "fonte_credito": FONTE_CREDITO_XML, **filtro_attivo,
+        **({"$or": [{"corrispettivo_id": {"$exists": False}},
+                    {"corrispettivo_id": {"$in": [None, "", corr_id]}}]}
+           if corr_id else {}),
+    }
+    esistente = await db["prima_nota_banca"].find_one(query)
+    trasferimento_id = (esistente or {}).get("trasferimento_id") or str(uuid.uuid4())
+    circuito = conti_pos.CIRCUITO_NON_NOTO
+    conto = conti_pos.conto_credito(circuito)
+    return await _scrivi_se_assente(db, "banca", query, {
+        "corrispettivo_id": corr_id,
+        **_campo_chiave(chiave_idempotenza_corrispettivo(corr_id, "banca_credito", circuito)),
+        "data": data, "tipo": "entrata", "importo": _euro(_decimale(elettronico)),
+        "descrizione": (f"Credito POS da XML — {conti_pos.data_italiana(data)} "
+                        f"(senza chiusura terminale)"),
+        "categoria": "Corrispettivi POS", "source": "trasferimento_pos",
+        "natura": NATURA_CREDITO_POS,
+        "conto_contabile": conto,
+        "conto_nome": conti_pos.descrizione_conto(conto),
+        "gestore": circuito,
+        "circuito_noto": False,
+        "quota_pos_fonte": QUOTA_POS_FONTE_XML,
+        "fonte_credito": FONTE_CREDITO_XML,
+        "senza_chiusura_terminale": True,
+        "stato_credito_xml": CREDITO_XML_SENZA_TERMINALE,
+        "trasferimento_id": trasferimento_id,
+        "operation_id": trasferimento_id,
+        "giorno_vendita": data,
+        "anno": anno, "mese": mese,
+        "riconciliato": False,
+        "in_transito": True,
+        **expectation_fields(
+            expectation_type="pos_bank_credit",
+            owner="corrispettivo_xml",
+            source_fact_id=f"corrispettivo:{corr_id or data}",
+        ),
+    })
+
+
+async def registra_corrispettivo(db, corr_doc: Dict[str, Any]) -> Dict[str, Optional[str]]:
+    """Scritture del corrispettivo giornaliero secondo il MODELLO POS.
+
+    La Prima Nota Cassa contiene esclusivamente denaro fisicamente incassato
+    in contanti. Il dettaglio RT e' una prova fiscale: la sua quota
+    elettronica non e' denaro in cassa e non puo' da sola generare una
+    scrittura POS/Banca. Quando esiste una chiusura del terminale reale, il
+    suo trasferimento viene registrato e poi riconciliato con l'accredito EC.
+
+    Per gli RT legacy senza alcun dettaglio di pagamento il totale resta una
+    registrazione cassa dichiaratamente non scomposta: non possiamo inventare
+    una quota elettronica assente dalla fonte.
+    """
+    data = corr_doc.get("data") or corr_doc.get("data_operazione") or ""
+    # Le importazioni storiche non usano tutte gli stessi nomi di campo.  La
+    # presenza esplicita di una quota a zero e' comunque informazione: non va
+    # scambiata per un RT senza dettaglio e trasformata nel totale in Cassa.
+    # Tutto in Decimal (CLAUDE.md §12); i campi persistiti si serializzano
+    # con ``_euro`` solo al momento della scrittura.
+    def _quota(*campi: str) -> tuple[Decimal, bool]:
+        for campo in campi:
+            valore = _decimale(corr_doc.get(campo))
+            if valore is not None:
+                return valore, True
+        # Quota non dichiarata da nessun campo: contribuisce zero al totale
+        # ricostruito, ma ``dichiarata=False`` dice che il dato manca.
+        return _ZERO, False
+
+    contanti, contanti_dichiarati = _quota(
+        "pagato_contanti", "contanti", "importo_contanti"
+    )
+    elettronico, elettronico_dichiarato = _quota(
+        "pagato_elettronico", "elettronico", "pagato_pos", "importo_pos"
+    )
+    totale = next(
+        (valore for valore in (
+            _decimale(corr_doc.get("totale")),
+            _decimale(corr_doc.get("totale_complessivo")),
+            _decimale(corr_doc.get("importo")),
+            _decimale(corr_doc.get("totale_giornaliero")),
+        ) if valore),  # ``or`` storico: uno zero non e' un totale
+        contanti + elettronico,
+    )
+    if not contanti_dichiarati and not elettronico_dichiarato and totale > _ZERO:
+        contanti = totale
+
+    anno = int(data[:4]) if data[:4].isdigit() else datetime.now().year
+    mese = int(data[5:7]) if len(data) >= 7 and data[5:7].isdigit() else datetime.now().month
+    matricola = corr_doc.get("matricola_rt") or corr_doc.get("id_dispositivo") or None
+
+    esito: Dict[str, Optional[str]] = {
+        "prima_nota_cassa_id": None,
+        "prima_nota_cassa_uscita_pos_id": None,
+        "prima_nota_banca_id": None,  # trasferimento speculare (se quota POS > 0)
+    }
+    if not data or totale <= _ZERO:
+        return esito
+
+    # IDEMPOTENZA (stessa guardia storica, chiave data+matricola) — ERP-001
+    # (19/07/2026): in un'UNICA operazione atomica (find_one_and_update con
+    # upsert=True), non più in due chiamate separate find_one + insert_one.
+    # Due richieste concorrenti per lo stesso corrispettivo non possono più
+    # superare entrambe il controllo prima che una delle due abbia scritto.
+    # Un RT che dichiara contanti zero non genera una riga Cassa a zero.
+    # La sua quota elettronica resta fiscale finche' non arriva la chiusura
+    # reale del terminale, che viene trattata nel blocco POS seguente.
+    if contanti > _ZERO:
+        cassa_id, gia_esistente = await _scrivi_se_assente(
+        db, "cassa",
+        {
+            "data": data, "tipo": "entrata", "categoria": "Corrispettivi",
+            "matricola_rt": matricola,
+            "source": {"$in": ["corrispettivo_import", "corrispettivi_sync",
+                                "corrispettivo_xml", "xml_import", "manuale_da_xml",
+                                "corrispettivo_manuale"]},
+            # Una vecchia scrittura soft-deleted/archiviata non deve bloccare
+            # la rigenerazione del movimento attivo. Senza questi filtri il
+            # rebuild poteva trovare il residuo storico e non inserire nulla
+            # di visibile in Prima Nota (caso reale 03/04/2026).
+            "status": {"$nin": ["deleted", "archived"]},
+            "entity_status": {"$ne": "deleted"},
+            # La guardia per data/matricola vale per le righe senza
+            # corrispettivo o di questo stesso: la cassa di un'altra chiusura
+            # dello stesso giorno (06/09/2026, due chiusure RT) non la blocca.
+            **({"$or": [{"corrispettivo_id": {"$exists": False}},
+                        {"corrispettivo_id": {"$in": [None, "", corr_doc.get("id")]}}]}
+               if corr_doc.get("id") else {}),
+        },
+        {
+            "corrispettivo_id": corr_doc.get("id"),
+            **_campo_chiave(chiave_idempotenza_corrispettivo(
+                corr_doc.get("id"), "cassa_entrata")),
+            "data": data, "tipo": "entrata", "importo": _euro(contanti),
+            "descrizione": f"Corrispettivi contanti {data}",
+            "categoria": "Corrispettivi", "source": "corrispettivo_import",
+            "anno": anno, "mese": mese, "matricola_rt": matricola,
+            # Imponibile e IVA del documento RT: se il corrispettivo non li
+            # porta restano ``None`` (dato non disponibile), non uno zero.
+            "imponibile": _euro(_decimale(corr_doc.get("totale_imponibile"))),
+            "iva": _euro(_decimale(corr_doc.get("totale_iva"))),
+            "contanti": _euro(contanti), "elettronico": _euro(elettronico),
+            "totale_corrispettivo": _euro(totale),
+            "dettaglio": {"contanti": _euro(contanti),
+                          "elettronico": _euro(elettronico),
+                          "matricola_rt": corr_doc.get("matricola_rt", ""),
+                          "numero_documenti": corr_doc.get("numero_documenti", 0)},
+        },
+        )
+        esito["prima_nota_cassa_id"] = cassa_id
+        if gia_esistente:
+            esito["gia_esistente"] = True
+
+    # USCITA POS: si costruisce SOLO dai terminali reali, mai dall'XML.
+    #
+    # Fino al 07/08/2026 qui c'era `quota_pos = chiusura or elettronico`: in
+    # assenza di chiusura si usava l'elettronico XML. Vietato dall'utente, e a
+    # ragione: l'XML e' la fonte fiscale del corrispettivo e non sa quanta
+    # parte sia passata da Nexi e quanta da SumUp. Usarlo produceva un
+    # trasferimento unico e indistinto, che nessun accredito avrebbe potuto
+    # riconciliare. Senza dati reali non si inventa l'uscita: la giornata
+    # resta in attesa e viene riprocessata quando i terminali rispondono.
+    reale = await pos_reale_del_giorno(db, data)
+    if not reale["disponibile"]:
+        esito["pos_stato"] = "attende_chiusura_pos_reale"
+        esito["pos_reale"] = None
+        await _marca_stato_pos(db, data, "attende_chiusura_pos_reale")
+        # Decisione del titolare (02/10/2026): l'XML apre comunque il credito
+        # verso il gestore, senza circuito, marcato «senza chiusura
+        # terminale». Solo per una chiusura del registratore con quota
+        # elettronica dichiarata: mai per una riga storica o manuale.
+        if elettronico_dichiarato and elettronico > _ZERO and e_chiusura_xml(corr_doc):
+            credito_id, gia = await _apri_credito_pos_da_xml(
+                db, corr_doc, data, elettronico, anno, mese)
+            esito["prima_nota_banca_id"] = credito_id
+            esito["credito_pos_xml_id"] = credito_id
+            esito["credito_pos_xml_gia_esistente"] = gia
+            esito["trasferimenti_pos"] = {
+                conti_pos.CIRCUITO_NON_NOTO: {"cassa": None, "banca": credito_id}}
+            if not gia:
+                await _marca_credito_xml(db, data, CREDITO_XML_SENZA_TERMINALE, None)
+        return esito
+
+    esito["pos_stato"] = "pos_reale_disponibile"
+    esito["pos_reale"] = reale["per_circuito"]
+    await _marca_stato_pos(db, data, "pos_reale_disponibile")
+
+    filtro_attivo = {
+        "status": {"$nin": ["deleted", "archived"]},
+        "entity_status": {"$ne": "deleted"},
+    }
+    scritti = {}
+    for circuito, importo in sorted(reale["per_circuito"].items()):
+        # ``importo`` e' gia' un numero a 2 decimali serializzato da
+        # ``pos_reale_del_giorno``: si confronta in centesimi e si persiste.
+        if _cents(importo) <= 0:
+            continue
+        # Ogni circuito ha il SUO trasferimento: Nexi e SumUp non ne
+        # condividono mai uno, perche' li accreditano conti diversi.
+        gestore_filtro = filtro_gestore_pos(circuito)
+        banca_query = {
+            "data": data, "tipo": "entrata", "categoria": "Corrispettivi POS",
+            "$and": [gestore_filtro], **filtro_attivo,
+        }
+        banca_esistente = await db["prima_nota_banca"].find_one(banca_query)
+        trasferimento_id = (
+            (banca_esistente or {}).get("trasferimento_id")
+            or str(uuid.uuid4())
+        )
+        etichetta_circuito = conti_pos.etichetta(circuito)
+        comune = {
+            "corrispettivo_id": corr_doc.get("id"),
+            "data": data, "importo": importo,
+            "quota_pos_fonte": "terminale_reale",
+            "gestore": circuito, "circuito": circuito.upper(),
+            "trasferimento_id": trasferimento_id,
+            "operation_id": trasferimento_id,
+            "anno": anno, "mese": mese,
+        }
+        # La chiusura POS non muove contante e non accredita ancora la banca:
+        # apre soltanto il credito transitorio verso il gestore. Le vecchie
+        # righe Cassa restano archiviate come prova, ma non se ne creano altre.
+        banca_pos_id, _ = await _scrivi_se_assente(db, "banca", banca_query, {
+            **comune, "tipo": "entrata",
+            **_campo_chiave(chiave_idempotenza_corrispettivo(
+                corr_doc.get("id"), "banca_credito", circuito)),
+            "descrizione": (f"Credito verso {etichetta_circuito} — POS "
+                            f"{conti_pos.data_italiana(data)}"),
+            "categoria": "Corrispettivi POS", "source": "trasferimento_pos",
+            "natura": NATURA_CREDITO_POS,
+            "conto_contabile": conti_pos.conto_credito(circuito),
+            "conto_nome": conti_pos.descrizione_conto(
+                conti_pos.conto_credito(circuito)),
+            "giorno_vendita": data,
+            "riconciliato": False,
+            "in_transito": True,
+            **expectation_fields(
+                expectation_type="pos_bank_credit",
+                owner="pos_terminal",
+                source_fact_id=f"pos-close:{circuito}:{data}",
+            ),
+        })
+        scritti[circuito] = {"cassa": None, "banca": banca_pos_id}
+        esito["prima_nota_banca_id"] = banca_pos_id
+    esito["trasferimenti_pos"] = scritti
+    return esito
+
+
+async def _marca_stato_pos(db, data: str, stato: str) -> None:
+    """Annota sul corrispettivo se il POS reale e' arrivato o si attende.
+
+    E' un'informazione di servizio per la Coerenza POS e il riprocessamento:
+    se non si riesce a scriverla, la registrazione contabile deve comunque
+    andare a buon fine. Un'annotazione non puo' far fallire una scrittura.
+    """
+    try:
+        # Solo le chiusure ATTIVE del giorno: una giornata ritirata (sostituita
+        # dall'XML) e' un `status: deleted` che resta per l'audit e non va
+        # aggiornata al posto di quella viva.
+        await db["corrispettivi"].update_many(
+            {"data": data, **FILTRO_CORRISPETTIVO_ATTIVO}, {"$set": {"pos_stato": stato}},
+        )
+    except Exception:
+        logger.debug("Stato POS non annotato per %s", data, exc_info=True)
+
+
+async def attese_pos_numia_del_giorno(db, giorno_vendita: str) -> List[Dict[str, Any]]:
+    """Crediti POS che un accredito NUMIA del giorno di vendita puo' chiudere.
+
+    Dal 07/08/2026 i trasferimenti sono per circuito (Numia E SumUp nello
+    stesso giorno): l'accredito con causale NUMIA aggancia il trasferimento
+    NUMIA, mai quello SumUp. Se il terminale non ha ancora risposto l'attesa
+    e' il credito aperto dall'XML (02/10/2026): lo stesso accredito al
+    centesimo lo chiude. Il terminale, quando c'e', vince sull'XML.
+    """
+    base = {
+        "source": "trasferimento_pos",
+        "status": {"$nin": ["deleted", "archived"]},
+    }
+    giorno = [{"$or": [{"giorno_vendita": giorno_vendita}, {"data": giorno_vendita}]}]
+    candidati = await _leggi_tutti(db["prima_nota_banca"].find({
+        **base, "$and": giorno + [filtro_gestore_pos(conti_pos.NUMIA)],
+    }), 3)
+    if candidati:
+        return candidati
+    return await _leggi_tutti(db["prima_nota_banca"].find({
+        **base, "fonte_credito": FONTE_CREDITO_XML, "$and": giorno,
+    }), 3)
+
+
+async def riconcilia_accredito_pos_ec(db, mov_ec: Dict[str, Any]) -> bool:
+    """REGOLA CANONICA: l'accredito POS dell'estratto conto NON crea
+    un'entrata — riconcilia il TRASFERIMENTO del suo giorno di vendita
+    (accumulando i circuiti: bancomat, carte, Amex arrivano separati).
+    Ritorna True se ha agganciato un trasferimento."""
+    from app.services.pos_evidence import (
+        _e_accredito_pos_numia_con_giorno,
+        _giorno_operazione_pos,
+    )
+
+    ec_id = mov_ec.get("id")
+    if not ec_id:
+        return False
+    data_acc = (mov_ec.get("data") or "")[:10]
+    descr = mov_ec.get("descrizione_originale") or mov_ec.get("descrizione") or ""
+    if not _e_accredito_pos_numia_con_giorno(descr):
+        return False
+    giorno_vendita = _giorno_operazione_pos(descr, data_acc)
+    # Un accredito senza importo nell'estratto non esiste come prova: zero
+    # esplicito nel gruppo (comportamento storico), in Decimal.
+    importo = abs(_decimale_o_zero(mov_ec.get("importo")))
+
+    candidati = await attese_pos_numia_del_giorno(db, giorno_vendita)
+    if len(candidati) != 1:
+        # Attesa mancante (corrispettivo o chiusura del terminale non arrivati)
+        # o MULTIPLA (due crediti NUMIA lo stesso giorno): l'EC resta non
+        # riconciliato e DA_VERIFICARE, la banca non sceglie e non crea la
+        # chiusura. Stessa regola di `recupera_pos_storico_da_estratto`: prima
+        # qui si agganciava il primo candidato a caso.
+        await db["estratto_conto_movimenti"].update_one(
+            {"id": ec_id},
+            {"$set": {
+                "riconciliato": False,
+                "importato_prima_nota": False,
+                "stato_riconciliazione": "da_verificare",
+                "tipo_riconciliazione": (
+                    "evidenza_senza_attesa" if not candidati else "attese_pos_ambigue"),
+                "dettagli_riconciliazione": {
+                    "giorno_vendita": giorno_vendita,
+                    "importo_accreditato": _euro(importo),
+                    "attese_candidate": len(candidati),
+                },
+            }},
+        )
+        return False
+    trasferimento = candidati[0]
+
+    # Lo scheduler riesamina le righe aperte. Sommare il valore gia'
+    # memorizzato duplicava lo stesso accredito a ogni passaggio. La fonte di
+    # verita' sono gli ID dell'estratto conto: ricalcola sempre il gruppo.
+    estratto_conto_ids = list(dict.fromkeys([
+        *(trasferimento.get("estratto_conto_ids") or []), ec_id,
+    ]))
+    accrediti_collegati = await db["estratto_conto_movimenti"].find(
+        {"id": {"$in": estratto_conto_ids}},
+        {"_id": 0, "id": 1, "importo": 1},
+    ).to_list(len(estratto_conto_ids))
+    importi_per_id = {
+        str(riga.get("id")): abs(_decimale_o_zero(riga.get("importo")))
+        for riga in accrediti_collegati
+        if riga.get("id")
+    }
+    # Utile anche nei test e negli import transazionali, dove la riga appena
+    # passata potrebbe non essere ancora riletta dalla query.
+    importi_per_id.setdefault(str(ec_id), importo)
+    accreditato_dec = sum(importi_per_id.values(), _ZERO)
+    # Credito atteso: un trasferimento senza importo e' un'attesa a zero.
+    atteso_dec = _decimale_o_zero(trasferimento.get("importo"))
+    # In contabilita una differenza non e una riconciliazione. La vecchia
+    # tolleranza del 2% (minimo 5 euro) produceva falsi positivi anche per
+    # scarti importanti. Ammettiamo solo l'arrotondamento di un centesimo.
+    riconciliato = abs(accreditato_dec - atteso_dec) <= _CENTESIMO
+    # Da qui: solo valori serializzati (2 decimali) per documenti e dettagli.
+    accreditato = _euro(accreditato_dec)
+    atteso = _euro(atteso_dec)
+    differenza = _euro(accreditato_dec - atteso_dec)
+    await db["prima_nota_banca"].update_one(
+        {"id": trasferimento["id"]},
+        {"$set": {"accreditato_ec": accreditato,
+                  "riconciliato": bool(riconciliato),
+                  "tipo_riconciliazione": "accredito_pos_ec" if riconciliato else None,
+                  "data_ultimo_accredito": data_acc,
+                  **expectation_evidence_fields(
+                      satisfied=riconciliato,
+                      evidence_ids=estratto_conto_ids,
+                  )},
+         "$addToSet": {"estratto_conto_ids": ec_id}})
+
+    dettagli = {"prima_nota_id": trasferimento["id"],
+                "giorno_vendita": giorno_vendita,
+                "importo_atteso": atteso,
+                "importo_accreditato": accreditato,
+                "differenza": differenza}
+    if riconciliato:
+        await db["estratto_conto_movimenti"].update_many(
+            {"id": {"$in": estratto_conto_ids}},
+            {"$set": {"riconciliato": True,
+                      "tipo_riconciliazione": "accredito_pos_trasferimento",
+                      "dettagli_riconciliazione": dettagli},
+             "$unset": {"stato_riconciliazione": ""}})
+    else:
+        # Le singole righe NUMIA sono state associate al giorno, ma il gruppo
+        # resta da verificare finche la loro somma non coincide col POS.
+        await db["estratto_conto_movimenti"].update_many(
+            {"id": {"$in": estratto_conto_ids}},
+            {"$set": {"riconciliato": False,
+                      "stato_riconciliazione": "da_verificare",
+                      "tipo_riconciliazione": "accredito_pos_non_quadrato",
+                      "dettagli_riconciliazione": dettagli}})
+    return True
+
+
+async def _riesamina_accrediti_collegati(db, estratto_conto_ids: List[str]) -> None:
+    """Rilancia `riconcilia_accredito_pos_ec` sulle righe d'estratto gia' agganciate
+    a un credito POS il cui importo atteso e' cambiato. Il motore ricalcola la
+    somma del gruppo; si passano tutte le righe perche', se il credito non c'e'
+    piu' (chiusura a zero), ognuna va segnata «senza attesa»."""
+    for ec_id in estratto_conto_ids:
+        riga = await db["estratto_conto_movimenti"].find_one({"id": ec_id}, {"_id": 0})
+        if riga:
+            await riconcilia_accredito_pos_ec(db, riga)
+
+
+def query_accrediti_pos_ec(anno: int) -> Dict[str, Any]:
+    """Filtro canonico per riconoscere gli accrediti POS nell'estratto conto."""
+    from app.services.pos_evidence import ACCREDITO_POS_BANK_QUERY_PATTERN
+
+    return {
+        "data": {"$regex": f"^{anno}"},
+        "tipo": {"$ne": "uscita"},
+        "$or": [
+            {"descrizione_originale": {
+                "$regex": ACCREDITO_POS_BANK_QUERY_PATTERN,
+                "$options": "i",
+            }},
+            {"descrizione": {
+                "$regex": ACCREDITO_POS_BANK_QUERY_PATTERN,
+                "$options": "i",
+            }},
+        ],
+    }
+
+
+def raggruppa_accrediti_pos_per_giorno(
+    movimenti: List[Dict[str, Any]],
+) -> Dict[str, Dict[str, Any]]:
+    """Somma gli accrediti Numia usando il giorno vendita nella causale.
+
+    Le copie provenienti da estratti sovrapposti restano come prove, ma non
+    vengono sommate due volte. Commissioni e accrediti privi di ``DEL
+    gg/mm/aa`` non sono chiusure POS utilizzabili.
+    """
+    from app.services.pos_evidence import (
+        _e_accredito_pos_numia_con_giorno,
+        _giorno_operazione_pos,
+    )
+
+    unici: Dict[tuple, Dict[str, Any]] = {}
+    for mov in movimenti:
+        descr = str(mov.get("descrizione_originale") or mov.get("descrizione") or "")
+        if not _e_accredito_pos_numia_con_giorno(descr):
+            continue
+        # ``importo`` o alias ``amount``; una riga senza importo non e' un
+        # accredito utilizzabile e viene scartata come lo zero.
+        importo = abs(_decimale(mov.get("importo")) or _decimale_o_zero(mov.get("amount")))
+        if importo <= _ZERO:
+            continue
+        giorno = _giorno_operazione_pos(descr, str(mov.get("data") or ""))
+        chiave = (
+            str(mov.get("data") or mov.get("data_contabile") or "")[:10],
+            giorno,
+            _cents(importo),
+            re.sub(r"[^a-z0-9]+", "", descr.lower()),
+            re.sub(r"[^a-z0-9]+", "", str(mov.get("rapporto") or "").lower()),
+        )
+        corrente = unici.get(chiave)
+        if corrente is None or len(descr) > len(str(
+            corrente.get("descrizione_originale") or corrente.get("descrizione") or ""
+        )):
+            unici[chiave] = mov
+
+    out: Dict[str, Dict[str, Any]] = {}
+    for mov in unici.values():
+        descr = str(mov.get("descrizione_originale") or mov.get("descrizione") or "")
+        giorno = _giorno_operazione_pos(descr, str(mov.get("data") or ""))
+        item = out.setdefault(giorno, {"totale": _ZERO, "estratto_conto_ids": []})
+        item["totale"] += abs(_decimale(mov.get("importo")) or _decimale_o_zero(mov.get("amount")))
+        mov_id = str(mov.get("id") or mov.get("_id") or "")
+        if mov_id and mov_id not in item["estratto_conto_ids"]:
+            item["estratto_conto_ids"].append(mov_id)
+    for item in out.values():
+        # Serializzazione finale: il totale esce come numero a 2 decimali.
+        item["totale"] = _euro(item["totale"])
+        item["estratto_conto_ids"].sort()
+    return out
+
+
+async def _recupera_pos_storico_da_estratto_impl(
+    db, anno: int,
+) -> Dict[str, Any]:
+    """Ricollega le prove EC alle attese POS gia' create dalla fonte POS.
+
+    Nome mantenuto per compatibilita' con router e job esistenti. La regola
+    definitiva e' pero' l'opposto del vecchio backfill: l'estratto conto e'
+    un'evidenza futura e non puo' creare la chiusura del terminale, il credito
+    verso il gestore o la relativa aspettativa bancaria. Se l'attesa manca,
+    le righe EC restano visibili ``DA_VERIFICARE``.
+    """
+    movimenti = await _leggi_tutti(
+        db["estratto_conto_movimenti"].find(query_accrediti_pos_ec(anno), {"_id": 0}),
+        20000,
+    )
+    gruppi = raggruppa_accrediti_pos_per_giorno(movimenti)
+    movimenti_per_id = {
+        str(movimento.get("id") or ""): movimento
+        for movimento in movimenti
+        if movimento.get("id")
+    }
+    riconciliati = senza_attesa = attese_ambigue = 0
+    dettagli = []
+    for giorno, evidenza in sorted(gruppi.items()):
+        candidati = await attese_pos_numia_del_giorno(db, giorno)
+        if len(candidati) != 1:
+            stato = (
+                "evidenza_senza_attesa" if not candidati
+                else "attese_pos_ambigue"
+            )
+            senza_attesa += int(not candidati)
+            attese_ambigue += int(len(candidati) > 1)
+            await db["estratto_conto_movimenti"].update_many(
+                {"id": {"$in": evidenza["estratto_conto_ids"]}},
+                {"$set": {
+                    "riconciliato": False,
+                    "importato_prima_nota": False,
+                    "stato_riconciliazione": "da_verificare",
+                    "tipo_riconciliazione": stato,
+                    "dettagli_riconciliazione": {
+                        "giorno_vendita": giorno,
+                        "importo_accreditato": evidenza["totale"],
+                        "attese_candidate": len(candidati),
+                    },
+                }},
+            )
+            dettagli.append({"data": giorno, **evidenza, "action": stato})
+            continue
+
+        # L'attesa esiste gia': le componenti BNCMT/AMEX/INTER/PGBNT la
+        # soddisfano come un unico totale del giorno vendita.
+        for estratto_id in evidenza["estratto_conto_ids"]:
+            movimento = movimenti_per_id.get(str(estratto_id))
+            if movimento and await riconcilia_accredito_pos_ec(db, movimento):
+                riconciliati += 1
+        dettagli.append({"data": giorno, **evidenza, "action": "ricollegata"})
+    return {
+        "anno": anno,
+        "giorni_bancari": len(gruppi),
+        "creati": 0,
+        "aggiornati": 0,
+        "saltati_per_chiusura_manuale": 0,
+        "giorni_senza_attesa": senza_attesa,
+        "giorni_con_attese_ambigue": attese_ambigue,
+        "componenti_bancarie_ricollegate": riconciliati,
+        "dettagli": dettagli,
+    }
+
+
+async def recupera_pos_storico_da_estratto(db, anno: int) -> Dict[str, Any]:
+    """Riconcilia le prove POS storiche con un solo flush per foglio."""
+    async with _batch_scritture_registro(db):
+        return await _recupera_pos_storico_da_estratto_impl(db, anno)
+
+
+async def _bonifica_accrediti_pos_numia_impl(
+    db,
+    anno: int,
+    *,
+    dry_run: bool = True,
+    actor: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """Converte il vecchio import NUMIA nel modello POS giornaliero.
+
+    Prima della regola canonica, ogni accredito NUMIA dell'estratto conto
+    veniva copiato in ``prima_nota_banca`` come entrata generica (spesso con
+    categoria ``Rimborso``). Cinque circuiti/punti vendita dello stesso giorno
+    apparivano quindi come cinque ricavi bancari, nonostante fossero soltanto
+    le componenti dell'unico trasferimento POS gia' registrato in Cassa.
+
+    La bonifica e' idempotente e conservativa:
+
+    * usa soltanto la coppia Cassa/Banca creata dalla fonte POS autorevole;
+    * riconcilia al centesimo il totale giornaliero con le righe EC canoniche;
+    * archivia (mai elimina) le vecchie copie individuali di Prima Nota;
+    * salva prima una fotografia nella collezione di audit;
+    * lascia SumUp completamente separato.
+    """
+    from app.services.pos_evidence import _giorno_operazione_pos
+
+    anno = int(anno)
+    now = datetime.now(timezone.utc).isoformat()
+    actor = actor or {"sub": "system-pos-numia-repair"}
+    actor_id = str(
+        actor.get("sub") or actor.get("user_id") or actor.get("id") or "system"
+    )
+    movimenti = await _leggi_tutti(
+        db["estratto_conto_movimenti"].find(
+            query_accrediti_pos_ec(anno), {"_id": 0}
+        ),
+        20000,
+    )
+    gruppi = raggruppa_accrediti_pos_per_giorno(movimenti)
+
+    tutti_ids: List[str] = []
+    ids_per_giorno: Dict[str, List[str]] = {}
+    date_accredito_per_giorno: Dict[str, List[str]] = {}
+    for movimento in movimenti:
+        mov_id = str(movimento.get("id") or "")
+        if not mov_id:
+            continue
+        descrizione = str(
+            movimento.get("descrizione_originale")
+            or movimento.get("descrizione")
+            or ""
+        )
+        giorno = _giorno_operazione_pos(
+            descrizione, str(movimento.get("data") or "")
+        )
+        tutti_ids.append(mov_id)
+        ids_per_giorno.setdefault(giorno, []).append(mov_id)
+        data_accredito = str(movimento.get("data") or "")[:10]
+        if data_accredito:
+            date_accredito_per_giorno.setdefault(giorno, []).append(data_accredito)
+
+    filtro_legacy: Dict[str, Any] = {
+        "source": {"$in": ["estratto_conto_auto", "export_bancario_operativo"]},
+        "estratto_conto_id": {"$in": sorted(set(tutti_ids))},
+        "status": {"$nin": ["deleted", "archived"]},
+    }
+    legacy = []
+    if tutti_ids:
+        legacy = await _leggi_tutti(
+            db["prima_nota_banca"].find(filtro_legacy), 20000
+        )
+
+    recupero = {
+        "anno": anno,
+        "giorni_bancari": len(gruppi),
+        "creati": 0,
+        "aggiornati": 0,
+        "saltati_per_chiusura_manuale": 0,
+    }
+    if not dry_run:
+        recupero = await recupera_pos_storico_da_estratto(db, anno)
+
+    # Una sola query per tutti i trasferimenti dell'anno: evita l'N+1 (una
+    # find_one per giornata) e permette di rilevare candidati duplicati. In
+    # presenza di piu' trasferimenti NUMIA attivi nello stesso giorno non si
+    # sceglie mai arbitrariamente un documento contabile.
+    trasferimenti = await _leggi_tutti(
+        db["prima_nota_banca"].find({
+            "source": "trasferimento_pos",
+            "$and": [
+                filtro_gestore_pos(conti_pos.NUMIA),
+                {"$or": [
+                    {"anno": anno},
+                    {"giorno_vendita": {"$regex": f"^{anno}-"}},
+                    {"data": {"$regex": f"^{anno}-"}},
+                ]},
+            ],
+            "status": {"$nin": ["deleted", "archived"]},
+        }),
+        20000,
+    )
+    trasferimenti_per_giorno: Dict[str, List[Dict[str, Any]]] = {}
+    for trasferimento in trasferimenti:
+        giorno_trasferimento = str(
+            trasferimento.get("giorno_vendita")
+            or trasferimento.get("data")
+            or ""
+        )[:10]
+        if giorno_trasferimento:
+            trasferimenti_per_giorno.setdefault(giorno_trasferimento, []).append(
+                trasferimento
+            )
+
+    giornate_riconciliate = 0
+    giornate_non_quadrate = 0
+    giornate_senza_trasferimento = 0
+    giornate_trasferimento_ambiguo = 0
+    ec_riconciliati = 0
+    ec_duplicati_esclusi = 0
+    dettaglio: List[Dict[str, Any]] = []
+
+    for giorno, evidenza in sorted(gruppi.items()):
+        candidati_trasferimento = trasferimenti_per_giorno.get(giorno) or []
+        trasferimento_ambiguo = len(candidati_trasferimento) > 1
+        trasferimento = (
+            candidati_trasferimento[0]
+            if len(candidati_trasferimento) == 1
+            else None
+        )
+        ids_canonici = sorted(set(evidenza.get("estratto_conto_ids") or []))
+        ids_tutti = sorted(set(ids_per_giorno.get(giorno) or []))
+        ids_duplicati = sorted(set(ids_tutti) - set(ids_canonici))
+        # Gruppo EC e credito atteso in Decimal; senza trasferimento l'atteso
+        # e' zero esplicito (serve solo al dettaglio, ``quadrato`` resta False).
+        accreditato_dec = _decimale_o_zero(evidenza.get("totale"))
+        atteso_dec = _decimale_o_zero((trasferimento or {}).get("importo"))
+        quadrato = bool(trasferimento) and abs(accreditato_dec - atteso_dec) <= _CENTESIMO
+        # Valori serializzati per dettagli e documenti.
+        accreditato = _euro(accreditato_dec)
+        atteso = _euro(atteso_dec)
+        differenza = _euro(accreditato_dec - atteso_dec)
+
+        if trasferimento_ambiguo:
+            giornate_trasferimento_ambiguo += 1
+        elif not trasferimento:
+            giornate_senza_trasferimento += 1
+        elif quadrato:
+            giornate_riconciliate += 1
+            ec_riconciliati += len(ids_canonici)
+        else:
+            giornate_non_quadrate += 1
+        ec_duplicati_esclusi += len(ids_duplicati)
+
+        dettaglio.append({
+            "giorno_vendita": giorno,
+            "importo_atteso": atteso,
+            "importo_accreditato": accreditato,
+            "differenza": differenza,
+            "righe_ec": len(ids_canonici),
+            "righe_ec_duplicate_escluse": len(ids_duplicati),
+            "trasferimenti_candidati": len(candidati_trasferimento),
+            "stato": (
+                "riconciliato" if quadrato
+                else "trasferimenti_duplicati" if trasferimento_ambiguo
+                else "senza_trasferimento" if not trasferimento
+                else "non_quadrato"
+            ),
+        })
+        if dry_run or not trasferimento or trasferimento_ambiguo:
+            continue
+
+        data_ultimo_accredito = max(
+            date_accredito_per_giorno.get(giorno) or [giorno]
+        )
+        dettagli_riconciliazione = {
+            "prima_nota_id": trasferimento.get("id"),
+            "giorno_vendita": giorno,
+            "importo_atteso": atteso,
+            "importo_accreditato": accreditato,
+            "differenza": differenza,
+            "righe_ec": len(ids_canonici),
+        }
+        # Il trasferimento e tutte le prove EC della giornata cambiano stato
+        # insieme sotto il lock atomico del registro Drive/Supabase.
+        async with _transazione_registro(db) as session:
+            sessione = _sessione(session)
+            await db["prima_nota_banca"].update_one(
+                {"id": trasferimento.get("id")},
+                {"$set": {
+                    "estratto_conto_ids": ids_canonici,
+                    "accreditato_ec": accreditato,
+                    "riconciliato": quadrato,
+                    "in_transito": not quadrato,
+                    "stato_riconciliazione": (
+                        "riconciliato" if quadrato else "da_verificare"
+                    ),
+                    "tipo_riconciliazione": (
+                        "accredito_pos_ec" if quadrato
+                        else "accredito_pos_non_quadrato"
+                    ),
+                    "data_ultimo_accredito": data_ultimo_accredito,
+                    "updated_at": now,
+                }},
+                **sessione,
+            )
+            if ids_canonici:
+                await db["estratto_conto_movimenti"].update_many(
+                    {"id": {"$in": ids_canonici}},
+                    {"$set": {
+                        "riconciliato": quadrato,
+                        "importato_prima_nota": False,
+                        "stato_riconciliazione": (
+                            "riconciliato" if quadrato else "da_verificare"
+                        ),
+                        "tipo_riconciliazione": (
+                            "accredito_pos_trasferimento" if quadrato
+                            else "accredito_pos_non_quadrato"
+                        ),
+                        "dettagli_riconciliazione": dettagli_riconciliazione,
+                    }},
+                    **sessione,
+                )
+            if ids_duplicati:
+                await db["estratto_conto_movimenti"].update_many(
+                    {"id": {"$in": ids_duplicati}},
+                    {"$set": {
+                        "riconciliato": False,
+                        "importato_prima_nota": False,
+                        "stato_riconciliazione": "duplicato_evidenza_escluso",
+                        "tipo_riconciliazione": "duplicato_accredito_pos_ec",
+                        "dettagli_riconciliazione": {
+                            **dettagli_riconciliazione,
+                            "righe_canoniche": ids_canonici,
+                        },
+                    }},
+                    **sessione,
+                )
+
+    migration_id = f"bonifica-pos-numia-{anno}"
+    if not dry_run:
+        archiviate = 0
+        for riga in legacy:
+            riga_id = str(riga.get("id") or "")
+            snapshot = {k: v for k, v in riga.items() if k != "_id"}
+            audit_id = f"{migration_id}:{riga_id}"
+            async with _transazione_registro(db) as session:
+                sessione = _sessione(session)
+                await db["prima_nota_migrazioni_audit"].update_one(
+                    {"id": audit_id},
+                    {"$setOnInsert": {
+                        "id": audit_id,
+                        "migrazione_id": migration_id,
+                        "azione": "archivia_accredito_numia_individuale",
+                        "collection": "prima_nota_banca",
+                        "documento_id": riga_id,
+                        "originale": snapshot,
+                        "created_at": now,
+                        "created_by": actor_id,
+                    }},
+                    upsert=True,
+                    **sessione,
+                )
+                archiviata = await db["prima_nota_banca"].update_one(
+                    {
+                        "id": riga_id,
+                        "status": {"$nin": ["deleted", "archived"]},
+                    },
+                    {"$set": {
+                        "status": "archived",
+                        "deleted": True,
+                        "deleted_reason": (
+                            "accredito_pos_numia_gia_rappresentato_da_"
+                            "trasferimento_giornaliero"
+                        ),
+                        "deleted_at": now,
+                        "deleted_by": actor_id,
+                        "migrazione_id": migration_id,
+                    }},
+                    **sessione,
+                )
+                archiviate += int(archiviata.modified_count or 0)
+    else:
+        archiviate = 0
+
+    return {
+        "success": True,
+        "dry_run": dry_run,
+        "anno": anno,
+        "righe_ec_numia": len(movimenti),
+        "giornate_numia": len(gruppi),
+        "giornate_riconciliate": giornate_riconciliate,
+        "giornate_non_quadrate": giornate_non_quadrate,
+        "giornate_senza_trasferimento": giornate_senza_trasferimento,
+        "giornate_trasferimento_ambiguo": giornate_trasferimento_ambiguo,
+        "righe_ec_riconciliate": ec_riconciliati,
+        "righe_ec_duplicate_escluse": ec_duplicati_esclusi,
+        "righe_prima_nota_da_archiviare": len(legacy),
+        "righe_prima_nota_archiviate": archiviate,
+        "recupero_storico": recupero,
+        "dettaglio": dettaglio,
+    }
+
+
+async def bonifica_accrediti_pos_numia(
+    db,
+    anno: int,
+    *,
+    dry_run: bool = True,
+    actor: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """Bonifica NUMIA con persistenza Drive/Supabase accorpata per foglio.
+
+    Senza questo confine un recupero di molte giornate eseguiva una lettura
+    remota dell'indice del runtime per ogni singola mutazione e superava il limite
+    di 60 letture/minuto. La cache resta aggiornata a ogni passaggio, mentre il
+    registro remoto riceve un unico upsert deduplicato per collezione.
+    """
+    async with _batch_scritture_registro(db):
+        return await _bonifica_accrediti_pos_numia_impl(
+            db,
+            anno,
+            dry_run=dry_run,
+            actor=actor,
+        )

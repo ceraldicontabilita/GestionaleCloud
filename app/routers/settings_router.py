@@ -1,0 +1,281 @@
+"""Router Impostazioni — salva/leggi configurazioni da Drive/Supabase."""
+from fastapi import APIRouter, Body, Depends
+from typing import Dict, Any
+from datetime import datetime, timezone
+
+from app.database import Database
+from app.services.gmail_credentials import get_gmail_environment_credentials
+from app.utils.crypto import encrypt_credential, decrypt_credential
+from app.utils.dependencies import get_current_admin_user
+
+router = APIRouter(tags=["Impostazioni"])
+
+
+@router.get("/gmail")
+async def get_gmail_settings(
+    _admin: Dict[str, Any] = Depends(get_current_admin_user),
+) -> Dict[str, Any]:
+    """Legge le impostazioni Gmail da Drive/Supabase (password oscurata)."""
+    db = Database.get_db()
+    doc = await db["settings"].find_one({"chiave": "gmail"}, {"_id": 0})
+    if not doc:
+        env = get_gmail_environment_credentials()
+        return {
+            "imap_user": env.user or "",
+            "imap_host": env.host,
+            "has_password": bool(env.password),
+            "sorgente": "env"
+        }
+    return {
+        "imap_user": doc.get("imap_user", ""),
+        "imap_host": doc.get("imap_host", "imap.gmail.com"),
+        "has_password": bool(doc.get("gmail_app_password")),
+        "sorgente": "database",
+        "aggiornato_il": doc.get("aggiornato_il")
+    }
+
+
+@router.post("/gmail")
+async def salva_gmail_settings(
+    data: Dict[str, Any] = Body(...),
+    _admin: Dict[str, Any] = Depends(get_current_admin_user),
+) -> Dict[str, Any]:
+    """
+    Salva le impostazioni Gmail in Drive/Supabase.
+    Chiavi accettate: imap_user, gmail_app_password, imap_host
+    """
+    db = Database.get_db()
+    imap_user = data.get("imap_user", "").strip()
+    gmail_app_password = data.get("gmail_app_password", "").replace(" ", "")
+    imap_host = data.get("imap_host", "imap.gmail.com").strip()
+
+    if not imap_user:
+        from fastapi import HTTPException
+        raise HTTPException(400, "imap_user obbligatorio")
+    if not gmail_app_password or len(gmail_app_password) < 8:
+        from fastapi import HTTPException
+        raise HTTPException(400, "App Password non valida (minimo 8 caratteri senza spazi)")
+
+    await db["settings"].update_one(
+        {"chiave": "gmail"},
+        {"$set": {
+            "chiave": "gmail",
+            "imap_user": imap_user,
+            # Prima salvata in chiaro: chiunque leggesse il registro applicativo
+            # aveva accesso diretto alla App Password Gmail.
+            "gmail_app_password": encrypt_credential(gmail_app_password),
+            "imap_host": imap_host,
+            "aggiornato_il": datetime.now(timezone.utc).isoformat()
+        }},
+        upsert=True
+    )
+
+    # Test connessione immediato
+    test_result = await _test_imap(imap_host, imap_user, gmail_app_password)
+    return {
+        "status": "ok" if test_result["ok"] else "salvato_con_errore",
+        "messaggio": "Credenziali salvate con successo" if test_result["ok"] else
+                     f"Salvato, ma test connessione fallito: {test_result['error']}",
+        "test_imap": test_result
+    }
+
+
+@router.post("/gmail/test")
+async def test_gmail_connection(
+    _admin: Dict[str, Any] = Depends(get_current_admin_user),
+) -> Dict[str, Any]:
+    """Testa la connessione IMAP con le credenziali salvate."""
+    db = Database.get_db()
+    doc = await db["settings"].find_one({"chiave": "gmail"}, {"_id": 0})
+
+    env = get_gmail_environment_credentials()
+    imap_user = doc.get("imap_user") if doc else env.user
+    password = decrypt_credential(doc.get("gmail_app_password")) if doc else env.password
+    imap_host = doc.get("imap_host") if doc else env.host
+
+    result = await _test_imap(imap_host, imap_user, password)
+    return result
+
+
+async def _test_imap(host: str, user: str, password: str) -> Dict[str, Any]:
+    """Testa connessione IMAP in modo asincrono."""
+    import asyncio
+    import imaplib
+
+    def _test():
+        try:
+            conn = imaplib.IMAP4_SSL(host, 993)
+            conn.login(user, password)
+            conn.logout()
+            return {"ok": True, "messaggio": f"Connessione IMAP riuscita per {user}"}
+        except imaplib.IMAP4.error as e:
+            return {"ok": False, "error": f"Credenziali non valide: {str(e)}"}
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
+    return await asyncio.to_thread(_test)
+
+
+# ============================================================
+# Chiave Anthropic (Assistente AI della chat)
+# ============================================================
+
+@router.get("/anthropic")
+async def get_anthropic_settings(
+    _admin: Dict[str, Any] = Depends(get_current_admin_user),
+) -> Dict[str, Any]:
+    """Stato della chiave Anthropic per l'assistente AI (mai in chiaro)."""
+    from app.services.anthropic_llm_client import chiave_api, document_model_name
+    db = Database.get_db()
+    doc = await db["settings"].find_one({"chiave": "anthropic"}, {"_id": 0})
+    env_presente = bool(chiave_api())
+    db_presente = bool(doc and doc.get("api_key"))
+    return {
+        "configurata": env_presente or db_presente,
+        "fonte": "env" if env_presente else ("database" if db_presente else None),
+        "modello": document_model_name(),
+        "aggiornato_il": doc.get("aggiornato_il") if doc else None,
+    }
+
+
+@router.post("/anthropic")
+async def salva_anthropic_settings(
+    data: Dict[str, Any] = Body(...),
+    _admin: Dict[str, Any] = Depends(get_current_admin_user),
+) -> Dict[str, Any]:
+    """Salva (cifrata) la chiave API Anthropic per l'assistente AI. Facoltativo:
+    `modello`. La chiave viene testata subito con una chiamata minima."""
+    from fastapi import HTTPException
+    db = Database.get_db()
+    api_key = (data.get("api_key") or "").strip()
+    if not api_key or not api_key.startswith("sk-"):
+        raise HTTPException(400, "Chiave Anthropic non valida (deve iniziare con 'sk-')")
+
+    set_doc = {
+        "chiave": "anthropic",
+        "api_key": encrypt_credential(api_key),
+        "aggiornato_il": datetime.now(timezone.utc).isoformat(),
+    }
+    modello = (data.get("modello") or "").strip()
+    if modello:
+        set_doc["modello"] = modello
+
+    await db["settings"].update_one(
+        {"chiave": "anthropic"}, {"$set": set_doc}, upsert=True
+    )
+    test = await _test_anthropic(api_key, modello or None)
+    return {
+        "status": "ok" if test["ok"] else "salvato_con_errore",
+        "messaggio": ("Chiave salvata: l'assistente AI è attivo." if test["ok"]
+                      else f"Salvata, ma il test è fallito: {test.get('error')}"),
+        "test": test,
+    }
+
+
+@router.post("/anthropic/test")
+async def test_anthropic_connection(
+    _admin: Dict[str, Any] = Depends(get_current_admin_user),
+) -> Dict[str, Any]:
+    """Testa la chiave Anthropic attualmente in uso (env o DB)."""
+    from app.services.chat_ai_engine import risolvi_api_key, _model_name
+    db = Database.get_db()
+    key = await risolvi_api_key(db)
+    if not key:
+        return {"ok": False, "error": "Nessuna chiave configurata"}
+    return await _test_anthropic(key, _model_name())
+
+
+@router.get("/openai")
+async def get_openai_settings(
+    _admin: Dict[str, Any] = Depends(get_current_admin_user),
+) -> Dict[str, Any]:
+    """Stato OpenAI per la chat, senza restituire la chiave."""
+    import os
+    db = Database.get_db()
+    doc = await db["settings"].find_one({"chiave": "openai"}, {"_id": 0})
+    env_presente = bool(os.environ.get("OPENAI_API_KEY", "").strip())
+    db_presente = bool(doc and doc.get("api_key"))
+    from app.services.chat_ai_engine import risolvi_provider, _model_name
+    attivo = await risolvi_provider(db)
+    return {
+        "configurata": env_presente or db_presente,
+        "fonte": "env" if env_presente else ("database" if db_presente else None),
+        "provider_attivo": attivo.get("provider"),
+        "modello": os.environ.get("OPENAI_MODEL", "").strip()
+                   or (doc.get("modello") if doc else None)
+                   or _model_name("openai"),
+        "aggiornato_il": doc.get("aggiornato_il") if doc else None,
+    }
+
+
+@router.post("/openai")
+async def salva_openai_settings(
+    data: Dict[str, Any] = Body(...),
+    _admin: Dict[str, Any] = Depends(get_current_admin_user),
+) -> Dict[str, Any]:
+    """Salva cifrata una chiave OpenAI e testa il modello scelto."""
+    from fastapi import HTTPException
+    api_key = (data.get("api_key") or "").strip()
+    if not api_key or not api_key.startswith("sk-"):
+        raise HTTPException(400, "Chiave OpenAI non valida (deve iniziare con 'sk-')")
+    modello = (data.get("modello") or "").strip() or "gpt-4o-mini"
+    db = Database.get_db()
+    await db["settings"].update_one(
+        {"chiave": "openai"},
+        {"$set": {
+            "chiave": "openai",
+            "api_key": encrypt_credential(api_key),
+            "modello": modello,
+            "aggiornato_il": datetime.now(timezone.utc).isoformat(),
+        }},
+        upsert=True,
+    )
+    test = await _test_openai(api_key, modello)
+    return {
+        "status": "ok" if test["ok"] else "salvato_con_errore",
+        "messaggio": "Chiave salvata: l'assistente AI e' attivo." if test["ok"]
+                     else f"Salvata, ma il test e' fallito: {test.get('error')}",
+        "test": test,
+    }
+
+
+@router.post("/openai/test")
+async def test_openai_connection(
+    _admin: Dict[str, Any] = Depends(get_current_admin_user),
+) -> Dict[str, Any]:
+    """Testa la chiave OpenAI attualmente in uso (env o DB)."""
+    from app.services.chat_ai_engine import risolvi_api_key, _model_name
+    db = Database.get_db()
+    key = await risolvi_api_key(db, "openai")
+    if not key:
+        return {"ok": False, "error": "Nessuna chiave OpenAI configurata"}
+    return await _test_openai(key, _model_name("openai"))
+
+
+async def _test_openai(api_key: str, modello: str = "gpt-4o-mini") -> Dict[str, Any]:
+    """Chiamata minima OpenAI; non restituisce contenuti o segreti."""
+    try:
+        from openai import AsyncOpenAI
+        client = AsyncOpenAI(api_key=api_key)
+        await client.chat.completions.create(
+            model=modello,
+            messages=[{"role": "user", "content": "ping"}],
+            max_tokens=8,
+            timeout=20.0,
+        )
+        return {"ok": True, "messaggio": f"Chiave valida (modello {modello})"}
+    except Exception as exc:
+        return {"ok": False, "error": str(exc)[:200]}
+
+
+async def _test_anthropic(api_key: str, modello: str = None) -> Dict[str, Any]:
+    """Chiamata minima per validare la chiave/il modello (un solo client, senza ritentativi)."""
+    from app.services.anthropic_llm_client import LlmChat, UserMessage, document_model_name
+
+    modello = modello or document_model_name()
+    try:
+        chat = LlmChat(api_key, model=modello, timeout_s=20.0, tentativi=1, max_tokens=8, scopo="prova_chiave")
+        await chat.send_message(UserMessage(content="ping"))
+        return {"ok": True, "messaggio": f"Chiave valida (modello {modello})"}
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200]}

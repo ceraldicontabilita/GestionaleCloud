@@ -1,0 +1,652 @@
+"""Indice manuale delle operazioni bancarie.
+
+Il movimento importato dall'estratto conto e' una fonte immutabile. Questo
+modulo registra esclusivamente la decisione esplicita dell'operatore e una
+relazione bidirezionale di indice; non crea scritture, non marca fatture come
+pagate e non esegue riconciliazioni automatiche.
+"""
+
+from __future__ import annotations
+
+import re
+from datetime import datetime, timezone
+from typing import Any, Dict, List, Optional
+
+from fastapi import Depends, HTTPException, Query
+from pydantic import BaseModel, Field
+
+from app.database import Database
+from app.db_collections import (
+    COLL_BANK_OPERATION_INDEX,
+    COLL_CEDOLINI,
+    COLL_CORRISPETTIVI,
+    COLL_ESTRATTO_CONTO,
+    COLL_F24,
+    COLL_INVOICES,
+    COLL_SUPPLIERS,
+    COLL_VEICOLI_NOLEGGIO,
+    COLL_VERBALI_NOLEGGIO,
+)
+from app.services.entity_relations import revoke_entity_relation, upsert_entity_relation
+from app.services.payment_invoice_matching import money_cents
+from app.utils.dependencies import get_current_user
+
+
+INDEX_RULE = "manual_operation_index.v1"
+
+CATEGORIES: Dict[str, Dict[str, Any]] = {
+    "fornitore": {
+        "label": "Fornitore (senza fattura)",
+        "target_type": "supplier",
+        "collection": COLL_SUPPLIERS,
+        "requires_target": True,
+        "help": "Scegli il fornitore quando non esiste una fattura precisa.",
+        "date_field": "updated_at",
+        "search_fields": ["ragione_sociale", "denominazione", "nome", "partita_iva", "codice_fiscale"],
+    },
+    "fattura": {
+        "label": "Fornitore / fattura",
+        "target_type": "invoice",
+        "collection": COLL_INVOICES,
+        "requires_target": True,
+        "help": "Scegli la fattura esatta del fornitore.",
+        "date_field": "invoice_date",
+        "search_fields": ["supplier_name", "fornitore", "supplier_vat", "cedente_piva", "numero_documento", "numero_fattura", "invoice_number"],
+    },
+    "cedolino": {
+        "label": "Cedolino / dipendente",
+        "target_type": "payslip",
+        "collection": COLL_CEDOLINI,
+        "requires_target": True,
+        "help": "Scegli il cedolino e il dipendente esatti.",
+        "date_field": "data",
+        "search_fields": ["dipendente_nome", "nome_dipendente", "employee_name", "nominativo", "codice_fiscale", "periodo"],
+    },
+    "f24": {
+        "label": "F24",
+        "target_type": "f24_model",
+        "collection": COLL_F24,
+        "requires_target": True,
+        "help": "Scegli il modello F24; quietanza e banca restano prove separate.",
+        "date_field": "data_compilazione",
+        "search_fields": ["periodo", "codice_fiscale", "taxpayer_id", "nome_contribuente"],
+    },
+    "noleggio": {
+        "label": "Noleggio / veicolo",
+        "target_type": "rental_vehicle",
+        "collection": COLL_VEICOLI_NOLEGGIO,
+        "requires_target": True,
+        "help": "Scegli targa, veicolo e driver dall'anagrafica.",
+        "date_field": "updated_at",
+        "search_fields": ["targa", "marca", "modello", "driver_nome", "dipendente_nome", "contratto"],
+    },
+    "verbale": {
+        "label": "Verbale",
+        "target_type": "fine",
+        "collection": COLL_VERBALI_NOLEGGIO,
+        "requires_target": True,
+        "help": "Scegli il verbale esatto; un avviso non prova il pagamento.",
+        "date_field": "data_verbale",
+        "search_fields": ["numero_verbale", "numero", "veicolo_targa", "targa", "driver_nome"],
+    },
+    "corrispettivo_pos": {
+        "label": "Corrispettivo / POS",
+        "target_type": "daily_receipt",
+        "collection": COLL_CORRISPETTIVI,
+        "requires_target": True,
+        "help": "Scegli la chiusura giornaliera o il corrispettivo esatto.",
+        "date_field": "data",
+        "search_fields": ["data", "numero_documento", "matricola_dispositivo"],
+    },
+    "commissione_bancaria": {
+        "label": "Commissione bancaria",
+        "target_type": None,
+        "collection": None,
+        "requires_target": False,
+        "help": "Classificazione manuale senza documento da collegare.",
+    },
+    "trasferimento": {
+        "label": "Trasferimento interno",
+        "target_type": None,
+        "collection": None,
+        "requires_target": False,
+        "help": "Giroconto o trasferimento tra conti, da verificare manualmente.",
+    },
+    "altro": {
+        "label": "Altro",
+        "target_type": None,
+        "collection": None,
+        "requires_target": False,
+        "help": "Usa la nota per descrivere la natura dell'operazione.",
+    },
+}
+
+
+class ManualIndexDecisionIn(BaseModel):
+    category: str
+    target_id: Optional[str] = None
+    note: str = Field(default="", max_length=500)
+    expected_version: Optional[int] = Field(default=None, ge=0)
+    # Titolare, 28/09/2026: «se classifico un versamento, tutti i versamenti».
+    # Vale solo per le nature senza documento da collegare: una fattura o un
+    # cedolino sono di un movimento solo.
+    applica_a_simili: bool = False
+
+
+# Numeri con la loro punteggiatura interna («1.500,00», «3F38…» no: e' testo).
+_FAMIGLIA_NUMERI = re.compile(r"\d[\d./:,-]*")
+_FAMIGLIA_SPAZI = re.compile(r"\s+")
+
+
+def famiglia_causale(descrizione: Any) -> str:
+    """La parte fissa della causale, quella che la banca ripete uguale.
+
+    Nell'export BPM la causale e' «TIPO OPERAZIONE - dettaglio» («VERS.
+    CONTANTI - VVVVV», «COMMISSIONI - Comm.sdd: …»): la famiglia e' il tipo.
+    Nel PDF ufficiale manca il prefisso e resta il dettaglio («SDD CORE: …»):
+    la famiglia e' cio' che precede i due punti. Numeri e riferimenti non
+    contano: due commissioni con codici diversi sono la stessa famiglia.
+    """
+    testo = str(descrizione or "").upper().strip()
+    if not testo:
+        return ""
+    if " - " in testo:
+        testo = testo.split(" - ", 1)[0]
+    elif ":" in testo:
+        testo = testo.split(":", 1)[0]
+    testo = _FAMIGLIA_NUMERI.sub(" ", testo)
+    return _FAMIGLIA_SPAZI.sub(" ", testo).strip()
+
+
+async def _movimenti_simili(db, movement: Dict[str, Any], movement_id: str) -> List[Dict[str, Any]]:
+    """Movimenti dello stesso anno, stesso verso e stessa famiglia di causale,
+    ancora senza decisione e senza prova bancaria: quelli su cui la scelta
+    fatta su ``movement`` puo' essere ripetuta."""
+    famiglia = famiglia_causale(movement.get("descrizione"))
+    anno = _date(movement)[:4]
+    if not famiglia or not anno.isdigit():
+        return []
+    decisi = {
+        str(d.get("movement_id")) for d in await db[COLL_BANK_OPERATION_INDEX].find(
+            {"status": {"$ne": "revoked"}}, {"_id": 0, "movement_id": 1},
+        ).to_list(None)
+    }
+    candidati = await db[COLL_ESTRATTO_CONTO].find({
+        "data": {"$gte": f"{anno}-01-01", "$lte": f"{anno}-12-31"},
+        "tipo": movement.get("tipo"),
+        "riconciliato": {"$ne": True},
+    }).sort("data", -1).to_list(None)
+    simili = []
+    for altro in candidati:
+        altro_id = str(altro.get("id") or altro.get("_id") or "")
+        if not altro_id or altro_id == movement_id or altro_id in decisi:
+            continue
+        if famiglia_causale(altro.get("descrizione")) != famiglia:
+            continue
+        simili.append(altro)
+    return simili
+
+
+def _riga_simile(movement: Dict[str, Any]) -> Dict[str, Any]:
+    return {
+        "id": str(movement.get("id") or movement.get("_id") or ""),
+        "date": _date(movement),
+        "description": movement.get("descrizione") or "",
+        "amount_cents": money_cents(movement.get("importo")),
+    }
+
+
+async def list_manual_operation_similar(
+    movement_id: str,
+    _user: Dict[str, Any] = Depends(get_current_user),
+) -> Dict[str, Any]:
+    """Quanti e quali movimenti riceverebbero la stessa scelta: si mostra
+    prima di applicarla, non si applica mai alla cieca."""
+    db = Database.get_db()
+    movement = await db[COLL_ESTRATTO_CONTO].find_one(_movement_query(movement_id))
+    if not movement:
+        raise HTTPException(status_code=404, detail="Movimento bancario non trovato")
+    simili = await _movimenti_simili(db, movement, movement_id)
+    return {
+        "family": famiglia_causale(movement.get("descrizione")),
+        "count": len(simili),
+        "samples": [_riga_simile(m) for m in simili[:8]],
+    }
+
+
+def _actor(user: Dict[str, Any]) -> str:
+    return str(user.get("user_id") or user.get("email") or "utente")
+
+
+def _date(doc: Dict[str, Any]) -> str:
+    return str(
+        doc.get("data")
+        or doc.get("data_documento")
+        or doc.get("data_emissione")
+        or doc.get("data_verbale")
+        or doc.get("periodo")
+        or ""
+    )[:10]
+
+
+def _first(doc: Dict[str, Any], *keys: str) -> Any:
+    for key in keys:
+        value = doc.get(key)
+        if value not in (None, "", []):
+            return value
+    return None
+
+
+def _normalized_supplier_key(value: Any) -> str:
+    """Confronto P.IVA tra importatori italiani e internazionali."""
+    normalized = re.sub(r"[^A-Z0-9]", "", str(value or "").upper())
+    return normalized[2:] if normalized.startswith("IT") and normalized[2:].isdigit() else normalized
+
+
+def _target_label(category: str, doc: Dict[str, Any]) -> str:
+    if category == "fornitore":
+        name = _first(doc, "ragione_sociale", "denominazione", "nome") or "Fornitore"
+        vat = _first(doc, "partita_iva", "piva", "codice_fiscale")
+        return f"{name} - {vat}" if vat else str(name)
+    if category == "fattura":
+        supplier = _first(doc, "supplier_name", "fornitore", "cedente_nome", "denominazione_fornitore") or "Fornitore"
+        number = _first(doc, "numero_documento", "numero_fattura", "invoice_number", "numero") or "senza numero"
+        return f"{supplier} - fattura {number}"
+    if category == "cedolino":
+        employee = _first(doc, "dipendente_nome", "nome_dipendente", "employee_name", "nominativo", "nome") or "Dipendente"
+        period = _first(doc, "periodo", "mese_competenza") or "periodo non indicato"
+        return f"{employee} - {period}"
+    if category == "f24":
+        codes = doc.get("codici_tributo") or doc.get("tributi") or []
+        if isinstance(codes, list):
+            codes = ", ".join(str(x.get("codice") if isinstance(x, dict) else x) for x in codes[:4])
+        return f"F24 {_first(doc, 'periodo', 'data_compilazione', 'data') or ''} {codes or ''}".strip()
+    if category == "noleggio":
+        plate = _first(doc, "targa") or "senza targa"
+        vehicle = " ".join(str(x) for x in (_first(doc, "marca"), _first(doc, "modello")) if x)
+        driver = _first(doc, "driver_nome", "dipendente_nome", "driver")
+        return " - ".join(x for x in (str(plate), vehicle, str(driver or "")) if x)
+    if category == "verbale":
+        number = _first(doc, "numero_verbale", "numero") or "senza numero"
+        plate = _first(doc, "veicolo_targa", "targa") or "targa non indicata"
+        return f"Verbale {number} - {plate}"
+    if category == "corrispettivo_pos":
+        return f"Corrispettivo {_date(doc) or 'senza data'}"
+    return str(doc.get("id") or "")
+
+
+def _target_amount(category: str, doc: Dict[str, Any]) -> Any:
+    keys = {
+        "fattura": ("importo_totale", "total_amount", "totale_documento", "totale"),
+        "cedolino": ("netto", "netto_pagare", "importo_netto", "importo"),
+        "f24": ("saldo_finale", "importo_totale", "totale", "importo"),
+        "verbale": ("importo_verificato", "importo", "totale"),
+        "corrispettivo_pos": ("pagato_pos", "pagato_elettronico", "totale", "importo"),
+    }.get(category, ("importo", "totale"))
+    return _first(doc, *keys)
+
+
+def _candidate(category: str, doc: Dict[str, Any]) -> Dict[str, Any]:
+    return {
+        "id": str(doc.get("id") or doc.get("_id") or ""),
+        "label": _target_label(category, doc),
+        "date": _date(doc),
+        "amount_cents": money_cents(_target_amount(category, doc)),
+        "details": {
+            "supplier": _first(doc, "supplier_name", "fornitore", "cedente_nome"),
+            "invoice_number": _first(doc, "numero_documento", "numero_fattura", "invoice_number"),
+            "employee": _first(doc, "dipendente_nome", "nome_dipendente", "employee_name", "nominativo"),
+            "tax_code": _first(doc, "codice_fiscale", "employee_cf", "taxpayer_id"),
+            "plate": _first(doc, "targa", "veicolo_targa"),
+            "driver": _first(doc, "driver_nome", "dipendente_nome", "driver"),
+            "period": _first(doc, "periodo", "mese_competenza", "anno"),
+            # Informazione di contesto: il metodo anagrafico non e' una prova
+            # del pagamento e non viene mai usato per confermare il movimento.
+            "payment_method": _first(
+                doc, "metodo_pagamento", "metodo_pagamento_fornitore",
+                "metodo_pagamento_previsto", "payment_method",
+            ),
+        },
+    }
+
+
+def _target_query(target_id: str) -> Dict[str, Any]:
+    choices: List[Dict[str, Any]] = [{"id": target_id}, {"_id": target_id}]
+    return {"$or": choices}
+
+
+def _movement_query(movement_id: str) -> Dict[str, Any]:
+    """Trova anche gli import storici che non hanno ancora il campo ``id``."""
+    return _target_query(movement_id)
+
+
+def _searchable(candidate: Dict[str, Any]) -> str:
+    values = [candidate.get("label"), candidate.get("date")]
+    values.extend((candidate.get("details") or {}).values())
+    return " ".join(str(value or "") for value in values).upper()
+
+
+STATI_INDICE = ("riconciliato_banca", "collegato_indice", "classificato", "da_classificare")
+
+
+def _per_id_movimento(operatore: str, ids: List[str]) -> Dict[str, Any]:
+    """Filtro per id applicativo o, negli import storici, per ``_id``."""
+    if operatore == "$in":
+        return {"$or": [{"id": {"$in": ids}}, {"_id": {"$in": ids}}]}
+    return {"id": {"$nin": ids}, "_id": {"$nin": ids}}
+
+
+async def _filtro_stato_indice(db, stato: str) -> Dict[str, Any]:
+    """Traduce lo stato della riga in una condizione sulla query.
+
+    Lo stato si decide prima di contare e paginare: filtrarlo dopo lo
+    ``skip`` lasciava pagine vuote e un totale che non corrispondeva alle
+    righe, e la pagina filtrava solo le 200 righe gia' caricate.
+    """
+    if stato == "riconciliato_banca":
+        return {"riconciliato": True}
+    decisioni = await db[COLL_BANK_OPERATION_INDEX].find(
+        {"status": {"$ne": "revoked"}}, {"_id": 0, "movement_id": 1, "target_id": 1},
+    ).to_list(None)
+    collegati = sorted({str(d.get("movement_id")) for d in decisioni
+                        if d.get("movement_id") and d.get("target_id")})
+    classificati = sorted({str(d.get("movement_id")) for d in decisioni
+                           if d.get("movement_id") and not d.get("target_id")})
+    base = {"riconciliato": {"$ne": True}}
+    if stato == "collegato_indice":
+        return {**base, **_per_id_movimento("$in", collegati)}
+    if stato == "classificato":
+        # Una riga con piu' decisioni attive vale «collegata» se una ha il target.
+        solo_classificati = sorted(set(classificati) - set(collegati))
+        return {**base, **_per_id_movimento("$in", solo_classificati)}
+    return {**base, **_per_id_movimento("$nin", sorted(set(collegati) | set(classificati)))}
+
+
+async def list_manual_operation_index(
+    anno: int = Query(..., ge=2000, le=2100),
+    tipo: Optional[str] = Query(None),
+    stato: Optional[str] = Query(None),
+    search: str = Query("", max_length=120),
+    limit: int = Query(100, ge=1, le=500),
+    offset: int = Query(0, ge=0),
+    _user: Dict[str, Any] = Depends(get_current_user),
+) -> Dict[str, Any]:
+    db = Database.get_db()
+    if stato in (None, "", "all"):
+        stato = None
+    elif stato not in STATI_INDICE:
+        raise HTTPException(status_code=400, detail={
+            "code": "STATO_NON_VALIDO",
+            "message": f"stato deve essere uno fra {', '.join(STATI_INDICE)}",
+        })
+    # Le operazioni della carta Nexi vivono nella stessa collezione ma si
+    # riconciliano con lo statement carta, non movimento per movimento.
+    filtri: List[Dict[str, Any]] = [{"tipo": {"$ne": "carta_credito"}}]
+    query: Dict[str, Any] = {"data": {"$gte": f"{anno}-01-01", "$lte": f"{anno}-12-31"}}
+    if tipo in {"entrata", "uscita"}:
+        query["tipo"] = tipo
+    if search.strip():
+        query["descrizione"] = {"$regex": re.escape(search.strip()), "$options": "i"}
+    if stato:
+        filtri.append(await _filtro_stato_indice(db, stato))
+    query["$and"] = filtri
+
+    total = await db[COLL_ESTRATTO_CONTO].count_documents(query)
+    movements = await db[COLL_ESTRATTO_CONTO].find(query).sort("data", -1).skip(offset).limit(limit).to_list(limit)
+    ids = [str(item.get("id") or item.get("_id") or "") for item in movements]
+    ids = [movement_id for movement_id in ids if movement_id]
+    decisions = await db[COLL_BANK_OPERATION_INDEX].find(
+        {"movement_id": {"$in": ids}, "status": {"$ne": "revoked"}}, {"_id": 0, "history": 0}
+    ).to_list(len(ids) or 1)
+    by_movement = {str(item.get("movement_id")): item for item in decisions}
+
+    rows: List[Dict[str, Any]] = []
+    for movement in movements:
+        movement_id = str(movement.get("id") or movement.get("_id") or "")
+        decision = by_movement.get(movement_id)
+        # Una riconciliazione gia' confermata dal motore con una prova EC non
+        # deve essere proposta di nuovo come lavoro manuale. L'indice non
+        # modifica la fonte: la espone soltanto con il suo collegamento reale.
+        row_status = (
+            "riconciliato_banca" if movement.get("riconciliato") is True else
+            "collegato_indice" if decision and decision.get("target_id") else
+            "classificato" if decision else "da_classificare"
+        )
+        if stato and stato != row_status:
+            # Solo per le righe storiche il cui ``_id`` non e' un testo: il
+            # filtro vero sta gia' nella query.
+            continue
+        rows.append({
+            "id": movement_id,
+            "date": _date(movement),
+            "type": movement.get("tipo"),
+            "description": movement.get("descrizione") or "",
+            "amount_cents": money_cents(movement.get("importo")),
+            "source_fingerprint": movement.get("fingerprint"),
+            "bank_reconciled": bool(movement.get("riconciliato")),
+            "bank_evidence": {
+                "kind": movement.get("riconciliato_con") or movement.get("tipo_riconciliazione"),
+                "invoice_id": movement.get("fattura_id"),
+                "invoice_ids": movement.get("fattura_ids") or [],
+                "cheque_id": movement.get("assegno_id"),
+                "reconciled_at": movement.get("riconciliato_at") or movement.get("data_riconciliazione"),
+            } if movement.get("riconciliato") is True else None,
+            "index_status": row_status,
+            "decision": decision,
+        })
+
+    return {
+        "year": anno,
+        "total_rows": total,
+        "loaded_rows": len(rows),
+        "offset": offset,
+        "limit": limit,
+        "categories": [
+            {
+                "id": key,
+                "label": config["label"],
+                "target_type": config["target_type"],
+                "requires_target": config["requires_target"],
+                "help": config["help"],
+            }
+            for key, config in CATEGORIES.items()
+        ],
+        "rows": rows,
+        "automation": "disabled_for_manual_index",
+    }
+
+
+async def list_manual_operation_candidates(
+    movement_id: str,
+    category: str = Query(...),
+    search: str = Query("", max_length=120),
+    limit: int = Query(50, ge=1, le=100),
+    _user: Dict[str, Any] = Depends(get_current_user),
+) -> Dict[str, Any]:
+    config = CATEGORIES.get(category)
+    if not config:
+        raise HTTPException(status_code=400, detail="Categoria non valida")
+    db = Database.get_db()
+    movement = await db[COLL_ESTRATTO_CONTO].find_one(_movement_query(movement_id))
+    if not movement:
+        raise HTTPException(status_code=404, detail="Movimento bancario non trovato")
+    if not config["requires_target"]:
+        return {"movement_id": movement_id, "category": category, "candidates": []}
+
+    search_text = search.strip()
+    candidate_query: Dict[str, Any] = {}
+    if search_text:
+        expression = {"$regex": re.escape(search_text), "$options": "i"}
+        candidate_query["$or"] = [{field: expression} for field in config.get("search_fields", [])]
+    documents = await db[config["collection"]].find(candidate_query).sort(
+        config.get("date_field") or "data", -1
+    ).limit(500).to_list(500)
+    if category == "fattura":
+        # Le fatture importate possono non replicare il metodo impostato
+        # nell'anagrafica fornitore. Lo proiettiamo solo nella risposta di
+        # consultazione: la scelta dell'operatore resta necessaria.
+        invoice_keys = {
+            _normalized_supplier_key(_first(
+                document, "supplier_vat", "cedente_piva", "fornitore_partita_iva",
+            ))
+            for document in documents
+        }
+        invoice_keys.discard("")
+        if invoice_keys:
+            suppliers = await db[COLL_SUPPLIERS].find(
+                {},
+                {"_id": 0, "partita_iva": 1, "piva": 1, "vat": 1,
+                 "metodo_pagamento": 1, "default_payment_method": 1},
+            ).to_list(5000)
+            methods_by_supplier = {}
+            for supplier in suppliers:
+                method = _first(supplier, "metodo_pagamento", "default_payment_method")
+                if not method:
+                    continue
+                for value in (
+                    supplier.get("partita_iva"), supplier.get("piva"), supplier.get("vat"),
+                ):
+                    key = _normalized_supplier_key(value)
+                    if key:
+                        methods_by_supplier[key] = method
+            for document in documents:
+                if _first(document, "metodo_pagamento", "payment_method", "metodo_pagamento_previsto"):
+                    continue
+                key = _normalized_supplier_key(_first(
+                    document, "supplier_vat", "cedente_piva", "fornitore_partita_iva",
+                ))
+                if methods_by_supplier.get(key):
+                    document["metodo_pagamento_fornitore"] = methods_by_supplier[key]
+    candidates = [_candidate(category, item) for item in documents]
+    candidates = [item for item in candidates if item["id"]]
+    query_text = search_text.upper()
+    if query_text:
+        candidates = [item for item in candidates if query_text in _searchable(item)]
+    return {
+        "movement_id": movement_id,
+        "category": category,
+        "movement_amount_cents": money_cents(movement.get("importo")),
+        "candidates": candidates[:limit],
+        "matching": "manual_only",
+    }
+
+
+async def _scrivi_decisione(
+    db, movement: Dict[str, Any], movement_id: str, config: Dict[str, Any],
+    body: ManualIndexDecisionIn, target: Optional[Dict[str, Any]], target_id: Optional[str],
+    previous: Optional[Dict[str, Any]], actor: str, now: str, *, applicata_da: Optional[str] = None,
+) -> tuple:
+    """Scrive la decisione di un movimento (e la relazione, se ha un bersaglio)."""
+    target_type = config.get("target_type") if target_id else None
+    previous_version = int((previous or {}).get("version") or 0)
+    if previous and previous.get("target_id") and (
+        previous.get("target_id") != target_id or previous.get("target_type") != target_type
+    ):
+        await revoke_entity_relation(
+            db,
+            source_type="bank_movement",
+            source_id=movement_id,
+            relation_type="manually_indexed_as",
+            target_type=str(previous["target_type"]),
+            target_id=str(previous["target_id"]),
+            actor=actor,
+        )
+
+    decision = {
+        "id": f"bank-operation-index:{movement_id}",
+        "movement_id": movement_id,
+        "category": body.category,
+        "category_label": config["label"],
+        "target_type": target_type,
+        "target_id": target_id,
+        "target_label": _target_label(body.category, target) if target else None,
+        "note": body.note.strip(),
+        "amount_cents": money_cents(movement.get("importo")),
+        "source_fingerprint": movement.get("fingerprint"),
+        "status": "linked_index" if target_id else "classified",
+        "version": previous_version + 1,
+        "updated_at": now,
+        "updated_by": actor,
+        **({"applied_from_movement_id": applicata_da} if applicata_da else {}),
+    }
+    update: Dict[str, Any] = {"$set": decision, "$setOnInsert": {"created_at": now, "created_by": actor}}
+    if previous:
+        history_item = {k: v for k, v in previous.items() if k not in {"history", "_id"}}
+        update["$push"] = {"history": history_item}
+    await db[COLL_BANK_OPERATION_INDEX].update_one({"movement_id": movement_id}, update, upsert=True)
+
+    relation_key = None
+    if target_id:
+        relation_key = await upsert_entity_relation(
+            db,
+            source_type="bank_movement",
+            source_id=movement_id,
+            relation_type="manually_indexed_as",
+            target_type=str(target_type),
+            target_id=target_id,
+            status="confirmed",
+            rule=INDEX_RULE,
+            evidence=[
+                {"type": "bank_movement_id", "value": movement_id},
+                {"type": "operator_selection", "value": body.category},
+            ],
+            amount=movement.get("importo"),
+            provenance={"source_collection": COLL_ESTRATTO_CONTO, "fingerprint": movement.get("fingerprint")},
+            actor=actor,
+        )
+
+    return decision, relation_key
+
+
+async def save_manual_operation_decision(
+    movement_id: str,
+    body: ManualIndexDecisionIn,
+    current_user: Dict[str, Any] = Depends(get_current_user),
+) -> Dict[str, Any]:
+    config = CATEGORIES.get(body.category)
+    if not config:
+        raise HTTPException(status_code=400, detail="Categoria non valida")
+    db = Database.get_db()
+    movement = await db[COLL_ESTRATTO_CONTO].find_one(_movement_query(movement_id))
+    if not movement:
+        raise HTTPException(status_code=404, detail="Movimento bancario non trovato")
+
+    target_id = str(body.target_id or "").strip() or None
+    if config["requires_target"] and not target_id:
+        raise HTTPException(status_code=400, detail="Seleziona il dato esatto da collegare")
+    target = None
+    if target_id:
+        target = await db[config["collection"]].find_one(_target_query(target_id))
+        if not target:
+            raise HTTPException(status_code=404, detail="Dato selezionato non trovato")
+
+    previous = await db[COLL_BANK_OPERATION_INDEX].find_one({"movement_id": movement_id}, {"_id": 0})
+    previous_version = int((previous or {}).get("version") or 0)
+    if body.expected_version is not None and body.expected_version != previous_version:
+        raise HTTPException(status_code=409, detail="La scelta e' stata modificata: ricarica la riga")
+
+    actor = _actor(current_user)
+    now = datetime.now(timezone.utc).isoformat()
+    decision, relation_key = await _scrivi_decisione(
+        db, movement, movement_id, config, body, target, target_id, previous, actor, now,
+    )
+
+    applicati: List[str] = []
+    if body.applica_a_simili and not config["requires_target"]:
+        for simile in await _movimenti_simili(db, movement, movement_id):
+            simile_id = str(simile.get("id") or simile.get("_id") or "")
+            decisione_simile, _ = await _scrivi_decisione(
+                db, simile, simile_id, config, body, None, None, None, actor, now,
+                applicata_da=movement_id,
+            )
+            applicati.append(decisione_simile["movement_id"])
+
+    return {
+        "saved": True,
+        "decision": decision,
+        "relation_key": relation_key,
+        "applied_to_similar": len(applicati),
+        "applied_movement_ids": applicati,
+        "source_unchanged": True,
+        "payment_status_changed": False,
+    }

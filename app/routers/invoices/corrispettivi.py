@@ -1,0 +1,1574 @@
+"""
+Corrispettivi Router - Gestione corrispettivi telematici.
+Refactored from public_api.py
+"""
+from fastapi import APIRouter, HTTPException, UploadFile, File, Query, Body, Depends
+from app.utils.dependencies import get_current_admin_user
+from typing import Dict, Any, List
+from datetime import datetime, timezone, timedelta
+from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
+import uuid
+import logging
+import zipfile
+import io
+
+from app.database import Database
+from app.parsers.corrispettivi_parser import parse_corrispettivo_xml
+from app.utils.error_handler import handle_errors
+from app.services.scritture_contabili import (
+    registra_chiusura_pos_reale,
+    scrivi_movimento,
+)
+
+logger = logging.getLogger(__name__)
+router = APIRouter()
+
+
+@router.get("")
+@handle_errors
+async def list_corrispettivi(
+    skip: int = 0, 
+    limit: int = 500,
+    data_da: str = None,
+    data_a: str = None,
+    anno: int = None
+) -> List[Dict[str, Any]]:
+    """List corrispettivi con filtro opzionale per data o anno."""
+    db = Database.get_db()
+    
+    # I record soft-deleted restano nel database per audit, ma non devono
+    # ricomparire nella pagina dopo una cancellazione.
+    query = {
+        "entity_status": {"$ne": "deleted"},
+        "status": {"$nin": ["deleted", "archived"]},
+    }
+    
+    # Se nessun filtro, usa anno corrente per performance
+    if not anno and not data_da and not data_a:
+        anno = datetime.now().year
+    
+    # Filtro per anno (prioritario)
+    if anno:
+        query["data"] = {"$regex": f"^{anno}"}
+    elif data_da or data_a:
+        query["data"] = {}
+        if data_da:
+            query["data"]["$gte"] = data_da
+        if data_a:
+            query["data"]["$lte"] = data_a
+    
+    return await db["corrispettivi"].find(query, {"_id": 0}).sort("data", -1).skip(skip).limit(limit).to_list(limit)
+
+
+def _euro_corrispettivo(valore: Any) -> Decimal:
+    try:
+        numero = Decimal(str(valore or 0))
+    except (InvalidOperation, ValueError):
+        return Decimal("0")
+    return numero if numero.is_finite() else Decimal("0")
+
+
+def _primo_presente(riga: Dict[str, Any], *campi: str) -> Any:
+    """Il primo campo non nullo (come ``a ?? b`` nel browser)."""
+    for campo in campi:
+        if riga.get(campo) is not None:
+            return riga.get(campo)
+    return None
+
+
+def chiave_giornata_xml(riga: Dict[str, Any]) -> str:
+    """Una giornata XML: la chiave del corrispettivo, altrimenti data +
+    registratore + totale al centesimo. Due copie della stessa giornata
+    contano una volta sola."""
+    chiave = str(riga.get("corrispettivo_key") or "").strip()
+    if chiave:
+        return chiave
+    totale = _euro_corrispettivo(_primo_presente(riga, "totale", "totale_complessivo"))
+    centesimi = int((totale * 100).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+    return "|".join([
+        str(riga.get("data") or riga.get("data_rilevazione") or ""),
+        str(riga.get("matricola_rt") or riga.get("id_dispositivo") or riga.get("matricola") or ""),
+        str(centesimi),
+    ])
+
+
+@router.get("/periodo")
+@handle_errors
+async def corrispettivi_del_periodo(
+    data_da: str = Query(..., description="Data inizio (YYYY-MM-DD)"),
+    data_a: str = Query(..., description="Data fine (YYYY-MM-DD)"),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(200, ge=1, le=1000),
+) -> Dict[str, Any]:
+    """Giornate XML del periodo per Gestione IVA, una pagina alla volta.
+
+    Le copie della stessa giornata (``chiave_giornata_xml``) contano una volta
+    sola; ``totale`` (giornate), ``copie_escluse`` e ``totali`` sono sempre
+    dell'intero periodo, non della pagina.
+    """
+    db = Database.get_db()
+    query = {
+        "entity_status": {"$ne": "deleted"},
+        "status": {"$nin": ["deleted", "archived"]},
+        "data": {"$gte": data_da, "$lte": data_a},
+    }
+    righe = await db["corrispettivi"].find(query, {"_id": 0}).sort("data", -1).to_list(None)
+    viste: set = set()
+    uniche: List[Dict[str, Any]] = []
+    for riga in righe:
+        chiave = chiave_giornata_xml(riga)
+        if chiave in viste:
+            continue
+        viste.add(chiave)
+        uniche.append(riga)
+
+    somme = {nome: Decimal("0") for nome in ("totale", "imponibile", "iva", "contanti", "elettronico")}
+    for riga in uniche:
+        totale = _euro_corrispettivo(_primo_presente(riga, "totale", "totale_complessivo"))
+        iva = _euro_corrispettivo(_primo_presente(riga, "totale_iva", "iva"))
+        imponibile = _primo_presente(riga, "totale_imponibile", "imponibile")
+        somme["totale"] += totale
+        somme["iva"] += iva
+        somme["imponibile"] += totale - iva if imponibile is None else _euro_corrispettivo(imponibile)
+        somme["contanti"] += _euro_corrispettivo(riga.get("pagato_contanti"))
+        somme["elettronico"] += _euro_corrispettivo(
+            _primo_presente(riga, "pagato_elettronico", "pagato_pos"))
+    return {
+        "corrispettivi": uniche[skip:skip + limit],
+        "totale": len(uniche),
+        "copie_escluse": len(righe) - len(uniche),
+        "skip": skip,
+        "limit": limit,
+        "totali": {nome: float(valore.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
+                   for nome, valore in somme.items()},
+    }
+
+
+@router.get("/totals")
+@handle_errors
+async def get_corrispettivi_totals() -> Dict[str, Any]:
+    """Totali corrispettivi."""
+    db = Database.get_db()
+    
+    pipeline = [{"$group": {
+        "_id": None,
+        "totale_generale": {"$sum": "$totale"},
+        "totale_contanti": {"$sum": "$pagato_contanti"},
+        "totale_elettronico": {"$sum": "$pagato_elettronico"},
+        "totale_iva": {"$sum": "$totale_iva"},
+        "count": {"$sum": 1}
+    }}]
+    
+    result = await db["corrispettivi"].aggregate(pipeline).to_list(1)
+    
+    if result:
+        r = result[0]
+        totale = float(r.get("totale_generale", 0) or 0)
+        iva = float(r.get("totale_iva", 0) or 0)
+        if iva == 0 and totale > 0:
+            iva = totale - (totale / 1.10)
+        
+        return {
+            "totale_generale": round(totale, 2),
+            "totale_contanti": round(float(r.get("totale_contanti", 0) or 0), 2),
+            "totale_elettronico": round(float(r.get("totale_elettronico", 0) or 0), 2),
+            "totale_iva": round(iva, 2),
+            "totale_imponibile": round(totale / 1.10, 2) if totale > 0 else 0,
+            "count": r.get("count", 0)
+        }
+    
+    return {"totale_generale": 0, "totale_contanti": 0, "totale_elettronico": 0, "totale_iva": 0, "totale_imponibile": 0, "count": 0}
+
+
+@router.post("/upload-xml")
+@handle_errors
+async def upload_corrispettivo_xml(
+    file: UploadFile = File(...),
+    force_update: bool = Query(True, description="Se True, sovrascrive corrispettivo esistente")
+) -> Dict[str, Any]:
+    """Upload singolo corrispettivo XML.
+    Anti-duplicato robusto + propagazione automatica a Prima Nota Cassa/Banca.
+    """
+    if not file.filename.lower().endswith('.xml'):
+        raise HTTPException(status_code=400, detail="Il file deve essere XML")
+
+    content = await file.read()
+    xml_content = None
+    for enc in ['utf-8', 'utf-8-sig', 'latin-1', 'iso-8859-1']:
+        try:
+            xml_content = content.decode(enc)
+            break
+        except (UnicodeDecodeError, LookupError):
+            continue
+    if not xml_content:
+        raise HTTPException(status_code=400, detail="Impossibile decodificare")
+
+    parsed = parse_corrispettivo_xml(xml_content)
+    if parsed.get("error"):
+        raise HTTPException(status_code=400, detail=parsed["error"])
+
+    from app.routers.invoices.corrispettivi_helpers import ingest_corrispettivo_parsed
+    db = Database.get_db()
+    ingest = await ingest_corrispettivo_parsed(
+        db, parsed, filename=file.filename, source="xml",
+        update_if_exists=force_update,
+    )
+
+    action_msg = {
+        "created": "importato",
+        "updated": "aggiornato",
+        "duplicate": "già presente (ignorato)",
+    }.get(ingest["action"], ingest["action"])
+    scartato = ingest["action"] == "scartato"
+    motivo = ingest.get("motivo")
+
+    return {
+        "success": not scartato,
+        "action": ingest["action"],
+        "message": (
+            f"Corrispettivo del {ingest.get('data','?')} scartato: {motivo}"
+            if scartato else f"Corrispettivo del {ingest.get('data','?')} {action_msg}"
+        ),
+        "motivo": motivo,
+        "corrispettivo_id": ingest.get("corrispettivo_id"),
+        "prima_nota_cassa_id": ingest.get("prima_nota_cassa_id"),
+        "prima_nota_banca_id": ingest.get("prima_nota_banca_id"),
+        "totale": ingest.get("totale"),
+    }
+
+
+@router.post("/upload-xml-bulk")
+@handle_errors
+async def upload_corrispettivi_xml_bulk(
+    files: List[UploadFile] = File(...),
+    force_update: bool = Query(False, description="Se True, aggiorna corrispettivi esistenti invece di segnarli come duplicati")
+) -> Dict[str, Any]:
+    """Upload massivo corrispettivi XML.
+    Anti-duplicato rigoroso + propagazione automatica a Prima Nota.
+    """
+    from app.routers.invoices.corrispettivi_helpers import ingest_corrispettivo_parsed
+
+    if not files:
+        raise HTTPException(status_code=400, detail="Nessun file")
+
+    db = Database.get_db()
+    results = {
+        "success": [], "errors": [], "duplicates": [], "updated": [],
+        "total": len(files), "imported": 0, "failed": 0,
+        "skipped": 0, "updated_count": 0,
+    }
+
+    for file in files:
+        try:
+            if not file.filename.lower().endswith('.xml'):
+                results["errors"].append({"filename": file.filename, "error": "Non XML"})
+                results["failed"] += 1
+                continue
+
+            content = await file.read()
+            xml_content = None
+            for enc in ['utf-8', 'utf-8-sig', 'latin-1']:
+                try:
+                    xml_content = content.decode(enc)
+                    break
+                except (UnicodeDecodeError, LookupError):
+                    continue
+            if not xml_content:
+                results["errors"].append({"filename": file.filename, "error": "Decodifica fallita"})
+                results["failed"] += 1
+                continue
+
+            parsed = parse_corrispettivo_xml(xml_content)
+            if parsed.get("error"):
+                results["errors"].append({"filename": file.filename, "error": parsed["error"]})
+                results["failed"] += 1
+                continue
+
+            ingest = await ingest_corrispettivo_parsed(
+                db, parsed, filename=file.filename, source="xml",
+                update_if_exists=force_update,
+            )
+            item = {"filename": file.filename, "data": ingest.get("data"), "totale": ingest.get("totale")}
+            if ingest["action"] == "scartato":
+                item.update({"motivo": ingest.get("motivo"), "error": ingest.get("motivo")})
+                results["errors"].append(item)
+                results["failed"] += 1
+            elif ingest["action"] == "duplicate":
+                results["duplicates"].append(item)
+                results["skipped"] += 1
+            elif ingest["action"] == "updated":
+                results["updated"].append(item)
+                results["updated_count"] += 1
+            else:
+                results["success"].append(item)
+                results["imported"] += 1
+
+        except Exception as e:
+            results["errors"].append({"filename": file.filename, "error": str(e)})
+            results["failed"] += 1
+
+    return results
+
+
+@router.post("/sincronizza-prima-nota")
+@handle_errors
+async def sincronizza_corrispettivi_prima_nota() -> Dict[str, Any]:
+    """
+    Sincronizza i corrispettivi dalla collection 'corrispettivi' alla 'prima_nota_cassa'.
+    Aggiorna i dettagli (contanti, elettronico, iva) mancanti.
+    """
+    db = Database.get_db()
+    
+    # Carica tutti i corrispettivi dalla collection dedicata
+    corrispettivi = await db["corrispettivi"].find({}, {"_id": 0}).to_list(5000)
+    
+    risultato = {
+        "aggiornati": 0,
+        "creati": 0,
+        "skipped": 0,
+        "errors": []
+    }
+    
+    for corr in corrispettivi:
+        try:
+            data_corr = corr.get("data", "")
+            if not data_corr:
+                risultato["skipped"] += 1
+                continue
+
+            # Cerca il movimento in prima_nota_cassa
+            movimento = await db["prima_nota_cassa"].find_one({
+                "data": data_corr,
+                "categoria": "Corrispettivi"
+            })
+
+            dettaglio = {
+                "matricola_rt": corr.get("matricola_rt", ""),
+                "contanti": float(corr.get("pagato_contanti", 0) or 0),
+                "elettronico": float(corr.get("pagato_elettronico", 0) or 0),
+                "totale_iva": float(corr.get("totale_iva", 0) or 0),
+                "numero_documenti": int(corr.get("numero_documenti", 0) or 0)
+            }
+
+            # In cassa va SOLO la quota contanti del corrispettivo, mai l'elettronico/POS
+            # (che confluisce in prima_nota_banca): vedi memoria/moduli/PRIMA_NOTA_CASSA.md
+            importo_cassa = dettaglio["contanti"]
+            importo_elettronico = dettaglio["elettronico"]
+
+            if movimento:
+                # Aggiorna dettaglio
+                await db["prima_nota_cassa"].update_one(
+                    {"_id": movimento["_id"]},
+                    {"$set": {
+                        "dettaglio": dettaglio,
+                        "importo": importo_cassa,
+                        "updated_at": datetime.now(timezone.utc).isoformat()
+                    }}
+                )
+                risultato["aggiornati"] += 1
+            else:
+                # Crea nuovo movimento
+                nuovo_movimento = {
+                    "id": f"corr_{corr.get('id', str(uuid.uuid4()))}",
+                    "data": data_corr,
+                    "tipo": "entrata",
+                    "importo": importo_cassa,
+                    "descrizione": f"Corrispettivo {data_corr} - RT {corr.get('matricola_rt', '')}",
+                    "categoria": "Corrispettivi",
+                    "dettaglio": dettaglio,
+                    "corrispettivo_id": corr.get("id"),
+                    "fonte": "sincronizzazione",
+                    "created_at": datetime.now(timezone.utc).isoformat()
+                }
+                await scrivi_movimento(db, "cassa", nuovo_movimento)
+                risultato["creati"] += 1
+
+            # La quota elettronica/POS del corrispettivo va SEMPRE anche in
+            # prima_nota_banca (in attesa di riconciliazione con l'accredito
+            # reale) — vedi _create_prima_nota_movements in
+            # corrispettivi_helpers.py, la stessa logica usata dall'import.
+            # Prima di questo fix la sincronizzazione scriveva solo in cassa,
+            # perdendo silenziosamente l'incasso POS.
+            if importo_elettronico > 0:
+                movimento_banca = await db["prima_nota_banca"].find_one({
+                    "data": data_corr,
+                    "categoria": "Corrispettivi POS",
+                    "corrispettivo_id": corr.get("id"),
+                })
+                if movimento_banca:
+                    await db["prima_nota_banca"].update_one(
+                        {"_id": movimento_banca["_id"]},
+                        {"$set": {
+                            "importo": importo_elettronico,
+                            "updated_at": datetime.now(timezone.utc).isoformat()
+                        }}
+                    )
+                else:
+                    await scrivi_movimento(db, "banca", {
+                        "id": f"corr_pos_{corr.get('id', str(uuid.uuid4()))}",
+                        "data": data_corr,
+                        "tipo": "entrata",
+                        "importo": importo_elettronico,
+                        "descrizione": f"POS corrispettivo {data_corr}",
+                        "categoria": "Corrispettivi POS",
+                        "corrispettivo_id": corr.get("id"),
+                        "source": "corrispettivi_sync",
+                        "riconciliato": False,
+                        "created_at": datetime.now(timezone.utc).isoformat()
+                    })
+
+        except Exception as e:
+            risultato["errors"].append(str(e))
+    
+    return {
+        "success": True,
+        "message": f"Sincronizzazione completata: {risultato['aggiornati']} aggiornati, {risultato['creati']} creati",
+        **risultato
+    }
+
+
+@router.delete("/all")
+@handle_errors
+async def delete_all_corrispettivi(
+    force: bool = Query(False, description="Forza eliminazione")
+) -> Dict[str, Any]:
+    """
+    Elimina tutti i corrispettivi NON inviati all'AdE.
+    I corrispettivi inviati vengono preservati.
+    """
+    from app.services.business_rules import EntityStatus
+    
+    db = Database.get_db()
+    
+    # Solo soft-delete di quelli non inviati
+    result = await db["corrispettivi"].update_many(
+        {"status": {"$ne": "sent_ade"}},
+        {"$set": {
+            "entity_status": EntityStatus.DELETED.value,
+            "deleted_at": datetime.now(timezone.utc).isoformat()
+        }}
+    )
+    
+    return {
+        "deleted": result.modified_count,
+        "message": f"Archiviati {result.modified_count} corrispettivi (quelli inviati all'AdE sono stati preservati)"
+    }
+
+
+@router.delete("/{corrispettivo_id}")
+@handle_errors
+async def delete_corrispettivo(
+    corrispettivo_id: str,
+    force: bool = Query(False, description="Forza eliminazione")
+) -> Dict[str, Any]:
+    """
+    Elimina un corrispettivo con validazione business rules.
+    
+    **Regole:**
+    - Non può eliminare corrispettivi inviati all'AdE
+    - Non può eliminare corrispettivi già registrati in Prima Nota
+    """
+    from app.services.business_rules import BusinessRules, EntityStatus
+    
+    db = Database.get_db()
+    
+    # Recupera corrispettivo
+    corr = await db["corrispettivi"].find_one({"id": corrispettivo_id})
+    if not corr:
+        raise HTTPException(status_code=404, detail="Corrispettivo non trovato")
+    
+    # Un XML RT con tutti gli importi a zero e' un artefatto senza effetto
+    # contabile. Puo' essere archiviato anche se una vecchia pipeline gli ha
+    # assegnato per errore un prima_nota_id. Per i record non-zero restano
+    # valide tutte le protezioni canoniche.
+    campi_importo = (
+        "totale", "totale_complessivo", "pagato_contanti",
+        "pagato_elettronico", "pagato_pos", "totale_iva",
+        "totale_imponibile", "imponibile",
+    )
+    record_zero = all(abs(float(corr.get(campo) or 0)) < 0.005 for campo in campi_importo)
+    validation = BusinessRules.can_delete_corrispettivo(corr) if not record_zero else None
+    
+    if validation is not None and not validation.is_valid:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "message": "Eliminazione non consentita",
+                "errors": validation.errors
+            }
+        )
+    
+    # Soft-delete
+    await db["corrispettivi"].update_one(
+        {"id": corrispettivo_id},
+        {"$set": {
+            "entity_status": EntityStatus.DELETED.value,
+            "deleted_at": datetime.now(timezone.utc).isoformat()
+        }}
+    )
+    
+    # Annulla tutte le eventuali righe collegate. Per il record zero non si
+    # modifica alcun saldo reale, ma si eliminano i collegamenti fantasma.
+    ids_collegati = [
+        value for value in (
+            corr.get("prima_nota_id"), corr.get("prima_nota_cassa_id"),
+            corr.get("prima_nota_banca_id"),
+        ) if value
+    ]
+    for collection in ("prima_nota_cassa", "prima_nota_banca"):
+        await db[collection].update_many(
+            {"$or": [
+                {"corrispettivo_id": corrispettivo_id},
+                {"id": {"$in": ids_collegati}},
+            ]},
+            {"$set": {
+                "stato": "annullato",
+                "status": "cancelled",
+                "annullato_da_eliminazione_corrispettivo": True,
+            }},
+        )
+    
+    return {
+        "deleted": True,
+        "message": "Corrispettivo eliminato (archiviato)",
+        "record_zero": record_zero,
+    }
+
+
+@router.post("/upload-zip")
+@handle_errors
+async def upload_corrispettivi_zip(file: UploadFile = File(...)) -> Dict[str, Any]:
+    """Upload massivo corrispettivi da file ZIP contenente XML.
+    Anti-duplicato rigoroso + propagazione automatica a Prima Nota Cassa/Banca.
+    """
+    from app.routers.invoices.corrispettivi_helpers import ingest_corrispettivo_parsed
+
+    if not file.filename.lower().endswith('.zip'):
+        raise HTTPException(status_code=400, detail="Il file deve essere un archivio ZIP")
+
+    results = {
+        "success": [], "errors": [], "duplicates": [],
+        "total": 0, "imported": 0, "failed": 0, "skipped_duplicates": 0,
+    }
+    db = Database.get_db()
+
+    try:
+        content = await file.read()
+        zip_buffer = io.BytesIO(content)
+
+        with zipfile.ZipFile(zip_buffer, 'r') as zip_file:
+            xml_files = [f for f in zip_file.namelist()
+                         if f.lower().endswith('.xml') and not f.startswith('__MACOSX')]
+            results["total"] = len(xml_files)
+
+            for xml_filename in xml_files:
+                try:
+                    xml_bytes = zip_file.read(xml_filename)
+                    xml_content = None
+                    for enc in ['utf-8', 'utf-8-sig', 'latin-1', 'iso-8859-1']:
+                        try:
+                            xml_content = xml_bytes.decode(enc)
+                            break
+                        except (UnicodeDecodeError, LookupError):
+                            continue
+                    if not xml_content:
+                        results["errors"].append({"filename": xml_filename, "error": "Decodifica fallita"})
+                        results["failed"] += 1
+                        continue
+
+                    parsed = parse_corrispettivo_xml(xml_content)
+                    if parsed.get("error"):
+                        results["errors"].append({"filename": xml_filename, "error": parsed["error"]})
+                        results["failed"] += 1
+                        continue
+
+                    ingest = await ingest_corrispettivo_parsed(
+                        db, parsed, filename=xml_filename, source="zip_upload",
+                        update_if_exists=False,
+                    )
+                    item = {
+                        "filename": xml_filename,
+                        "data": ingest.get("data"),
+                        "totale": ingest.get("totale"),
+                        "matricola": parsed.get("matricola_rt"),
+                    }
+                    if ingest["action"] == "scartato":
+                        item.update({"motivo": ingest.get("motivo"), "error": ingest.get("motivo")})
+                        results["errors"].append(item)
+                        results["failed"] += 1
+                    elif ingest["action"] == "duplicate":
+                        results["duplicates"].append(item)
+                        results["skipped_duplicates"] += 1
+                    else:
+                        results["success"].append(item)
+                        results["imported"] += 1
+
+                except Exception as e:
+                    logger.error(f"Errore processando {xml_filename}: {e}")
+                    results["errors"].append({"filename": xml_filename, "error": str(e)})
+                    results["failed"] += 1
+
+        return results
+
+    except zipfile.BadZipFile as exc:
+        raise HTTPException(status_code=400, detail="File ZIP non valido o corrotto") from exc
+    except Exception as e:
+        logger.error(f"Errore upload ZIP: {e}")
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+
+# ============== IMPORT CSV CORRISPETTIVI ==============
+
+@router.post("/import-csv")
+@handle_errors
+async def import_corrispettivi_csv(
+    file: UploadFile = File(...),
+    dry_run: bool = Query(False, description="True = solo anteprima, non scrive"),
+    _admin: Dict[str, Any] = Depends(get_current_admin_user),
+) -> Dict[str, Any]:
+    """CSV «Corrispettivi» del portale Agenzia delle Entrate: dato PROVVISORIO in attesa dell'XML.
+
+    «Ammontare delle vendite» e' l'imponibile, «Imposta» l'IVA. Le giornate gia' coperte
+    dall'XML non si toccano (si confronta l'imponibile); le altre entrano ``provvisorio``, senza
+    contanti/POS, senza Prima Nota e senza giornale: l'XML del registratore le promuove a
+    ``definitivo_xml`` e sovrascrive. Un secondo import dello stesso file da' ``nuovi=0``.
+    """
+    from app.services.corrispettivi_service import importa_csv_ade
+
+    contenuto = await file.read()
+    try:
+        testo = contenuto.decode("utf-8")
+    except UnicodeDecodeError:
+        testo = contenuto.decode("latin-1")
+    esito = await importa_csv_ade(Database.get_db(), testo, file.filename or "", dry_run=dry_run)
+    return {"success": True, **esito}
+
+
+# ============== GIORNI DI CHIUSURA (ferie, ristrutturazione) ==============
+# Un giorno chiuso non e' un corrispettivo mancante (titolare, 14/09/2026).
+# Registro unico: app/services/chiusure_attivita.py (seminato dai periodi
+# confermati, dal CSV AdE "Periodo di inattivita'" e dalle ferie collettive HR).
+
+@router.get("/chiusure")
+@handle_errors
+async def elenco_chiusure_attivita(anno: int = Query(None)) -> Dict[str, Any]:
+    from app.services.chiusure_attivita import elenca_chiusure
+
+    righe = await elenca_chiusure(Database.get_db(), anno=anno)
+    return {"success": True, "chiusure": righe, "count": len(righe)}
+
+
+@router.post("/chiusure")
+@handle_errors
+async def registra_chiusura_attivita(
+    data: Dict[str, Any] = Body(...),
+    _admin: Dict[str, Any] = Depends(get_current_admin_user),
+) -> Dict[str, Any]:
+    """Body: data_inizio, data_fine (opzionale = un giorno), motivo, note."""
+    from app.services.chiusure_attivita import registra_chiusura
+
+    if not data.get("data_inizio"):
+        raise HTTPException(status_code=400, detail="Campo 'data_inizio' obbligatorio (YYYY-MM-DD)")
+    try:
+        esito = await registra_chiusura(
+            Database.get_db(), data["data_inizio"], data.get("data_fine") or data["data_inizio"],
+            data.get("motivo") or "chiusura", "manuale", note=data.get("note") or "",
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"success": True, "chiusura": esito}
+
+
+@router.delete("/chiusure/{chiusura_id}")
+@handle_errors
+async def elimina_chiusura_attivita(
+    chiusura_id: str, _admin: Dict[str, Any] = Depends(get_current_admin_user),
+) -> Dict[str, Any]:
+    from app.services.chiusure_attivita import elimina_chiusura
+
+    if not await elimina_chiusura(Database.get_db(), chiusura_id):
+        raise HTTPException(status_code=404, detail="Chiusura non trovata")
+    return {"success": True}
+
+
+@router.get("/template-csv")
+@handle_errors
+async def get_template_csv():
+    """Restituisce un template CSV per l'import dei corrispettivi."""
+    from fastapi.responses import Response
+    
+    template = """Id invio;Matricola dispositivo;Data e ora rilevazione;Data e ora trasmissione;Ammontare delle vendite (totale in euro);Imponibile vendite (totale in euro);Imposta vendite (totale in euro);Periodo di inattivita' da;Periodo di inattivita' a
+'1234567890';'99MEY000000';01/01/2024 21:00:00;01/01/2024 21:01:00;"000000001500,00";"000000001363,64";"000000000136,36";;
+'1234567891';'99MEY000000';02/01/2024 21:00:00;02/01/2024 21:01:00;"000000002000,00";"000000001818,18";"000000000181,82";;"""
+    
+    return Response(
+        content=template,
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=template_corrispettivi.csv"}
+    )
+
+
+@router.post("/elimina-duplicati")
+@handle_errors
+async def elimina_duplicati_corrispettivi(anno: int = Query(...)) -> Dict[str, Any]:
+    """
+    Elimina i corrispettivi duplicati per un anno.
+    Mantiene solo il record con l'importo più alto per ogni data.
+    """
+    from collections import defaultdict
+    
+    db = Database.get_db()
+    
+    date_start = f"{anno}-01-01"
+    date_end = f"{anno}-12-31"
+    
+    # Recupera tutti i corrispettivi dell'anno
+    corrs = await db["corrispettivi"].find(
+        {"data": {"$gte": date_start, "$lte": date_end}},
+        {"_id": 1, "data": 1, "totale": 1, "source": 1}
+    ).to_list(10000)
+    
+    count_prima = len(corrs)
+    
+    # Raggruppa per data
+    by_date = defaultdict(list)
+    for c in corrs:
+        by_date[c.get('data')].append(c)
+    
+    deleted = 0
+    date_con_duplicati = 0
+    
+    for data, items in by_date.items():
+        if len(items) > 1:
+            date_con_duplicati += 1
+            # Ordina per totale decrescente, tieni il primo
+            items.sort(key=lambda x: float(x.get('totale', 0) or 0), reverse=True)
+            to_delete = items[1:]  # Tutti tranne il primo
+            
+            for item in to_delete:
+                await db["corrispettivi"].delete_one({"_id": item["_id"]})
+                deleted += 1
+    
+    # Conta dopo
+    count_dopo = await db["corrispettivi"].count_documents(
+        {"data": {"$gte": date_start, "$lte": date_end}}
+    )
+    
+    # Calcola nuovo totale
+    pipeline = [
+        {"$match": {"data": {"$gte": date_start, "$lte": date_end}}},
+        {"$group": {"_id": None, "totale": {"$sum": "$totale"}}}
+    ]
+    result = await db["corrispettivi"].aggregate(pipeline).to_list(1)
+    nuovo_totale = result[0]["totale"] if result else 0
+    
+    return {
+        "success": True,
+        "message": f"Eliminati {deleted} duplicati per {anno}",
+        "anno": anno,
+        "corrispettivi_prima": count_prima,
+        "corrispettivi_dopo": count_dopo,
+        "duplicati_eliminati": deleted,
+        "date_con_duplicati": date_con_duplicati,
+        "nuovo_totale": round(nuovo_totale, 2)
+    }
+
+
+@router.delete("/hard-delete/{corrispettivo_id}")
+@handle_errors
+async def hard_delete_corrispettivo(corrispettivo_id: str) -> Dict[str, Any]:
+    """Elimina FISICAMENTE un corrispettivo dal database."""
+    db = Database.get_db()
+    result = await db["corrispettivi"].delete_one({"id": corrispettivo_id})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Corrispettivo non trovato")
+    return {"deleted": True, "hard_delete": True}
+
+
+@router.post("/hard-delete-bulk")
+@handle_errors
+async def hard_delete_corrispettivi_bulk(data: Dict[str, Any]) -> Dict[str, Any]:
+    """Elimina FISICAMENTE più corrispettivi dal database."""
+    db = Database.get_db()
+    ids = data.get("ids", [])
+    if not ids:
+        raise HTTPException(status_code=400, detail="Nessun ID fornito")
+    
+    result = await db["corrispettivi"].delete_many({"id": {"$in": ids}})
+    return {"deleted": result.deleted_count}
+
+
+@router.post("/cleanup-duplicati-forte")
+@handle_errors
+async def cleanup_duplicati_forte(anno: int = Query(None, description="Anno (opzionale). Se omesso agisce su tutti gli anni"), _admin: Dict[str, Any] = Depends(get_current_admin_user)) -> Dict[str, Any]:
+    """
+    Pulizia forte dei duplicati nella collection 'corrispettivi'.
+    Raggruppa per (data, matricola_rt, totale arrotondato a 0.01) e mantiene il più vecchio.
+    """
+    from app.routers.invoices.corrispettivi_helpers import cleanup_duplicate_corrispettivi
+    db = Database.get_db()
+    res = await cleanup_duplicate_corrispettivi(db, anno=anno)
+    return {"success": True, **res}
+
+
+
+
+
+
+# ==================== VISUALIZZAZIONE CORRISPETTIVO ====================
+
+def generate_corrispettivo_html(corrispettivo: Dict, movimento: Dict = None) -> str:
+    """
+    Genera HTML per visualizzare il corrispettivo in formato scontrino.
+    """
+    # Estrai dati dal corrispettivo o movimento
+    data = corrispettivo.get("data", "")
+    totale = corrispettivo.get("totale", 0) or corrispettivo.get("importo", 0) or 0
+    pagato_contanti = corrispettivo.get("pagato_contanti", 0) or 0
+    pagato_elettronico = corrispettivo.get("pagato_elettronico", 0) or 0
+    totale_iva = corrispettivo.get("totale_iva", 0) or corrispettivo.get("imposta", 0) or 0
+    totale_imponibile = corrispettivo.get("totale_imponibile", 0) or corrispettivo.get("imponibile", 0) or 0
+    matricola_rt = corrispettivo.get("matricola_rt", "") or ""
+    numero_documenti = corrispettivo.get("numero_documenti", 0) or 0
+    
+    # Dati aggiuntivi dal movimento prima nota
+    # Il movimento di Prima Nota riempie solo i campi che il corrispettivo non
+    # ha: la sua copia non vince mai sul documento fiscale (una copia rovinata
+    # mostrava contanti negativi nello scontrino).
+    if movimento:
+        dettaglio = movimento.get("dettaglio", {}) or {}
+        pagato_contanti = pagato_contanti or dettaglio.get("contanti") or 0
+        pagato_elettronico = pagato_elettronico or dettaglio.get("elettronico") or 0
+        totale_iva = totale_iva or dettaglio.get("totale_iva") or movimento.get("imposta") or 0
+        matricola_rt = matricola_rt or dettaglio.get("matricola_rt") or ""
+        numero_documenti = numero_documenti or dettaglio.get("numero_documenti") or 0
+        totale_imponibile = totale_imponibile or movimento.get("imponibile") or 0
+    
+    # Riepilogo IVA
+    riepilogo_iva = corrispettivo.get("riepilogo_iva", []) or []
+    dettaglio_iva = corrispettivo.get("dettaglio_iva", []) or movimento.get("dettaglio_iva", []) if movimento else []
+    
+    # Pagato non riscosso
+    pagato_non_riscosso = corrispettivo.get("pagato_non_riscosso", 0) or 0
+    
+    # Annulli
+    totale_annulli = corrispettivo.get("totale_ammontare_annulli", 0) or 0
+    
+    # Formatta importi
+    def fmt_euro(val):
+        try:
+            return f"€ {float(val):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+        except Exception:
+            return "€ 0,00"
+    
+    # Formatta data
+    def fmt_data(d):
+        if not d:
+            return "-"
+        try:
+            if "T" in str(d):
+                d = str(d).split("T")[0]
+            parts = str(d).split("-")
+            if len(parts) == 3:
+                return f"{parts[2]}/{parts[1]}/{parts[0]}"
+            return d
+        except Exception:
+            return d
+    
+    # Genera righe IVA
+    iva_rows = ""
+    iva_list = dettaglio_iva or riepilogo_iva
+    for iva in iva_list:
+        aliquota = iva.get("aliquota", iva.get("aliquota_iva", 0))
+        imponibile = iva.get("imponibile", iva.get("ammontare", 0))
+        imposta = iva.get("imposta", 0)
+        iva_rows += f"""
+        <tr>
+            <td style="padding: 6px 12px;">Aliquota {aliquota}%</td>
+            <td style="padding: 6px 12px; text-align: right;">{fmt_euro(imponibile)}</td>
+            <td style="padding: 6px 12px; text-align: right;">{fmt_euro(imposta)}</td>
+        </tr>"""
+    
+    if not iva_rows and totale_imponibile:
+        # Default 10%
+        iva_rows = f"""
+        <tr>
+            <td style="padding: 6px 12px;">Aliquota 10%</td>
+            <td style="padding: 6px 12px; text-align: right;">{fmt_euro(totale_imponibile)}</td>
+            <td style="padding: 6px 12px; text-align: right;">{fmt_euro(totale_iva)}</td>
+        </tr>"""
+    
+    html = f"""<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Corrispettivo del {fmt_data(data)}</title>
+    <style>
+        * {{ box-sizing: border-box; margin: 0; padding: 0; }}
+        body {{ 
+            font-family: 'Courier New', monospace; 
+            background: #f0f2f5; 
+            padding: 20px;
+            display: flex;
+            justify-content: center;
+            align-items: flex-start;
+            min-height: 100vh;
+        }}
+        .scontrino {{
+            background: white;
+            width: 100%;
+            max-width: 420px;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+            border: 1px solid #e0e0e0;
+        }}
+        .header {{
+            text-align: center;
+            border-bottom: 2px dashed #333;
+            padding-bottom: 20px;
+            margin-bottom: 20px;
+        }}
+        .ragione-sociale {{
+            font-size: 18px;
+            font-weight: bold;
+            color: #1a1a1a;
+            margin-bottom: 8px;
+        }}
+        .info-azienda {{
+            font-size: 12px;
+            color: #666;
+            line-height: 1.6;
+        }}
+        .tipo-documento {{
+            background: #10b981;
+            color: white;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: bold;
+            display: inline-block;
+            margin-top: 12px;
+        }}
+        .section {{
+            margin: 20px 0;
+            padding: 15px 0;
+            border-bottom: 1px dashed #ccc;
+        }}
+        .section-title {{
+            font-size: 11px;
+            color: #888;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 12px;
+        }}
+        .row {{
+            display: flex;
+            justify-content: space-between;
+            padding: 6px 0;
+            font-size: 14px;
+        }}
+        .row.highlight {{
+            background: #f8f9fa;
+            padding: 10px;
+            margin: 8px -10px;
+            border-radius: 4px;
+        }}
+        .label {{ color: #555; }}
+        .value {{ font-weight: bold; color: #1a1a1a; }}
+        .value.green {{ color: #10b981; }}
+        .value.blue {{ color: #3b82f6; }}
+        .value.red {{ color: #ef4444; }}
+        .totale {{
+            text-align: center;
+            padding: 20px;
+            background: linear-gradient(135deg, #1e3a5f, #2d5a87);
+            color: white;
+            border-radius: 8px;
+            margin: 20px 0;
+        }}
+        .totale-label {{ font-size: 12px; opacity: 0.9; }}
+        .totale-value {{ font-size: 32px; font-weight: bold; margin-top: 8px; }}
+        .iva-table {{
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 12px;
+            margin: 10px 0;
+        }}
+        .iva-table th {{
+            background: #f3f4f6;
+            padding: 8px 12px;
+            text-align: left;
+            font-size: 11px;
+            color: #666;
+        }}
+        .iva-table td {{
+            border-bottom: 1px solid #f0f0f0;
+        }}
+        .footer {{
+            text-align: center;
+            padding-top: 20px;
+            border-top: 2px dashed #333;
+            margin-top: 20px;
+        }}
+        .matricola {{
+            background: #f3f4f6;
+            padding: 10px 15px;
+            border-radius: 6px;
+            font-size: 12px;
+            margin-bottom: 12px;
+        }}
+        .matricola-label {{ font-size: 10px; color: #888; }}
+        .matricola-value {{ font-weight: bold; color: #333; font-size: 14px; }}
+        .data-ora {{
+            font-size: 14px;
+            color: #333;
+            font-weight: bold;
+        }}
+        .print-btn {{
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 12px 24px;
+            background: #10b981;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: bold;
+            z-index: 1000;
+        }}
+        .print-btn:hover {{ background: #059669; }}
+        @media print {{ 
+            .print-btn {{ display: none !important; }} 
+            body {{ background: white !important; padding: 0 !important; display: block !important; }}
+            .scontrino {{ box-shadow: none !important; border: none !important; max-width: 100% !important; margin: 0 auto; }}
+            * {{ -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }}
+        }}
+    </style>
+</head>
+<body>
+    <button id="print-btn" class="print-btn">&#128424;&#65039; Stampa</button>
+    
+    <div class="scontrino">
+        <div class="header">
+            <div class="ragione-sociale">CERALDI CAFFÈ</div>
+            <div class="info-azienda">
+                Piazza Carità<br>
+                80134 Napoli (NA)<br>
+                P.IVA: 04523831214
+            </div>
+            <div class="tipo-documento">🧾 CORRISPETTIVO GIORNALIERO</div>
+        </div>
+        
+        <div class="totale">
+            <div class="totale-label">TOTALE INCASSO</div>
+            <div class="totale-value">{fmt_euro(totale)}</div>
+        </div>
+        
+        <div class="section">
+            <div class="section-title">📊 Dettaglio Pagamenti</div>
+            <div class="row">
+                <span class="label">💵 Pagamento Contanti</span>
+                <span class="value green">{fmt_euro(pagato_contanti)}</span>
+            </div>
+            <div class="row">
+                <span class="label">💳 Pagamento Elettronico</span>
+                <span class="value blue">{fmt_euro(pagato_elettronico)}</span>
+            </div>
+            {'<div class="row"><span class="label">⏳ Non Riscosso</span><span class="value red">' + fmt_euro(pagato_non_riscosso) + '</span></div>' if pagato_non_riscosso > 0 else ''}
+            {'<div class="row"><span class="label">❌ Annulli</span><span class="value red">-' + fmt_euro(totale_annulli) + '</span></div>' if totale_annulli > 0 else ''}
+        </div>
+        
+        <div class="section">
+            <div class="section-title">📋 Riepilogo IVA</div>
+            <table class="iva-table">
+                <thead>
+                    <tr>
+                        <th>Descrizione</th>
+                        <th style="text-align: right;">Imponibile</th>
+                        <th style="text-align: right;">Imposta</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {iva_rows}
+                    <tr style="font-weight: bold; background: #f8f9fa;">
+                        <td style="padding: 10px 12px;">TOTALE</td>
+                        <td style="padding: 10px 12px; text-align: right;">{fmt_euro(totale_imponibile)}</td>
+                        <td style="padding: 10px 12px; text-align: right;">{fmt_euro(totale_iva)}</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+        
+        <div class="section">
+            <div class="section-title">📈 Statistiche</div>
+            <div class="row">
+                <span class="label">Numero Documenti</span>
+                <span class="value">{numero_documenti}</span>
+            </div>
+        </div>
+        
+        <div class="footer">
+            {f'<div class="matricola"><div class="matricola-label">Matricola RT</div><div class="matricola-value">{matricola_rt}</div></div>' if matricola_rt else ''}
+            <div class="data-ora">{fmt_data(data)}</div>
+        </div>
+    </div>
+<script>
+(function() {{
+  var btn = document.getElementById('print-btn');
+  if (btn) {{
+    btn.onclick = function() {{
+      window.focus();
+      window.print();
+      return false;
+    }};
+  }}
+}})();
+</script>
+</body>
+</html>"""
+    
+    return html
+
+
+@router.get("/view-by-filename")
+@handle_errors
+async def view_corrispettivo_by_filename(filename: str = Query(...)):
+    """
+    Visualizza il corrispettivo cercando per filename XML.
+    """
+    from fastapi.responses import HTMLResponse
+    
+    db = Database.get_db()
+    
+    # Cerca il movimento in prima nota cassa con quel filename
+    movimento = await db["prima_nota_cassa"].find_one(
+        {"xml_filename": filename},
+        {"_id": 0}
+    )
+    
+    if not movimento:
+        raise HTTPException(status_code=404, detail="Corrispettivo non trovato per questo filename")
+    
+    # Cerca il corrispettivo associato per data
+    corrispettivo = await db["corrispettivi"].find_one(
+        {"data": movimento.get("data")},
+        {"_id": 0}
+    )
+    
+    # Se non trovato, usa i dati del movimento stesso
+    if not corrispettivo:
+        corrispettivo = {
+            "data": movimento.get("data"),
+            "totale": movimento.get("importo"),
+            "pagato_contanti": movimento.get("pagato_contanti"),
+            "pagato_elettronico": movimento.get("pagato_elettronico"),
+            "totale_iva": movimento.get("imposta"),
+            "totale_imponibile": movimento.get("imponibile"),
+            "dettaglio_iva": movimento.get("dettaglio_iva", []),
+            "matricola_rt": movimento.get("dettaglio", {}).get("matricola_rt", ""),
+            "numero_documenti": movimento.get("dettaglio", {}).get("numero_documenti", 0)
+        }
+    
+    html_content = generate_corrispettivo_html(corrispettivo, movimento)
+    
+    return HTMLResponse(content=html_content, status_code=200)
+
+
+@router.get("/{corrispettivo_id}/view")
+@handle_errors
+async def view_corrispettivo(corrispettivo_id: str):
+    """
+    Visualizza il corrispettivo in formato HTML (stile scontrino).
+    """
+    from fastapi.responses import HTMLResponse
+    
+    db = Database.get_db()
+    
+    # Cerca il corrispettivo
+    corrispettivo = await db["corrispettivi"].find_one({"id": corrispettivo_id}, {"_id": 0})
+    
+    if not corrispettivo:
+        raise HTTPException(status_code=404, detail="Corrispettivo non trovato")
+    
+    # Cerca anche il movimento associato in prima nota per dati aggiuntivi
+    movimento = await db["prima_nota_cassa"].find_one(
+        {"$or": [
+            {"corrispettivo_id": corrispettivo_id},
+            {"data": corrispettivo.get("data"), "categoria": "Corrispettivi"}
+        ]},
+        {"_id": 0}
+    )
+    
+    html_content = generate_corrispettivo_html(corrispettivo, movimento)
+    
+    return HTMLResponse(content=html_content, status_code=200)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# CORRISPETTIVO MANUALE SERALE (v2 - aprile 2026)
+# ═══════════════════════════════════════════════════════════════════════════
+# Permette all'utente di inserire la sera il totale corrispettivo PROVVISORIO
+# prima che arrivi il file XML ufficiale dal portale Agenzia Entrate.
+#
+# Flusso:
+#   1. Utente inserisce manualmente il totale giornaliero (stato=provvisorio)
+#   2. Successivamente arriva l'XML dall'AdE (import tramite endpoint esistente)
+#   3. L'import XML aggiorna lo stesso record mettendo stato=definitivo_xml
+#      e sovrascrivendo totale/contanti/elettronico con dati fiscali
+#   4. Scheduler giornaliero marca come "manca_xml" i record manuali più
+#      vecchi di 7 giorni
+#
+# Schema record corrispettivi (aggiunte ai campi esistenti):
+#   - totale_manuale: float (dato serale provvisorio)
+#   - totale_xml: float (dato fiscale ufficiale, null finché non arriva)
+#   - stato: "provvisorio" | "definitivo_xml" | "manca_xml"
+#   - data_inserimento_manuale: ISO timestamp
+#   - data_import_xml: ISO timestamp (null finché non arriva)
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+GIORNI_PRIMA_ALERT_XML_MANCANTE = 7
+
+
+@router.post("/manuale")
+async def inserisci_corrispettivo_manuale(data: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
+    """Inserisce o aggiorna un corrispettivo MANUALE serale (provvisorio).
+
+    Body:
+      - data: "YYYY-MM-DD" (obbligatorio)
+      - totale: float > 0 (obbligatorio)
+      - pos_reale_serale: float >= 0 (opzionale, inserimento POS serale contestuale)
+      - note: str (opzionale)
+
+    Comportamento:
+      - Se esiste già un corrispettivo per quella data:
+          * Se stato == "definitivo_xml" → ritorna 409 (non si sovrascrive
+            un dato fiscale con un manuale)
+          * Altrimenti aggiorna totale_manuale e ricalcola totale/stato
+      - Se NON esiste → crea nuovo record con stato=provvisorio
+
+    Opzionalmente, se pos_reale_serale è fornito, chiama anche l'endpoint
+    della chiusura POS per unificare i due input della sera in un solo click.
+    """
+    db = Database.get_db()
+
+    data_str = data.get("data")
+    if not data_str:
+        raise HTTPException(status_code=400, detail="Campo 'data' obbligatorio (YYYY-MM-DD)")
+    try:
+        data_dt = datetime.strptime(data_str, "%Y-%m-%d")
+    except (ValueError, TypeError) as exc:
+        raise HTTPException(status_code=400, detail=f"Data non valida: {data_str!r}") from exc
+
+    try:
+        totale = round(float(data.get("totale", 0) or 0), 2)
+    except (ValueError, TypeError) as exc:
+        raise HTTPException(status_code=400, detail="Campo 'totale' non numerico") from exc
+
+    if totale <= 0:
+        raise HTTPException(status_code=400, detail="Il totale deve essere > 0")
+
+    pos_reale = data.get("pos_reale_serale")
+    try:
+        pos_reale = round(float(pos_reale), 2) if pos_reale is not None else None
+    except (ValueError, TypeError):
+        pos_reale = None
+    if pos_reale is not None and (pos_reale < 0 or pos_reale > totale):
+        raise HTTPException(
+            status_code=400,
+            detail="Il POS serale deve essere compreso tra zero e il totale",
+        )
+
+    note = (data.get("note") or "").strip()
+    now_iso = datetime.now(timezone.utc).isoformat()
+
+    # Solo la giornata VIVA: una riga ritirata (sostituita dall'XML, `status:
+    # deleted`) resta per l'audit e non e' ne' un definitivo che blocca ne' un
+    # manuale da aggiornare.
+    existing = await db["corrispettivi"].find_one(
+        {"data": data_str, "entity_status": {"$ne": "deleted"},
+         "status": {"$nin": ["deleted", "archived", "archiviata"]}}, {"_id": 0})
+
+    if existing and existing.get("stato") == "definitivo_xml":
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"Esiste già un corrispettivo DEFINITIVO (XML ufficiale) per il {data_str}. "
+                f"Non puoi sovrascriverlo con un dato manuale. Se devi correggerlo, importa un nuovo XML."
+            )
+        )
+
+    if existing:
+        # Aggiorna il manuale mantenendo quello che c'era
+        update = {
+            "totale_manuale": totale,
+            "totale": totale,  # finché non arriva XML, totale attivo = manuale
+            "stato": "provvisorio",
+            "data_inserimento_manuale": now_iso,
+            "updated_at": now_iso,
+        }
+        if note:
+            update["note_manuale"] = note
+        await db["corrispettivi"].update_one({"id": existing.get("id")}, {"$set": update})
+        action = "aggiornato"
+        corr_id = existing.get("id")
+    else:
+        corr_id = str(uuid.uuid4())
+        doc = {
+            "id": corr_id,
+            "data": data_str,
+            "anno": data_dt.year,
+            "mese": data_dt.month,
+            "totale": totale,
+            "totale_manuale": totale,
+            "totale_xml": None,
+            "pagato_contanti": None,  # ignoti finché non arriva XML
+            "pagato_elettronico": None,
+            "stato": "provvisorio",
+            "source": "manuale_serale",
+            "data_inserimento_manuale": now_iso,
+            "data_import_xml": None,
+            "created_at": now_iso,
+            "updated_at": now_iso,
+        }
+        if note:
+            doc["note_manuale"] = note
+        await db["corrispettivi"].insert_one(doc.copy())
+        action = "creato"
+
+    # ── DATA PREVISTA ACCREDITO POS (calendario unico: lavorativi + festivi) ──
+    # Se il POS serale e' presente, il corrispettivo entra "in attesa accredito"
+    # con la data prevista calcolata dal calendario (lun-gio → +1 lavorativo,
+    # ven → lunedi', sab/dom secondo contratto, slittamento sui festivi).
+    if pos_reale is not None and pos_reale > 0:
+        from app.utils.pos_accredito import data_accredito_prevista_str
+        prevista = data_accredito_prevista_str(data_str)
+        if prevista:
+            await db["corrispettivi"].update_one(
+                {"id": corr_id},
+                {"$set": {
+                    "data_prevista_accredito": prevista,
+                    "stato_accredito": "in_attesa_accredito",
+                }}
+            )
+
+    # Salva anche il POS reale nel registro manuale canonico e riallinea
+    # il credito atteso verso il gestore. Il valore XML resta
+    # separato e non viene mai usato come sostituto del terminale manuale.
+    pos_result = None
+    if pos_reale is not None and pos_reale >= 0:
+        pos_result = await registra_chiusura_pos_reale(
+            db,
+            data_str,
+            pos_reale,
+            note=note,
+            actor={"user_id": str(data.get("performed_by") or "operatore")},
+        )
+
+    # La Cassa contiene solo la quota fisica. Una correzione aggiorna la stessa
+    # riga; se il giorno e' tutto elettronico, l'eventuale riga precedente viene
+    # archiviata senza cancellarne la provenienza.
+    quota_contanti = round(totale - (pos_reale or 0), 2)
+    filtro_cassa = {
+        "corrispettivo_id": corr_id, "tipo": "entrata",
+        "source": "conferma_corrispettivo_manuale",
+        "status": {"$nin": ["deleted", "archived"]},
+    }
+    esistente_cassa = await db["prima_nota_cassa"].find_one(filtro_cassa)
+    if quota_contanti > 0:
+        campi_cassa = {
+            "importo": quota_contanti, "totale_giornata": totale,
+            "pagato_elettronico": round(pos_reale or 0, 2),
+            "pagato_contanti": quota_contanti, "updated_at": now_iso,
+        }
+        if esistente_cassa:
+            await db["prima_nota_cassa"].update_one(
+                {"id": esistente_cassa["id"]}, {"$set": campi_cassa}
+            )
+            entrata_id = esistente_cassa["id"]
+        else:
+            entrata_id = str(uuid.uuid4())
+            await scrivi_movimento(db, "cassa", {
+                "id": entrata_id, "data": data_str, "tipo": "entrata",
+                "categoria": "Corrispettivi",
+                "descrizione": f"Corrispettivi contanti {data_str}",
+                "corrispettivo_id": corr_id,
+                "source": "conferma_corrispettivo_manuale",
+                "created_at": now_iso, **campi_cassa,
+            })
+        movimenti_cassa = {"entrata_id": entrata_id, "uscita_pos_id": None}
+    else:
+        if esistente_cassa:
+            await db["prima_nota_cassa"].update_one(
+                {"id": esistente_cassa["id"]},
+                {"$set": {"status": "archived", "deleted": True,
+                          "deleted_reason": "corrispettivo_tutto_elettronico",
+                          "deleted_at": now_iso}},
+            )
+        movimenti_cassa = {"entrata_id": None, "uscita_pos_id": None}
+
+    try:
+        from app.services.audit_logger import log_evento
+        await log_evento(
+            modulo="corrispettivi", azione="conferma_corrispettivo_manuale",
+            entita_id=corr_id, entita_collection="corrispettivi", db=db,
+            nuovo_stato={"totale": totale, "pos_serale": pos_reale,
+                         "movimenti_cassa": movimenti_cassa},
+            fonte="corrispettivi_manuale",
+            utente=str(data.get("performed_by") or "operatore"),
+        )
+    except Exception:
+        logger.exception("Audit conferma corrispettivo manuale fallito")
+
+    return {
+        "success": True,
+        "action": action,
+        "corrispettivo_id": corr_id,
+        "data": data_str,
+        "totale": totale,
+        "stato": "provvisorio",
+        "movimenti_cassa": movimenti_cassa,
+        "pos_reale_serale": pos_result,
+    }
+
+
+@router.get("/manuali-senza-xml")
+async def elenca_corrispettivi_manuali_senza_xml(
+    giorni_minimi: int = Query(0, description="Filtra solo quelli più vecchi di N giorni")
+) -> Dict[str, Any]:
+    """Elenca i corrispettivi che sono ancora in stato provvisorio (manuale
+    non sostituito da XML). Usato per l'alert 'manca XML'.
+
+    giorni_minimi=0 → tutti i provvisori
+    giorni_minimi=7 → solo quelli con data più vecchia di 7gg (= alert attivo)
+    """
+    db = Database.get_db()
+    oggi = datetime.now()
+    soglia = (oggi - timedelta(days=giorni_minimi)).strftime("%Y-%m-%d")
+
+    query = {
+        "$or": [
+            {"stato": {"$in": ["provvisorio", "manca_xml"]}},
+            # retrocompat: record senza campo stato ma con source manuale
+            {"stato": {"$exists": False}, "source": {"$in": ["manuale_serale", "manuale", "manual_entry"]}},
+        ]
+    }
+    if giorni_minimi > 0:
+        query["data"] = {"$lt": soglia}
+
+    corr_list = await db["corrispettivi"].find(
+        query,
+        {"_id": 0, "id": 1, "data": 1, "totale": 1, "totale_manuale": 1, "stato": 1, "data_inserimento_manuale": 1}
+    ).sort("data", 1).to_list(1000)
+
+    # Calcola giorni di attesa per ognuno
+    for c in corr_list:
+        try:
+            d_str = c.get("data", "")[:10]
+            giorni_attesa = (oggi - datetime.strptime(d_str, "%Y-%m-%d")).days
+            c["giorni_attesa_xml"] = giorni_attesa
+            c["alert_attivo"] = giorni_attesa >= GIORNI_PRIMA_ALERT_XML_MANCANTE
+        except (ValueError, TypeError):
+            c["giorni_attesa_xml"] = 0
+            c["alert_attivo"] = False
+
+    alert_attivi = [c for c in corr_list if c.get("alert_attivo")]
+
+    return {
+        "success": True,
+        "totale_provvisori": len(corr_list),
+        "totale_alert_attivi": len(alert_attivi),
+        "giorni_soglia_alert": GIORNI_PRIMA_ALERT_XML_MANCANTE,
+        "corrispettivi": corr_list,
+    }
+
+
+@router.post("/aggiorna-stati-mancanti")
+async def aggiorna_stati_corrispettivi_mancanti() -> Dict[str, Any]:
+    """Job di manutenzione: scorre i corrispettivi provvisori e aggiorna a
+    'manca_xml' quelli più vecchi di GIORNI_PRIMA_ALERT_XML_MANCANTE giorni.
+
+    Chiamabile manualmente da UI o da scheduler giornaliero.
+    """
+    db = Database.get_db()
+    soglia = (datetime.now() - timedelta(days=GIORNI_PRIMA_ALERT_XML_MANCANTE)).strftime("%Y-%m-%d")
+    now_iso = datetime.now(timezone.utc).isoformat()
+
+    result = await db["corrispettivi"].update_many(
+        {
+            "stato": "provvisorio",
+            "data": {"$lt": soglia},
+        },
+        {"$set": {"stato": "manca_xml", "stato_aggiornato_il": now_iso}}
+    )
+
+    return {
+        "success": True,
+        "aggiornati": result.modified_count,
+        "soglia_giorni": GIORNI_PRIMA_ALERT_XML_MANCANTE,
+    }
+
+
+@router.post("/normalizza-pagamenti")
+@handle_errors
+async def normalizza_campi_pagamento(
+    dry_run: bool = Query(True, description="Solo conteggio"),
+    anno: int = Query(2026),
+) -> Dict[str, Any]:
+    """Segnalazione utente 18/07/2026: 'la somma delle carte non torna col
+    totale'. Due difetti reali:
+    1. i corrispettivi importati dal flusso vecchio (source xml_cor10)
+       hanno contanti/elettronico nei campi LEGACY `contanti`/`elettronico`
+       mentre pagine e statistiche leggono `pagato_contanti`/
+       `pagato_elettronico` → 37 giorni risultavano senza ripartizione;
+    2. `pagato_non_riscosso` era calcolato doppio-contando imponibile e
+       lordo dei riepiloghi (€244k di 'non riscosso' impossibili).
+    Qui: solo l'allineamento dei campi legacy. Il non riscosso **non si
+    ricalcola** (dal 02/10/2026): lo scrive solo il parser dalle voci che l'RT
+    dichiara, mai `totale − contanti − elettronico`; un valore storico nato
+    per differenza si vede nel riepilogo e si corregge rileggendo l'XML."""
+    db = Database.get_db()
+    docs = await db["corrispettivi"].find(
+        {"data": {"$regex": f"^{anno}"}}, {"_id": 0}).to_list(1000)
+
+    aggiornati = campi_migrati = 0
+    tot = {"totale": 0.0, "contanti": 0.0, "elettronico": 0.0, "non_riscosso": 0.0}
+    for c in docs:
+        totale = float(c.get("totale") or 0)
+        pc = float(c.get("pagato_contanti") or 0)
+        pe = float(c.get("pagato_elettronico") or 0)
+        migra = False
+        if pc == 0 and pe == 0 and (c.get("contanti") or c.get("elettronico")):
+            pc = float(c.get("contanti") or 0)
+            pe = float(c.get("elettronico") or 0)
+            migra = True
+        nr = round(float(c.get("pagato_non_riscosso") or 0), 2)
+
+        tot["totale"] += totale
+        tot["contanti"] += pc
+        tot["elettronico"] += pe
+        tot["non_riscosso"] += nr
+
+        if not migra:
+            continue
+        aggiornati += 1
+        campi_migrati += 1
+        if not dry_run:
+            chiave = {"id": c["id"]} if c.get("id") else {"xml_hash": c.get("xml_hash")}
+            await db["corrispettivi"].update_one(chiave, {"$set": {
+                "pagato_contanti": round(pc, 2),
+                "pagato_elettronico": round(pe, 2),
+                "pagamenti_normalizzati_at": datetime.now(timezone.utc).isoformat(),
+            }})
+
+    for k in tot:
+        tot[k] = round(tot[k], 2)
+    return {"dry_run": dry_run, "anno": anno, "giorni": len(docs),
+            "aggiornati" if not dry_run else "da_aggiornare": aggiornati,
+            "campi_legacy_migrati": campi_migrati,
+            "totali_dopo": tot,
+            "quadratura": round(tot["totale"] - tot["contanti"] - tot["elettronico"] - tot["non_riscosso"], 2)}

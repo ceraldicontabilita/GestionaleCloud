@@ -1,0 +1,3569 @@
+import React, { useState, useEffect, useRef, useMemo } from 'react';
+import api from '../api';
+import { useAnnoGlobale } from '../contexts/AnnoContext';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
+import { formatEuro, formatDateIT, formatDateGGMM, STYLES, COLORS, SHADOWS, BORDER_RADIUS, useIsMobile } from '../lib/utils';
+import { PageLayout } from '../components/PageLayout';
+import ModalFattura from '../components/ModalFattura';
+import { useConfirm } from '../components/ui/ConfirmDialog';
+import { toast } from 'sonner';
+import { Button, Badge, StatCard, Table, TableWrap, Th, Td, Input, RowActions, RowActionButton, ListaAdattiva, Tabs, MenuOperazioni } from '../components/ds';
+import { ePagata } from '../utils/statoFattura';
+import CarnetAssegni from '../components/assegni/CarnetAssegni';
+import CameraCattura from '../components/CameraCattura';
+import { VisoreOriginale } from '../components/ApriOriginale';
+import { euroOppure } from '../lib/vista';
+import { useScegliOpzione } from '../components/ScegliOpzione';
+import { BookOpen, CircleHelp, Bot, Brain, Building2, Camera, ChevronDown, ChevronUp, Circle, ChartColumn, Check, ClipboardList, Eye, FileText, Hourglass, Image as ImageIcon, Info, Landmark, Pencil, Printer, RefreshCw, Search, Trash2, TriangleAlert, Undo2, Upload, X } from 'lucide-react';
+
+const ICO = { verticalAlign: '-2px', flexShrink: 0 };
+
+// Fornitori mai pagabili con assegno (dettato utente 18/07/2026): arrivano
+// su carta di credito o addebito bancario, al limite bonifico — mai assegno.
+const FORNITORI_MAI_ASSEGNO = [
+  'amazon', 'abc acquedotto', 'acquedotto', 'acqua bene comune', 'fastweb',
+  'paypal', 'enel', 'leasys', 'arval',
+];
+
+const parseImportoFiltro = value => {
+  const raw = String(value ?? '').trim().replace(/\s/g, '');
+  if (!raw) return null;
+  const normalizzato = raw.includes(',')
+    ? raw.replace(/\./g, '').replace(',', '.')
+    : raw;
+  const numero = Number(normalizzato);
+  return Number.isFinite(numero) ? numero : null;
+};
+
+export const normalizzaBeneficiarioAssegno = value => {
+  const beneficiario = String(value ?? '').trim();
+  return ['', '-', 'n/a', 'non disponibile'].includes(beneficiario.toLowerCase())
+    ? ''
+    : beneficiario;
+};
+
+export const residuoFattura = fattura => {
+  const totale = Number(fattura?.total_amount || fattura?.importo_totale || 0);
+  if (fattura?.importo_residuo !== undefined && fattura?.importo_residuo !== null) {
+    return Math.max(0, Number(fattura.importo_residuo) || 0);
+  }
+  return Math.max(0, totale - (Number(fattura?.importo_pagato) || 0));
+};
+
+const nomeFornitoreFattura = fattura =>
+  String(fattura?.supplier_name || fattura?.cedente_denominazione || '').trim();
+
+const pivaFornitoreFattura = fattura =>
+  String(
+    fattura?.supplier_vat || fattura?.cedente_piva || fattura?.fornitore_partita_iva || ''
+  ).replace(/\s/g, '').toUpperCase();
+
+const numeroFattura = fattura =>
+  String(
+    fattura?.invoice_number || fattura?.numero_fattura || fattura?.numero_documento || ''
+  ).trim();
+
+const dataFattura = fattura =>
+  String(fattura?.invoice_date || fattura?.data_fattura || fattura?.data_documento || '')
+    .slice(0, 10);
+
+export const normalizzaIdentitaFornitore = value =>
+  String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^A-Z0-9]+/gi, ' ')
+    .trim()
+    .toUpperCase()
+    .replace(/\b(S R L|S P A|S A S|S N C|S C A R L)\b/g, ' ')
+    .split(/\s+/)
+    .filter(parola => parola && !['SRL', 'SPA', 'SAS', 'SNC', 'SS', 'SCARL'].includes(parola))
+    .join(' ');
+
+export const fatturePerFornitore = (elenco, nome, piva = '') => {
+  const pivaNormalizzata = String(piva || '').replace(/\s/g, '').toUpperCase();
+  const nomeNormalizzato = normalizzaIdentitaFornitore(nome);
+  if (!pivaNormalizzata && !nomeNormalizzato) return [];
+  return (elenco || []).filter(fattura => {
+    const pivaFattura = pivaFornitoreFattura(fattura);
+    if (pivaNormalizzata && pivaFattura) return pivaNormalizzata === pivaFattura;
+    return normalizzaIdentitaFornitore(nomeFornitoreFattura(fattura)) === nomeNormalizzato;
+  });
+};
+
+export const importiCoincidonoAlCentesimo = (a, b) =>
+  Math.round((Number(a) || 0) * 100) === Math.round((Number(b) || 0) * 100);
+
+const TOLLERANZA_ASSEGNO = 0.005;
+
+export const totaleQuoteFatture = fatture =>
+  (fatture || []).reduce(
+    (somma, fattura) => somma + Number(fattura?.quota ?? fattura?.importo ?? 0),
+    0
+  );
+
+export const assegnoInteramenteAssociato = (importoAssegno, fatture) => {
+  const importo = Number(importoAssegno || 0);
+  if (importo <= 0 || !fatture?.length) return false;
+  return Math.abs(importo - totaleQuoteFatture(fatture)) <= TOLLERANZA_ASSEGNO;
+};
+
+const distanzaFatturaDaAssegno = (fattura, importoAssegno) => {
+  const importo = Number(importoAssegno || 0);
+  const valori = [residuoFattura(fattura)];
+  (fattura?.pagamento_rate || []).forEach(rata => valori.push(Number(rata?.importo) || 0));
+  return Math.min(...valori.map(valore => Math.abs(valore - importo)));
+};
+
+export function filtraAssegni(assegni, filtri = {}) {
+  const {
+    fornitore = '', importoEsatto = '', importoMin = '', importoMax = '',
+    numeroAssegno = '', numeroFattura = '', soloDaAssociare = false,
+  } = filtri;
+  const esatto = parseImportoFiltro(importoEsatto);
+  const minimo = parseImportoFiltro(importoMin);
+  const massimo = parseImportoFiltro(importoMax);
+  const cifreNumero = String(numeroAssegno).replace(/\D/g, '');
+
+  return assegni.filter(a => {
+    const numero = String(a.numero || a.numero_assegno || '');
+    if (!numero) return false;
+    const importoVuoto = a.importo === null || a.importo === undefined || a.importo === '';
+    const importo = importoVuoto ? null : Number(a.importo) || 0;
+    if (fornitore && !String(a.beneficiario || '').toLowerCase().includes(fornitore.toLowerCase())) return false;
+    if ((esatto !== null || minimo !== null || massimo !== null) && importoVuoto) return false;
+    if (esatto !== null && Math.abs(importo - esatto) > 0.009) return false;
+    if (minimo !== null && importo < minimo) return false;
+    if (massimo !== null && importo > massimo) return false;
+    if (cifreNumero.length >= 3 && !numero.replace(/\D/g, '').includes(cifreNumero)) return false;
+    if (numeroFattura && !String(a.numero_fattura || '').toLowerCase().includes(numeroFattura.toLowerCase())) return false;
+    if (soloDaAssociare && normalizzaBeneficiarioAssegno(a.beneficiario)) return false;
+    return true;
+  });
+}
+
+const STATI_ASSEGNO = {
+  vuoto: { label: 'Valido', variant: 'success' },
+  compilato: { label: 'Compilato', variant: 'info' },
+  emesso: { label: 'Emesso', variant: 'warning' },
+  parzialmente_assegnato: { label: 'Parz. assegnato', variant: 'warning' },
+  assegnato: { label: 'Assegnato', variant: 'info' },
+  incassato: { label: 'Incassato', variant: 'accent' },
+  annullato: { label: 'Annullato', variant: 'danger' },
+  stornato: { label: 'Stornato', variant: 'danger' },
+};
+
+const RISCONTRO_BANCA = {
+  incassato: { label: 'Incassato da EC', variant: 'success' },
+  da_rientrare_in_banca: { label: 'Da rientrare in banca', variant: 'warning' },
+  incasso_da_verificare: { label: 'Incasso da verificare', variant: 'warning' },
+  stornato: { label: 'Stornato', variant: 'danger' },
+};
+
+export default function GestioneAssegni() {
+  const { anno } = useAnnoGlobale();
+  const confirm = useConfirm();
+  const [assegni, setAssegni] = useState([]);
+  const [_stats, setStats] = useState({ totale: 0, per_stato: {} });
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(null);
+  const [filterStato, _setFilterStato] = useState('');
+  const [search, _setSearch] = useState('');
+
+  // NUOVI FILTRI
+  const [filterFornitore, setFilterFornitore] = useState('');
+  const [filterImportoEsatto, setFilterImportoEsatto] = useState('');
+  const [filterImportoMin, setFilterImportoMin] = useState('');
+  const [filterImportoMax, setFilterImportoMax] = useState('');
+  const [filterNumeroAssegno, setFilterNumeroAssegno] = useState('');
+  const [filterNumeroFattura, setFilterNumeroFattura] = useState('');
+  const [filterSoloDaAssociare, setFilterSoloDaAssociare] = useState(false);
+  const [showFilters, setShowFilters] = useState(false);
+  // Vista: assegni singoli o carnet da 10 (calcolati dal backend).
+  const [vista, setVista] = useState('assegni');
+  // Niente più stato locale per l'anno: prima "filterAnno" si inizializzava
+  // dall'anno globale ma restava locale — cambiando l'anno in alto la
+  // pagina ricaricava (era in dependency array) ma continuava a
+  // interrogare il vecchio filterAnno, mai riallineato. Si usa sempre e
+  // solo "anno" (globale), come tutte le altre pagine dell'app.
+
+  // Responsive (telefono/tablet)
+  const isMobile = useIsMobile();
+  const [scegli, dialogoScelta] = useScegliOpzione();
+  const [fotoAperta, setFotoAperta] = useState(null);
+  const [limiteAmbigui, setLimiteAmbigui] = useState(200);
+  const [limiteFatture, setLimiteFatture] = useState(200);
+
+  // Modale visualizzazione fattura in-page ({id, numero}) - niente nuove schede
+  const [fatturaView, setFatturaView] = useState(null);
+
+  // Generate modal
+  const [showGenerate, setShowGenerate] = useState(false);
+  const [generateForm, setGenerateForm] = useState({ numero_primo: '', quantita: 10 });
+  const [generating, setGenerating] = useState(false);
+  const [newlyGeneratedNumbers, setNewlyGeneratedNumbers] = useState(new Set());
+
+  // Edit inline
+  const [editingId, setEditingId] = useState(null);
+  const [editForm, setEditForm] = useState({});
+  const [fattureEditDisponibili, setFattureEditDisponibili] = useState([]);
+  const [loadingFattureEdit, setLoadingFattureEdit] = useState(false);
+  const [erroreFattureEdit, setErroreFattureEdit] = useState('');
+
+  // Fatture per collegamento
+  const [fatture, setFatture] = useState([]);
+  const [loadingFatture, setLoadingFatture] = useState(false);
+  const [selectedFatture, setSelectedFatture] = useState([]);
+  const [showFattureModal, setShowFattureModal] = useState(false);
+  const [editingAssegnoForFatture, setEditingAssegnoForFatture] = useState(null);
+  const [filterFatturaModal, setFilterFatturaModal] = useState('');
+
+  // Drag state per modal
+  const [modalPosition, setModalPosition] = useState({ x: 0, y: 0 });
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
+
+  useEffect(() => {
+    loadData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filterStato, search, anno]);
+
+  const loadData = async () => {
+    try {
+      setLoading(true);
+      setLoadError(null);
+      const params = new URLSearchParams();
+      if (filterStato) params.append('stato', filterStato);
+      if (search) params.append('search', search);
+      params.append('anno', anno);
+
+      const [assegniRes, statsRes] = await Promise.all([
+        api.get(`/api/assegni?${params}`),
+        api.get(`/api/assegni/stats?anno=${anno}`),
+      ]);
+
+      // Ordina per numero assegno decrescente (dal più recente al più vecchio)
+      const assegniOrdinati = (assegniRes.data || []).sort((a, b) => {
+        const numA = parseInt((a.numero || a.numero_assegno || '').replace(/\D/g, '') || '0');
+        const numB = parseInt((b.numero || b.numero_assegno || '').replace(/\D/g, '') || '0');
+        return numB - numA; // Decrescente
+      });
+
+      setAssegni(assegniOrdinati);
+      setStats(statsRes.data);
+    } catch (error) {
+      console.error('Error loading assegni:', error);
+      const dettaglio = error.response?.data?.detail || error.message;
+      setLoadError(`Impossibile caricare assegni e statistiche: ${dettaglio}`);
+      toast.error(`Errore caricamento assegni: ${dettaglio}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Carica fatture non pagate per collegamento - SOLO dello stesso fornitore
+  const loadFatture = async (beneficiario = '', importoAssegno = 0) => {
+    setLoadingFatture(true);
+    try {
+      const params = new URLSearchParams();
+      params.append('anno', anno);
+      params.append('limit', '1000');
+      if (beneficiario.trim().length >= 2) params.append('fornitore', beneficiario.trim());
+      // IMPORTANTE: se c'è un beneficiario, filtra SOLO quelle del beneficiario
+      // Endpoint leggero: restituisce solo i campi necessari al modale e non
+      // trascina XML/PDF e metadati completi delle fatture.
+      const res = await api.get(`/api/assegni/supporto/fatture-disponibili?${params}`);
+      const items = res.data.items || res.data || [];
+      // Escludi soltanto le fatture già pagate. La scelta dell'assegno per
+      // una fattura specifica prevale sul metodo abituale cassa/misto del
+      // fornitore e viene poi confermata dall'estratto conto.
+      let filtered = items.filter(f => {
+        if (ePagata(f)) return false;
+        // Fornitori mai pagabili con assegno (dettato utente 18/07/2026):
+        // arrivano su carta di credito o addebito bancario, mai su assegno.
+        const fornitoreNome = (f.supplier_name || f.cedente_denominazione || '').toLowerCase();
+        if (FORNITORI_MAI_ASSEGNO.some(k => fornitoreNome.includes(k))) {
+          return false;
+        }
+        return true;
+      });
+
+      // FILTRO AGGIUNTIVO: Se c'è un beneficiario, mostra SOLO fatture di quel fornitore
+      // Questo perché non si può pagare con un assegno fatture di fornitori diversi
+      const benefLower = beneficiario.toLowerCase();
+      const stessoBeneficiario = fattura => {
+        if (!benefLower) return false;
+        const fornitore = (fattura.supplier_name || fattura.cedente_denominazione || '').toLowerCase();
+        return (
+          fornitore.includes(benefLower.substring(0, 5)) ||
+          benefLower.includes(fornitore.substring(0, 5)) ||
+          fornitore.split(' ').some(word => benefLower.includes(word) && word.length > 3)
+        );
+      };
+
+      // Difesa anche nel browser: il backend restringe gia la query, ma una
+      // risposta legacy o in cache non deve esporre documenti di altri fornitori.
+      if (benefLower) filtered = filtered.filter(stessoBeneficiario);
+
+      // Prima le fatture con importo piu vicino all'assegno: quando il
+      // beneficiario non e ancora noto, la candidata utile resta subito
+      // visibile anche con centinaia di fatture nell'anno.
+      filtered.sort((a, b) => {
+        if (stessoBeneficiario(a) !== stessoBeneficiario(b)) return stessoBeneficiario(a) ? -1 : 1;
+        const importoA = distanzaFatturaDaAssegno(a, importoAssegno);
+        const importoB = distanzaFatturaDaAssegno(b, importoAssegno);
+        if (importoA !== importoB) return importoA - importoB;
+        const fornA = (a.supplier_name || a.cedente_denominazione || '').toLowerCase();
+        const fornB = (b.supplier_name || b.cedente_denominazione || '').toLowerCase();
+        // N/A e vuoti vanno in fondo
+        if (!fornA && fornB) return 1;
+        if (fornA && !fornB) return -1;
+        if (fornA !== fornB) return fornA.localeCompare(fornB);
+        // Stesso fornitore: NC (TD04) dopo le fatture normali
+        const tipoA = a.tipo_documento || a.document_type || 'TD01';
+        const tipoB = b.tipo_documento || b.document_type || 'TD01';
+        if (tipoA !== tipoB) return tipoA === 'TD04' ? 1 : -1;
+        // Stesso tipo: per data decrescente
+        return (b.invoice_date || '').localeCompare(a.invoice_date || '');
+      });
+
+      setFatture(filtered);
+    } catch (error) {
+      console.error('Error loading fatture:', error);
+      setFatture([]);
+    } finally {
+      setLoadingFatture(false);
+    }
+  };
+
+  const loadFatturePerEdit = async () => {
+    setLoadingFattureEdit(true);
+    setErroreFattureEdit('');
+    try {
+      const params = new URLSearchParams({ anno: String(anno), limit: '2000' });
+      const res = await api.get(`/api/assegni/supporto/fatture-disponibili?${params}`);
+      const items = res.data?.items || res.data || [];
+      setFattureEditDisponibili(items.filter(fattura => {
+        const nome = nomeFornitoreFattura(fattura).toLowerCase();
+        return !FORNITORI_MAI_ASSEGNO.some(voce => nome.includes(voce));
+      }));
+    } catch (error) {
+      const dettaglio = error.response?.data?.detail || error.message;
+      setFattureEditDisponibili([]);
+      setErroreFattureEdit(`Fatture non disponibili: ${dettaglio}`);
+    } finally {
+      setLoadingFattureEdit(false);
+    }
+  };
+
+  const handleGenerate = async () => {
+    if (!generateForm.numero_primo) {
+      toast.warning('Inserisci il numero del primo assegno');
+      return;
+    }
+    const quantita = Number.parseInt(generateForm.quantita, 10);
+    if (!Number.isInteger(quantita) || quantita < 1 || quantita > 100) {
+      toast.warning('La quantità deve essere compresa tra 1 e 100');
+      return;
+    }
+
+    setGenerating(true);
+    try {
+      const res = await api.post(`/api/assegni/genera`, { ...generateForm, quantita, anno });
+      const numeri = res.data?.numeri || [];
+      setNewlyGeneratedNumbers(new Set(numeri));
+      setShowGenerate(false);
+      setGenerateForm({ numero_primo: '', quantita: 10 });
+      await loadData();
+      toast.success(
+        `Carnet creato: ${res.data?.generati ?? numeri.length} assegni da ${res.data?.primo} a ${res.data?.ultimo}`
+      );
+    } catch (error) {
+      toast.error('Errore: ' + (error.response?.data?.detail || error.message));
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  const handleClearEmpty = async () => {
+    try {
+      const res = await api.delete(`/api/assegni/clear-generated?stato=vuoto`);
+      toast.success(res.data.message);
+      loadData();
+    } catch (error) {
+      toast.error('Errore: ' + (error.response?.data?.detail || error.message));
+    }
+  };
+;
+
+  const startEdit = assegno => {
+    const collegata = assegno.fatture_collegate?.length === 1
+      ? assegno.fatture_collegate[0].fattura_id
+      : assegno.fattura_collegata || '';
+    setEditingId(assegno.id);
+    setEditForm({
+      beneficiario: assegno.beneficiario || '',
+      fornitore_piva: assegno.fornitore_piva || '',
+      importo: assegno.importo || '',
+      data_fattura: assegno.data_fattura || '',
+      numero_fattura: assegno.numero_fattura || '',
+      data_emissione: assegno.data_emissione || '',
+      fattura_selezionata_id: collegata,
+      note: assegno.note || '',
+      fatture_collegate: assegno.fatture_collegate || [],
+    });
+    loadFatturePerEdit();
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editingId) return;
+
+    try {
+      const fatturaSelezionata = fattureEditDisponibili.find(
+        fattura => fattura.id === editForm.fattura_selezionata_id
+      );
+      if (editForm.fattura_selezionata_id && !fatturaSelezionata) {
+        toast.error('La fattura selezionata non e piu disponibile: aggiorna la scelta');
+        return;
+      }
+      if (fatturaSelezionata) {
+        const quota = residuoFattura(fatturaSelezionata);
+        if (!importiCoincidonoAlCentesimo(editForm.importo, quota)) {
+          toast.warning(
+            `Importi diversi: assegno ${formatEuro(editForm.importo)} e residuo fattura ${formatEuro(quota)}`
+          );
+          return;
+        }
+        await api.put(`/api/assegni/${editingId}/fatture-collegate`, {
+          fatture: [{ fattura_id: fatturaSelezionata.id, quota }],
+        });
+        if (editForm.data_emissione) {
+          await api.put(`/api/assegni/${editingId}`, {
+            data_emissione: editForm.data_emissione,
+          });
+        }
+        toast.success(
+          `Fattura ${numeroFattura(fatturaSelezionata)} collegata all'assegno e pagamento aggiornato`
+        );
+        setEditingId(null);
+        setEditForm({});
+        await loadData();
+        return;
+      }
+
+      const { fattura_selezionata_id: _fatturaId, ...payload } = editForm;
+      const res = await api.put(`/api/assegni/${editingId}`, payload);
+      const intento = res.data?.intento_fattura;
+      if (intento?.collegato) {
+        toast.success('Assegno salvato e fattura associata automaticamente');
+      } else if (intento?.motivo === 'ambiguo') {
+        toast.warning('Più fatture compatibili: il caso resta sospeso finché arrivano dati univoci');
+      } else if (intento?.registrato) {
+        toast.info('Assegno salvato: la fattura sarà associata automaticamente quando arriva');
+      } else {
+        toast.success('Assegno salvato');
+      }
+      setEditingId(null);
+      loadData();
+    } catch (error) {
+      toast.error('Errore: ' + (error.response?.data?.detail || error.message));
+    }
+  };
+
+  const cancelEdit = () => {
+    setEditingId(null);
+    setEditForm({});
+    setErroreFattureEdit('');
+  };
+
+  // Le fatture collegate salvate nel DB hanno lo schema canonico
+  // {fattura_id, quota}: qui le arricchiamo coi dati della fattura (numero,
+  // fornitore, importo) per poterle mostrare nel modale. Recuperiamo la
+  // fattura via API diretta invece di cercarla nell'elenco "disponibili"
+  // (che esclude quelle già pagate/di altri filtri) così il collegamento
+  // esistente è sempre visibile, anche se la fattura non è più "disponibile".
+  const openFattureModal = async assegno => {
+    setEditingAssegnoForFatture(assegno);
+    setSelectedFatture([]);
+    setFilterFatturaModal('');
+    setShowFattureModal(true);
+    loadFatture(normalizzaBeneficiarioAssegno(assegno.beneficiario), assegno.importo);
+
+    const collegate = assegno.fatture_collegate || [];
+    if (collegate.length === 0) return;
+    const arricchite = await Promise.all(
+      collegate.map(async fc => {
+        try {
+          const res = await api.get(`/api/invoices/${fc.fattura_id}`);
+          const inv = res.data;
+          const tipoDoc = inv.tipo_documento || inv.document_type || 'TD01';
+          const isNC = tipoDoc === 'TD04';
+          return {
+            id: fc.fattura_id,
+            numero: inv.invoice_number || inv.numero_fattura || fc.fattura_id,
+            fornitore: inv.supplier_name || inv.cedente_denominazione || '',
+            importo: isNC ? -Math.abs(fc.quota) : fc.quota,
+            quota: fc.quota,
+            data: inv.invoice_date || inv.data_fattura,
+            tipo_documento: tipoDoc,
+            is_nota_credito: isNC,
+          };
+        } catch {
+          // Fattura non più raggiungibile (es. cancellata): mostriamo comunque
+          // la quota così l'utente vede che l'assegno è impegnato per quella cifra.
+          return {
+            id: fc.fattura_id,
+            numero: fc.fattura_id,
+            fornitore: '(fattura non trovata)',
+            importo: fc.quota,
+            quota: fc.quota,
+            data: null,
+            tipo_documento: 'TD01',
+            is_nota_credito: false,
+          };
+        }
+      })
+    );
+    setSelectedFatture(arricchite);
+  };
+
+  const toggleFattura = fattura => {
+    const exists = selectedFatture.find(f => f.id === fattura.id);
+    if (exists) {
+      setSelectedFatture(selectedFatture.filter(f => f.id !== fattura.id));
+    } else if (selectedFatture.length < 4) {
+      if (assegnoInteramenteAssociato(editingAssegnoForFatture?.importo, selectedFatture)) {
+        toast.info('Assegno già interamente associato', {
+          description: 'Rimuovi prima la fattura collegata se devi modificare l’associazione.',
+        });
+        return;
+      }
+      // REGOLA CONTABILE: Un assegno può pagare solo fatture dello STESSO fornitore
+      const fornitoreNuovo =
+        fattura.supplier_name || fattura.cedente_denominazione || fattura.fornitore;
+      const fornitoreEsistente = selectedFatture[0]?.fornitore;
+
+      if (
+        fornitoreEsistente &&
+        fornitoreNuovo &&
+        fornitoreNuovo.toLowerCase() !== fornitoreEsistente.toLowerCase()
+      ) {
+        toast.warning('Non puoi collegare fatture di fornitori diversi allo stesso assegno', {
+          description: 'Fornitore selezionato: ' + fornitoreEsistente + ' — stai cercando di aggiungere: ' + fornitoreNuovo,
+        });
+        return;
+      }
+
+      // Usa importo pre-calcolato (negativo per NC)
+      const tipoDoc = fattura.tipo_documento || fattura.document_type || 'TD01';
+      const isNC = tipoDoc === 'TD04';
+      const importoRaw = parseFloat(
+        fattura.total_amount || fattura.importo_totale || fattura.importo || 0
+      );
+      const giaSelezionato = totaleQuoteFatture(selectedFatture);
+      const disponibileAssegno = Math.max(
+        0, Number(editingAssegnoForFatture?.importo || 0) - giaSelezionato
+      );
+      const residuo = residuoFattura(fattura) || importoRaw;
+      const quota = isNC
+        ? -Math.abs(importoRaw)
+        : Math.min(residuo, disponibileAssegno);
+
+      if (!isNC && quota <= TOLLERANZA_ASSEGNO) {
+        toast.info('L’importo dell’assegno è già completamente coperto');
+        return;
+      }
+
+      setSelectedFatture([
+        ...selectedFatture,
+        {
+          id: fattura.id,
+          numero: fattura.invoice_number || fattura.numero_fattura,
+          importo: quota,
+          quota,
+          data: fattura.invoice_date || fattura.data_fattura,
+          fornitore: fornitoreNuovo,
+          tipo_documento: tipoDoc,
+          is_nota_credito: isNC,
+        },
+      ]);
+    } else {
+      toast.warning('Puoi collegare massimo 4 fatture per assegno');
+    }
+  };
+
+  const saveFattureCollegate = async () => {
+    if (!editingAssegnoForFatture) return;
+
+    try {
+      // Schema canonico (PROMPT_MASTER.md, sezione 10): l'assegno mantiene il
+      // suo importo nominale, ogni fattura riceve una quota. Il backend
+      // aggiorna assegni_collegati e l'intento di pagamento sulle fatture, e
+      // dichiara subito la fattura pagata in Prima Nota Banca (in attesa del
+      // solo riscontro dell'estratto conto).
+      await api.put(`/api/assegni/${editingAssegnoForFatture.id}/fatture-collegate`, {
+        fatture: selectedFatture.map(f => ({ fattura_id: f.id, quota: f.quota ?? f.importo })),
+      });
+
+      setShowFattureModal(false);
+      setEditingAssegnoForFatture(null);
+      setSelectedFatture([]);
+      setEditingId(null);
+      setEditForm({});
+      toast.success('Fatture collegate e pagamento dichiarato in Prima Nota Banca: resta solo il riscontro dell\'estratto conto.');
+      loadData();
+    } catch (error) {
+      toast.error('Errore: ' + (error.response?.data?.detail || error.message));
+    }
+  };
+
+  const handleDelete = async assegno => {
+    // Azione distruttiva: conferma esplicita come nelle altre pagine (bonifici,
+    // riconciliazione). Prima eliminava l'assegno al primo click senza chiedere.
+    const ok = await confirm({
+      title: 'Elimina assegno',
+      message: `Eliminare l'assegno ${assegno.numero_assegno || assegno.numero || ''}${
+        assegno.beneficiario ? ' a ' + assegno.beneficiario : ''
+      }? L'operazione non è reversibile.`,
+      variant: 'danger',
+    });
+    if (!ok) return;
+    try {
+      await api.delete(`/api/assegni/${assegno.id}`);
+      loadData();
+    } catch (error) {
+      toast.error('Errore: ' + (error.response?.data?.detail || error.message));
+    }
+  };
+
+  const handleEmetti = async assegno => {
+    try {
+      await api.post(`/api/assegni/${assegno.id}/emetti`, {
+        data_emissione: assegno.data_emissione || new Date().toISOString().slice(0, 10),
+      });
+      toast.success('Assegno emesso: attende il riscontro dell’estratto conto.');
+      await loadData();
+    } catch (error) {
+      toast.error('Errore: ' + (error.response?.data?.detail || error.message));
+    }
+  };
+
+  const handleStorna = async assegno => {
+    const scelta = await scegli({
+      titolo: `Motivo dello storno per l’assegno ${assegno.numero || ''}`,
+      opzioni: [
+        { valore: 'importo_errato', etichetta: 'Importo errato' },
+        { valore: 'beneficiario_errato', etichetta: 'Beneficiario errato' },
+        { valore: 'emesso_per_errore', etichetta: 'Emesso per errore' },
+        { valore: 'restituito', etichetta: 'Restituito dal beneficiario' },
+        { valore: 'smarrito', etichetta: 'Smarrito o distrutto' },
+      ],
+      altro: 'Scrivi il motivo',
+      conferma: 'Storna assegno',
+    });
+    if (!scelta?.testo) return;
+    try {
+      await api.post(`/api/assegni/${assegno.id}/storna`, { motivo: scelta.testo });
+      toast.success('Assegno stornato: nessun pagamento è stato registrato.');
+      await loadData();
+    } catch (error) {
+      toast.error('Errore: ' + (error.response?.data?.detail || error.message));
+    }
+  };
+
+  // Foto dell'assegno: scatto live dalla fotocamera, mai una scelta da
+  // galleria/file (mani sporche del banco: si scatta, non si allega).
+  // fotoTargetAssegno tiene l'assegno di destinazione finché la fotocamera
+  // (CameraCattura) non consegna il blob o l'utente annulla.
+  const [fotoTargetAssegno, setFotoTargetAssegno] = useState(null);
+  const [fotoUploadingId, setFotoUploadingId] = useState(null);
+
+  const avviaFotoAssegno = assegno => {
+    setFotoTargetAssegno(assegno);
+  };
+
+  const chiudiFotocamera = () => setFotoTargetAssegno(null);
+
+  const catturaFotoAssegno = async blob => {
+    const assegno = fotoTargetAssegno;
+    setFotoTargetAssegno(null);
+    if (!assegno) return;
+    setFotoUploadingId(assegno.id);
+    try {
+      const form = new FormData();
+      form.append('file', blob, `assegno-${assegno.numero || assegno.id}.jpg`);
+      await api.post(`/api/assegni/${assegno.id}/upload-foto`, form);
+      toast.success('Foto dell’assegno salvata.');
+      await loadData();
+    } catch (error) {
+      toast.error('Errore: ' + (error.response?.data?.detail || error.message));
+    } finally {
+      setFotoUploadingId(null);
+    }
+  };
+
+  // Auto-associa assegni alle fatture
+  const [autoAssociating, setAutoAssociating] = useState(false);
+  const [autoAssocResult, setAutoAssocResult] = useState(null);
+
+  // Ambigui auto-match: risoluzione manuale
+  const [ambiguiOpen, setAmbiguiOpen] = useState(false);
+  const [ambiguiLoading, setAmbiguiLoading] = useState(false);
+  const [ambiguiList, setAmbiguiList] = useState([]);
+  const [ambiguiSelections, setAmbiguiSelections] = useState({}); // {assegnoId: [fatturaId,...]}
+  const [ambiguiResolving, setAmbiguiResolving] = useState({});
+
+  // Learning Machine - nuovi stati
+  const [learningLoading, setLearningLoading] = useState(false);
+  const [learningResult, setLearningResult] = useState(null);
+  const [statsAvanzate, setStatsAvanzate] = useState(null);
+
+  // Associazione combinata (più assegni = 1 fattura)
+
+  // Selezione multipla per stampa PDF
+  const [selectedAssegni, setSelectedAssegni] = useState(new Set());
+
+  // Assegni con dati incompleti. Non sono candidati a un collegamento
+  // manuale: il motore li riprocessa quando arrivano beneficiario, XML o EC.
+  const [assegniNonAssociati, setAssegniNonAssociati] = useState([]);
+  const [loadingNonAssociati, setLoadingNonAssociati] = useState(false);
+  const [showNonAssociati, setShowNonAssociati] = useState(false);
+
+  // Carica assegni senza beneficiario
+  const loadAssegniNonAssociati = async () => {
+    setLoadingNonAssociati(true);
+    try {
+      const res = await api.get('/api/assegni/senza-associazione');
+      setAssegniNonAssociati(res.data);
+    } catch (error) {
+      console.error('Error loading assegni non associati:', error);
+    } finally {
+      setLoadingNonAssociati(false);
+    }
+  };
+
+  // Associa manualmente un assegno a una fattura;
+
+  const handleAutoAssocia = async () => {
+    setAutoAssociating(true);
+    setAutoAssocResult(null);
+    try {
+      const anteprima = await api.post(`/api/assegni/riprocessa-collegamenti?anno=${anno}`);
+      let res = anteprima;
+      if (anteprima.data?.conferma_richiesta) {
+        const ok = await confirm({
+          title: 'Conferma riprocessamento',
+          message: 'Verranno applicati soltanto collegamenti univoci e idempotenti tra assegni, movimenti bancari e fatture. I casi ambigui resteranno da confermare. Procedere?',
+          confirmText: 'Applica collegamenti',
+          cancelText: 'Annulla',
+          variant: 'warning',
+        });
+        if (ok === false) {
+          setAutoAssocResult({ ...anteprima.data, _modalita_riprocessamento: true, _preview_only: true });
+          return;
+        }
+        res = await api.post(`/api/assegni/riprocessa-collegamenti?anno=${anno}&conferma=true`);
+      }
+      setAutoAssocResult({ ...res.data, _modalita_riprocessamento: true });
+      const collegati = res.data?.fatture?.collegati ?? 0;
+      const ambigui = res.data?.fatture?.ambigui ?? 0;
+      if (collegati > 0) {
+        toast.success(`${collegati} assegni collegati automaticamente alle fatture`);
+      } else if (ambigui > 0) {
+        toast.info(`${ambigui} casi restano in attesa di dati univoci`);
+      } else {
+        toast.info('Riprocessamento completato: nessun nuovo collegamento certo');
+      }
+      await loadData();
+    } catch (error) {
+      toast.error('Errore riprocessamento: ' + (error.response?.data?.detail || error.message));
+    } finally {
+      setAutoAssociating(false);
+    }
+  };
+
+  const handleAutoMatch = async () => {
+    setAutoAssociating(true);
+    setAutoAssocResult(null);
+    try {
+      const url = `/api/assegni/auto-match?dry_run=true&anno=${anno}`;
+      const res = await api.post(url);
+      setAutoAssocResult({
+        ...res.data,
+        _modalita_auto_match: true,
+        _dry_run: true,
+      });
+    } catch (error) {
+      toast.error('Errore Auto-Match: ' + (error.response?.data?.detail || error.message));
+    } finally {
+      setAutoAssociating(false);
+    }
+  };
+
+  const handleConfirmMatch = async (proposta, livello) => {
+    const assegnoIds = proposta.assegno_id
+      ? [proposta.assegno_id]
+      : (proposta.assegni || []).map(a => (typeof a === 'string' ? a : a.assegno_id));
+    const fatturaIds = proposta.fattura_id
+      ? [proposta.fattura_id]
+      : (proposta.fatture || []).map(f => (typeof f === 'string' ? f : f.fattura_id));
+    if (!window.confirm(`Confermi il collegamento di ${assegnoIds.length} assegni a ${fatturaIds.length} fatture?`)) return;
+    setAutoAssociating(true);
+    try {
+      await api.post('/api/assegni/auto-match/conferma', {
+        assegno_ids: assegnoIds,
+        fattura_ids: fatturaIds,
+        livello,
+      });
+      toast.success('Proposta confermata');
+      await loadData();
+      await handleAutoMatch();
+    } catch (error) {
+      toast.error('Conferma non riuscita: ' + (error.response?.data?.detail || error.message));
+    } finally {
+      setAutoAssociating(false);
+    }
+  };
+
+  // Carica lista ambigui
+  const loadAmbigui = async () => {
+    setAmbiguiLoading(true);
+    try {
+      const res = await api.get(`/api/assegni/ambigui?anno=${anno}`);
+      setAmbiguiList(res.data?.ambigui || []);
+      // Nessuna preselezione: stesso importo non significa stessa fattura.
+      // La scelta deve essere sempre esplicita, soprattutto per assegni
+      // riscontrati in banca senza numero fattura in causale.
+      const def = {};
+      (res.data?.ambigui || []).forEach(a => {
+        def[a.assegno_id] = [];
+      });
+      setAmbiguiSelections(def);
+    } catch (e) {
+      toast.error('Errore caricamento ambigui: ' + (e.response?.data?.detail || e.message));
+    } finally {
+      setAmbiguiLoading(false);
+    }
+  };
+
+  const toggleAmbiguiSection = async () => {
+    const willOpen = !ambiguiOpen;
+    setAmbiguiOpen(willOpen);
+    if (willOpen && ambiguiList.length === 0) {
+      await loadAmbigui();
+    }
+  };
+
+  const setAmbiguiSelection = (assegnoId, fatturaId, checked) => {
+    setAmbiguiSelections(prev => {
+      const cur = prev[assegnoId] || [];
+      const next = checked
+        ? [...cur.filter(id => id !== fatturaId), fatturaId]
+        : cur.filter(id => id !== fatturaId);
+      return { ...prev, [assegnoId]: next };
+    });
+  };
+
+  const resolveAmbiguo = async assegnoId => {
+    const fattura_ids = ambiguiSelections[assegnoId] || [];
+    if (fattura_ids.length === 0) {
+      toast.warning('Seleziona almeno una fattura');
+      return;
+    }
+    setAmbiguiResolving(p => ({ ...p, [assegnoId]: true }));
+    try {
+      await api.post(`/api/assegni/${assegnoId}/risolvi-ambiguo`, { fattura_ids });
+      setAmbiguiList(list => list.filter(a => a.assegno_id !== assegnoId));
+      loadData();
+    } catch (e) {
+      toast.error('Errore: ' + (e.response?.data?.detail || e.message));
+    } finally {
+      setAmbiguiResolving(p => ({ ...p, [assegnoId]: false }));
+    }
+  };
+
+  // LEARNING MACHINE: Apprende dalle associazioni esistenti
+  const handleLearn = async () => {
+    setLearningLoading(true);
+    setLearningResult(null);
+    try {
+      const res = await api.post('/api/assegni/learning/learn');
+      setLearningResult(res.data);
+      // Carica anche le stats aggiornate
+      loadStatsAvanzate();
+    } catch (error) {
+      toast.error('Errore Learning: ' + (error.response?.data?.detail || error.message));
+    } finally {
+      setLearningLoading(false);
+    }
+  };
+
+  // STATS AVANZATE
+  const loadStatsAvanzate = async () => {
+    try {
+      const res = await api.get(`/api/assegni/learning/stats-avanzate?anno=${anno}`);
+      setStatsAvanzate(res.data);
+    } catch (error) {
+      console.error('Errore caricamento stats:', error);
+    }
+  };
+
+  // Carica stats all'avvio
+  useEffect(() => {
+    loadStatsAvanzate();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [anno]);
+
+  // Nuova funzione: Associazione combinata (somma di più assegni = importo fattura)
+  // FILTRO ASSEGNI LATO CLIENT
+  // useMemo (vincolo ListaAdattiva): la lista resetta la paginazione quando
+  // cambia il riferimento di `dati`; senza memo ogni re-render (es. una
+  // spunta di selezione) ricreerebbe l'array e riporterebbe la lista a 50 righe.
+  const filteredAssegni = useMemo(() => filtraAssegni(assegni, {
+    fornitore: filterFornitore,
+    importoEsatto: filterImportoEsatto,
+    importoMin: filterImportoMin,
+    importoMax: filterImportoMax,
+    numeroAssegno: filterNumeroAssegno,
+    numeroFattura: filterNumeroFattura,
+    soloDaAssociare: filterSoloDaAssociare,
+  }), [
+    assegni,
+    filterFornitore,
+    filterImportoEsatto,
+    filterImportoMin,
+    filterImportoMax,
+    filterNumeroAssegno,
+    filterNumeroFattura,
+    filterSoloDaAssociare,
+  ]);
+
+  const fornitoriEdit = useMemo(() => {
+    const unici = new Map();
+    fattureEditDisponibili.forEach(fattura => {
+      const nome = nomeFornitoreFattura(fattura);
+      if (!nome) return;
+      const piva = pivaFornitoreFattura(fattura);
+      const chiave = piva || normalizzaIdentitaFornitore(nome);
+      if (!unici.has(chiave)) unici.set(chiave, { nome, piva });
+    });
+    return [...unici.values()].sort((a, b) => a.nome.localeCompare(b.nome, 'it'));
+  }, [fattureEditDisponibili]);
+
+  const fattureEditFornitore = useMemo(() => {
+    const elenco = fatturePerFornitore(
+      fattureEditDisponibili,
+      editForm.beneficiario,
+      editForm.fornitore_piva
+    );
+    return [...elenco].sort((a, b) => {
+      const esattaA = importiCoincidonoAlCentesimo(residuoFattura(a), editForm.importo);
+      const esattaB = importiCoincidonoAlCentesimo(residuoFattura(b), editForm.importo);
+      if (esattaA !== esattaB) return esattaA ? -1 : 1;
+      return dataFattura(b).localeCompare(dataFattura(a));
+    });
+  }, [fattureEditDisponibili, editForm.beneficiario, editForm.fornitore_piva, editForm.importo]);
+
+  const aggiornaBeneficiarioEdit = valore => {
+    const identita = normalizzaIdentitaFornitore(valore);
+    const fornitore = fornitoriEdit.find(
+      voce => normalizzaIdentitaFornitore(voce.nome) === identita
+    );
+    setEditForm(corrente => ({
+      ...corrente,
+      beneficiario: fornitore?.nome || valore,
+      fornitore_piva: fornitore?.piva || '',
+      fattura_selezionata_id: '',
+      numero_fattura: '',
+      data_fattura: '',
+    }));
+  };
+
+  const selezionaFatturaEdit = fatturaId => {
+    const fattura = fattureEditDisponibili.find(item => item.id === fatturaId);
+    if (!fattura) {
+      setEditForm(corrente => ({
+        ...corrente,
+        fattura_selezionata_id: '',
+        numero_fattura: '',
+        data_fattura: '',
+      }));
+      return;
+    }
+    setEditForm(corrente => ({
+      ...corrente,
+      beneficiario: nomeFornitoreFattura(fattura),
+      fornitore_piva: pivaFornitoreFattura(fattura),
+      fattura_selezionata_id: fattura.id,
+      numero_fattura: numeroFattura(fattura),
+      data_fattura: dataFattura(fattura),
+    }));
+  };
+
+  // Reset filtri
+  const resetFilters = () => {
+    setFilterFornitore('');
+    setFilterImportoEsatto('');
+    setFilterImportoMin('');
+    setFilterImportoMax('');
+    setFilterNumeroAssegno('');
+    setFilterNumeroFattura('');
+    setFilterSoloDaAssociare(false);
+  };
+
+  const totaleFattureSelezionate = useMemo(
+    () => totaleQuoteFatture(selectedFatture),
+    [selectedFatture]
+  );
+  const differenzaAssegno =
+    Number(editingAssegnoForFatture?.importo || 0) - totaleFattureSelezionate;
+  const assegnoCoperto = assegnoInteramenteAssociato(
+    editingAssegnoForFatture?.importo,
+    selectedFatture
+  );
+
+  const fattureVisibili = useMemo(() => {
+    if (assegnoCoperto) return [];
+    const q = filterFatturaModal.trim().toLowerCase();
+    if (!q) return fatture.slice(0, 200);
+    const qImporto = parseImportoFiltro(q);
+    return fatture.filter(f => {
+      const testo = [
+        f.invoice_number, f.numero_fattura, f.supplier_name,
+        f.cedente_denominazione, f.supplier_vat, f.cedente_piva,
+      ].filter(Boolean).join(' ').toLowerCase();
+      const importo = Number(f.total_amount || f.importo_totale || 0);
+      return testo.includes(q) || (qImporto !== null && Math.abs(importo - qImporto) <= 0.01);
+    }).slice(0, 200);
+  }, [fatture, filterFatturaModal, assegnoCoperto]);
+
+  // Raggruppa assegni per carnet: lo calcola il backend (10 assegni, da …1 a …0).
+  const groupByCarnet = () => {
+    const groups = {};
+    filteredAssegni.forEach(a => {
+      const prefix = a.carnet || 'Senza Carnet';
+      if (!groups[prefix]) groups[prefix] = [];
+      groups[prefix].push(a);
+    });
+    // Il carnet appena generato va in cima: l'elenco e' per numero
+    // decrescente e un carnet con numeri piu' bassi dei precedenti finiva
+    // in seconda pagina (titolare, 07/10/2026: «ho inserito il carnet ma
+    // non lo vedo»).
+    if (newlyGeneratedNumbers.size === 0) return groups;
+    const nuovi = {};
+    const altri = {};
+    Object.entries(groups).forEach(([prefix, righe]) => {
+      (righe.some(a => newlyGeneratedNumbers.has(a.numero)) ? nuovi : altri)[prefix] = righe;
+    });
+    return { ...nuovi, ...altri };
+  };
+
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const carnets = useMemo(groupByCarnet, [filteredAssegni, newlyGeneratedNumbers]);
+
+  // Elenco piatto nell'ordine per carnet: stesse righe, nello stesso ordine,
+  // della vecchia tabella desktop che iterava i gruppi carnet.
+  const listaAssegni = useMemo(() => Object.values(carnets).flat(), [carnets]);
+
+  // Evidenzia su desktop le righe selezionate, come la vecchia tabella
+  const tdSelezione = assegno => {
+    if (selectedAssegni.has(assegno.id)) return { background: COLORS.successLight };
+    if (newlyGeneratedNumbers.has(assegno.numero)) {
+      return { background: COLORS.infoLight, borderTop: `1px solid ${COLORS.info}` };
+    }
+    return undefined;
+  };
+
+  // Apre la fattura collegata nel modale in-page (niente nuove schede)
+  const apriFattura = assegno =>
+    setFatturaView({
+      id: assegno.fattura_collegata || assegno.fatture_collegate?.[0]?.fattura_id,
+      numero: assegno.numero_fattura,
+    });
+
+  // Genera PDF per un singolo carnet
+  const generateCarnetPDF = (carnetId, carnetAssegni) => {
+    const doc = new jsPDF();
+
+    // ==========================================
+    // INTESTAZIONE AZIENDA (stile Commercialista)
+    // ==========================================
+    doc.setFontSize(16);
+    doc.setTextColor(63, 90, 78);
+    doc.setFont(undefined, 'bold');
+    doc.text('CERALDI GROUP S.R.L.', 14, 18);
+
+    doc.setFontSize(9);
+    doc.setFont(undefined, 'normal');
+    doc.setTextColor(80);
+    doc.text('Via Roma, 123 - 80100 Napoli (NA)', 14, 24);
+    doc.text('P.IVA: 04523831214 - C.F.: 04523831214', 14, 29);
+
+    // Linea separatrice
+    doc.setDrawColor(63, 90, 78);
+    doc.setLineWidth(0.5);
+    doc.line(14, 33, 196, 33);
+
+    // ==========================================
+    // TITOLO DOCUMENTO
+    // ==========================================
+    doc.setFontSize(18);
+    doc.setTextColor(63, 90, 78);
+    doc.setFont(undefined, 'bold');
+    doc.text('CARNET ASSEGNI', 14, 45);
+
+    doc.setFontSize(12);
+    doc.setFont(undefined, 'normal');
+    doc.setTextColor(80);
+    doc.text(`ID Carnet: ${carnetId}`, 14, 52);
+
+    // ==========================================
+    // RIEPILOGO
+    // ==========================================
+    const totale = carnetAssegni.reduce((sum, a) => sum + (parseFloat(a.importo) || 0), 0);
+    const assegniCompilati = carnetAssegni.filter(a => a.importo && a.importo > 0).length;
+
+    doc.setFontSize(10);
+    doc.setTextColor(60);
+    doc.text(`Numero Assegni: ${carnetAssegni.length}`, 14, 62);
+    doc.text(`Assegni Compilati: ${assegniCompilati}`, 80, 62);
+
+    doc.setFontSize(12);
+    doc.setFont(undefined, 'bold');
+    doc.setTextColor(63, 90, 78);
+    doc.text(`Totale Importo: ${formatEuro(totale)}`, 140, 62);
+    doc.setFont(undefined, 'normal');
+
+    // ==========================================
+    // TABELLA ASSEGNI
+    // ==========================================
+    const tableData = carnetAssegni.map(a => {
+      // Estrai data fattura formattata
+      let dataFattura = '-';
+      if (a.data_fattura) {
+        try {
+          const d = new Date(a.data_fattura);
+          dataFattura = d.toLocaleDateString('it-IT');
+        } catch {
+          dataFattura = formatDateIT(a.data_fattura);
+        }
+      }
+
+      // Estrai numero fattura dalle fatture collegate o dal campo diretto
+      let numFattura = a.numero_fattura || '-';
+      if (numFattura === '-' && a.fatture_collegate && a.fatture_collegate.length > 0) {
+        numFattura =
+          a.fatture_collegate
+            .map(f => f.numero)
+            .filter(Boolean)
+            .join(', ') || '-';
+      }
+
+      return [
+        a.numero || '-',
+        STATI_ASSEGNO[a.stato]?.label || a.stato || '-',
+        (a.beneficiario || '-').substring(0, 30),
+        formatEuro(a.importo),
+        dataFattura,
+        numFattura,
+        (a.note || '-').substring(0, 25),
+      ];
+    });
+
+    autoTable(doc, {
+      startY: 70,
+      head: [
+        ['N. Assegno', 'Stato', 'Beneficiario', 'Importo', 'Data Fattura', 'N. Fattura', 'Note'],
+      ],
+      body: tableData,
+      theme: 'striped',
+      headStyles: {
+        fillColor: [63, 90, 78],
+        textColor: 255,
+        fontStyle: 'bold',
+        fontSize: 9,
+      },
+      styles: {
+        fontSize: 8,
+        cellPadding: 3,
+      },
+      columnStyles: {
+        0: { cellWidth: 28 },
+        1: { cellWidth: 20 },
+        2: { cellWidth: 40 },
+        3: { cellWidth: 22, halign: 'right' },
+        4: { cellWidth: 22 },
+        5: { cellWidth: 25 },
+        6: { cellWidth: 30 },
+      },
+      alternateRowStyles: {
+        fillColor: [245, 247, 250],
+      },
+    });
+
+    // ==========================================
+    // FOOTER
+    // ==========================================
+    const pageCount = doc.internal.getNumberOfPages();
+    for (let i = 1; i <= pageCount; i++) {
+      doc.setPage(i);
+      doc.setFontSize(8);
+      doc.setTextColor(128);
+      doc.setDrawColor(200);
+      doc.line(14, doc.internal.pageSize.height - 15, 196, doc.internal.pageSize.height - 15);
+      doc.text(
+        `CERALDI GROUP S.R.L. - Documento generato il ${new Date().toLocaleDateString('it-IT')} alle ${new Date().toLocaleTimeString('it-IT')} - Pagina ${i}/${pageCount}`,
+        14,
+        doc.internal.pageSize.height - 10
+      );
+    }
+
+    return doc;
+  };
+
+  // Stampa singolo carnet;
+
+  // Toggle selezione assegno
+  const toggleSelectAssegno = assegnoId => {
+    setSelectedAssegni(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(assegnoId)) {
+        newSet.delete(assegnoId);
+      } else {
+        newSet.add(assegnoId);
+      }
+      return newSet;
+    });
+  };
+
+  // Seleziona/Deseleziona tutti (filtrati)
+  const toggleSelectAll = () => {
+    if (selectedAssegni.size === filteredAssegni.length) {
+      setSelectedAssegni(new Set());
+    } else {
+      setSelectedAssegni(new Set(filteredAssegni.map(a => a.id)));
+    }
+  };
+
+  // Genera PDF per assegni selezionati
+  const generateSelectedPDF = () => {
+    if (selectedAssegni.size === 0) {
+      toast.warning('Seleziona almeno un assegno');
+      return;
+    }
+
+    const selectedList = filteredAssegni.filter(a => selectedAssegni.has(a.id));
+    const doc = new jsPDF();
+
+    // ==========================================
+    // INTESTAZIONE AZIENDA (stile Commercialista)
+    // ==========================================
+    doc.setFontSize(16);
+    doc.setTextColor(63, 90, 78);
+    doc.setFont(undefined, 'bold');
+    doc.text('CERALDI GROUP S.R.L.', 14, 18);
+
+    doc.setFontSize(9);
+    doc.setFont(undefined, 'normal');
+    doc.setTextColor(80);
+    doc.text('Via Roma, 123 - 80100 Napoli (NA)', 14, 24);
+    doc.text('P.IVA: 04523831214 - C.F.: 04523831214', 14, 29);
+
+    // Linea separatrice
+    doc.setDrawColor(63, 90, 78);
+    doc.setLineWidth(0.5);
+    doc.line(14, 33, 196, 33);
+
+    // ==========================================
+    // TITOLO DOCUMENTO
+    // ==========================================
+    doc.setFontSize(18);
+    doc.setTextColor(63, 90, 78);
+    doc.setFont(undefined, 'bold');
+    doc.text('REPORT ASSEGNI SELEZIONATI', 14, 45);
+
+    doc.setFontSize(12);
+    doc.setFont(undefined, 'normal');
+    doc.setTextColor(80);
+    doc.text(`Data: ${new Date().toLocaleDateString('it-IT')}`, 14, 52);
+
+    // ==========================================
+    // RIEPILOGO
+    // ==========================================
+    const totale = selectedList.reduce((sum, a) => sum + (parseFloat(a.importo) || 0), 0);
+
+    doc.setFontSize(10);
+    doc.setTextColor(60);
+    doc.text(`Numero Assegni: ${selectedList.length}`, 14, 62);
+
+    doc.setFontSize(12);
+    doc.setFont(undefined, 'bold');
+    doc.setTextColor(63, 90, 78);
+    doc.text(`Totale Importo: ${formatEuro(totale)}`, 140, 62);
+    doc.setFont(undefined, 'normal');
+
+    // ==========================================
+    // TABELLA ASSEGNI
+    // ==========================================
+    const tableData = selectedList.map(a => {
+      // Estrai data fattura formattata
+      let dataFattura = '-';
+      if (a.data_fattura) {
+        try {
+          const d = new Date(a.data_fattura);
+          dataFattura = d.toLocaleDateString('it-IT');
+        } catch {
+          dataFattura = formatDateIT(a.data_fattura);
+        }
+      }
+
+      // Estrai numero fattura dalle fatture collegate o dal campo diretto
+      let numFattura = a.numero_fattura || '-';
+      if (numFattura === '-' && a.fatture_collegate && a.fatture_collegate.length > 0) {
+        numFattura =
+          a.fatture_collegate
+            .map(f => f.numero)
+            .filter(Boolean)
+            .join(', ') || '-';
+      }
+
+      return [
+        a.numero || '-',
+        STATI_ASSEGNO[a.stato]?.label || a.stato || '-',
+        (a.beneficiario || '-').substring(0, 30),
+        formatEuro(a.importo),
+        dataFattura,
+        numFattura,
+      ];
+    });
+
+    autoTable(doc, {
+      startY: 70,
+      head: [['N. Assegno', 'Stato', 'Beneficiario', 'Importo', 'Data Fattura', 'N. Fattura']],
+      body: tableData,
+      theme: 'striped',
+      headStyles: {
+        fillColor: [63, 90, 78],
+        textColor: 255,
+        fontStyle: 'bold',
+        fontSize: 9,
+      },
+      styles: {
+        fontSize: 9,
+        cellPadding: 3,
+      },
+      columnStyles: {
+        0: { cellWidth: 30 },
+        1: { cellWidth: 22 },
+        2: { cellWidth: 45 },
+        3: { cellWidth: 25, halign: 'right' },
+        4: { cellWidth: 25 },
+        5: { cellWidth: 30 },
+      },
+      alternateRowStyles: {
+        fillColor: [245, 247, 250],
+      },
+    });
+
+    // ==========================================
+    // FOOTER
+    // ==========================================
+    const pageCount = doc.internal.getNumberOfPages();
+    for (let i = 1; i <= pageCount; i++) {
+      doc.setPage(i);
+      doc.setFontSize(8);
+      doc.setTextColor(128);
+      doc.setDrawColor(200);
+      doc.line(14, doc.internal.pageSize.height - 15, 196, doc.internal.pageSize.height - 15);
+      doc.text(
+        `CERALDI GROUP S.R.L. - Documento generato il ${new Date().toLocaleDateString('it-IT')} alle ${new Date().toLocaleTimeString('it-IT')} - Pagina ${i}/${pageCount}`,
+        14,
+        doc.internal.pageSize.height - 10
+      );
+    }
+
+    doc.save(`Assegni_Selezionati_${new Date().toISOString().slice(0, 10)}.pdf`);
+
+    // Clear selection after print
+    setSelectedAssegni(new Set());
+  };
+
+  return (
+    <div
+      style={{
+        maxWidth: 1400,
+        margin: '0 auto',
+        padding: isMobile ? '12px' : '16px',
+        overflowX: 'hidden',
+      }}
+    >
+      {/* Barra: azione principale, filtri e il menu' unico delle operazioni */}
+      <div
+        style={{
+          display: 'flex',
+          gap: 8,
+          marginBottom: 16,
+          flexWrap: 'wrap',
+          alignItems: 'center',
+        }}
+      >
+        <Button
+          variant="success"
+          size="lg"
+          onClick={() => setShowGenerate(true)}
+          data-testid="genera-assegni-btn"
+        >
+          + Genera Assegni
+        </Button>
+
+        <Button
+          variant={showFilters ? 'primary' : 'secondary'}
+          size="lg"
+          onClick={() => setShowFilters(!showFilters)}
+          data-testid="toggle-filters-btn"
+        >
+          <Search size={14} aria-hidden="true" style={ICO} /> Filtri{' '}
+          {(filterFornitore ||
+            filterImportoMin ||
+            filterImportoMax ||
+            filterNumeroAssegno ||
+            filterNumeroFattura) &&
+            '●'}
+        </Button>
+
+        {/* Un solo menu' per le operazioni automatiche (titolare, 07/10/2026):
+            in barra restano "Genera" e "Filtri". */}
+        <MenuOperazioni
+          voci={[
+            {
+              id: 'riprocessa-collegamenti-btn', label: autoAssociating ? 'Riprocessamento…' : 'Riprocessa collegamenti',
+              Icon: RefreshCw, onClick: handleAutoAssocia, disabled: autoAssociating,
+              title: "Rilegge l'estratto conto e collega automaticamente solo fatture univoche al centesimo",
+            },
+            {
+              id: 'auto-match-preview-btn', label: 'Anteprima auto-match', Icon: Eye, onClick: handleAutoMatch,
+              disabled: autoAssociating, title: 'Anteprima: mostra cosa collegherebbe senza scrivere sul DB',
+            },
+            {
+              id: 'ambigui-toggle', label: ambiguiOpen ? 'Chiudi proposte fatture' : 'Verifica proposte fatture',
+              Icon: ClipboardList, onClick: toggleAmbiguiSection,
+            },
+            { separatore: true },
+            {
+              id: 'learn-btn', label: learningLoading ? 'Learning...' : 'Learn', Icon: Brain, onClick: handleLearn,
+              disabled: learningLoading, title: 'Apprende dai dati esistenti per migliorare le associazioni future',
+            },
+            { id: 'dashboard-learning-link', label: 'Dashboard Learning', Icon: ChartColumn, to: '/learning-machine?tab=assegni',
+              title: 'Dashboard Learning Machine completa' },
+            { separatore: true },
+            {
+              id: 'stampa-selezionati-btn',
+              label: `Stampa selezionati${selectedAssegni.size > 0 ? ` (${selectedAssegni.size})` : ''}`,
+              Icon: Printer, onClick: generateSelectedPDF, disabled: selectedAssegni.size === 0,
+            },
+            { id: 'svuota-btn', label: 'Svuota (assegni vuoti)', Icon: Trash2, onClick: handleClearEmpty, pericolosa: true },
+          ]}
+        />
+
+        {/* Anno: segue sempre il selettore globale in alto (barra di
+            navigazione) — prima questa pagina aveva un secondo selettore
+            locale ridondante e disallineato, limitato agli "ultimi 5 anni"
+            calcolati da new Date() invece degli anni realmente disponibili. */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginLeft: 'auto' }}>
+          <span style={{ fontSize: 13, fontWeight: 600, color: COLORS.gray[700] }}>Anno: {anno}</span>
+        </div>
+      </div>
+
+      {/* Pannello risoluzione ambigui */}
+      {ambiguiOpen && (
+        <div
+          data-testid="ambigui-panel"
+          style={{
+            marginBottom: 20,
+            padding: 16,
+            background: COLORS.warningLight,
+            border: `1px solid ${COLORS.warning}`,
+            borderRadius: BORDER_RADIUS.lg,
+          }}
+        >
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              marginBottom: 12,
+            }}
+          >
+            <div>
+              <strong style={{ color: COLORS.warning, fontSize: 14 }}>
+                <TriangleAlert size={14} aria-hidden="true" style={ICO} /> Assegni ambigui — serve la tua decisione
+              </strong>
+              <p style={{ margin: '4px 0 0', fontSize: 12, color: COLORS.warning }}>
+                Questi assegni hanno fatture o rate candidate, ma manca una prova sufficiente
+                per collegarle automaticamente. Verifica XML, scadenza e fornitore prima di scegliere.
+              </p>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={loadAmbigui}
+              disabled={ambiguiLoading}
+              style={{ borderColor: COLORS.warning, color: COLORS.warning }}
+            >
+              {ambiguiLoading ? 'Aggiorno…' : 'Ricarica'}
+            </Button>
+          </div>
+
+          {ambiguiLoading && (
+            <div style={{ padding: 12, textAlign: 'center' }}>Caricamento ambigui…</div>
+          )}
+
+          {!ambiguiLoading && ambiguiList.length === 0 && (
+            <div style={{ padding: 20, textAlign: 'center', color: COLORS.success, fontSize: 14 }}>
+              <Check size={14} aria-hidden="true" style={ICO} /> Nessun assegno ambiguo da risolvere.
+            </div>
+          )}
+
+          {!ambiguiLoading &&
+            ambiguiList.slice(0, limiteAmbigui).map(a => (
+              <div
+                key={a.assegno_id}
+                data-testid={`ambiguo-${a.assegno_id}`}
+                style={{
+                  marginTop: 12,
+                  padding: 12,
+                  background: COLORS.card,
+                  borderRadius: BORDER_RADIUS.md,
+                  border: `1px solid ${COLORS.warningLight}`,
+                }}
+              >
+                <div
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    gap: 12,
+                    alignItems: 'flex-start',
+                    flexWrap: 'wrap',
+                  }}
+                >
+                  <div style={{ flex: '1 1 280px', minWidth: 0 }}>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: COLORS.text }}>
+                      [{a.livello}] Assegno n. {a.assegno_numero}
+                    </div>
+                    <div style={{ fontSize: 12, color: COLORS.textMuted, marginTop: 2 }}>
+                      {a.fornitore_ragione_sociale} — P.IVA {a.fornitore_piva}
+                    </div>
+                    <div style={{ fontSize: 12, color: COLORS.textMuted, marginTop: 2 }}>
+                      Importo:{' '}
+                      <strong style={{ color: COLORS.text }}>€ {a.importo.toFixed(2)}</strong>
+                      {a.data_emissione && <> · Emissione: {formatDateIT(a.data_emissione)}</>}
+                    </div>
+                    {a.motivo && (
+                      <div role="note" style={{ fontSize: 12, color: COLORS.warning, marginTop: 6, fontWeight: 600 }}>
+                        {a.motivo}
+                      </div>
+                    )}
+                  </div>
+                  <Button
+                    variant="success"
+                    size="sm"
+                    onClick={() => resolveAmbiguo(a.assegno_id)}
+                    disabled={ambiguiResolving[a.assegno_id]}
+                    data-testid={`risolvi-${a.assegno_id}`}
+                  >
+                    {ambiguiResolving[a.assegno_id] ? '…' : 'Collega selezionati'}
+                  </Button>
+                </div>
+                {/* Candidate fatture */}
+                <div style={{ marginTop: 10, borderTop: `1px dashed ${COLORS.warningLight}`, paddingTop: 10 }}>
+                  {(() => {
+                    const selezionati = ambiguiSelections[a.assegno_id] || [];
+                    if (selezionati.length === 0) return null;
+                    const somma = (a.candidates || [])
+                      .filter(c => selezionati.includes(c.fattura_id))
+                      .reduce((sum, c) => sum + (c.piano_rate_xml?.importo_rata ?? c.importo_residuo ?? c.importo_totale ?? c.importo ?? 0), 0);
+                    const diff = a.importo - somma;
+                    return (
+                      <div
+                        style={{
+                          display: 'flex', justifyContent: 'space-between', gap: 8,
+                          padding: '6px 8px', marginBottom: 8, borderRadius: BORDER_RADIUS.sm,
+                          background: Math.abs(diff) < 0.005 ? COLORS.successLight : COLORS.warningLight,
+                          fontSize: 12, fontWeight: 600,
+                        }}
+                      >
+                        <span>Totale selezionato ({selezionati.length}):</span>
+                        <span style={{ fontFamily: 'monospace' }}>
+                          € {somma.toFixed(2)} · assegno € {a.importo.toFixed(2)} · diff{' '}
+                          <span style={{ color: Math.abs(diff) < 0.005 ? COLORS.success : COLORS.warning }}>
+                            € {diff.toFixed(2)}
+                          </span>
+                        </span>
+                      </div>
+                    );
+                  })()}
+                  {(a.candidates || []).map(c => {
+                    const selected = (ambiguiSelections[a.assegno_id] || []).includes(c.fattura_id);
+                    return (
+                      <label
+                        key={c.fattura_id}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          padding: '6px 8px',
+                          background: selected ? COLORS.successLight : 'transparent',
+                          borderRadius: BORDER_RADIUS.sm,
+                          cursor: 'pointer',
+                          gap: 8,
+                          fontSize: 12,
+                        }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={selected}
+                          onChange={e =>
+                            setAmbiguiSelection(a.assegno_id, c.fattura_id, e.target.checked)
+                          }
+                        />
+                        <span style={{ flex: 1 }}>
+                          <strong>{c.numero || c.fattura_id.slice(0, 8)}</strong>
+                          {c.data && <span style={{ color: COLORS.textMuted }}> · {formatDateIT(c.data)}</span>}
+                          {c.fornitore && (
+                            <span style={{ color: COLORS.textMuted }}> · {c.fornitore}</span>
+                          )}
+                          {c.piano_rate_xml && (
+                            <span style={{ color: COLORS.textMuted }}>
+                              {' '}· rata {c.piano_rate_xml.rata_numero}/{c.piano_rate_xml.numero_rate}
+                              {c.piano_rate_xml.data_scadenza && ` · scade ${formatDateIT(c.piano_rate_xml.data_scadenza)}`}
+                              {' '}· € {Number(c.piano_rate_xml.importo_rata).toFixed(2)}
+                              {c.piano_rate_xml.scarto_centesimi > 0 && (
+                                <> · assegno inferiore di € {(c.piano_rate_xml.scarto_centesimi / 100).toFixed(2)}: residuo da verificare</>
+                              )}
+                            </span>
+                          )}
+                          {!c.piano_rate_xml && c.modalita_pagamento_xml?.length > 0 && (
+                            <span style={{ color: COLORS.warning }}>
+                              {' '}· XML: {c.modalita_pagamento_xml.join(', ')}; strumento da verificare
+                            </span>
+                          )}
+                        </span>
+                        <span style={{ fontFamily: 'monospace', color: COLORS.text }}>
+                          {euroOppure(c.importo_residuo ?? c.importo_totale)}
+                        </span>
+                        {c.fattura_id && (
+                          <Button
+                            variant="success"
+                            size="sm"
+                            onClick={e => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              setFatturaView({ id: c.fattura_id, numero: c.numero });
+                            }}
+                            style={{ padding: '2px 7px', fontSize: 10 }}
+                          >
+                            <FileText size={14} aria-hidden="true" style={ICO} /> Vedi
+                          </Button>
+                        )}
+                        {c.payment_status === 'partial' && (
+                          <Badge variant="info" style={{ padding: '2px 6px' }}>
+                            parziale
+                          </Badge>
+                        )}
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+          {!ambiguiLoading && ambiguiList.length > limiteAmbigui && (
+            <Button variant="secondary" onClick={() => setLimiteAmbigui(x => x + 200)} style={{ minHeight: 44, margin: '8px 0' }}>
+              Mostra altre ({ambiguiList.length - limiteAmbigui})
+            </Button>
+          )}
+        </div>
+      )}
+
+      {/* STATS AVANZATE */}
+      {statsAvanzate && (
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(auto-fit, minmax(150px, 1fr))',
+            gap: isMobile ? 10 : 12,
+            marginBottom: 16,
+          }}
+        >
+          <StatCard
+            icon={<ChartColumn size={16} aria-hidden="true" />}
+            label="Salute assegni emessi"
+            value={
+              Number.isFinite(Number(statsAvanzate.health_score))
+                ? `${Number(statsAvanzate.health_score)}%`
+                : 'Non calcolata'
+            }
+            accent={
+              !Number.isFinite(Number(statsAvanzate.health_score))
+                ? 'info'
+                : Number(statsAvanzate.health_score) >= 90
+                ? 'success'
+                : Number(statsAvanzate.health_score) >= 70
+                  ? 'warning'
+                  : 'danger'
+            }
+          />
+
+          <StatCard
+            icon={<Check size={16} aria-hidden="true" />}
+            label="Con Beneficiario"
+            value={
+              Number.isFinite(Number(statsAvanzate.con_beneficiario))
+              && Number.isFinite(Number(statsAvanzate.totale_assegni))
+                ? `${Number(statsAvanzate.con_beneficiario)}/${Number(statsAvanzate.totale_assegni)}`
+                : 'Non calcolato'
+            }
+            accent="info"
+          />
+
+          <StatCard
+            icon={<BookOpen size={16} aria-hidden="true" />}
+            label="Fogli carnet vuoti"
+            value={statsAvanzate.carnet_vuoti || 0}
+            subtext="Esclusi dagli indicatori"
+            accent="none"
+          />
+
+          <StatCard
+            icon={<FileText size={16} aria-hidden="true" />}
+            label="Con Fattura"
+            value={`${statsAvanzate.con_fattura}/${statsAvanzate.totale_assegni}`}
+            accent="info"
+          />
+
+          {statsAvanzate.duplicati > 0 && (
+            <StatCard icon={<TriangleAlert size={16} aria-hidden="true" />} label="Duplicati" value={statsAvanzate.duplicati} accent="danger" />
+          )}
+
+          {statsAvanzate.senza_beneficiario > 0 && (
+            <StatCard
+              icon={<CircleHelp size={16} aria-hidden="true" />}
+              label="Da Associare"
+              value={statsAvanzate.senza_beneficiario}
+              accent="warning"
+              onClick={() => setFilterSoloDaAssociare(v => !v)}
+              style={{
+                cursor: 'pointer',
+                background: filterSoloDaAssociare ? COLORS.warningLight : COLORS.card,
+              }}
+            />
+          )}
+          {filterSoloDaAssociare && (
+            <div style={{ display: 'flex', alignItems: 'center' }}>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setFilterSoloDaAssociare(false)}
+                style={{ borderColor: COLORS.warning, color: COLORS.warning }}
+              >
+                <X size={14} aria-hidden="true" style={ICO} /> Mostra tutti
+              </Button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* RISULTATO LEARNING */}
+      {learningResult && (
+        <div
+          style={{
+            marginBottom: 16,
+            padding: 15,
+            background: COLORS.successLight,
+            borderRadius: BORDER_RADIUS.md,
+            border: `1px solid ${COLORS.success}`,
+          }}
+        >
+          <div
+            style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}
+          >
+            <div>
+              <strong style={{ color: COLORS.success, fontSize: 14 }}>
+                <Brain size={14} aria-hidden="true" style={ICO} /> Learning Completato: {learningResult.pattern_appresi} pattern appresi da{' '}
+                {learningResult.assegni_analizzati} assegni
+              </strong>
+              {learningResult.dettagli && learningResult.dettagli.length > 0 && (
+                <div style={{ marginTop: 8, fontSize: 12 }}>
+                  <strong>Top fornitori riconosciuti:</strong>
+                  <ul style={{ margin: '4px 0', paddingLeft: 20 }}>
+                    {learningResult.dettagli.slice(0, 5).map((d, i) => (
+                      <li key={i}>
+                        {d.fornitore} ({d.assegni} assegni, {d.range_importi})
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+            <Button
+              variant="ghost"
+              onClick={() => setLearningResult(null)}
+              aria-label="Chiudi"
+              style={{ width: 40, height: 40, flexShrink: 0, padding: 0, fontSize: 16 }}
+            >
+              <X size={14} aria-hidden="true" style={ICO} />
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* PANNELLO FILTRI - FIXED quando aperto */}
+      {showFilters && (
+        <div
+          style={{
+            position: 'fixed',
+            top: 60,
+            // Accanto alla colonna di navigazione, non sotto.
+            left: isMobile ? 12 : 'calc(var(--colonna-nav-larghezza) + 20px)',
+            right: isMobile ? 12 : 20,
+            zIndex: 100,
+            background: COLORS.bgAlt,
+            borderRadius: BORDER_RADIUS.lg,
+            padding: '48px 16px 16px',
+            border: `1px solid ${COLORS.border}`,
+            boxShadow: SHADOWS.xl,
+            maxHeight: '80vh',
+            overflowY: 'auto',
+          }}
+        >
+          {/* X di chiusura ben tappabile */}
+          <Button
+            variant="ghost"
+            onClick={() => setShowFilters(false)}
+            aria-label="Chiudi filtri"
+            data-testid="close-filters-btn"
+            style={{
+              position: 'absolute',
+              top: 6,
+              right: 6,
+              width: 40,
+              height: 40,
+              padding: 0,
+              fontSize: 20,
+            }}
+          >
+            <X size={14} aria-hidden="true" style={ICO} />
+          </Button>
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
+              gap: 12,
+            }}
+          >
+            <div>
+              <label style={{ fontSize: 12, color: COLORS.textMuted, display: 'block', marginBottom: 4 }}>
+                Fornitore/Beneficiario
+              </label>
+              <Input
+                type="text"
+                value={filterFornitore}
+                onChange={e => setFilterFornitore(e.target.value)}
+                placeholder="Cerca fornitore..."
+                data-testid="filter-fornitore"
+              />
+            </div>
+
+            <div>
+              <label style={{ fontSize: 12, color: COLORS.textMuted, display: 'block', marginBottom: 4 }}>
+                Importo esatto (€)
+              </label>
+              <Input
+                type="text"
+                inputMode="decimal"
+                value={filterImportoEsatto}
+                onChange={e => setFilterImportoEsatto(e.target.value)}
+                placeholder="es. 1.097,47"
+                data-testid="filter-importo-esatto"
+              />
+            </div>
+
+            <div>
+              <label style={{ fontSize: 12, color: COLORS.textMuted, display: 'block', marginBottom: 4 }}>
+                Importo Min (€)
+              </label>
+              <Input
+                type="number"
+                inputMode="decimal"
+                value={filterImportoMin}
+                onChange={e => setFilterImportoMin(e.target.value)}
+                placeholder="0.00"
+                data-testid="filter-importo-min"
+              />
+            </div>
+
+            <div>
+              <label style={{ fontSize: 12, color: COLORS.textMuted, display: 'block', marginBottom: 4 }}>
+                Importo Max (€)
+              </label>
+              <Input
+                type="number"
+                inputMode="decimal"
+                value={filterImportoMax}
+                onChange={e => setFilterImportoMax(e.target.value)}
+                placeholder="99999"
+                data-testid="filter-importo-max"
+              />
+            </div>
+
+            <div>
+              <label style={{ fontSize: 12, color: COLORS.textMuted, display: 'block', marginBottom: 4 }}>
+                N. Assegno
+              </label>
+              <Input
+                type="text"
+                inputMode="numeric"
+                value={filterNumeroAssegno}
+                onChange={e => setFilterNumeroAssegno(e.target.value)}
+                placeholder="Cerca assegno..."
+                data-testid="filter-numero-assegno"
+              />
+              <div style={{ fontSize: 10, color: COLORS.textSubtle, marginTop: 3 }}>
+                Il filtro parte dopo 3 cifre
+              </div>
+            </div>
+
+            <div>
+              <label style={{ fontSize: 12, color: COLORS.textMuted, display: 'block', marginBottom: 4 }}>
+                N. Fattura
+              </label>
+              <Input
+                type="text"
+                value={filterNumeroFattura}
+                onChange={e => setFilterNumeroFattura(e.target.value)}
+                placeholder="Cerca fattura..."
+                data-testid="filter-numero-fattura"
+              />
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8 }}>
+              <Button variant="danger" onClick={resetFilters} data-testid="reset-filters-btn">
+                Reset
+              </Button>
+            </div>
+          </div>
+
+          {/* Riepilogo filtri attivi */}
+          {(filterFornitore ||
+            filterImportoEsatto ||
+            filterImportoMin ||
+            filterImportoMax ||
+            filterNumeroAssegno ||
+            filterNumeroFattura) && (
+            <div style={{ marginTop: 12, fontSize: 13, color: COLORS.primaryLight }}>
+              <strong>Risultati:</strong> {filteredAssegni.length} assegni trovati su{' '}
+              {assegni.length} totali
+            </div>
+          )}
+        </div>
+      )}
+
+      {autoAssocResult?._modalita_riprocessamento && (
+        <div
+          role="status"
+          data-testid="riprocessamento-result"
+          style={{
+            marginBottom: 20,
+            padding: 15,
+            background: COLORS.successLight,
+            borderRadius: BORDER_RADIUS.md,
+            border: `1px solid ${COLORS.success}`,
+            fontSize: 13,
+          }}
+        >
+          <strong style={{ color: COLORS.success }}>Riprocessamento automatico completato</strong>
+          <div style={{ marginTop: 8, display: 'flex', flexWrap: 'wrap', gap: 14 }}>
+            <span>EC analizzato: <strong>{autoAssocResult.estratto_conto?.movimenti_analizzati ?? 0}</strong></span>
+            <span>Assegni riesaminati: <strong>{autoAssocResult.fatture?.analizzati ?? 0}</strong></span>
+            <span>Collegati: <strong>{autoAssocResult.fatture?.collegati ?? 0}</strong></span>
+            <span>In attesa fattura: <strong>{autoAssocResult.fatture?.in_attesa_fattura ?? 0}</strong></span>
+            <span>Ambigui non collegati: <strong>{autoAssocResult.fatture?.ambigui ?? 0}</strong></span>
+          </div>
+          {(autoAssocResult.fatture?.ambigui ?? 0) > 0 && (
+            <div style={{ marginTop: 8, color: COLORS.warning, fontWeight: 600 }}>
+              I casi ambigui restano sospesi: l'app li riproverà quando arriveranno nuove evidenze.
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Risultato Auto-Associazione */}
+      {autoAssocResult && autoAssocResult._modalita_auto_match && (
+        <div
+          style={{
+            marginBottom: 20,
+            padding: 15,
+            background: COLORS.successLight,
+            borderRadius: BORDER_RADIUS.md,
+            border: `1px solid ${COLORS.success}`,
+          }}
+        >
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'flex-start',
+              gap: 12,
+            }}
+          >
+            <div style={{ flex: 1 }}>
+              <strong style={{ color: COLORS.success, fontSize: 14 }}>
+                <Bot size={14} aria-hidden="true" style={ICO} /> Auto-Match {autoAssocResult._dry_run ? '(ANTEPRIMA)' : 'completato'}
+              </strong>
+              <div
+                style={{ marginTop: 8, fontSize: 13, display: 'flex', flexWrap: 'wrap', gap: 12 }}
+              >
+                <span>
+                  <ClipboardList size={14} aria-hidden="true" style={ICO} /> Assegni processati: <strong>{autoAssocResult.assegni_processati ?? 0}</strong>
+                </span>
+                <span>
+                  <FileText size={14} aria-hidden="true" style={ICO} /> Fatture disponibili:{' '}
+                  <strong>{autoAssocResult.fatture_disponibili ?? 0}</strong>
+                </span>
+                <span>
+                  <Landmark size={14} aria-hidden="true" style={ICO} /> Prima Nota Banca:{' '}
+                  <strong>
+                    {autoAssocResult.movimenti_banca_creati > 0
+                      ? autoAssocResult.movimenti_banca_creati
+                      : 'nessuna — attende estratto conto'}
+                  </strong>
+                </span>
+              </div>
+              {autoAssocResult.assegni_vuoti_ignorati > 0 && (
+                  <div
+                    style={{
+                      marginTop: 10,
+                      padding: 10,
+                      borderRadius: BORDER_RADIUS.sm,
+                      background: COLORS.warningLight,
+                      color: COLORS.warning,
+                      fontSize: 13,
+                      fontWeight: 600,
+                    }}
+                  >
+                    {autoAssocResult.assegni_vuoti_ignorati} assegni del carnet sono stati creati
+                    correttamente ma, essendo ancora vuoti, non sono inclusi negli assegni
+                    processati. Inserisci importo e beneficiario: soltanto dopo potranno generare
+                    proposte L1–L4.
+                  </div>
+                )}
+              <div
+                style={{ marginTop: 8, fontSize: 13, display: 'flex', flexWrap: 'wrap', gap: 12 }}
+              >
+                <span style={{ color: COLORS.success }}>
+                  <Check size={14} aria-hidden="true" style={ICO} /> L1 (1=1): <strong>{autoAssocResult.totali?.L1 ?? 0}</strong>
+                </span>
+                <span style={{ color: COLORS.info }}>
+                  <Check size={14} aria-hidden="true" style={ICO} /> L2 (N uguali→1): <strong>{autoAssocResult.totali?.L2 ?? 0}</strong>
+                </span>
+                <span style={{ color: COLORS.accent }}>
+                  <Check size={14} aria-hidden="true" style={ICO} /> L3 (N diversi→1): <strong>{autoAssocResult.totali?.L3 ?? 0}</strong>
+                </span>
+                <span style={{ color: COLORS.warning }}>
+                  <Check size={14} aria-hidden="true" style={ICO} /> L4 (1→N): <strong>{autoAssocResult.totali?.L4 ?? 0}</strong>
+                </span>
+                <span style={{ color: COLORS.danger }}>
+                  <TriangleAlert size={14} aria-hidden="true" style={ICO} /> Ambigui: <strong>{autoAssocResult.totali?.ambigui ?? 0}</strong>
+                </span>
+                <span style={{ color: COLORS.textMuted }}>
+                  <X size={14} aria-hidden="true" style={ICO} /> Non trovati: <strong>{autoAssocResult.totali?.non_trovati ?? 0}</strong>
+                </span>
+              </div>
+              {['L1', 'L2', 'L3', 'L4'].flatMap(livello =>
+                (autoAssocResult[`match_${livello.toLowerCase()}`] || []).map((proposta, indice) => (
+                  <div
+                    key={`${livello}-${indice}`}
+                    style={{
+                      marginTop: 10,
+                      padding: 10,
+                      border: `1px solid ${COLORS.border}`,
+                      borderRadius: BORDER_RADIUS.sm,
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      gap: 12,
+                    }}
+                  >
+                    <span>
+                      Proposta <strong>{livello}</strong>: conferma necessaria prima di creare
+                      movimenti in Prima Nota.
+                    </span>
+                    <Button
+                      variant="success"
+                      size="sm"
+                      disabled={autoAssociating}
+                      onClick={() => handleConfirmMatch(proposta, livello)}
+                    >
+                      Conferma proposta
+                    </Button>
+                  </div>
+                ))
+              )}
+              {/* Dettaglio L2/L3: quali fatture sono state sommate/raggruppate per
+                  arrivare al match — prima si vedeva solo il conteggio totale,
+                  senza modo di risalire a QUALI fatture componevano la somma. */}
+              {autoAssocResult.match_l2?.length > 0 && (
+                <details style={{ marginTop: 10, fontSize: 12 }}>
+                  <summary style={{ cursor: 'pointer', color: COLORS.info, fontWeight: 600 }}>
+                    Vedi dettaglio {autoAssocResult.match_l2.length} match L2 (più assegni
+                    uguali → 1 fattura)
+                  </summary>
+                  <div style={{ margin: '8px 0', display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    {autoAssocResult.match_l2.map((m, i) => (
+                      <div
+                        key={i}
+                        style={{
+                          padding: 8,
+                          background: COLORS.card,
+                          borderRadius: BORDER_RADIUS.sm,
+                          border: `1px solid ${COLORS.border}`,
+                        }}
+                      >
+                        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+                          <span>
+                            Fatt. <strong>{m.fattura_numero || m.fattura_id}</strong>
+                            {m.fornitore ? ` — ${m.fornitore}` : ''}
+                          </span>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <strong>{euroOppure(m.fattura_importo)}</strong>
+                            {m.fattura_id && (
+                              <Button
+                                variant="success"
+                                size="sm"
+                                onClick={() =>
+                                  setFatturaView({ id: m.fattura_id, numero: m.fattura_numero })
+                                }
+                                style={{ padding: '4px 8px', fontSize: 11 }}
+                              >
+                                <FileText size={14} aria-hidden="true" style={ICO} /> Vedi
+                              </Button>
+                            )}
+                          </div>
+                        </div>
+                        <div style={{ marginTop: 4, paddingLeft: 12, color: COLORS.textMuted }}>
+                          {(m.assegni || []).map((a, j) => (
+                            <div key={j}>
+                              ↳ Assegno {a.assegno_numero || a.assegno_id}: {euroOppure(a.quota)}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </details>
+              )}
+              {autoAssocResult.match_l3?.length > 0 && (
+                <details style={{ marginTop: 10, fontSize: 12 }}>
+                  <summary style={{ cursor: 'pointer', color: COLORS.accent, fontWeight: 600 }}>
+                    Vedi dettaglio {autoAssocResult.match_l3.length} match L3 (più assegni
+                    diversi → 1 fattura)
+                  </summary>
+                  <div style={{ margin: '8px 0', display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    {autoAssocResult.match_l3.map((m, i) => (
+                      <div
+                        key={i}
+                        style={{
+                          padding: 8,
+                          background: COLORS.card,
+                          borderRadius: BORDER_RADIUS.sm,
+                          border: `1px solid ${COLORS.border}`,
+                        }}
+                      >
+                        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+                          <span>
+                            Fatt. <strong>{m.fattura_numero || m.fattura_id}</strong>
+                            {m.fornitore ? ` — ${m.fornitore}` : ''}
+                          </span>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <strong>{euroOppure(m.fattura_importo)}</strong>
+                            {m.fattura_id && (
+                              <Button
+                                variant="success"
+                                size="sm"
+                                onClick={() =>
+                                  setFatturaView({ id: m.fattura_id, numero: m.fattura_numero })
+                                }
+                                style={{ padding: '4px 8px', fontSize: 11 }}
+                              >
+                                <FileText size={14} aria-hidden="true" style={ICO} /> Vedi
+                              </Button>
+                            )}
+                          </div>
+                        </div>
+                        <div style={{ marginTop: 4, paddingLeft: 12, color: COLORS.textMuted }}>
+                          {(m.assegni || []).map((a, j) => (
+                            <div key={j}>
+                              ↳ Assegno {a.assegno_numero || a.assegno_id}: {euroOppure(a.quota)}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </details>
+              )}
+              {autoAssocResult.ambigui?.length > 0 && (
+                <details style={{ marginTop: 10, fontSize: 12 }}>
+                  <summary style={{ cursor: 'pointer', color: COLORS.danger, fontWeight: 600 }}>
+                    Vedi {autoAssocResult.ambigui.length} assegni ambigui (da confermare
+                    manualmente)
+                  </summary>
+                  <ul style={{ margin: '6px 0', paddingLeft: 18 }}>
+                    {autoAssocResult.ambigui.slice(0, 10).map((a, i) => (
+                      <li key={i}>
+                        [{a.livello}] Assegno {a.assegno_numero} — {a.candidates?.length || 0}{' '}
+                        candidate
+                      </li>
+                    ))}
+                  </ul>
+                </details>
+              )}
+            </div>
+            <Button
+              variant="ghost"
+              onClick={() => setAutoAssocResult(null)}
+              aria-label="Chiudi"
+              style={{ width: 40, height: 40, flexShrink: 0, padding: 0, fontSize: 16 }}
+            >
+              <X size={14} aria-hidden="true" style={ICO} />
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* Risultato Auto-Associazione (legacy) */}
+      {autoAssocResult && !autoAssocResult._modalita_auto_match && (
+        <div
+          style={{
+            marginBottom: 20,
+            padding: 15,
+            background: autoAssocResult.assegni_aggiornati > 0 ? COLORS.successLight : COLORS.warningLight,
+            borderRadius: BORDER_RADIUS.md,
+            border: `1px solid ${autoAssocResult.assegni_aggiornati > 0 ? COLORS.success : COLORS.warning}`,
+          }}
+        >
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div>
+              <strong
+                style={{ color: autoAssocResult.assegni_aggiornati > 0 ? COLORS.success : COLORS.warning }}
+              >
+                {autoAssocResult.assegni_aggiornati > 0 ? <Check size={14} aria-hidden="true" style={ICO} /> : <TriangleAlert size={14} aria-hidden="true" style={ICO} />} {autoAssocResult.message}
+              </strong>
+              {autoAssocResult.dettagli && autoAssocResult.dettagli.length > 0 && (
+                <div style={{ marginTop: 10, fontSize: 13 }}>
+                  <strong>Associazioni effettuate:</strong>
+                  <ul style={{ margin: '5px 0', paddingLeft: 20 }}>
+                    {autoAssocResult.dettagli.slice(0, 10).map((d, i) => (
+                      <li key={i}>
+                        Assegno {d.assegno_numero} → Fattura {d.fattura_numero} (
+                        {d.fornitore?.substring(0, 30)})
+                        {d.tipo === 'multiplo' && (
+                          <span style={{ color: COLORS.accent }}> [MULTIPLO]</span>
+                        )}
+                      </li>
+                    ))}
+                    {autoAssocResult.dettagli.length > 10 && (
+                      <li>...e altri {autoAssocResult.dettagli.length - 10}</li>
+                    )}
+                  </ul>
+                </div>
+              )}
+            </div>
+            <Button
+              variant="ghost"
+              onClick={() => setAutoAssocResult(null)}
+              aria-label="Chiudi"
+              style={{ width: 40, height: 40, flexShrink: 0, padding: 0, fontSize: 16 }}
+            >
+              <X size={14} aria-hidden="true" style={ICO} />
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* Risultato Associazione Combinata */}
+
+      {/* SEZIONE ASSEGNI NON ASSOCIATI */}
+      <div
+        style={{
+          background: COLORS.card,
+          borderRadius: BORDER_RADIUS.lg,
+          padding: 16,
+          marginBottom: 16,
+          boxShadow: SHADOWS.md,
+        }}
+      >
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            cursor: 'pointer',
+          }}
+          onClick={() => {
+            if (!showNonAssociati && assegniNonAssociati.totale === undefined) {
+              loadAssegniNonAssociati();
+            }
+            setShowNonAssociati(!showNonAssociati);
+          }}
+        >
+          <h3
+            style={{
+              margin: 0,
+              fontSize: 16,
+              color: COLORS.text,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+            }}
+          >
+            <Hourglass size={14} aria-hidden="true" style={ICO} /> Assegni in attesa di fattura
+            {assegniNonAssociati.totale !== undefined && (
+              <Badge variant={assegniNonAssociati.totale > 0 ? 'warning' : 'success'}>
+                {assegniNonAssociati.totale}
+              </Badge>
+            )}
+          </h3>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={e => {
+                e.stopPropagation();
+                loadAssegniNonAssociati();
+              }}
+              disabled={loadingNonAssociati}
+            >
+              {loadingNonAssociati ? <Hourglass size={14} aria-hidden="true" style={ICO} /> : <RefreshCw size={14} aria-hidden="true" style={ICO} />} Aggiorna
+            </Button>
+            <span style={{ fontSize: 18 }}>{showNonAssociati ? <ChevronUp size={18} aria-hidden="true" /> : <ChevronDown size={18} aria-hidden="true" />}</span>
+          </div>
+        </div>
+
+        {showNonAssociati && (
+          <div style={{ marginTop: 16 }}>
+            {loadingNonAssociati ? (
+              <div style={{ textAlign: 'center', padding: 20, color: COLORS.textMuted }}>
+                <Hourglass size={14} aria-hidden="true" style={ICO} /> Caricamento...
+              </div>
+            ) : assegniNonAssociati.totale === 0 ? (
+              <div
+                style={{
+                  textAlign: 'center',
+                  padding: 20,
+                  background: COLORS.successLight,
+                  borderRadius: BORDER_RADIUS.md,
+                  color: COLORS.success,
+                }}
+              >
+                <Check size={14} aria-hidden="true" style={ICO} /> Tutti gli assegni hanno un riferimento documentale
+              </div>
+            ) : (
+              <div>
+                <p style={{ margin: '0 0 12px', fontSize: 13, color: COLORS.textMuted }}>
+                  Questi assegni non hanno ancora prove sufficienti. Apri la riga nella tabella,
+                  scegli il fornitore e poi la fattura: nessun collegamento viene deciso dal solo importo.
+                </p>
+                <TableWrap>
+                  <Table>
+                    <thead>
+                      <tr>
+                        <Th>Importo</Th>
+                        <Th>Numero Assegno</Th>
+                        <Th align="center">Azioni</Th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {Object.entries(assegniNonAssociati.per_importo || {}).map(
+                        ([importo, info]) =>
+                          info.numeri.map((numero, idx) => (
+                            <tr key={numero}>
+                              <Td style={{ fontWeight: 600 }}>{importo}</Td>
+                              <Td mono>{numero}</Td>
+                              <Td align="center">
+                                <Badge variant="warning">Da classificare nella tabella</Badge>
+                              </Td>
+                            </tr>
+                          ))
+                      )}
+                    </tbody>
+                  </Table>
+                </TableWrap>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Assegni singoli o carnet da 10 */}
+      <Tabs
+        items={[{ key: 'assegni', label: 'Assegni' }, { key: 'carnet', label: 'Carnet' }]}
+        value={vista}
+        onChange={setVista}
+        style={{ marginBottom: 12 }}
+      />
+      {vista === 'carnet' ? (
+        <CarnetAssegni />
+      ) : loadError ? (
+        <div role="alert" style={{ padding: 16, borderRadius: BORDER_RADIUS.md, background: COLORS.dangerLight, color: COLORS.danger }}>
+          <strong>Caricamento non riuscito.</strong> {loadError}{' '}
+          <Button variant="secondary" size="sm" onClick={loadData}>Riprova</Button>
+        </div>
+      ) : loading ? (
+        <div style={{ textAlign: 'center', padding: 40 }}>Caricamento...</div>
+      ) : filteredAssegni.length === 0 ? (
+        <div
+          style={{
+            background: COLORS.card,
+            borderRadius: BORDER_RADIUS.lg,
+            padding: 60,
+            textAlign: 'center',
+            boxShadow: SHADOWS.md,
+          }}
+        >
+          <h3 style={{ color: COLORS.textMuted, marginBottom: 10 }}>
+            {assegni.length === 0
+              ? 'Nessun assegno presente'
+              : 'Nessun assegno corrisponde ai filtri'}
+          </h3>
+          <p style={{ color: COLORS.textSubtle }}>
+            {assegni.length === 0
+              ? 'Genera i primi assegni per iniziare'
+              : 'Prova a modificare i filtri di ricerca'}
+          </p>
+        </div>
+      ) : (
+        // Contenitore-card solo su desktop: su mobile le card di ListaAdattiva
+        // hanno già sfondo e bordo propri
+        <div
+          style={
+            isMobile
+              ? undefined
+              : {
+                  background: COLORS.card,
+                  borderRadius: BORDER_RADIUS.lg,
+                  overflow: 'hidden',
+                  boxShadow: SHADOWS.md,
+                }
+          }
+        >
+          <div
+            style={{
+              padding: isMobile ? '12px 0' : 16,
+              borderBottom: `1px solid ${COLORS.border}`,
+              marginBottom: isMobile ? 12 : 0,
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+              <h3 style={{ margin: 0, fontSize: isMobile ? 16 : undefined }}>
+                Lista Assegni ({filteredAssegni.length})
+              </h3>
+              {newlyGeneratedNumbers.size > 0 && (
+                <Badge variant="info">Nuovo carnet: {newlyGeneratedNumbers.size} fogli</Badge>
+              )}
+            </div>
+          </div>
+          <ListaAdattiva
+            testId="assegni-table"
+            dati={listaAssegni}
+            pageSize={50}
+            resetKey={`${filteredAssegni.length}|${[...newlyGeneratedNumbers].join(',')}`}
+            chiave={(a, i) => a.id || i}
+            colonne={[
+              {
+                // Selezione: colonna solo desktop; su mobile la spunta
+                // sta tra le azioni della card
+                key: 'sel',
+                ruoloCard: 'omesso',
+                align: 'center',
+                tdStyle: tdSelezione,
+                label: (
+                  <input
+                    type="checkbox"
+                    checked={
+                      selectedAssegni.size === filteredAssegni.length &&
+                      filteredAssegni.length > 0
+                    }
+                    onChange={toggleSelectAll}
+                    data-testid="select-all-checkbox"
+                    style={{ width: 18, height: 18, cursor: 'pointer' }}
+                    title="Seleziona tutti"
+                  />
+                ),
+                render: assegno => (
+                  <input
+                    type="checkbox"
+                    checked={selectedAssegni.has(assegno.id)}
+                    onChange={() => toggleSelectAssegno(assegno.id)}
+                    data-testid={`select-${assegno.id}`}
+                    style={{ width: 18, height: 18, cursor: 'pointer' }}
+                  />
+                ),
+              },
+              {
+                key: 'numero',
+                label: 'N. Assegno',
+                ruoloCard: 'dettaglio',
+                tdStyle: tdSelezione,
+                render: assegno => (
+                  <span
+                    style={{
+                      fontFamily: 'monospace',
+                      fontWeight: 'bold',
+                      color: COLORS.primaryLight,
+                      fontSize: 13,
+                    }}
+                  >
+                    {/* Su mobile solo il progressivo: il prefisso carnet
+                        è identico su tutto il blocchetto */}
+                    {isMobile ? assegno.numero?.split('-')[1] || assegno.numero : assegno.numero}
+                  </span>
+                ),
+              },
+              {
+                key: 'stato',
+                label: 'Stato',
+                align: 'center',
+                ruoloCard: 'dettaglio',
+                tdStyle: tdSelezione,
+                render: assegno => (
+                  <span style={{ display: 'inline-flex', gap: 5, alignItems: 'center', flexWrap: 'wrap' }}>
+                    <Badge variant={STATI_ASSEGNO[assegno.stato]?.variant || 'neutral'}>
+                      {STATI_ASSEGNO[assegno.stato]?.label || assegno.stato}
+                    </Badge>
+                    {RISCONTRO_BANCA[assegno.riscontro_banca] && (
+                      <Badge variant={RISCONTRO_BANCA[assegno.riscontro_banca].variant}>
+                        {RISCONTRO_BANCA[assegno.riscontro_banca].label}
+                      </Badge>
+                    )}
+                    {assegno.documento_da_recuperare && (
+                      <Badge variant="warning" data-testid={`da-recuperare-${assegno.id}`}>
+                        Rilevato da banca — documento da recuperare
+                      </Badge>
+                    )}
+                    {assegno.riscontro_banca_da_verificare && (
+                      <Badge variant="danger" title={assegno.riscontro_banca_da_verificare.motivo}>
+                        Riscontro banca da verificare
+                      </Badge>
+                    )}
+                    {newlyGeneratedNumbers.has(assegno.numero) && <Badge variant="info">Nuovo</Badge>}
+                  </span>
+                ),
+              },
+              {
+                key: 'beneficiario',
+                label: 'Beneficiario / Note',
+                ruoloCard: 'titolo',
+                tdStyle: assegno => ({ maxWidth: 250, ...(tdSelezione(assegno) || {}) }),
+                render: assegno =>
+                  editingId === assegno.id ? (
+                    <div style={{ minWidth: 220 }}>
+                      <Input
+                        type="text"
+                        list="fornitori-fatture-assegno-edit"
+                        aria-label="Cerca e seleziona fornitore"
+                        value={editForm.beneficiario}
+                        onChange={e => aggiornaBeneficiarioEdit(e.target.value)}
+                        placeholder="Scrivi il nome del fornitore"
+                        autoComplete="off"
+                        style={{ padding: 6, fontSize: 12, width: '100%' }}
+                      />
+                      <datalist id="fornitori-fatture-assegno-edit">
+                        {fornitoriEdit.map(fornitore => (
+                          <option key={fornitore.piva || fornitore.nome} value={fornitore.nome}>
+                            {fornitore.piva || 'P.IVA non disponibile'}
+                          </option>
+                        ))}
+                      </datalist>
+                      {loadingFattureEdit && (
+                        <div style={{ color: COLORS.textMuted, fontSize: 10.5, marginTop: 3 }}>
+                          Caricamento fornitori e fatture...
+                        </div>
+                      )}
+                      {erroreFattureEdit && (
+                        <div role="alert" style={{ color: COLORS.danger, fontSize: 10.5, marginTop: 3 }}>
+                          {erroreFattureEdit}
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div>
+                      <div style={{ fontWeight: 500, fontSize: 13 }}>
+                        {assegno.beneficiario ? (
+                          assegno.beneficiario
+                        ) : assegno.fornitore_fattura ? (
+                          <span
+                            style={{ fontStyle: 'italic', color: COLORS.textMuted }}
+                            title="Fornitore dedotto dalla fattura collegata"
+                          >
+                            → {assegno.fornitore_fattura}
+                          </span>
+                        ) : assegno.stato === 'incassato' ? (
+                          <span style={{ color: COLORS.warning, fontWeight: 700 }}>
+                            Da ricavare dalla fattura
+                          </span>
+                        ) : (
+                          '-'
+                        )}
+                      </div>
+                      {assegno.note && (
+                        <div style={{ fontSize: 11, color: COLORS.textMuted, marginTop: 2 }}>
+                          {assegno.note}
+                        </div>
+                      )}
+                    </div>
+                  ),
+              },
+              {
+                key: 'data_incasso',
+                label: 'Incasso / EC',
+                ruoloCard: 'dettaglio',
+                tdStyle: tdSelezione,
+                render: assegno => assegno.data_incasso ? (
+                  <div style={{ fontSize: 12 }}>
+                    <div style={{ fontWeight: 700 }}>{formatDateIT(assegno.data_incasso)}</div>
+                    {assegno.evidenza_estratto_conto_id && (
+                      <div style={{ color: COLORS.textMuted, fontSize: 10.5 }} title={assegno.evidenza_estratto_conto_id}>
+                        Estratto conto
+                      </div>
+                    )}
+                  </div>
+                ) : assegno.riscontro_banca === 'da_rientrare_in_banca' ? (
+                  <span style={{ color: COLORS.warning, fontSize: 11.5, fontWeight: 700 }}>
+                    Da rientrare in banca
+                  </span>
+                ) : assegno.stato === 'incassato' ? (
+                  <span style={{ color: COLORS.danger, fontSize: 11.5, fontWeight: 700 }}>
+                    Data EC mancante
+                  </span>
+                ) : (
+                  '-'
+                ),
+              },
+              {
+                key: 'importo',
+                label: 'Importo',
+                align: 'right',
+                ruoloCard: 'importo',
+                tdStyle: tdSelezione,
+                render: assegno =>
+                  editingId === assegno.id ? (
+                    <Input
+                      type="number"
+                      inputMode="decimal"
+                      step="0.01"
+                      value={editForm.importo}
+                      onChange={e =>
+                        setEditForm({ ...editForm, importo: parseFloat(e.target.value) || '' })
+                      }
+                      placeholder="0.00"
+                      style={{ padding: 6, width: 80, textAlign: 'right', fontSize: 12 }}
+                    />
+                  ) : (
+                    <span style={{ fontWeight: 'bold', fontSize: 13 }}>
+                      {euroOppure(assegno.importo)}
+                    </span>
+                  ),
+              },
+              {
+                key: 'fattura',
+                label: 'Fattura / Data',
+                ruoloCard: 'dettaglio',
+                tdStyle: tdSelezione,
+                render: assegno =>
+                  editingId === assegno.id ? (
+                    <div style={{ minWidth: 250 }}>
+                      <select
+                        aria-label="Fattura del fornitore"
+                        value={editForm.fattura_selezionata_id || ''}
+                        onChange={e => selezionaFatturaEdit(e.target.value)}
+                        disabled={loadingFattureEdit || fattureEditFornitore.length === 0}
+                        style={{
+                          width: '100%', minHeight: 34, padding: '5px 8px', fontSize: 11.5,
+                          border: '1px solid #d0ccbe', borderRadius: 7, background: 'white',
+                        }}
+                      >
+                        <option value="">
+                          {loadingFattureEdit
+                            ? 'Caricamento fatture...'
+                            : fattureEditFornitore.length
+                              ? 'Seleziona una fattura ricevuta'
+                              : "Seleziona prima un fornitore dall'elenco"}
+                        </option>
+                        {editForm.fattura_selezionata_id
+                          && !fattureEditFornitore.some(f => f.id === editForm.fattura_selezionata_id) && (
+                          <option value={editForm.fattura_selezionata_id}>
+                            {editForm.numero_fattura || 'Fattura gia collegata'}
+                          </option>
+                        )}
+                        {fattureEditFornitore.map(fattura => {
+                          const residuo = residuoFattura(fattura);
+                          const esatta = importiCoincidonoAlCentesimo(residuo, editForm.importo);
+                          return (
+                            <option key={fattura.id} value={fattura.id}>
+                              {numeroFattura(fattura)} - {formatDateIT(dataFattura(fattura))} - {formatEuro(residuo)}
+                              {esatta ? ' - IMPORTO ESATTO' : ''}
+                            </option>
+                          );
+                        })}
+                      </select>
+                      {editForm.fattura_selezionata_id && (
+                        <div style={{ marginTop: 4, fontSize: 10.5, color: COLORS.textMuted }}>
+                          Data fattura: <b>{formatDateIT(editForm.data_fattura)}</b>
+                          {' '}· numero: <b>{editForm.numero_fattura}</b>
+                        </div>
+                      )}
+                      <label style={{ display: 'block', marginTop: 7, fontSize: 10.5, color: COLORS.textMuted }}>
+                        Data emissione
+                        <Input
+                          type="date"
+                          aria-label="Data emissione assegno"
+                          value={editForm.data_emissione || ''}
+                          onChange={e => setEditForm({ ...editForm, data_emissione: e.target.value })}
+                          style={{ display: 'block', marginTop: 3, padding: 5, fontSize: 11.5, width: '100%' }}
+                        />
+                      </label>
+                    </div>
+                  ) : isMobile ? (
+                    assegno.numero_fattura || assegno.data_fattura ? (
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                        {assegno.numero_fattura && (
+                          <span style={{ color: COLORS.info }}>
+                            Fatt. {assegno.numero_fattura}
+                          </span>
+                        )}
+                        {/* Su mobile solo GG/MM: l'anno è nel selettore globale */}
+                        {assegno.data_fattura && (
+                          <span style={{ color: COLORS.textMuted, fontSize: 11 }}>
+                            ({formatDateGGMM(assegno.data_fattura)})
+                          </span>
+                        )}
+                        {(assegno.fattura_collegata ||
+                          assegno.fatture_collegate?.[0]?.fattura_id) && (
+                          <Button
+                            variant="success"
+                            size="sm"
+                            onClick={() => apriFattura(assegno)}
+                            title="Visualizza Fattura"
+                            data-testid={`view-fattura-${assegno.id}`}
+                          >
+                            <FileText size={14} aria-hidden="true" style={ICO} /> Vedi
+                          </Button>
+                        )}
+                      </span>
+                    ) : assegno.stato === 'incassato' ? (
+                      <div style={{ display: 'grid', gap: 5 }}>
+                        <span style={{ color: COLORS.warning, fontWeight: 700 }}>
+                          Nessuna fattura collegata
+                        </span>
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          onClick={() => startEdit(assegno)}
+                          data-testid={`choose-invoice-${assegno.id}`}
+                        >
+                          Scegli fattura
+                        </Button>
+                      </div>
+                    ) : (
+                      '-'
+                    )
+                  ) : (
+                    <div style={{ fontSize: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
+                      {/* Pulsante per visualizzare fattura in modale in-page */}
+                      {(assegno.fattura_collegata ||
+                        assegno.fatture_collegate?.[0]?.fattura_id) && (
+                        <Button
+                          variant="success"
+                          size="sm"
+                          onClick={e => {
+                            e.stopPropagation();
+                            apriFattura(assegno);
+                          }}
+                          title="Visualizza Fattura"
+                          data-testid={`view-fattura-${assegno.id}`}
+                        >
+                          <FileText size={14} aria-hidden="true" style={ICO} /> Vedi
+                        </Button>
+                      )}
+                      {/* Info fattura */}
+                      <div>
+                        {assegno.numero_fattura && (
+                          <div style={{ color: COLORS.info }}>
+                            Fatt. {assegno.numero_fattura}
+                          </div>
+                        )}
+                        {assegno.data_fattura && (
+                          <div style={{ color: COLORS.textMuted, fontSize: 11 }}>
+                            {formatDateIT(assegno.data_fattura)}
+                          </div>
+                        )}
+                        {!assegno.numero_fattura && !assegno.data_fattura && assegno.stato === 'incassato' && (
+                          <div style={{ display: 'grid', gap: 5 }}>
+                            <div style={{ color: COLORS.warning, fontWeight: 700 }}>
+                              Nessuna fattura collegata
+                            </div>
+                            <Button
+                              variant="secondary"
+                              size="sm"
+                              onClick={event => {
+                                event.stopPropagation();
+                                startEdit(assegno);
+                              }}
+                              data-testid={`choose-invoice-${assegno.id}`}
+                            >
+                              Scegli fattura
+                            </Button>
+                          </div>
+                        )}
+                        {assegno.associazione_ambigua && (
+                          <div style={{ display: 'grid', gap: 5 }}>
+                            <span style={{ color: COLORS.warning, fontWeight: 700 }}>
+                              Più candidati
+                            </span>
+                            <Button
+                              variant="secondary"
+                              size="sm"
+                              onClick={() => openFattureModal(assegno)}
+                              data-testid={`scegli-manualmente-${assegno.id}`}
+                            >
+                              Scegli manualmente
+                            </Button>
+                          </div>
+                        )}
+                        {assegno.associazione_conflittuale && (
+                          <div
+                            role="alert"
+                            style={{ color: COLORS.danger, fontWeight: 700 }}
+                            title="La stessa fattura risulta attribuita oltre il proprio importo"
+                          >
+                            Collegamento storico da verificare
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ),
+              },
+              {
+                key: 'azioni',
+                label: 'Azioni',
+                align: 'center',
+                ruoloCard: 'azioni',
+                tdStyle: tdSelezione,
+                render: assegno => (
+                  <RowActions style={{ justifyContent: isMobile ? 'flex-end' : 'center' }}>
+                    {isMobile && (
+                      <input
+                        type="checkbox"
+                        checked={selectedAssegni.has(assegno.id)}
+                        onChange={() => toggleSelectAssegno(assegno.id)}
+                        data-testid={`select-${assegno.id}`}
+                        style={{ width: 18, height: 18, cursor: 'pointer' }}
+                      />
+                    )}
+                    {editingId === assegno.id ? (
+                      <>
+                        <RowActionButton
+                          variant="success"
+                          onClick={handleSaveEdit}
+                          style={{ width: 28, height: 28 }}
+                          title="Salva"
+                        >
+                          <Check size={14} aria-hidden="true" style={ICO} />
+                        </RowActionButton>
+                        <RowActionButton
+                          variant="danger"
+                          onClick={cancelEdit}
+                          style={{ width: 28, height: 28 }}
+                          title="Annulla"
+                        >
+                          <X size={14} aria-hidden="true" style={ICO} />
+                        </RowActionButton>
+                      </>
+                    ) : (
+                      <>
+                        <RowActionButton
+                          variant="neutral"
+                          onClick={() => startEdit(assegno)}
+                          data-testid={`edit-${assegno.id}`}
+                          title="Modifica"
+                        >
+                          <Pencil size={14} aria-hidden="true" style={ICO} />
+                        </RowActionButton>
+                        {['compilato', 'assegnato', 'parzialmente_assegnato'].includes(assegno.stato) && (
+                          <RowActionButton
+                            variant="success"
+                            onClick={() => handleEmetti(assegno)}
+                            data-testid={`emetti-${assegno.id}`}
+                            title="Emetti assegno"
+                          >
+                            <Upload size={14} aria-hidden="true" style={ICO} />
+                          </RowActionButton>
+                        )}
+                        {!['incassato', 'annullato', 'stornato'].includes(assegno.stato) && (
+                          <RowActionButton
+                            variant="danger"
+                            onClick={() => handleStorna(assegno)}
+                            data-testid={`storna-${assegno.id}`}
+                            title="Storna assegno"
+                          >
+                            <Undo2 size={14} aria-hidden="true" style={ICO} />
+                          </RowActionButton>
+                        )}
+                        {/* STAMPA singolo assegno: il carnet è il prefisso
+                            del numero, come in groupByCarnet */}
+                        <RowActionButton
+                          variant="info"
+                          onClick={() => {
+                            const doc = generateCarnetPDF(
+                              assegno.numero?.split('-')[0] || 'Senza Carnet',
+                              [assegno]
+                            );
+                            doc.save(`Assegno_${assegno.numero}.pdf`);
+                          }}
+                          data-testid={`print-${assegno.id}`}
+                          title="Stampa"
+                        >
+                          <Printer size={14} aria-hidden="true" style={ICO} />
+                        </RowActionButton>
+                        <RowActionButton
+                          variant={assegno.foto_url ? 'success' : 'neutral'}
+                          onClick={() => avviaFotoAssegno(assegno)}
+                          disabled={fotoUploadingId === assegno.id}
+                          data-testid={`foto-${assegno.id}`}
+                          title={assegno.foto_url ? 'Sostituisci foto assegno' : 'Scatta/allega foto assegno'}
+                        >
+                          {fotoUploadingId === assegno.id ? '…' : <Camera size={14} aria-hidden="true" style={ICO} />}
+                        </RowActionButton>
+                        {assegno.foto_url && (
+                          <RowActionButton
+                            variant="info"
+                            onClick={() => setFotoAperta({ url: assegno.foto_url, numero: assegno.numero })}
+                            data-testid={`vedi-foto-${assegno.id}`}
+                            title="Vedi foto assegno"
+                          >
+                            <ImageIcon size={14} aria-hidden="true" style={ICO} />
+                          </RowActionButton>
+                        )}
+                        <RowActionButton
+                          variant="danger"
+                          onClick={() => handleDelete(assegno)}
+                          data-testid={`delete-${assegno.id}`}
+                          title="Elimina"
+                        >
+                          <Trash2 size={14} aria-hidden="true" style={ICO} />
+                        </RowActionButton>
+                      </>
+                    )}
+                  </RowActions>
+                ),
+              },
+            ]}
+          />
+          {fotoTargetAssegno && (
+            <CameraCattura onCattura={catturaFotoAssegno} onChiudi={chiudiFotocamera} />
+          )}
+          {fotoAperta && (
+            <VisoreOriginale
+              url={fotoAperta.url}
+              titolo={`Foto assegno ${fotoAperta.numero || ''}`.trim()}
+              mimeType="image/jpeg"
+              onClose={() => setFotoAperta(null)}
+            />
+          )}
+          {dialogoScelta}
+        </div>
+      )}
+      {/* Generate Modal */}
+      {showGenerate && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(20, 20, 19,0.5)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1000,
+          }}
+          onClick={() => setShowGenerate(false)}
+        >
+          <div
+            style={{
+              background: COLORS.card,
+              borderRadius: BORDER_RADIUS.lg,
+              padding: 24,
+              maxWidth: 400,
+              width: '90%',
+              boxShadow: SHADOWS.modal,
+            }}
+            onClick={e => e.stopPropagation()}
+          >
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'flex-start',
+                gap: 8,
+              }}
+            >
+              <h2 style={{ marginTop: 0 }}>Genera Carnet Assegni</h2>
+              <Button
+                variant="ghost"
+                onClick={() => setShowGenerate(false)}
+                aria-label="Chiudi"
+                data-testid="close-generate-btn"
+                style={{ width: 40, height: 40, flexShrink: 0, padding: 0, fontSize: 18, background: COLORS.bgAlt, color: COLORS.gray[700] }}
+              >
+                <X size={14} aria-hidden="true" style={ICO} />
+              </Button>
+            </div>
+            <p style={{ color: COLORS.textMuted, fontSize: 14, marginBottom: 20 }}>
+              Inserisci il primo numero come stampato sull'assegno. Sono validi sia
+              0208770985 sia 0208770000-01.
+            </p>
+
+            <div style={{ marginBottom: 15 }}>
+              <label style={{ display: 'block', marginBottom: 5, fontWeight: 'bold' }}>
+                Numero Primo Assegno
+              </label>
+              <Input
+                type="text"
+                inputMode="numeric"
+                value={generateForm.numero_primo}
+                onChange={e => setGenerateForm({ ...generateForm, numero_primo: e.target.value })}
+                placeholder="0208770985 oppure 0208770000-01"
+                data-testid="numero-primo-input"
+                style={{ padding: 12, fontFamily: 'monospace' }}
+              />
+            </div>
+
+            <div style={{ marginBottom: 15 }}>
+              <label style={{ display: 'block', marginBottom: 5, fontWeight: 'bold' }}>
+                Quantità assegni
+              </label>
+              <Input
+                type="number"
+                inputMode="numeric"
+                min="1"
+                max="100"
+                step="1"
+                value={generateForm.quantita}
+                onChange={e => setGenerateForm({ ...generateForm, quantita: e.target.value })}
+                data-testid="quantita-carnet-input"
+                style={{ padding: 12 }}
+              />
+            </div>
+
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+              <Button variant="secondary" onClick={() => setShowGenerate(false)}>
+                Annulla
+              </Button>
+              <Button
+                variant="success"
+                onClick={handleGenerate}
+                disabled={generating}
+                data-testid="genera-salva-btn"
+              >
+                {generating ? 'Generazione...' : 'Genera e Salva'}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Collegamento manuale esplicito: il fornitore restringe i documenti
+          e la conferma crea il legame canonico assegno-fattura. */}
+      {showFattureModal && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(20, 20, 19,0.35)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1000,
+          }}
+          onClick={() => setShowFattureModal(false)}
+        >
+          <div
+            style={{
+              position: 'absolute',
+              left: modalPosition.x || '50%',
+              top: modalPosition.y || '50%',
+              transform: modalPosition.x ? 'none' : 'translate(-50%, -50%)',
+              background: COLORS.card,
+              borderRadius: BORDER_RADIUS.lg,
+              padding: 0,
+              maxWidth: 560,
+              width: '95%',
+              maxHeight: '85vh',
+              overflow: 'hidden',
+              boxShadow: SHADOWS.modal,
+              cursor: isDragging ? 'grabbing' : 'default',
+            }}
+            onClick={e => e.stopPropagation()}
+          >
+            {/* Header Draggable */}
+            <div
+              style={{
+                padding: '10px 10px 10px 16px',
+                background: COLORS.primary,
+                color: 'white',
+                cursor: 'grab',
+                userSelect: 'none',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+              }}
+              onMouseDown={e => {
+                setIsDragging(true);
+                const rect = e.currentTarget.parentElement.getBoundingClientRect();
+                setDragOffset({ x: e.clientX - rect.left, y: e.clientY - rect.top });
+              }}
+              onMouseMove={e => {
+                if (isDragging) {
+                  setModalPosition({
+                    x: e.clientX - dragOffset.x,
+                    y: e.clientY - dragOffset.y,
+                  });
+                }
+              }}
+              onMouseUp={() => setIsDragging(false)}
+              onMouseLeave={() => setIsDragging(false)}
+            >
+              <div>
+                <h2 style={{ margin: 0, fontSize: 16 }}><FileText size={14} aria-hidden="true" style={ICO} /> Collega Fatture all'Assegno</h2>
+                <p style={{ margin: '2px 0 0', fontSize: 11, opacity: 0.8 }}>
+                  Trascina per spostare
+                </p>
+              </div>
+              <Button
+                variant="ghost"
+                onClick={() => {
+                  setShowFattureModal(false);
+                  setSelectedFatture([]);
+                  setModalPosition({ x: 0, y: 0 });
+                }}
+                aria-label="Chiudi"
+                data-testid="close-fatture-modal-btn"
+                onMouseDown={e => e.stopPropagation()}
+                style={{
+                  background: 'rgba(255,255,255,0.2)',
+                  color: 'white',
+                  width: 40,
+                  height: 40,
+                  flexShrink: 0,
+                  padding: 0,
+                  fontSize: 20,
+                  lineHeight: 1,
+                }}
+              >
+                <X size={14} aria-hidden="true" style={ICO} />
+              </Button>
+            </div>
+
+            {/* Content */}
+            <div style={{ padding: 16, maxHeight: 'calc(85vh - 100px)', overflowY: 'auto' }}>
+              {/* Info Assegno con Importo */}
+              <div
+                style={{
+                  background: COLORS.bgAlt,
+                  padding: 12,
+                  borderRadius: BORDER_RADIUS.md,
+                  marginBottom: 12,
+                  border: `1px solid ${COLORS.border}`,
+                }}
+              >
+                <div
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    flexWrap: 'wrap',
+                    gap: 12,
+                  }}
+                >
+                  <div>
+                    <div style={{ fontSize: 12, color: COLORS.textMuted, marginBottom: 4 }}>
+                      Assegno N.
+                    </div>
+                    <div
+                      style={{
+                        fontSize: 16,
+                        fontWeight: 'bold',
+                        color: COLORS.text,
+                        fontFamily: 'monospace',
+                      }}
+                    >
+                      {editingAssegnoForFatture?.numero}
+                    </div>
+                  </div>
+                  <div style={{ textAlign: 'right' }}>
+                    <div style={{ fontSize: 12, color: COLORS.textMuted, marginBottom: 4 }}>
+                      Importo Assegno
+                    </div>
+                    <div style={{ fontSize: 18, fontWeight: 'bold', color: COLORS.primaryLight }}>
+                      {euroOppure(editingAssegnoForFatture?.importo)}
+                    </div>
+                  </div>
+                </div>
+                <p
+                  style={{
+                    color: COLORS.info,
+                    fontSize: 12,
+                    margin: '12px 0 0',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 6,
+                  }}
+                >
+                  {assegnoCoperto ? (
+                    <><Check size={14} aria-hidden="true" style={ICO} /> Importo completamente coperto dalla fattura collegata</>
+                  ) : (
+                    <><Info size={14} aria-hidden="true" style={ICO} /> Collega più fatture solo quando la loro somma coincide con l’assegno</>
+                  )}
+                </p>
+              </div>
+
+              {/* Fatture Selezionate */}
+              {selectedFatture.length > 0 && (
+                <div
+                  style={{
+                    background: COLORS.successLight,
+                    padding: 12,
+                    borderRadius: BORDER_RADIUS.md,
+                    marginBottom: 12,
+                    border: `1px solid ${COLORS.success}`,
+                  }}
+                >
+                  <strong style={{ color: COLORS.success }}>
+                    <Check size={14} aria-hidden="true" style={ICO} /> Fatture collegate: {selectedFatture.length}
+                  </strong>
+                  <div style={{ marginTop: 10 }}>
+                    {selectedFatture.map(f => (
+                      <div
+                        key={f.id}
+                        style={{
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                          padding: '8px 0',
+                          borderBottom: `1px solid ${COLORS.successLight}`,
+                        }}
+                      >
+                        <span
+                          style={{
+                            color: f.is_nota_credito ? COLORS.danger : COLORS.success,
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 6,
+                          }}
+                        >
+                          {f.numero} - {f.fornitore}
+                          {f.is_nota_credito && <Badge variant="danger" style={{ fontSize: 9, padding: '1px 5px' }}>NC</Badge>}
+                        </span>
+                        <span
+                          style={{
+                            fontWeight: 'bold',
+                            color: f.is_nota_credito ? COLORS.danger : COLORS.success,
+                          }}
+                        >
+                          {f.is_nota_credito ? '- ' : ''}
+                          {formatEuro(Math.abs(f.importo))}
+                        </span>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          aria-label={`Rimuovi fattura ${f.numero}`}
+                          onClick={() => setSelectedFatture(selectedFatture.filter(sf => sf.id !== f.id))}
+                        >
+                          ×
+                        </Button>
+                      </div>
+                    ))}
+                    <div
+                      style={{
+                        marginTop: 12,
+                        paddingTop: 12,
+                        borderTop: `2px solid ${COLORS.success}`,
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        fontWeight: 'bold',
+                        fontSize: 16,
+                      }}
+                    >
+                      <span>TOTALE FATTURE:</span>
+                      <span style={{ color: COLORS.success }}>
+                        {formatEuro(totaleFattureSelezionate)}
+                      </span>
+                    </div>
+                    {/* Differenza con importo assegno */}
+                    {editingAssegnoForFatture?.importo > 0 && (
+                      <div
+                        style={{
+                          marginTop: 8,
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          fontSize: 13,
+                          color:
+                            Math.abs(differenzaAssegno) <= TOLLERANZA_ASSEGNO
+                              ? COLORS.success
+                              : COLORS.warning,
+                        }}
+                      >
+                        <span>Differenza:</span>
+                        <span style={{ fontWeight: 600 }}>
+                          {formatEuro(
+                            differenzaAssegno
+                          )}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Lista Fatture Disponibili */}
+              {assegnoCoperto && (
+                <div
+                  data-testid="assegno-coperto-message"
+                  style={{
+                    marginBottom: 15,
+                    padding: 14,
+                    color: COLORS.success,
+                    background: COLORS.successLight,
+                    border: `1px solid ${COLORS.success}`,
+                    borderRadius: BORDER_RADIUS.md,
+                    fontWeight: 600,
+                  }}
+                >
+                  <Check size={14} aria-hidden="true" style={ICO} /> Associazione completa. Non occorre aggiungere altre fatture.
+                </div>
+              )}
+              <div style={{ marginBottom: 15, display: assegnoCoperto ? 'none' : 'block' }}>
+                <label
+                  style={{ display: 'block', marginBottom: 8, fontWeight: 600, color: COLORS.gray[700] }}
+                >
+                  Fatture disponibili (l'assegno prevale sul metodo fornitore)
+                </label>
+                <Input
+                  type="text"
+                  value={filterFatturaModal}
+                  onChange={e => setFilterFatturaModal(e.target.value)}
+                  placeholder="Cerca numero, fornitore, P.IVA o importo..."
+                  aria-label="Cerca fattura da associare"
+                  style={{ marginBottom: 8 }}
+                />
+
+                {loadingFatture ? (
+                  <div style={{ padding: 30, textAlign: 'center', color: COLORS.textMuted }}>
+                    <Hourglass size={14} aria-hidden="true" style={ICO} /> Caricamento...
+                  </div>
+                ) : fattureVisibili.length === 0 ? (
+                  <div
+                    style={{
+                      padding: 30,
+                      textAlign: 'center',
+                      color: COLORS.textMuted,
+                      background: COLORS.bgAlt,
+                      borderRadius: BORDER_RADIUS.md,
+                    }}
+                  >
+                    Nessuna fattura disponibile per assegno
+                  </div>
+                ) : (
+                  <div
+                    style={{
+                      maxHeight: 270,
+                      overflow: 'auto',
+                      border: `1px solid ${COLORS.border}`,
+                      borderRadius: BORDER_RADIUS.md,
+                    }}
+                  >
+                    {fattureVisibili.slice(0, limiteFatture).map((f, idx) => {
+                      const isSelected = selectedFatture.find(sf => sf.id === f.id);
+                      const fornitore = f.supplier_name || f.cedente_denominazione || 'N/A';
+                      const tipoDoc = f.tipo_documento || f.document_type || 'TD01';
+                      const isNotaCredito = tipoDoc === 'TD04';
+                      const importoRaw = parseFloat(f.total_amount || f.importo_totale || 0);
+                      // Note credito: importo SEMPRE negativo
+                      const importo = isNotaCredito ? -Math.abs(importoRaw) : importoRaw;
+                      const residuo = residuoFattura(f);
+
+                      // Mostra header fornitore quando cambia
+                      const prevFornitore =
+                        idx > 0
+                          ? fattureVisibili[idx - 1].supplier_name ||
+                            fattureVisibili[idx - 1].cedente_denominazione ||
+                            ''
+                          : '';
+                      const showFornitoreHeader =
+                        fornitore.toLowerCase() !== prevFornitore.toLowerCase();
+
+                      return (
+                        <React.Fragment key={f.id}>
+                          {showFornitoreHeader && (
+                            <div
+                              style={{
+                                padding: '8px 14px',
+                                background: COLORS.bgAlt,
+                                borderBottom: `1px solid ${COLORS.border}`,
+                                fontSize: 11,
+                                fontWeight: 700,
+                                color: COLORS.gray[600],
+                                textTransform: 'uppercase',
+                                letterSpacing: '0.03em',
+                                position: 'sticky',
+                                top: 0,
+                                zIndex: 1,
+                              }}
+                            >
+                              <Building2 size={14} aria-hidden="true" style={ICO} /> {fornitore}
+                            </div>
+                          )}
+                          <div
+                            onClick={() =>
+                              toggleFattura({
+                                ...f,
+                                importo_display: importo,
+                                importo: importo,
+                                fornitore: fornitore,
+                              })
+                            }
+                            style={{
+                              padding: '10px 12px',
+                              borderBottom: `1px solid ${COLORS.bgAlt}`,
+                              cursor: 'pointer',
+                              background: isSelected
+                                ? COLORS.infoLight
+                                : isNotaCredito
+                                  ? COLORS.dangerLight
+                                  : COLORS.card,
+                              display: 'flex',
+                              justifyContent: 'space-between',
+                              alignItems: 'center',
+                              transition: 'background 0.15s',
+                              borderLeft: isNotaCredito
+                                ? `3px solid ${COLORS.danger}`
+                                : '3px solid transparent',
+                            }}
+                          >
+                            <div>
+                              <div
+                                style={{
+                                  fontWeight: 600,
+                                  color: isSelected
+                                    ? COLORS.info
+                                    : isNotaCredito
+                                      ? COLORS.danger
+                                      : COLORS.text,
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: 6,
+                                }}
+                              >
+                                {isSelected ? <Check size={14} aria-hidden="true" style={ICO} /> : <Circle size={14} aria-hidden="true" style={ICO} />}
+                                {f.invoice_number || f.numero_fattura || 'N/A'}
+                                {isNotaCredito && (
+                                  <Badge variant="danger" style={{ fontSize: 9, padding: '2px 6px' }}>
+                                    Nota Credito
+                                  </Badge>
+                                )}
+                              </div>
+                              <div style={{ fontSize: 12, color: COLORS.textMuted, marginTop: 2 }}>
+                                {fornitore} • {formatDateIT(f.invoice_date || f.data_fattura)}
+                              </div>
+                            </div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                              <div
+                                style={{
+                                  fontWeight: 'bold',
+                                  color: isNotaCredito ? COLORS.danger : COLORS.primaryLight,
+                                  fontSize: 15,
+                                }}
+                              >
+                                {isNotaCredito ? '- ' : ''}
+                                {formatEuro(Math.abs(importo))}
+                                {!isNotaCredito && Math.abs(residuo - importoRaw) > 0.005 && (
+                                  <div style={{ fontSize: 10, color: COLORS.textMuted, fontWeight: 500 }}>
+                                    residuo {formatEuro(residuo)}
+                                  </div>
+                                )}
+                              </div>
+                              <Button
+                                variant="success"
+                                size="sm"
+                                onClick={e => {
+                                  e.stopPropagation();
+                                  setFatturaView({
+                                    id: f.id,
+                                    numero: f.invoice_number || f.numero_fattura,
+                                  });
+                                }}
+                                style={{ padding: '3px 7px', fontSize: 10, flexShrink: 0 }}
+                              >
+                                <FileText size={14} aria-hidden="true" style={ICO} /> Vedi
+                              </Button>
+                            </div>
+                          </div>
+                        </React.Fragment>
+                      );
+                    })}
+                    {fattureVisibili.length > limiteFatture && (
+                      <Button variant="secondary" onClick={() => setLimiteFatture(x => x + 200)} style={{ minHeight: 44, margin: 8 }}>
+                        Mostra altre ({fattureVisibili.length - limiteFatture})
+                      </Button>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', paddingTop: 8 }}>
+                <Button
+                  variant="secondary"
+                  onClick={() => {
+                    setShowFattureModal(false);
+                    setSelectedFatture([]);
+                    setFilterFatturaModal('');
+                    setModalPosition({ x: 0, y: 0 });
+                  }}
+                >
+                  Annulla
+                </Button>
+                <Button
+                  variant="success"
+                  onClick={saveFattureCollegate}
+                  disabled={selectedFatture.length === 0 && !(editingAssegnoForFatture?.fatture_collegate || []).length}
+                  data-testid="salva-fatture-btn"
+                >
+                  <Check size={14} aria-hidden="true" style={ICO} /> Salva {selectedFatture.length} fattur
+                  {selectedFatture.length === 1 ? 'a' : 'e'}
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modale visualizzazione fattura in-page (niente nuove schede del browser) */}
+      {fatturaView && (
+        <ModalFattura
+          fatturaId={fatturaView.id}
+          numero={fatturaView.numero}
+          onClose={() => setFatturaView(null)}
+        />
+      )}
+    </div>
+  );
+}

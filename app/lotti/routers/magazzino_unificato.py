@@ -1,0 +1,942 @@
+"""
+magazzino_unificato.py
+Endpoint per il magazzino unificato:
+- magazzino_bar_prodotti (bar: caffè, bibite, monouso…)
+- lotti_fornitori (materie prime da import XML: farine, latticini…)
+Permette scarico da entrambe le fonti con tracciabilità operatore.
+"""
+
+import uuid
+from datetime import datetime, timezone, date
+from app.lotti.auth import require_admin
+from fastapi import Depends, APIRouter, HTTPException
+from pydantic import BaseModel
+from typing import Optional
+from app.lotti.db import database as db
+
+import unicodedata as _ud
+import re as _re
+from app.lotti.routers.unita_misura import normalizza_unita_display
+
+from app.lotti.routers.classificatore_alimenti import (
+    e_alimento as _e_alimento,
+    strip_accents as _strip_accents,
+)
+
+router = APIRouter(prefix="/magazzino", tags=["Magazzino Unificato"])
+
+# ── Categorizzazione automatica prodotti fornitore ────────────────────────────
+CATEGORIE_FORNITORI = {
+    "Farine/Cereali": [
+        "farin",
+        "semola",
+        "grano",
+        "frumento",
+        "cereali",
+        "orzo",
+        "segale",
+        "amido",
+    ],
+    "Latticini": [
+        "burro",
+        "latte",
+        "panna",
+        "formaggio",
+        "mozzarella",
+        "ricotta",
+        "mascarpone",
+        "lattosio",
+    ],
+    "Creme/Paste": [
+        "crema",
+        "pasta pistacchi",
+        "pasta nocc",
+        "nuppy",
+        "ripieno",
+        "farcia",
+        "confettura",
+        "marmellata",
+    ],
+    "Cioccolato": ["cioccolato", "cacao", "glassa", "copertura", "fondente", "ganache"],
+    "Zuccheri": ["zucchero", "glucosio", "fruttosio", "sciroppo", "destrosio", "maltosio"],
+    "Lieviti": ["lievito", "bicarbonato", "cremortartaro", "agente lievit"],
+    "Oli/Grassi": ["olio", "margarina", "strutto", "grasso vegetale", "shortening"],
+    "Uova": ["uov", "tuorlo", "albume", "ovoprodot"],
+    "Frutta/Noci": ["nocciola", "mandorla", "pistacchio", "noce", "pinoli", "uvetta", "canditi"],
+    "Carni/Salumi": [
+        "carne",
+        "salume",
+        "prosciutto",
+        "speck",
+        "salsiccia",
+        "mortadella",
+        "pancetta",
+    ],
+    "Verdure": ["pomodoro", "cipolla", "aglio", "basilico", "funghi", "carciofo"],
+    "Beveraggi": ["coca", "acqua", "succo", "birra", "vino", "prosecco", "sprite", "fanta"],
+    "Pulizia": ["detersivo", "detergente", "sanificante", "disinfettante", "candeggina"],
+    "Imballaggi": [
+        "vaschett",
+        "scatol",
+        "involucr",
+        "sacchetto",
+        "contenitor",
+        "pellicola",
+        "carta",
+    ],
+}
+
+
+async def _carica_soglie() -> dict:
+    """Scorte minime materie prime, per nome normalizzato. FONTE UNICA:
+    dizionario_prodotti.scorta_minima — lo stesso campo usato dai riordini §7
+    (/ordini-fornitori/prodotti-suggeriti). Così display magazzino e riordini
+    condividono un solo dato (§0/§2/§7), senza store soglie paralleli."""
+    docs = await db.dizionario_prodotti.find(
+        {"scorta_minima": {"$gt": 0}}, {"_id": 0, "nome_normalizzato": 1, "scorta_minima": 1}
+    ).to_list(5000)
+    return {
+        (d.get("nome_normalizzato") or "").strip(): float(d.get("scorta_minima") or 0)
+        for d in docs
+        if d.get("nome_normalizzato")
+    }
+
+
+async def _carica_soglie_critiche() -> dict:
+    """Seconda soglia, quella dell'«ordinare immediatamente».
+
+    Le imposta il titolare, come la prima: qui non si calcola una percentuale
+    della scorta minima. Una frazione inventata direbbe «ordina subito» a un
+    numero che nessuno ha scelto, e su prodotti con tempi di consegna diversi
+    sbaglierebbe sempre da una parte. Senza soglia critica resta il solo
+    avviso di scorta, che e' gia' un'informazione vera.
+    """
+    docs = await db.dizionario_prodotti.find(
+        {"scorta_critica": {"$gt": 0}}, {"_id": 0, "nome_normalizzato": 1, "scorta_critica": 1}
+    ).to_list(5000)
+    return {
+        (d.get("nome_normalizzato") or "").strip(): float(d.get("scorta_critica") or 0)
+        for d in docs
+        if d.get("nome_normalizzato")
+    }
+
+
+# Livelli dell'avviso, dal piu' grave. Il messaggio porta SEMPRE la quantita'
+# che resta davvero: «rimangono 45 kg» si legge e si decide, «sotto scorta» no.
+LIVELLO_ESAURITO = "esaurito"
+LIVELLO_CRITICO = "ordinare_subito"
+LIVELLO_SCORTA = "sotto_scorta"
+
+
+def stato_scorta(nome: str, stock: float, unita: str, soglia: float, critica: float) -> dict:
+    """L'avviso per un prodotto, o None se la giacenza sta sopra la soglia.
+
+    Serve una soglia impostata: senza, non esiste un «poco» — 20 kg di farina
+    sono tanti per una casa e niente per un laboratorio, e inventare il
+    confine farebbe suonare allarmi che nessuno ha chiesto.
+    """
+    if soglia <= 0 and critica <= 0:
+        return None
+    quanto = f"{stock:g} {unita}".strip() if unita else f"{stock:g}"
+    if stock <= 0:
+        return {"livello": LIVELLO_ESAURITO, "soglia": soglia, "soglia_critica": critica,
+                "messaggio": f"{nome}: esaurito — ordinare immediatamente"}
+    if critica > 0 and stock <= critica:
+        return {"livello": LIVELLO_CRITICO, "soglia": soglia, "soglia_critica": critica,
+                "messaggio": f"{nome}: rimangono {quanto} — ordinare immediatamente"}
+    if soglia > 0 and stock <= soglia:
+        return {"livello": LIVELLO_SCORTA, "soglia": soglia, "soglia_critica": critica,
+                "messaggio": f"{nome}: rimangono {quanto} (scorta minima {soglia:g})"}
+    return None
+
+
+def _categoria_da_nome(nome: str) -> str:
+    n = nome.lower()
+    for cat, keywords in CATEGORIE_FORNITORI.items():
+        if any(k in n for k in keywords):
+            return cat
+    return "Altro"
+
+
+# ── Cartoni → pezzi (richiesta Enzo 23/07/2026) ───────────────────────────────
+# In fattura le bevande arrivano a CARTONI ("1 CT di COCA COLA VAP CL 33 X 24"):
+# il numero di pezzi per cartone è già scritto NEL NOME (X 24, CTX24, 24X33CL).
+# In magazzino la giacenza va mostrata in PEZZI (cartoni × pezzi/cartone), non
+# in cartoni. Nel DB i lotti restano in cartoni (nessuna migrazione dati): la
+# conversione è simmetrica in lettura (qui) e in scarico (più sotto).
+_UNITA_COLLO = {"CT", "CARTONE", "CARTONI", "COLLO", "COLLI", "CF", "CONF",
+                "CS", "CASSA", "CASSE", "BOX", "FARDELLO", "FD"}
+_RX_PPC_DOPO_MISURA = _re.compile(
+    r"(?:CL|LT|ML|GR|KG|L|G)\s*\.?\s*\d+(?:[.,]\d+)?\s*(?:CT|CF|CS)?\s*X\s*(\d{1,3})\b", _re.I)
+_RX_PPC_PRIMA_MISURA = _re.compile(
+    r"\b(\d{1,3})\s*X\s*\d+(?:[.,]\d+)?\s*(?:CL|LT|ML|GR|KG|L|G)\b", _re.I)
+_RX_PPC_FINE = _re.compile(r"\bX\s*(\d{1,3})\s*$")
+
+
+def pezzi_per_collo(nome: str) -> int:
+    """Pezzi per cartone letti dal nome prodotto: 'CL 33 X 24'→24,
+    'PET CL.50 CTX24'→24, '24X33CL'→24. 0 se non deducibile."""
+    n = (nome or "").upper()
+    for rx in (_RX_PPC_DOPO_MISURA, _RX_PPC_PRIMA_MISURA, _RX_PPC_FINE):
+        m = rx.search(n)
+        if m:
+            try:
+                v = int(m.group(1))
+                if 2 <= v <= 200:
+                    return v
+            except ValueError:
+                pass
+    return 0
+
+
+def _fattore_collo(doc: dict) -> int:
+    """Fattore di conversione cartoni→pezzi per un lotto fornitore (0 = nessuna
+    conversione: unità non a collo o pezzi/cartone non deducibile dal nome)."""
+    raw_u = str(doc.get("unita_misura") or "").upper().strip().rstrip(".")
+    if raw_u not in _UNITA_COLLO:
+        return 0
+    return pezzi_per_collo(doc.get("prodotto_nome") or doc.get("prodotto_nome_norm") or "")
+
+
+# Il nome prodotto in fattura a volte porta appesi PREZZI e sconti
+# ("... | -Prezzo: 28.80 Sconti: 33.50 22.00 #DE#"): in magazzino i prezzi
+# d'acquisto NON devono vedersi (richiesta Enzo 23/07/2026: il dipendente non
+# deve saperli). Si pulisce SOLO il nome mostrato, i dati restano intatti.
+_RX_NOME_PREZZI = _re.compile(
+    r"\s*[|·]?\s*-?\s*(prezzo|sconti|sconto|listino)\s*:.*$", _re.I)
+_RX_NOME_MARKER = _re.compile(r"\s*#[A-Z0-9]{1,6}#\s*$")
+
+
+def _pulisci_nome_display(nome: str) -> str:
+    n = _RX_NOME_PREZZI.sub("", str(nome or ""))
+    n = _RX_NOME_MARKER.sub("", n)
+    return n.strip(" |·-") or str(nome or "—")
+
+
+def _unifica_lotto(doc: dict) -> dict:
+    """Converte un doc lotti_fornitori nel formato unificato."""
+    nome = _pulisci_nome_display(doc.get("prodotto_nome") or doc.get("prodotto_nome_norm") or "—")
+    stock = float(doc.get("quantita_disponibile") or 0)
+    unita = normalizza_unita_display(doc.get("unita_misura"), "KG")
+    ppc = _fattore_collo(doc)
+    colli = None
+    if ppc > 0:
+        colli = stock
+        stock = round(stock * ppc, 3)
+        unita = "PZ"
+    return {
+        "id": doc.get("id", ""),
+        "source": "fornitori",
+        "nome": nome,
+        "categoria": _categoria_da_nome(nome),
+        "stock": stock,
+        "unita": unita,
+        "colli": colli,
+        "pezzi_per_collo": ppc or None,
+        "fornitore": doc.get("fornitore", ""),
+        "data_scadenza": doc.get("data_scadenza", ""),
+        "giorni_alla_scadenza": doc.get("giorni_alla_scadenza"),
+        "scaduto": doc.get("scaduto", False),
+        "lotto_id": doc.get("lotto_id_fornitore", ""),
+        "allergeni_testo": doc.get("allergeni_testo", ""),
+        "soglia_minima": 0,
+    }
+
+
+def _unifica_bar(doc: dict) -> dict:
+    """Converte un doc magazzino_bar_prodotti nel formato unificato."""
+    return {
+        "id": doc.get("id", ""),
+        "source": "bar",
+        "nome": doc.get("nome", ""),
+        "categoria": doc.get("categoria", "Bar"),
+        "stock": float(doc.get("stock") or 0),
+        "unita": normalizza_unita_display(doc.get("unita")),
+        "fornitore": doc.get("fornitore", ""),
+        "data_scadenza": "",
+        "giorni_alla_scadenza": None,
+        "scaduto": False,
+        "lotto_id": "",
+        "allergeni_testo": "",
+        "soglia_minima": float(doc.get("soglia_minima") or 0),
+    }
+
+
+# ── GET prodotti unificati ─────────────────────────────────────────────────────
+CATEGORIE_SELEZIONABILI = [
+    "Farine/Cereali", "Latticini", "Uova", "Oli/Grassi", "Zuccheri", "Cioccolato",
+    "Creme/Paste", "Frutta/Noci", "Verdure", "Carni/Salumi", "Lieviti", "Beveraggi",
+    "Imballaggi", "Pulizia", "Altro",
+]
+
+async def _overrides_map():
+    """Mappa key -> override {visualizza, categoria, nome_norm}."""
+    docs = await db.magazzino_overrides.find({}, {"_id": 0}).to_list(5000)
+    return {d["key"]: d for d in docs if d.get("key")}
+
+async def _nomi_confermati() -> dict:
+    """Descrizione di fattura -> ingrediente, solo le righe CONFERMATE del
+    Dizionario (quelle non confermate sono proposte, non decisioni)."""
+    docs = await db.nome_mapping.find(
+        {"confermato": True}, {"_id": 0, "descrizione_key": 1, "nome_canc": 1}).to_list(10000)
+    return {d["descrizione_key"]: d["nome_canc"] for d in docs if d.get("descrizione_key") and d.get("nome_canc")}
+
+
+def _nome_ingrediente_auto(nome: str, confermati: dict) -> str:
+    """Il nome dell'ingrediente che si usa, ricavato dalla riga di fattura:
+    «AIA. WUDY GR.300 WURSTEL POLLO» -> «Würstel», «Ananas L. 055-000857-0003014»
+    -> «Ananas». Prima la conferma del Dizionario, poi il vocabolario degli
+    alimenti; se nessuno dei due e' sicuro resta il nome di fattura."""
+    from app.lotti.routers.ingredienti import match_livello2
+
+    chiave = (nome or "").lower().strip()[:200]
+    return confermati.get(chiave) or match_livello2(nome or "") or ""
+
+
+def _applica_override(u: dict, ov: dict, confermati: Optional[dict] = None):
+    """Applica nome e categoria scelti a mano; senza scelta, per le righe di
+    fattura, il nome dell'ingrediente riconosciuto in automatico."""
+    u.setdefault("nome_originale", u.get("nome", ""))
+    if confermati is not None and u.get("source") == "fornitori" and not (ov or {}).get("nome_norm"):
+        auto = _nome_ingrediente_auto(u["nome_originale"], confermati)
+        if auto:
+            u["nome"] = auto
+            u["nome_auto"] = True
+    if ov:
+        if ov.get("nome_norm"):
+            u["nome"] = ov["nome_norm"]
+        if ov.get("categoria"):
+            u["categoria"] = ov["categoria"]
+    return u
+
+def _visibile(u: dict, ov: dict) -> bool:
+    """Il flag manuale ha priorità sul rilevamento automatico alimenti."""
+    if ov and ov.get("visualizza") is not None:
+        return bool(ov["visualizza"])
+    # si decide sulla riga di fattura (il nome ricavato «Würstel» da solo
+    # non basta al classificatore) oppure sul nome scelto
+    cat = u.get("categoria", "")
+    return _e_alimento(u.get("nome_originale") or u["nome"], cat) or _e_alimento(u["nome"], cat)
+
+
+@router.get("/prodotti-unificati")
+async def prodotti_unificati(
+    categoria: Optional[str] = None,
+    source: Optional[str] = None,
+    search: Optional[str] = None,
+    solo_disponibili: bool = False,  # default false: mostra anche stock zero
+    gestione: bool = False,          # True = vista gestione admin: mostra TUTTO (anche non-food) per poterlo flaggare
+    anno: Optional[int] = None,      # giacenze per anno di fatturazione (23/07/2026): solo lotti da fatture di quell'anno
+    anche_esauriti: bool = False,    # per ORDINARE: un prodotto finito va ritrovato, non sparire
+):
+    items = []
+    ov_map = await _overrides_map()
+    confermati = await _nomi_confermati()
+
+    # ── Bar — se vuota esegui seed automatico ────────────────────────────────
+    # Con `anno` impostato il bar si salta: lo stock bar non ha un anno di
+    # fatturazione, la vista per anno riguarda solo i lotti da fattura.
+    if source in (None, "bar") and not anno:
+        bar_count = await db.magazzino_bar_prodotti.count_documents({})
+        if bar_count == 0:
+            from app.lotti.routers.magazzino_bar import seed_magazzino_bar
+
+            await seed_magazzino_bar()
+
+        bar_docs = await db.magazzino_bar_prodotti.find({}, {"_id": 0}).to_list(500)
+        for d in bar_docs:
+            u = _unifica_bar(d)
+            k = _strip_accents(u["nome"])
+            ov = ov_map.get(k)
+            u = _applica_override(u, ov)
+            u["key"] = k
+            if not gestione:
+                if solo_disponibili and u["stock"] <= 0:
+                    continue
+                if not _visibile(u, ov):
+                    continue
+            items.append(u)
+
+    # ── Fornitori (lotti_fornitori) — tutti, non solo stock > 0 ──────────────
+    if source in (None, "fornitori"):
+        q = {} if anche_esauriti else {"esaurito": {"$ne": True}}
+        if anno and anno > 0:
+            # data_fattura in formati misti: ISO (anno in testa) o dd/mm/yyyy
+            y = str(int(anno))
+            q["$or"] = [
+                {"data_fattura": {"$regex": f"^{y}[-/]"}},
+                {"data_fattura": {"$regex": f"[-/]{y}"}},
+            ]
+        # PROIEZIONE (fix timeout 23/07/2026): i doc lotti_fornitori portano
+        # anche storico_utilizzi e campi pesanti — scaricarli TUTTI interi
+        # (fino a 5000) mandava la richiesta oltre i 15s. Qui servono solo
+        # questi campi.
+        _proj = {"_id": 0, "id": 1, "prodotto_nome": 1, "prodotto_nome_norm": 1,
+                 "quantita_disponibile": 1, "unita_misura": 1, "fornitore": 1,
+                 "data_scadenza": 1, "giorni_alla_scadenza": 1, "scaduto": 1,
+                 "lotto_id_fornitore": 1, "allergeni_testo": 1, "data_fattura": 1}
+        lotti = await db.lotti_fornitori.find(q, _proj).to_list(8000)
+        # Raggruppa per prodotto (nome normalizzato): un prodotto = una riga, non un lotto = una riga.
+        gruppi = {}
+        for d in lotti:
+            u = _unifica_lotto(d)
+            k = (d.get("prodotto_nome_norm") or _strip_accents(u["nome"])).strip()
+            ov = ov_map.get(k)
+            u = _applica_override(u, ov, confermati)
+            u["key"] = k
+            if not gestione:
+                if not _visibile(u, ov):   # flag manuale o auto-alimenti
+                    continue
+                if solo_disponibili and u["stock"] <= 0:
+                    continue
+            # Chi preleva vede UNA riga per prodotto: righe di fattura scritte in
+            # modo diverso che arrivano allo stesso nome (es. «Pomodorini»)
+            # e alla stessa unita' si fondono. La vista gestione resta per
+            # chiave, perche' li' si assegna nome e categoria a ogni riga.
+            gk = k if gestione else (_strip_accents(u["nome"]).strip(), u["unita"])
+            g = gruppi.get(gk)
+            dfatt = str(d.get("data_fattura") or "")
+            if g is None:
+                u = dict(u)
+                u["n_lotti"] = 1
+                u["lotti_ids"] = [u["id"]]
+                u["_fifo_data"] = dfatt
+                u["_fifo_id"] = u["id"]
+                u["_fifo_lotto"] = u["lotto_id"]
+                gruppi[gk] = u
+            else:
+                g["lotti_ids"].append(u["id"])
+                g["stock"] = round(g["stock"] + u["stock"], 3)
+                if u.get("colli") is not None:
+                    g["colli"] = round((g.get("colli") or 0) + u["colli"], 3)
+                    g["pezzi_per_collo"] = g.get("pezzi_per_collo") or u.get("pezzi_per_collo")
+                g["n_lotti"] += 1
+                # scadenza: tieni la più vicina
+                gd = g.get("giorni_alla_scadenza")
+                ud = u.get("giorni_alla_scadenza")
+                if ud is not None and (gd is None or ud < gd):
+                    g["giorni_alla_scadenza"] = ud
+                    g["data_scadenza"] = u["data_scadenza"]
+                # FIFO: lotto/id con data_fattura più vecchia (per lo scarico)
+                if dfatt and (not g["_fifo_data"] or dfatt < g["_fifo_data"]):
+                    g["_fifo_data"] = dfatt
+                    g["_fifo_id"] = u["id"]
+                    g["_fifo_lotto"] = u["lotto_id"]
+        soglie = await _carica_soglie()
+        for g in gruppi.values():
+            # lo scarico FIFO consuma il lotto più vecchio
+            g["id"] = g.get("_fifo_id", g["id"])
+            g["lotto_id"] = g.get("_fifo_lotto", g.get("lotto_id", ""))
+            g["key"] = g.get("key") or _strip_accents(g["nome"])
+            # §4/§7: scorta minima per materia prima (fonte unica dizionario_prodotti)
+            g["soglia_minima"] = float(soglie.get(g["key"], 0) or 0)
+            g.pop("_fifo_data", None); g.pop("_fifo_id", None); g.pop("_fifo_lotto", None)
+            items.append(g)
+
+    # ── Filtri ────────────────────────────────────────────────────────────────
+    if search:
+        sa = _strip_accents(search)
+        items = [
+            i for i in items
+            if sa in _strip_accents(i["nome"])
+            or sa in _strip_accents(i.get("nome_originale", ""))
+            or sa in _strip_accents(i["fornitore"])
+            or sa in _strip_accents(i["categoria"])
+        ]
+    if categoria and categoria != "tutti":
+        items = [i for i in items if i["categoria"] == categoria]
+
+    # Ordina: sotto soglia prima (bar e materie prime), poi categoria, poi nome
+    items.sort(
+        key=lambda x: (
+            (0 if (x["soglia_minima"] > 0 and x["stock"] < x["soglia_minima"]) else 1),
+            0 if (x["giorni_alla_scadenza"] is not None and x["giorni_alla_scadenza"] < 14) else 1,
+            x["categoria"],
+            x["nome"],
+        )
+    )
+    return items
+
+
+# ── GET prezzi d'acquisto (solo amministratore) ───────────────────────────────
+@router.get("/prezzi-lotti")
+async def prezzi_lotti(_admin=Depends(require_admin)):
+    """Ultimo prezzo di fattura di ogni lotto in giacenza. I prezzi NON stanno in
+    `prodotti-unificati` (il dipendente non deve saperli): li legge solo il
+    titolare, per ordinare dal tablet Preleva."""
+    from app.lotti.routers.lotti_produzione import _parse_data_fattura
+
+    docs = await db.lotti_fornitori.find(
+        {"esaurito": {"$ne": True}, "prezzo_unitario": {"$gt": 0}},
+        {"_id": 0, "id": 1, "prezzo_unitario": 1, "fornitore": 1, "data_fattura": 1},
+    ).to_list(8000)
+    prezzi = {}
+    for d in docs:
+        data = _parse_data_fattura(d.get("data_fattura"))
+        prezzi[d["id"]] = {
+            "prezzo": round(float(d["prezzo_unitario"]), 4),
+            "fornitore": d.get("fornitore", ""),
+            "data": "" if data.year >= 9999 else data.strftime("%Y-%m-%d"),
+        }
+    return {"prezzi": prezzi}
+
+
+# ── GET categorie ──────────────────────────────────────────────────────────────
+@router.get("/categorie")
+async def categorie_magazzino():
+    bar_cats = await db.magazzino_bar_prodotti.distinct("categoria")
+    forn_cats = list(CATEGORIE_FORNITORI.keys()) + ["Altro"]
+    all_cats = sorted(set(bar_cats + forn_cats))
+    return {"categorie": all_cats}
+
+
+# ── GET movimenti oggi ─────────────────────────────────────────────────────────
+@router.get("/movimenti-oggi")
+async def movimenti_oggi():
+    oggi = date.today().isoformat()
+    # Movimenti bar
+    bar_movs = (
+        await db.magazzino_bar_movimenti.find({"data": {"$regex": f"^{oggi}"}}, {"_id": 0})
+        .sort("data", -1)
+        .to_list(300)
+    )
+    # Movimenti fornitori
+    forn_movs = (
+        await db.magazzino_movimenti_fornitori.find({"data": {"$regex": f"^{oggi}"}}, {"_id": 0})
+        .sort("data", -1)
+        .to_list(300)
+    )
+
+    tutti = [{"source_tipo": "bar", **m} for m in bar_movs] + [
+        {"source_tipo": "fornitori", **m} for m in forn_movs
+    ]
+    tutti.sort(key=lambda x: x.get("data", ""), reverse=True)
+    return tutti
+
+
+# ── Modelli ────────────────────────────────────────────────────────────────────
+def _norm_txt(s):
+    s = _ud.normalize("NFD", str(s or "")).encode("ascii", "ignore").decode().lower()
+    return _re.sub(r"[^a-z0-9]+", " ", s).strip()
+
+
+@router.get("/movimenti")
+async def movimenti_storico(
+    q: Optional[str] = None,
+    operatore: Optional[str] = None,
+    tipo: Optional[str] = None,
+    dal: Optional[str] = None,
+    al: Optional[str] = None,
+    limit: int = 400,
+):
+    """Storico movimenti del magazzino unificato (bar + materie prime) per il
+    controllo: chi ha preso cosa e quando. Filtri: nome prodotto (q),
+    operatore, tipo (carico/scarico), periodo (dal/al in formato YYYY-MM-DD)."""
+    base = {}
+    if tipo in ("carico", "scarico"):
+        base["tipo"] = tipo
+    if dal or al:
+        rng = {}
+        if dal:
+            rng["$gte"] = f"{dal}T00:00:00"
+        if al:
+            rng["$lte"] = f"{al}T23:59:59.999999"
+        base["data"] = rng
+    bar = await db.magazzino_bar_movimenti.find(base, {"_id": 0}).sort("data", -1).to_list(3000)
+    forn = await db.magazzino_movimenti_fornitori.find(base, {"_id": 0}).sort("data", -1).to_list(3000)
+    for m in bar:
+        m["fonte"] = "bar"
+    for m in forn:
+        m["fonte"] = "fornitori"
+    tutti = bar + forn
+
+    nq = _norm_txt(q) if q else ""
+    no = _norm_txt(operatore) if operatore else ""
+
+    def _keep(m):
+        if nq and nq not in _norm_txt(m.get("prodotto_nome", "")):
+            return False
+        if no and no not in _norm_txt(m.get("operatore_nome", "")):
+            return False
+        return True
+
+    movs = [m for m in tutti if _keep(m)]
+    movs.sort(key=lambda m: m.get("data", ""), reverse=True)
+
+    operatori = sorted({m.get("operatore_nome", "") for m in tutti if m.get("operatore_nome")})
+    n_scarico = sum(1 for m in movs if m.get("tipo") == "scarico")
+    n_carico = sum(1 for m in movs if m.get("tipo") == "carico")
+    return {
+        "movimenti": movs[:limit],
+        "totale": len(movs),
+        "n_scarico": n_scarico,
+        "n_carico": n_carico,
+        "operatori": operatori,
+    }
+
+
+class ScaricoPayload(BaseModel):
+    prodotto_id: str
+    source: str  # "bar" | "fornitori"
+    quantita: float
+    operatore_nome: str
+    nota: Optional[str] = ""
+    # lotti fusi in una riga della lista: lo scarico li consuma in FIFO
+    lotti_ids: Optional[list[str]] = None
+
+
+# ── POST scarico unificato ─────────────────────────────────────────────────────
+@router.post("/scarico")
+async def scarico_unificato(payload: ScaricoPayload):
+    now = datetime.now(timezone.utc).isoformat()
+
+    if payload.source == "bar":
+        # UNICA logica di scarico bar: delega a magazzino_bar.scarico
+        from app.lotti.routers.magazzino_bar import scarico as scarico_bar, MovimentoScarico
+        return await scarico_bar(MovimentoScarico(
+            prodotto_id=payload.prodotto_id,
+            quantita=payload.quantita,
+            unita_movimento="pezzo",
+            operatore_nome=payload.operatore_nome,
+            nota=payload.nota or "",
+        ))
+
+    elif payload.source == "fornitori":
+        lotto = await db.lotti_fornitori.find_one({"id": payload.prodotto_id}, {"_id": 0})
+        if not lotto:
+            raise HTTPException(404, "Lotto fornitore non trovato")
+
+        # Conversione SIMMETRICA cartoni→pezzi (23/07/2026): la lista mostra i
+        # PEZZI (cartoni × pezzi/cartone dal nome), quindi l'operatore scarica
+        # in pezzi — ma nel DB i lotti restano in cartoni. Qui si riconverte.
+        def _fatt_di(c: dict) -> float:
+            """Pezzi per collo del SINGOLO lotto (dal nome riga fattura)."""
+            f = _fattore_collo(c)
+            return f if f > 0 else 1
+
+        _fatt = _fatt_di(lotto)
+        _unita_mov = "PZ" if _fatt > 1 else normalizza_unita_display(lotto.get("unita_misura"), "KG")
+
+        # §4 FIFO a cascata: la lista raggruppa i lotti per prodotto_nome_norm e
+        # mostra lo stock TOTALE. Lo scarico deve poter consumare oltre il singolo
+        # lotto più vecchio, scalando in ordine di data_fattura (più vecchia prima)
+        # tutti i lotti dello stesso prodotto, a prescindere dal fornitore.
+        from app.lotti.routers.lotti_produzione import _parse_data_fattura
+
+        nome_norm = (lotto.get("prodotto_nome_norm") or "").strip()
+        ids_gruppo = [i for i in (payload.lotti_ids or []) if i]
+        if ids_gruppo and payload.prodotto_id in ids_gruppo:
+            candidati = await db.lotti_fornitori.find(
+                {
+                    "id": {"$in": ids_gruppo},
+                    "esaurito": {"$ne": True},
+                    "quantita_disponibile": {"$gt": 0},
+                },
+                {"_id": 0},
+            ).to_list(1000)
+        elif nome_norm:
+            candidati = await db.lotti_fornitori.find(
+                {
+                    "prodotto_nome_norm": nome_norm,
+                    "esaurito": {"$ne": True},
+                    "quantita_disponibile": {"$gt": 0},
+                },
+                {"_id": 0},
+            ).to_list(1000)
+        else:
+            candidati = [lotto]
+        if not candidati:
+            candidati = [lotto]
+
+        # FIX 25/07/2026 (audit quantità/unità §2): la cascata usava il fattore
+        # collo del SOLO lotto cliccato anche sui fratelli. Con lotti dello
+        # stesso prodotto a confezionamento diverso (X24 e X12) si scaricava la
+        # quantità sbagliata dai fratelli. Ora ogni lotto usa il PROPRIO fattore
+        # e i lotti non confrontabili (es. sfuso a kg quando la lista mostra
+        # pezzi) restano fuori dalla cascata invece di essere mal convertiti.
+        if _fatt > 1:
+            candidati = [c for c in candidati if _fatt_di(c) > 1]
+        else:
+            candidati = [
+                c for c in candidati
+                if _fatt_di(c) == 1
+                and normalizza_unita_display(c.get("unita_misura"), "KG") == _unita_mov
+            ]
+        if not candidati:
+            candidati = [lotto]
+
+        # Si ragiona SEMPRE nell'unità mostrata all'operatore (pezzi, oppure
+        # kg/lt per lo sfuso): ogni lotto ci arriva con il suo fattore.
+        disponibile_totale = sum(
+            float(c.get("quantita_disponibile") or 0) * _fatt_di(c) for c in candidati
+        )
+        if payload.quantita > disponibile_totale + 0.001:
+            raise HTTPException(
+                400,
+                f"Quantità disponibile: {round(disponibile_totale, 3)} {_unita_mov}",
+            )
+
+        candidati.sort(
+            key=lambda c: (_parse_data_fattura(c.get("data_fattura")), c.get("data_scadenza") or "9999")
+        )
+
+        rimasta = payload.quantita
+        consumati = []
+        for c in candidati:
+            if rimasta <= 0.0001:
+                break
+            fatt_c = _fatt_di(c)
+            disp = float(c.get("quantita_disponibile") or 0) * fatt_c
+            da_consumare = min(disp, rimasta)
+            nuovo = round((disp - da_consumare) / fatt_c, 4)
+            esaurito = nuovo <= 0.0001
+            await db.lotti_fornitori.update_one(
+                {"id": c["id"]},
+                {"$set": {"quantita_disponibile": nuovo, "esaurito": esaurito, "updated_at": now}},
+            )
+            rimasta = round(rimasta - da_consumare, 4)
+            m = {
+                "id": str(uuid.uuid4()),
+                "prodotto_id": c.get("id", ""),
+                "prodotto_nome": c.get("prodotto_nome", ""),
+                "prodotto_nome_norm": nome_norm,
+                # il movimento si registra in PEZZI quando la lista mostra pezzi
+                "unita": _unita_mov,
+                "tipo": "scarico",
+                # da_consumare è GIÀ nell'unità mostrata (pezzi o kg): niente
+                # secondo passaggio col fattore del lotto cliccato.
+                "quantita": round(da_consumare, 3),
+                "operatore_nome": payload.operatore_nome,
+                "nota": payload.nota or "",
+                "fornitore": c.get("fornitore", ""),
+                "lotto_id": c.get("lotto_id_fornitore", ""),
+                "metodo": "fifo",
+                "data": now,
+            }
+            await db.magazzino_movimenti_fornitori.insert_one({**m})
+            m.pop("_id", None)
+            consumati.append(m)
+
+        stock_residuo = round(disponibile_totale - payload.quantita, 3)
+        return {
+            "ok": True,
+            "stock_nuovo": stock_residuo,
+            "esaurito": stock_residuo <= 0.001,
+            "lotti_consumati": consumati,
+            "movimento": consumati[0] if consumati else None,
+        }
+
+    raise HTTPException(400, "source deve essere 'bar' o 'fornitori'")
+
+
+# ── GESTIONE PRODOTTI (sezione centralizzata admin) ─────────────────────────────
+_GESTIONE_CACHE = {"dati": None, "scade": 0.0}
+
+
+@router.get("/gestione-prodotti")
+async def gestione_prodotti(search: Optional[str] = None):
+    import time as _time
+    if not search and _GESTIONE_CACHE["dati"] is not None and _time.monotonic() < _GESTIONE_CACHE["scade"]:
+        return _GESTIONE_CACHE["dati"]
+    """Lista COMPLETA dei prodotti (bar + fornitori), anche non alimentari, per la sezione
+    di gestione: ogni riga mostra nome originale, nome normalizzato (override), categoria,
+    e se è visibile in magazzino. Raggruppata per prodotto."""
+    base = await prodotti_unificati(gestione=True)
+    ov_map = await _overrides_map()
+    out = []
+    visti = set()
+    for u in base:
+        k = u.get("key") or _strip_accents(u["nome"])
+        if k in visti:
+            continue
+        visti.add(k)
+        ov = ov_map.get(k, {})
+        auto_food = _visibile(u, None)
+        out.append({
+            "key": k,
+            "nome_originale": ov.get("nome_originale") or u.get("nome_originale") or u["nome"],
+            "nome_norm": ov.get("nome_norm") or "",
+            # riconosciuto dal sistema: si usa gia' senza premere Salva
+            "nome_norm_auto": u["nome"] if u.get("nome_auto") else "",
+            "nome_visualizzato": ov.get("nome_norm") or u["nome"],
+            "categoria": u.get("categoria", "Altro"),
+            "categoria_auto": _categoria_da_nome(u["nome"]) if u.get("source") == "fornitori" else u.get("categoria", "Altro"),
+            "source": u.get("source", ""),
+            "fornitore": u.get("fornitore", ""),
+            "stock": u.get("stock", 0),
+            "unita": normalizza_unita_display(u.get("unita")),
+            "visualizza": (ov.get("visualizza") if ov.get("visualizza") is not None else auto_food),
+            "override_manuale": bool(ov),
+        })
+    if search:
+        sa = _strip_accents(search)
+        out = [o for o in out if sa in _strip_accents(o["nome_originale"]) or sa in _strip_accents(o["nome_visualizzato"]) or sa in _strip_accents(o["fornitore"]) or sa in _strip_accents(o["categoria"])]
+    out.sort(key=lambda o: (0 if o["visualizza"] else 1, o["categoria"], o["nome_visualizzato"].lower()))
+    risultato = {"prodotti": out, "totale": len(out), "categorie": CATEGORIE_SELEZIONABILI}
+    if not search:
+        _GESTIONE_CACHE["dati"] = risultato
+        _GESTIONE_CACHE["scade"] = _time.monotonic() + 120
+    return risultato
+
+
+class OverridePayload(BaseModel):
+    key: str
+    nome_originale: Optional[str] = None
+    visualizza: Optional[bool] = None
+    categoria: Optional[str] = None
+    nome_norm: Optional[str] = None
+
+
+@router.post("/override-prodotto")
+async def salva_override(payload: OverridePayload, _admin=Depends(require_admin)):
+    """Salva (upsert) il flag visualizza/categoria/nome normalizzato per un prodotto del magazzino."""
+    key = (payload.key or "").strip()
+    if not key:
+        raise HTTPException(400, "key mancante")
+    campi = {"key": key, "updated_at": datetime.now(timezone.utc).isoformat()}
+    if payload.nome_originale is not None:
+        campi["nome_originale"] = payload.nome_originale
+    if payload.visualizza is not None:
+        campi["visualizza"] = bool(payload.visualizza)
+    if payload.categoria is not None:
+        campi["categoria"] = payload.categoria or None
+    if payload.nome_norm is not None:
+        campi["nome_norm"] = payload.nome_norm.strip() or None
+    await db.magazzino_overrides.update_one({"key": key}, {"$set": campi}, upsert=True)
+    _GESTIONE_CACHE["dati"] = None  # senza, ricaricando si rivedeva il dato di prima
+    doc = await db.magazzino_overrides.find_one({"key": key}, {"_id": 0})
+    return {"ok": True, "override": doc}
+
+
+class ResetPayload(BaseModel):
+    key: str
+
+
+@router.post("/reset-override")
+async def reset_override(payload: ResetPayload, _admin=Depends(require_admin)):
+    """Rimuove l'override (robusto anche con key che contengono / o caratteri speciali)."""
+    r = await db.magazzino_overrides.delete_one({"key": payload.key})
+    _GESTIONE_CACHE["dati"] = None
+    return {"ok": True, "rimossi": r.deleted_count}
+
+
+@router.get("/lista-override")
+async def lista_override():
+    docs = await db.magazzino_overrides.find({}, {"_id": 0}).to_list(5000)
+    return {"override": docs, "totale": len(docs)}
+
+
+@router.delete("/override-prodotto/{key}")
+async def azzera_override(key: str, _admin=Depends(require_admin)):
+    """Rimuove l'override: il prodotto torna alla classificazione automatica."""
+    r = await db.magazzino_overrides.delete_one({"key": key})
+    _GESTIONE_CACHE["dati"] = None
+    return {"ok": True, "rimossi": r.deleted_count}
+
+
+# ── Soglie di scorta materie prime (§4/§7) ─────────────────────────────────────
+# Fonte unica: dizionario_prodotti.scorta_minima (condivisa con i riordini §7).
+class SogliaPayload(BaseModel):
+    prodotto_nome_norm: str
+    soglia_minima: float
+    # None = non toccare quella gia' impostata; 0 = toglila.
+    soglia_critica: Optional[float] = None
+
+
+@router.get("/soglie")
+async def get_soglie():
+    """Elenco delle scorte minime impostate (da dizionario_prodotti)."""
+    docs = await db.dizionario_prodotti.find(
+        {"$or": [{"scorta_minima": {"$gt": 0}}, {"scorta_critica": {"$gt": 0}}]},
+        {"_id": 0, "nome_normalizzato": 1, "nome_canonico": 1,
+         "scorta_minima": 1, "scorta_critica": 1},
+    ).sort("nome_normalizzato", 1).to_list(5000)
+    return [
+        {
+            "prodotto_nome_norm": d.get("nome_normalizzato", ""),
+            "nome": d.get("nome_canonico") or d.get("nome_normalizzato", ""),
+            "soglia_minima": float(d.get("scorta_minima") or 0),
+            "soglia_critica": float(d.get("scorta_critica") or 0),
+        }
+        for d in docs
+    ]
+
+
+@router.put("/soglia")
+async def set_soglia(payload: SogliaPayload, _admin=Depends(require_admin)):
+    """Imposta (o azzera con <=0) la scorta minima di una materia prima per nome
+    normalizzato, su dizionario_prodotti.scorta_minima (fonte unica §4/§7)."""
+    nome_norm = (payload.prodotto_nome_norm or "").strip()
+    if not nome_norm:
+        raise HTTPException(400, "prodotto_nome_norm obbligatorio")
+    valore = max(0.0, float(payload.soglia_minima))
+    da_scrivere = {
+        "scorta_minima": valore,
+        "scorta_minima_updated_at": datetime.now(timezone.utc).isoformat(),
+    }
+    critica = payload.soglia_critica
+    if critica is not None:
+        critica = max(0.0, float(critica))
+        if critica > valore > 0:
+            raise HTTPException(
+                400,
+                "La soglia dell'«ordinare immediatamente» non puo' stare sopra la "
+                f"scorta minima ({critica:g} > {valore:g}): scattarebbe per prima "
+                "e la scorta minima non direbbe piu' niente.",
+            )
+        da_scrivere["scorta_critica"] = critica
+        da_scrivere["scorta_critica_updated_at"] = datetime.now(timezone.utc).isoformat()
+    await db.dizionario_prodotti.update_one(
+        {"nome_normalizzato": nome_norm}, {"$set": da_scrivere}, upsert=True,
+    )
+    return {"ok": True, "prodotto_nome_norm": nome_norm, "soglia_minima": valore,
+            "soglia_critica": da_scrivere.get("scorta_critica")}
+
+
+@router.get("/avvisi-scorte")
+async def avvisi_scorte(solo_critici: bool = False):
+    return await calcola_avvisi_scorte(solo_critici=solo_critici)
+
+
+async def calcola_avvisi_scorte(solo_critici: bool = False, prodotti: list = None) -> dict:
+    """Cosa sta finendo, con quanto ne resta davvero.
+
+    Legge la stessa giacenza che si vede a schermo (`prodotti_unificati`, che
+    somma i lotti di tutti i fornitori), quindi non puo' dire un numero
+    diverso da quello del magazzino. Un prodotto senza soglia impostata non
+    compare: non e' un avviso mancato, e' una soglia che nessuno ha scelto.
+    """
+    if prodotti is None:
+        prodotti = await prodotti_unificati(gestione=False, solo_disponibili=False)
+    critiche = await _carica_soglie_critiche()
+
+    avvisi = []
+    for prod in prodotti:
+        avviso = stato_scorta(
+            prod.get("nome", ""),
+            float(prod.get("stock") or 0),
+            prod.get("unita_misura") or prod.get("unita") or "",
+            float(prod.get("soglia_minima") or 0),
+            float(critiche.get(prod.get("key", ""), 0) or 0),
+        )
+        if not avviso:
+            continue
+        if solo_critici and avviso["livello"] == LIVELLO_SCORTA:
+            continue
+        avviso.update({
+            "prodotto": prod.get("nome", ""),
+            "prodotto_nome_norm": prod.get("key", ""),
+            "giacenza": float(prod.get("stock") or 0),
+            "unita_misura": prod.get("unita_misura") or prod.get("unita") or "",
+            "categoria": prod.get("categoria", ""),
+        })
+        avvisi.append(avviso)
+
+    ordine = {LIVELLO_ESAURITO: 0, LIVELLO_CRITICO: 1, LIVELLO_SCORTA: 2}
+    avvisi.sort(key=lambda a: (ordine[a["livello"]], a["prodotto"]))
+    return {
+        "totale": len(avvisi),
+        "da_ordinare_subito": sum(1 for a in avvisi if a["livello"] != LIVELLO_SCORTA),
+        "avvisi": avvisi,
+    }
+

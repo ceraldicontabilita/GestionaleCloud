@@ -1,0 +1,47 @@
+import { useEffect, useState, useCallback } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
+import axios from 'axios';
+
+import { MENU_BACKEND_URL as BACKEND_URL } from '@/lib/backend';
+
+/**
+ * Verifica il token admin salvato in localStorage e reindirizza al login se assente/scaduto.
+ * Restituisce { token, checking, authorized, authHeader }.
+ */
+export function useAdminAuth() {
+  const [checking, setChecking] = useState(true);
+  const [authorized, setAuthorized] = useState(false);
+  const [token, setToken] = useState(null);
+  const navigate = useNavigate();
+  const { pathname } = useLocation();
+
+  const checkAuth = useCallback(async () => {
+    const saved = localStorage.getItem('admin_token');
+    if (!saved) {
+      navigate('/admin/login', { state: { da: pathname } });
+      return;
+    }
+    try {
+      await axios.get(`${BACKEND_URL}/api/qrcode/verify`, {
+        headers: { Authorization: `Bearer ${saved}` }
+      });
+      setToken(saved);
+      setAuthorized(true);
+    } catch (error) {
+      localStorage.removeItem('admin_token');
+      navigate('/admin/login', { state: { da: pathname } });
+    } finally {
+      setChecking(false);
+    }
+  }, [navigate, pathname]);
+
+  useEffect(() => {
+    checkAuth();
+  }, []);
+
+  const authHeader = token ? { Authorization: `Bearer ${token}` } : {};
+
+  return { token, checking, authorized, authHeader };
+}
+
+export default useAdminAuth;

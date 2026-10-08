@@ -1,0 +1,392 @@
+import React, { useState, useEffect } from 'react';
+import api from '../api';
+import { COLORS } from '../lib/utils';
+import { PageLayout, PageSection, PageLoading } from '../components/PageLayout';
+import { Calendar, Plus, RefreshCw, X, Handshake, AlarmClock, Bell, CircleCheck, Pin, Tag, MessageSquare, Inbox, Save, Sparkles, ListChecks } from 'lucide-react';
+
+/** Il dato piu' recente si mostra per primo (regola del gestionale). */
+export function ordinaEventiRecentiPrima(eventi) {
+  const quando = ev => {
+    const t = Date.parse(ev?.scheduled_date || '');
+    return Number.isNaN(t) ? -Infinity : t;
+  };
+  return [...(eventi || [])].sort((a, b) => quando(b) - quando(a));
+}
+
+export default function Pianificazione() {
+  const [events, setEvents] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [showForm, setShowForm] = useState(false);
+  const [err, setErr] = useState('');
+  const [visibili, setVisibili] = useState(200);
+  // Un errore di caricamento non e' un'agenda vuota.
+  const [loadErr, setLoadErr] = useState('');
+  const [newEvent, setNewEvent] = useState({
+    title: '',
+    date: new Date().toISOString().split('T')[0],
+    time: '09:00',
+    type: 'meeting',
+    notes: '',
+  });
+
+  useEffect(() => {
+    loadEvents();
+  }, []);
+
+  async function loadEvents() {
+    try {
+      setLoading(true);
+      setLoadErr('');
+      const r = await api.get('/api/pianificazione/events');
+      setEvents(ordinaEventiRecentiPrima(Array.isArray(r.data) ? r.data : r.data?.items || []));
+    } catch (e) {
+      console.error('Error loading events:', e);
+      setEvents([]);
+      setLoadErr(e.response?.data?.detail || e.message || 'errore sconosciuto');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleCreateEvent(e) {
+    e.preventDefault();
+    setErr('');
+    try {
+      await api.post('/api/pianificazione/events', {
+        title: newEvent.title,
+        scheduled_date: `${newEvent.date}T${newEvent.time}:00`,
+        event_type: newEvent.type,
+        notes: newEvent.notes,
+        status: 'scheduled',
+      });
+      setShowForm(false);
+      setNewEvent({
+        title: '',
+        date: new Date().toISOString().split('T')[0],
+        time: '09:00',
+        type: 'meeting',
+        notes: '',
+      });
+      loadEvents();
+    } catch (e) {
+      setErr('Errore: ' + (e.response?.data?.detail || e.message));
+    }
+  }
+
+  function getEventColor(type) {
+    const colors = {
+      meeting: '#f7ebe4',
+      deadline: '#fef2f2',
+      reminder: '#f7eeda',
+      task: '#e2f0e7',
+    };
+    return colors[type] || '#f2f0e9';
+  }
+
+  function getEventIcon(type) {
+    const icons = { meeting: Handshake, deadline: AlarmClock, reminder: Bell, task: CircleCheck };
+    const Icona = icons[type] || Pin;
+    return <Icona size={15} aria-hidden style={{ verticalAlign: '-2px' }} />;
+  }
+
+  const inputStyle = {
+    padding: '10px 14px',
+    borderRadius: 8,
+    border: '1px solid #e6e3d9',
+    fontSize: 14,
+    minWidth: 150,
+  };
+
+  const selectStyle = {
+    padding: '10px 14px',
+    borderRadius: 8,
+    border: '1px solid #e6e3d9',
+    fontSize: 14,
+    background: 'white',
+    cursor: 'pointer',
+    minWidth: 130,
+  };
+
+  return (
+    <PageLayout
+      title="Pianificazione"
+      icon={<Calendar size={28} />}
+      subtitle="Gestisci eventi, scadenze, riunioni e promemoria"
+      actions={
+        <div style={{ display: 'flex', gap: 10 }}>
+          <button
+            onClick={() => setShowForm(!showForm)}
+            data-testid="btn-nuovo-evento"
+            style={{
+              padding: '10px 16px',
+              background: '#a94f30',
+              color: 'white',
+              border: 'none',
+              borderRadius: 8,
+              cursor: 'pointer',
+              fontWeight: 600,
+              fontSize: 14,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+            }}
+          >
+            <Plus size={16} /> Nuovo Evento
+          </button>
+          <button
+            onClick={loadEvents}
+            style={{
+              padding: '10px 16px',
+              background: '#f2f0e9',
+              color: '#5f5c55',
+              border: '1px solid #e6e3d9',
+              borderRadius: 8,
+              cursor: 'pointer',
+              fontWeight: 500,
+              fontSize: 14,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+            }}
+          >
+            <RefreshCw size={16} /> Aggiorna
+          </button>
+        </div>
+      }
+    >
+      {err && (
+        <div
+          style={{
+            color: '#dc2626',
+            fontSize: 13,
+            padding: 12,
+            background: '#fef2f2',
+            borderRadius: 8,
+            marginBottom: 16,
+            border: '1px solid #fecaca',
+          }}
+        >
+          {err}
+        </div>
+      )}
+
+      {/* Form Nuovo Evento */}
+      {showForm && (
+        <PageSection title="Nuovo Evento" icon={<Sparkles size={16} aria-hidden />} style={{ marginBottom: 20 }}>
+          <button
+            onClick={() => setShowForm(false)}
+            style={{
+              position: 'absolute',
+              top: 16,
+              right: 16,
+              background: 'none',
+              border: 'none',
+              cursor: 'pointer',
+              padding: 4,
+            }}
+          >
+            <X size={20} color="#7a776e" />
+          </button>
+
+          <form onSubmit={handleCreateEvent}>
+            <div
+              style={{
+                display: 'flex',
+                gap: 12,
+                alignItems: 'center',
+                flexWrap: 'wrap',
+                marginBottom: 16,
+              }}
+            >
+              <input
+                style={{ ...inputStyle, flex: 1, minWidth: 200 }}
+                placeholder="Titolo evento"
+                value={newEvent.title}
+                onChange={e => setNewEvent({ ...newEvent, title: e.target.value })}
+                required
+                data-testid="input-titolo"
+              />
+              <input
+                style={inputStyle}
+                type="date"
+                value={newEvent.date}
+                onChange={e => setNewEvent({ ...newEvent, date: e.target.value })}
+                required
+              />
+              <input
+                style={{ ...inputStyle, width: 100 }}
+                type="time"
+                value={newEvent.time}
+                onChange={e => setNewEvent({ ...newEvent, time: e.target.value })}
+              />
+              <select
+                style={selectStyle}
+                value={newEvent.type}
+                onChange={e => setNewEvent({ ...newEvent, type: e.target.value })}
+              >
+                <option value="meeting">Riunione</option>
+                <option value="deadline">Scadenza</option>
+                <option value="reminder">Promemoria</option>
+                <option value="task">Attività</option>
+              </select>
+            </div>
+            <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+              <input
+                style={{ ...inputStyle, flex: 1 }}
+                placeholder="Note (opzionale)"
+                value={newEvent.notes}
+                onChange={e => setNewEvent({ ...newEvent, notes: e.target.value })}
+              />
+              <button
+                type="submit"
+                data-testid="btn-salva"
+                style={{
+                  padding: '10px 20px',
+                  background: '#16a34a',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: 8,
+                  cursor: 'pointer',
+                  fontWeight: 600,
+                  fontSize: 14,
+                }}
+              >
+                <Save size={14} aria-hidden style={{ verticalAlign: '-2px' }} /> Salva
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowForm(false)}
+                style={{
+                  padding: '10px 20px',
+                  background: '#f2f0e9',
+                  color: '#5f5c55',
+                  border: '1px solid #e6e3d9',
+                  borderRadius: 8,
+                  cursor: 'pointer',
+                  fontWeight: 500,
+                  fontSize: 14,
+                }}
+              >
+                Annulla
+              </button>
+            </div>
+          </form>
+        </PageSection>
+      )}
+
+      {/* Lista Eventi */}
+      <PageSection
+        title={loadErr ? 'Eventi Pianificati' : `Eventi Pianificati (${events.length})`}
+        icon={<ListChecks size={16} aria-hidden />}
+      >
+        {loading ? (
+          <PageLoading message="Caricamento eventi..." />
+        ) : loadErr ? (
+          <div
+            role="alert"
+            data-testid="pianificazione-errore"
+            style={{
+              padding: '16px 20px',
+              background: COLORS.dangerLight,
+              border: `1px solid ${COLORS.danger}`,
+              borderRadius: 10,
+              color: COLORS.danger,
+              fontSize: 14,
+            }}
+          >
+            Eventi non disponibili: {loadErr}. Non è un'agenda vuota.{' '}
+            <button
+              onClick={loadEvents}
+              style={{
+                marginLeft: 8,
+                padding: '8px 14px',
+                minHeight: 44,
+                borderRadius: 8,
+                border: '1px solid #e6e3d9',
+                background: 'white',
+                cursor: 'pointer',
+                fontWeight: 600,
+              }}
+            >
+              Riprova
+            </button>
+          </div>
+        ) : events.length === 0 ? (
+          <div style={{ padding: '40px 20px', textAlign: 'center' }}>
+            <div style={{ marginBottom: 12 }}><Inbox size={48} aria-hidden color={COLORS.textMuted} /></div>
+            <div style={{ fontSize: 16, fontWeight: 600, color: '#2c2b28', marginBottom: 8 }}>
+              Nessun evento in agenda
+            </div>
+            <div style={{ fontSize: 13, color: '#7a776e', maxWidth: 520, margin: '0 auto', lineHeight: 1.5 }}>
+              Qui puoi annotare riunioni, scadenze fiscali, promemoria e attività da fare.
+              Non è un calendario condiviso né sincronizzato con Google Calendar:
+              è uno spazio personale per tenere in un posto solo le date che riguardano l'azienda
+              (es. scadenza IVA, rinnovo contratti, appuntamenti col commercialista).
+              <br /><br />
+              Clicca <strong>Nuovo Evento</strong> per aggiungere il primo.
+            </div>
+          </div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            {events.slice(0, visibili).map((ev, i) => (
+              <div
+                key={ev.id || i}
+                style={{
+                  background: getEventColor(ev.event_type),
+                  padding: 16,
+                  borderRadius: 10,
+                  border: '1px solid rgba(0,0,0,0.05)',
+                }}
+              >
+                <div style={{ fontWeight: 600, fontSize: 15, color: '#2c2b28', marginBottom: 8 }}>
+                  {getEventIcon(ev.event_type)} {ev.title}
+                </div>
+                <div
+                  style={{
+                    fontSize: 13,
+                    color: '#7a776e',
+                    display: 'flex',
+                    gap: 12,
+                    flexWrap: 'wrap',
+                    alignItems: 'center',
+                  }}
+                >
+                  <span><Calendar size={13} aria-hidden style={{ verticalAlign: '-2px' }} /> {new Date(ev.scheduled_date).toLocaleString('it-IT')}</span>
+                  <span><Tag size={13} aria-hidden style={{ verticalAlign: '-2px' }} /> {ev.event_type}</span>
+                  <span
+                    style={{
+                      padding: '2px 10px',
+                      borderRadius: 6,
+                      background: ev.status === 'completed' ? '#e2f0e7' : '#eef3ef',
+                      color: ev.status === 'completed' ? '#166534' : '#a94f30',
+                      fontWeight: 600,
+                      fontSize: 12,
+                    }}
+                  >
+                    {ev.status}
+                  </span>
+                </div>
+                {ev.notes && (
+                  <div
+                    style={{ fontSize: 13, color: '#7a776e', marginTop: 10, fontStyle: 'italic' }}
+                  >
+                    <MessageSquare size={13} aria-hidden style={{ verticalAlign: '-2px' }} /> {ev.notes}
+                  </div>
+                )}
+              </div>
+            ))}
+            {events.length > visibili && (
+              <button
+                type="button"
+                onClick={() => setVisibili(v => v + 200)}
+                style={{ minHeight: 44, padding: '10px 16px', background: COLORS.bgAlt, border: `1px solid ${COLORS.border}`, borderRadius: 8, cursor: 'pointer', fontWeight: 600 }}
+              >
+                Mostra altre ({events.length - visibili})
+              </button>
+            )}
+          </div>
+        )}
+      </PageSection>
+    </PageLayout>
+  );
+}

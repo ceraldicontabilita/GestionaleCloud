@@ -1,0 +1,547 @@
+"""
+Operazioni Module - Riconciliazione Smart (banca veloce, analisi, associazioni).
+"""
+import asyncio
+
+from fastapi import HTTPException
+from typing import Dict, Any, Optional
+from datetime import datetime, timezone
+
+from app.database import Database
+from app.services.riconciliazione_smart import FILTRO_NON_IGNORATO
+from .common import RiconciliaManuale, ConfermaBatchRequest, logger, QUERY_FATTURA_NON_PAGATA, set_fattura_pagata
+
+# Le operazioni della carta Nexi (tipo="carta_credito") vivono nella STESSA
+# collezione estratto_conto_movimenti (stesso schema del download automatico
+# via email) ma non sono movimenti bancari da riconciliare uno per uno: la
+# banca vede solo l'addebito mensile, le singole spese carta si riconciliano
+# con lo statement Nexi (app/services/nexi_carta.py), non con una fattura.
+# Senza questa esclusione le operazioni carta inquinavano la coda "da
+# riconciliare" del tab Banca (bug 18/07/2026, segnalato dall'utente subito
+# dopo il primo import di uno statement Nexi reale).
+ESCLUDI_CARTA_CREDITO = {"tipo": {"$ne": "carta_credito"}}
+
+
+async def banca_veloce(
+    limit: int = 50,
+    solo_non_riconciliati: bool = True,
+    anno: Optional[int] = None
+) -> Dict[str, Any]:
+    """Endpoint veloce per tab Banca - movimenti + assegni + fatture da pagare."""
+    db = Database.get_db()
+
+    query = {**ESCLUDI_CARTA_CREDITO}
+    if solo_non_riconciliati:
+        query["riconciliato"] = {"$ne": True}
+        # «Ignora» toglie il movimento dalla coda: non deve ricomparire.
+        query.update(FILTRO_NON_IGNORATO)
+    if anno:
+        query["data"] = {"$regex": f"^{anno}"}
+
+    assegni_query = {"stato": {"$nin": ["incassato", "annullato", "stornato"]}, "confermato": {"$ne": True}}
+    if anno:
+        assegni_query["data_emissione"] = {"$regex": f"^{anno}"}
+    fatture_query = {**QUERY_FATTURA_NON_PAGATA, "metodo_pagamento": {"$nin": [None, "", "contanti"]}}
+    if anno:
+        fatture_query["invoice_date"] = {"$regex": f"^{anno}"}
+    conta_movimenti_query = {**ESCLUDI_CARTA_CREDITO, **({"data": {"$regex": f"^{anno}"}} if anno else {})}
+    # Le cinque letture sono indipendenti e riguardano collezioni diverse.
+    # In sequenza la pagina pagava anche le attese dei job che scrivevano su
+    # ciascuna collezione; in parallelo il tempo e' quello della lettura piu'
+    # lenta, senza cambiare filtri o risultati.
+    movimenti, assegni, fatture_da_pagare, tot_non_ric, tot_ric = await asyncio.gather(
+        db.estratto_conto_movimenti.find(
+            query, {"_id": 0},
+        ).sort("data", -1).limit(limit).to_list(limit),
+        db.assegni.find(
+            assegni_query, {"_id": 0},
+        ).sort("data_emissione", -1).limit(50).to_list(50),
+        db.invoices.find(
+            fatture_query,
+            {"_id": 0, "id": 1, "invoice_number": 1, "invoice_date": 1,
+             "supplier_name": 1, "total_amount": 1},
+        ).sort("invoice_date", -1).limit(50).to_list(50),
+        db.estratto_conto_movimenti.count_documents({
+            **conta_movimenti_query, **FILTRO_NON_IGNORATO,
+            "riconciliato": {"$ne": True},
+        }),
+        db.estratto_conto_movimenti.count_documents({
+            **conta_movimenti_query, "riconciliato": True,
+        }),
+    )
+    
+    return {
+        "movimenti": movimenti,
+        "assegni": assegni,
+        "fatture_da_pagare": fatture_da_pagare,
+        "stats": {
+            "totale": tot_non_ric + tot_ric,
+            "totale_righe": tot_non_ric if solo_non_riconciliati else tot_non_ric + tot_ric,
+            "righe_caricate": len(movimenti),
+            "non_riconciliati": tot_non_ric,
+            "riconciliati": tot_ric,
+            "assegni_pendenti": len(assegni),
+            "fatture_da_pagare": len(fatture_da_pagare)
+        }
+    }
+
+
+async def analizza_movimenti_smart(
+    limit: int = 100,
+    solo_non_riconciliati: bool = True,
+    anno: Optional[int] = None,
+) -> Dict[str, Any]:
+    """Analizza movimenti estratto conto con suggerimenti riconciliazione."""
+    from app.services.riconciliazione_smart import analizza_estratto_conto_batch
+    
+    try:
+        # Render interrompeva questa richiesta a 120 s. Dopo 20 s si libera il
+        # worker web e si restituiscono comunque i movimenti: la UI li ha gia'
+        # mostrati dal percorso veloce e mantiene disabilitata la conferma finche'
+        # i suggerimenti non sono disponibili.
+        risultati = await asyncio.wait_for(
+            analizza_estratto_conto_batch(limit, solo_non_riconciliati, anno=anno),
+            timeout=20,
+        )
+        return risultati
+    except TimeoutError:
+        logger.warning(
+            "Analisi smart oltre 20 s; restituisco la coda senza suggerimenti "
+            "(limit=%s anno=%s)", limit, anno,
+        )
+        risultati = await banca_veloce(limit, solo_non_riconciliati, anno)
+        risultati["movimenti"] = [
+            {
+                **movimento,
+                "movimento_id": movimento.get("movimento_id") or movimento.get("id"),
+                "descrizione": movimento.get("descrizione")
+                or movimento.get("descrizione_originale")
+                or movimento.get("causale")
+                or "-",
+                "suggerimenti": [],
+            }
+            for movimento in risultati.get("movimenti", [])
+        ]
+        risultati["analisi_non_disponibile"] = True
+        return risultati
+    except Exception as e:
+        logger.error("Errore analisi smart (%s): %s", type(e).__name__, e)
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+
+async def analizza_singolo_movimento(movimento_id: str) -> Dict[str, Any]:
+    """Analizza un singolo movimento.
+
+    Bug: importava `analizza_singolo_movimento` da riconciliazione_smart.py,
+    funzione mai esistita in quel modulo (solo `analizza_movimento`,
+    `analizza_movimento_con_cache`, `analizza_estratto_conto_batch`) — ogni
+    chiamata a questo endpoint dava sempre ImportError/500. Corretto: carica
+    il movimento e usa `analizza_movimento`, che si aspetta il dict."""
+    from app.services.riconciliazione_smart import analizza_movimento
+
+    from app.services.sumup_conto import collezione_del_movimento
+
+    db = Database.get_db()
+    movimento = await db[collezione_del_movimento({"id": movimento_id})].find_one(
+        {"id": movimento_id}, {"_id": 0})
+    if not movimento:
+        raise HTTPException(status_code=404, detail="Movimento non trovato")
+
+    try:
+        from app.services.riconciliazione_smart import semanticizza_risultato
+        return semanticizza_risultato(await analizza_movimento(movimento), movimento)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+
+async def riconcilia_manuale(request: RiconciliaManuale) -> Dict[str, Any]:
+    """Riconciliazione manuale movimento con entità."""
+    db = Database.get_db()
+
+    # Fatture: percorso canonico a quote, uno-a-uno o uno-a-molti. Tutto il
+    # prospetto viene validato al centesimo prima della prima scrittura.
+    if request.tipo in {"fattura", "fattura_sdd", "fattura_bonifico"}:
+        associazioni_fatture = request.associazioni or []
+        if not associazioni_fatture:
+            raise HTTPException(status_code=409, detail="Selezionare almeno una fattura")
+        if len(associazioni_fatture) > 1 and any(
+            item.get("quota_cents") is None and item.get("quota") in (None, "")
+            for item in associazioni_fatture
+        ):
+            raise HTTPException(status_code=409, detail="Indicare la quota di ogni fattura")
+        if any(not str((item or {}).get("id") or "").strip() for item in associazioni_fatture):
+            raise HTTPException(status_code=409, detail="Un candidato non ha un identificativo")
+        # Anche un bonifico partito dalla carta SumUp si assegna da qui: la
+        # collezione la dice l'identificativo, il motore e' lo stesso.
+        from app.services.sumup_conto import collezione_del_movimento
+
+        movimento_fatture = await db[collezione_del_movimento({"id": request.movimento_id})].find_one(
+            {"id": request.movimento_id})
+        if not movimento_fatture:
+            raise HTTPException(status_code=404, detail="Movimento non trovato")
+        if movimento_fatture.get("riconciliato"):
+            ids_esistenti = {str(value) for value in movimento_fatture.get("fattura_ids") or [] if value}
+            ids_richiesti = {str(item.get("id")) for item in associazioni_fatture if item.get("id")}
+            if ids_esistenti == ids_richiesti and ids_esistenti:
+                return {
+                    "success": True,
+                    "idempotent": True,
+                    "movimento_id": request.movimento_id,
+                    "fattura_ids": sorted(ids_esistenti),
+                    "allocazioni": movimento_fatture.get("allocazioni_fatture") or [],
+                }
+            raise HTTPException(status_code=409, detail="Movimento gia' riconciliato con evidenze diverse")
+        from app.services.bank_payment_allocations import (
+            persist_bank_invoice_allocations,
+            validate_bank_invoice_allocations,
+        )
+        allocazioni = await validate_bank_invoice_allocations(
+            db, movimento_fatture, associazioni_fatture,
+        )
+        return await persist_bank_invoice_allocations(
+            db, movimento_fatture, allocazioni, actor="riconciliazione_ui",
+        )
+
+    # Validare il candidato prima di leggere o mutare il movimento: il primo
+    # suggerimento non e una scelta dell'operatore.
+    associazioni = request.associazioni or []
+    if len(associazioni) != 1:
+        raise HTTPException(
+            status_code=409,
+            detail="Conferma bloccata: selezionare un solo candidato identificato",
+        )
+    associazione = associazioni[0] or {}
+    if not str(associazione.get("id") or "").strip():
+        raise HTTPException(
+            status_code=409,
+            detail="Conferma bloccata: il candidato selezionato non ha un identificativo",
+        )
+
+    movimento = await db.estratto_conto_movimenti.find_one({"id": request.movimento_id})
+    if not movimento:
+        raise HTTPException(status_code=404, detail="Movimento non trovato")
+    # Guard anti-doppio-match (P1-2, LOGICA §6): mai sovrascrivere una
+    # riconciliazione già fatta — rifiuta con 409.
+    if movimento.get("riconciliato"):
+        raise HTTPException(status_code=409, detail="Movimento già riconciliato")
+
+    entita_id = str(associazione["id"]).strip()
+    # "fattura_sdd" è il sotto-tipo prodotto dall'analizzatore per gli SDD con
+    # match su combinazione fatture: va saldato come una fattura normale,
+    # altrimenti il movimento risulta riconciliato ma la fattura resta "da
+    # pagare" ovunque nel resto del gestionale.
+    tipo_operazione = "fattura" if request.tipo == "fattura_sdd" else request.tipo
+
+    update_fields = {
+        "riconciliato": True,
+        "tipo_riconciliazione": "manuale",
+        "data_riconciliazione": datetime.now(timezone.utc).isoformat(),
+        "note_riconciliazione": request.note
+    }
+
+    if tipo_operazione == "fattura" and entita_id:
+        fattura = await db.invoices.find_one({"id": entita_id})
+        if not fattura:
+            raise HTTPException(status_code=404, detail="Fattura non trovata")
+
+        update_fields["fattura_id"] = entita_id
+        pagato_fields = set_fattura_pagata({"movimento_bancario_id": request.movimento_id})
+
+        # Crea (idempotente) il movimento in Prima Nota Banca — senza questo
+        # la fattura risulta pagata ma non compare mai in Prima Nota Banca,
+        # stesso gap già chiuso nel motore canonico da _applica_pagamento_banca()
+        # in riconciliazione_bancaria.py.
+        try:
+            from app.routers.prima_nota_module.sync import registra_pagamento_fattura
+            pn = await registra_pagamento_fattura(
+                fattura, "banca", movimento_bancario=movimento,
+                source="riconciliazione_manuale",
+            )
+            if pn.get("banca"):
+                pagato_fields["prima_nota_id"] = pn["banca"]
+                pagato_fields["prima_nota_tipo"] = "banca"
+                pagato_fields["prima_nota_banca_id"] = pn["banca"]
+        except Exception:
+            logger.exception(f"Errore registrazione prima nota banca per fattura {entita_id}")
+
+        await db.invoices.update_one(
+            {"id": entita_id},
+            {"$set": pagato_fields}
+        )
+
+        # Propaga il pagamento: senza questo evento la partita aperta
+        # collegata (scadenziario) resta "aperta" per sempre, perché la
+        # conferma manuale non passa dal matching automatico che emette
+        # MATCH_CONFERMATO — vedi commento in on_fattura_pagata_risolvi.
+        try:
+            from app.services.event_bus import propagate_event, EventTypes
+            await propagate_event(EventTypes.FATTURA_PAGATA, {
+                "fattura_id": entita_id,
+                "importo": movimento.get("importo"),
+                "metodo_pagamento": fattura.get("metodo_pagamento"),
+                "data_pagamento": update_fields["data_riconciliazione"],
+            }, db, source_module="riconciliazione_smart_manuale")
+        except Exception:
+            logger.exception(f"Errore propagazione FATTURA_PAGATA per {entita_id}")
+
+    elif tipo_operazione == "stipendio" and entita_id:
+        update_fields["stipendio_id"] = entita_id
+
+    elif tipo_operazione == "f24" and entita_id:
+        update_fields["f24_id"] = entita_id
+
+    await db.estratto_conto_movimenti.update_one(
+        {"id": request.movimento_id},
+        {"$set": update_fields}
+    )
+
+    return {"success": True, "movimento_id": request.movimento_id, "tipo": tipo_operazione}
+
+
+async def analizza_anomalie_banca(anno: Optional[int] = None, limit: int = 500) -> Dict[str, Any]:
+    """Report in sola lettura: non ripara, non riconcilia e non cancella."""
+    from app.services.payment_allocation_validator import to_cents
+
+    db = Database.get_db()
+    query: Dict[str, Any] = {**ESCLUDI_CARTA_CREDITO}
+    if anno:
+        query["data"] = {"$regex": f"^{anno}"}
+    rows = await db.estratto_conto_movimenti.find(
+        query, {"_id": 0},
+    ).sort("data", -1).limit(limit).to_list(limit)
+    anomalies = []
+    seen_fingerprints: Dict[str, str] = {}
+    for row in rows:
+        reasons = []
+        fingerprint = str(row.get("fingerprint") or "").strip()
+        if fingerprint and fingerprint in seen_fingerprints:
+            reasons.append({
+                "codice": "fingerprint_duplicato",
+                "record_conservato_id": seen_fingerprints[fingerprint],
+            })
+        elif fingerprint:
+            seen_fingerprints[fingerprint] = str(row.get("id") or "")
+        if row.get("riconciliato") and not any((
+            row.get("fattura_id"), row.get("fattura_ids"), row.get("f24_id"),
+            row.get("stipendio_id"), row.get("allocazioni_fatture"),
+        )):
+            reasons.append({"codice": "riconciliato_senza_target"})
+        if row.get("allocazioni_fatture"):
+            allocated = sum(int(item.get("quota_cents") or 0) for item in row["allocazioni_fatture"])
+            movement = abs(to_cents(row.get("importo")))
+            if allocated != movement:
+                reasons.append({
+                    "codice": "allocazione_non_quadrata",
+                    "differenza_cents": movement - allocated,
+                })
+        if reasons:
+            anomalies.append({
+                "movimento_id": row.get("id"), "data": row.get("data"), "motivi": reasons,
+            })
+    return {
+        "sola_lettura": True,
+        "righe_esaminate": len(rows),
+        "totale_anomalie": len(anomalies),
+        "anomalie": anomalies,
+        "nessun_dato_modificato": True,
+    }
+
+
+async def cerca_fatture_per_associazione(
+    importo: Optional[float] = None,
+    fornitore: Optional[str] = None,
+    data: Optional[str] = None,
+    limit: int = 20
+) -> Dict[str, Any]:
+    """Cerca fatture per associazione manuale."""
+    db = Database.get_db()
+    
+    query = dict(QUERY_FATTURA_NON_PAGATA)
+
+    if importo:
+        tolleranza = importo * 0.05
+        query["$or"] = [
+            {"total_amount": {"$gte": importo - tolleranza, "$lte": importo + tolleranza}},
+            {"importo_totale": {"$gte": importo - tolleranza, "$lte": importo + tolleranza}}
+        ]
+    
+    if fornitore:
+        query["$or"] = query.get("$or", []) + [
+            {"supplier_name": {"$regex": fornitore, "$options": "i"}},
+            {"cedente_denominazione": {"$regex": fornitore, "$options": "i"}}
+        ]
+    
+    fatture = await db.invoices.find(query, {"_id": 0}).sort("invoice_date", -1).limit(limit).to_list(limit)
+    
+    return {"fatture": fatture, "totale": len(fatture)}
+
+
+async def cerca_stipendi_per_associazione(
+    importo: Optional[float] = None,
+    dipendente: Optional[str] = None,
+    limit: int = 20
+) -> Dict[str, Any]:
+    """Cerca stipendi per associazione manuale."""
+    db = Database.get_db()
+    
+    query = {"riconciliato": {"$ne": True}, "ignorato": {"$ne": True}}
+
+    if importo:
+        tolleranza = importo * 0.05
+        query["importo"] = {"$gte": importo - tolleranza, "$lte": importo + tolleranza}
+
+    if dipendente:
+        query["$or"] = [
+            {"nome_dipendente": {"$regex": dipendente, "$options": "i"}},
+            {"dipendente": {"$regex": dipendente, "$options": "i"}}
+        ]
+    
+    # Leggibilità (segnalazione utente 18/07/2026: "€0,00, non capisco se
+    # sono bonifici o cedolini"): queste righe sono ATTESE DI PAGAMENTO
+    # generate dai cedolini. importo = netto busta; se il netto non è stato
+    # letto dal PDF lo si dice chiaramente; i bonifici già trovati in
+    # estratto conto sono riportati. Le righe senza dipendente né importo
+    # non potranno mai essere associate: escluse dalla lista.
+    # Una attesa la cui busta non esiste piu' non si conferma: non c'e'
+    # nessun documento da mostrare al titolare. Si dichiara (`senza_busta`),
+    # la ritira la bonifica per id (mai nascosta in silenzio).
+    from app.services.bonifica_prima_nota_salari_doppioni import (
+        attesa_senza_busta, indice_buste_esistenti,
+    )
+    from app.services.prima_nota_salari_chiave import carica_indice_dipendenti, chiave_logica_riga
+
+    ids_buste, chiavi_buste = await indice_buste_esistenti(db)
+    indice_dip = await carica_indice_dipendenti(db)
+
+    async def righe_in_ordine():
+        """Pagine di 200 righe, dalla piu' recente, finche' ce ne sono: lo scarto
+        delle attese senza busta avviene dopo la lettura, quindi si continua
+        a leggere fino a riempire `limit` righe visibili."""
+        pagina = 200
+        saltate = 0
+        while True:
+            blocco = await (db.prima_nota_salari.find(query, {"_id": 0})
+                            .sort("data", -1).skip(saltate).limit(pagina).to_list(pagina))
+            for riga in blocco:
+                yield riga
+            if len(blocco) < pagina:
+                return
+            saltate += pagina
+
+    senza_busta = 0
+    visibili = []
+    async for s in righe_in_ordine():
+        if len(visibili) >= limit:
+            break
+        if attesa_senza_busta(s, chiave_logica_riga(s, indice_dip), ids_buste, chiavi_buste):
+            senza_busta += 1
+            continue
+        nome = (s.get("dipendente") or s.get("dipendente_nome") or "").strip()
+        busta = float(s.get("importo_busta") or s.get("importo") or 0)
+        bonifici = float(s.get("importo_bonifico") or 0)
+        if not nome and busta <= 0:
+            continue  # riga inservibile (né nome né importo)
+        s["importo"] = busta
+        dettagli = []
+        dettagli.append(f"busta € {busta:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+                        if busta > 0 else "netto busta non letto dal PDF")
+        if bonifici > 0:
+            dettagli.append(f"bonifici trovati € {bonifici:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
+        s["descrizione"] = (f"Stipendio {nome} - {s.get('mese', 0):02d}/{s.get('anno', '')}"
+                            f" · {' · '.join(dettagli)}")
+        visibili.append(s)
+
+    return {"stipendi": visibili, "totale": len(visibili), "senza_busta": senza_busta}
+
+
+async def cerca_f24_per_associazione(
+    importo: Optional[float] = None,
+    data: Optional[str] = None,
+    limit: int = 20
+) -> Dict[str, Any]:
+    """Cerca F24 per associazione manuale."""
+    db = Database.get_db()
+
+    query = {"riconciliato": {"$ne": True}}
+
+    if importo:
+        tolleranza = importo * 0.05
+        query["importo_totale"] = {"$gte": importo - tolleranza, "$lte": importo + tolleranza}
+
+    if data:
+        query["data_scadenza"] = {"$regex": f"^{data[:7]}"}
+
+    f24_list = await db["f24_unificato"].find(query, {"_id": 0}).sort("data_scadenza", -1).limit(limit).to_list(limit)
+
+    return {"f24": f24_list, "totale": len(f24_list)}
+
+
+async def conferma_f24_batch(request: ConfermaBatchRequest) -> Dict[str, Any]:
+    """Conferma manuale di uno o più F24 pendenti con metodo di pagamento.
+
+    Sostituisce la vecchia chiamata a /api/riconciliazione-intelligente/
+    conferma-multipla, che si aspettava un payload di fatture e falliva
+    SEMPRE con 400 sui F24 inviati da RiconciliazioneUnificata.jsx.
+    Scrive sulla stessa collection letta da cerca_f24_per_associazione,
+    così l'F24 confermato sparisce dalla lista dei pendenti.
+
+    Fase 0 (15/09/2026, PROMPT_CLAUDE_CODE_FASE_0.md punto 5): prima
+    marcava "pagato/riconciliato" senza alcuna prova bancaria. Ora ogni
+    operazione deve portare un movimento_id di un movimento reale in
+    estratto_conto_movimenti, altrimenti l'intera richiesta è rifiutata.
+    """
+    db = Database.get_db()
+
+    senza_movimento = [
+        op for op in request.operazioni if not (op.get("movimento_id") or "").strip()
+    ]
+    if senza_movimento:
+        raise HTTPException(
+            status_code=409,
+            detail="Disattivato: Fase 0 — serve il movimento bancario per confermare un F24",
+        )
+
+    movimento_ids = {op["movimento_id"].strip() for op in request.operazioni}
+    trovati = await db["estratto_conto_movimenti"].find(
+        {"id": {"$in": list(movimento_ids)}}, {"_id": 0, "id": 1}
+    ).to_list(len(movimento_ids))
+    movimenti_esistenti = {m["id"] for m in trovati}
+    mancanti = movimento_ids - movimenti_esistenti
+    if mancanti:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Disattivato: Fase 0 — movimento bancario non trovato: {', '.join(sorted(mancanti))}",
+        )
+
+    confermati = 0
+    errori = []
+    now = datetime.now(timezone.utc).isoformat()
+
+    for op in request.operazioni:
+        f24_id = op.get("operazione_id") or op.get("f24_id")
+        if not f24_id:
+            errori.append({"operazione": op, "errore": "operazione_id mancante"})
+            continue
+        result = await db["f24_unificato"].update_one(
+            {"id": f24_id},
+            {"$set": {
+                "riconciliato": True,
+                "status": "pagato",
+                "pagato_manualmente": True,
+                "metodo_pagamento": op.get("metodo_pagamento") or "banca",
+                "tipo_riconciliazione": "manuale",
+                "movimento_bancario_id": op["movimento_id"].strip(),
+                "data_riconciliazione": now,
+                "updated_at": now,
+            }}
+        )
+        if result.matched_count == 0:
+            errori.append({"operazione": op, "errore": f"F24 {f24_id} non trovato"})
+        else:
+            confermati += 1
+
+    return {
+        "success": len(errori) == 0,
+        "confermati": confermati,
+        "errori": errori,
+    }

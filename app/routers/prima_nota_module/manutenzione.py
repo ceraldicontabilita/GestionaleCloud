@@ -1,0 +1,2537 @@
+"""
+Prima Nota Module - Manutenzione e Fix.
+Funzioni di fix, cleanup, recalculate per manutenzione dati.
+"""
+from fastapi import HTTPException, Query, Depends
+from app.utils.dependencies import get_current_admin_user
+from pydantic import BaseModel
+from typing import Dict, Optional, Any
+from datetime import datetime, timezone
+import uuid
+
+from app.database import Database
+from app.services.scritture_contabili import ScritturaNonValida, scrivi_movimento
+from app.utils.id_fattura import filtro_id, varianti_id
+from .common import (
+    COLLECTION_PRIMA_NOTA_CASSA, COLLECTION_PRIMA_NOTA_BANCA, logger,
+    aggrega_saldo_prima_nota, filtro_saldo_prima_nota,
+    campi_dopo_spostamento, riga_con_prova_bancaria,
+)
+from .sync import determina_tipo_movimento_fattura
+from .cassa import _movimento_e_bancario_errato_in_cassa
+
+# Collection estratto conto bancario (non esportata da .common, la definisco qui)
+COLLECTION_ESTRATTO_CONTO = "estratto_conto_movimenti"
+
+
+class SpostaMovimentoRequest(BaseModel):
+    movimento_id: str
+    da: str
+    a: str
+    conferma: bool = False
+    motivo: Optional[str] = None
+
+
+class AnnullaAssociazioneFatturaBancaRequest(BaseModel):
+    partita_iva: str
+    numero_fattura: str
+    motivo: str
+    importo_atteso: Optional[float] = None
+
+
+async def annulla_associazione_fattura_banca(
+    data: AnnullaAssociazioneFatturaBancaRequest,
+    _admin: Dict = Depends(get_current_admin_user),
+) -> Dict[str, Any]:
+    """Annulla un falso positivo banca senza alterare l'estratto conto.
+
+    La correzione archivia soltanto le scritture collegate alla fattura,
+    riapre le sue rate e conserva l'eventuale riconciliazione dello stesso
+    movimento con un'altra fattura corretta.
+    """
+    db = Database.get_db()
+    piva = "".join(ch for ch in data.partita_iva if ch.isalnum()).upper()
+    numero = data.numero_fattura.strip()
+    fattura = await db["invoices"].find_one({
+        "$and": [
+            {"$or": [
+                {"supplier_vat": piva}, {"cedente_piva": piva},
+                {"partita_iva_fornitore": piva},
+            ]},
+            {"$or": [
+                {"invoice_number": numero}, {"numero_fattura": numero},
+            ]},
+        ]
+    })
+    if not fattura:
+        raise HTTPException(status_code=404, detail="Fattura non trovata")
+
+    fattura_id = str(fattura.get("id") or fattura.get("_id"))
+    totale = round(float(fattura.get("total_amount") or fattura.get("importo_totale") or 0), 2)
+    if data.importo_atteso is not None and abs(totale - data.importo_atteso) > 0.01:
+        raise HTTPException(status_code=409, detail="Importo fattura diverso da quello atteso")
+
+    now = datetime.now(timezone.utc).isoformat()
+    query_pn = {
+        "$or": [{"fattura_id": fattura_id}, {"invoice_id": fattura_id}],
+        "status": {"$nin": ["deleted", "archived"]},
+    }
+    righe = await db["prima_nota_banca"].find(query_pn, {"_id": 0}).to_list(100)
+    movimento_ids = {
+        str(r.get("movimento_estratto_conto_id") or r.get("estratto_conto_id"))
+        for r in righe if r.get("movimento_estratto_conto_id") or r.get("estratto_conto_id")
+    }
+    await db["prima_nota_banca"].update_many(query_pn, {"$set": {
+        "status": "deleted", "deleted": True,
+        "deleted_reason": "associazione_banca_errata",
+        "deleted_detail": data.motivo, "deleted_at": now,
+    }})
+
+    # Rimuove esclusivamente le evidenze rateali riferite a questa coppia
+    # movimento/fattura e ricalcola lo stato della rata dalle evidenze residue.
+    rate = await db["scadenziario_fornitori"].find(
+        {"fattura_id": fattura_id}, {"_id": 0}
+    ).to_list(100)
+    for rata in rate:
+        evidenze = [
+            e for e in (rata.get("evidenze_pagamento") or [])
+            if not any(e.get("evidenza_id") == f"banca:{mid}:{fattura_id}" for mid in movimento_ids)
+        ]
+        pagato = round(sum(float(e.get("importo") or 0) for e in evidenze), 2)
+        importo_rata = round(float(rata.get("importo_rata") or rata.get("importo_totale") or rata.get("importo") or 0), 2)
+        chiusa = importo_rata > 0 and pagato >= importo_rata - 0.005
+        await db["scadenziario_fornitori"].update_one({"id": rata.get("id")}, {"$set": {
+            "evidenze_pagamento": evidenze,
+            "importo_pagato": pagato,
+            "importo_residuo": round(max(0.0, importo_rata - pagato), 2),
+            "pagato": chiusa,
+            "stato": "pagata" if chiusa else ("parziale" if pagato else "da_pagare"),
+            "data_pagamento": rata.get("data_pagamento") if chiusa else None,
+            "updated_at": now,
+        }})
+
+    await db["invoices"].update_one(
+        {"_id": fattura["_id"]} if fattura.get("_id") is not None else {"id": fattura_id},
+        {"$set": {
+            "pagato": False, "paid": False, "stato_pagamento": "da_pagare",
+            "payment_status": "unpaid", "importo_pagato": 0.0,
+            "importo_residuo": totale, "in_banca": False,
+            "data_pagamento": None, "riconciliato_con_ec": None,
+            "riconciliato_automaticamente": False,
+            "prima_nota_id": None, "prima_nota_tipo": None,
+            "prima_nota_banca_id": None, "updated_at": now,
+        }}
+    )
+
+    movimenti_liberati = 0
+    for movimento_id in movimento_ids:
+        altre = await db["prima_nota_banca"].count_documents({
+            "$and": [
+                {"$or": [
+                    {"movimento_estratto_conto_id": movimento_id},
+                    {"estratto_conto_id": movimento_id},
+                ]},
+                {"status": {"$nin": ["deleted", "archived"]}},
+            ]
+        })
+        if not altre:
+            await db["estratto_conto_movimenti"].update_one(
+                {"id": movimento_id},
+                {"$set": {"riconciliato": False, "riconciliato_automaticamente": False,
+                          "updated_at": now}}
+            )
+            movimenti_liberati += 1
+
+    from app.services.audit_logger import log_evento
+    await log_evento(
+        modulo="fatture", azione="associazione_banca_annullata",
+        entita_id=fattura_id, entita_collection="invoices", db=db,
+        vecchio_stato={"pagato": fattura.get("pagato"),
+                       "riconciliato_con_ec": fattura.get("riconciliato_con_ec")},
+        nuovo_stato={"pagato": False, "stato_pagamento": "da_pagare"},
+        fonte="correzione_amministrativa", utente=str(_admin.get("username") or "admin"),
+        dettaglio=data.motivo,
+        extra={"movimenti_banca": sorted(movimento_ids)},
+    )
+    return {
+        "success": True, "fattura_id": fattura_id,
+        "scritture_archiviate": len(righe),
+        "movimenti_estratto_liberati": movimenti_liberati,
+        "movimenti_con_altra_associazione": len(movimento_ids) - movimenti_liberati,
+    }
+
+
+async def fix_tipo_movimento_fatture() -> Dict:
+    """Corregge il tipo movimento per tutti i movimenti collegati a fatture."""
+    db = Database.get_db()
+
+    fixed_cassa = 0
+    fixed_banca = 0
+    errors = []
+
+    for collection, fixed_counter in [(COLLECTION_PRIMA_NOTA_CASSA, "cassa"), (COLLECTION_PRIMA_NOTA_BANCA, "banca")]:
+        movimenti = await db[collection].find(
+            {"fattura_id": {"$exists": True, "$ne": None}},
+            {"_id": 0}
+        ).to_list(10000)
+
+        for mov in movimenti:
+            try:
+                fattura_id = mov.get("fattura_id")
+                if not fattura_id:
+                    continue
+
+                fattura = await db["invoices"].find_one(
+                    {"$or": [{"id": fattura_id}, {"invoice_key": fattura_id}]},
+                    {"_id": 0}
+                )
+
+                if not fattura:
+                    continue
+
+                tipo_corretto, categoria_corretta, _ = determina_tipo_movimento_fattura(fattura)
+
+                if mov.get("tipo") != tipo_corretto or mov.get("categoria") != categoria_corretta:
+                    await db[collection].update_one(
+                        {"id": mov["id"]},
+                        {"$set": {
+                            "tipo": tipo_corretto,
+                            "categoria": categoria_corretta,
+                            "tipo_documento": fattura.get("tipo_documento"),
+                            "fixed_at": datetime.now(timezone.utc).isoformat()
+                        }}
+                    )
+                    if fixed_counter == "cassa":
+                        fixed_cassa += 1
+                    else:
+                        fixed_banca += 1
+                    logger.info(f"Fixed {fixed_counter} {mov['id']}: {mov.get('tipo')} -> {tipo_corretto}")
+
+            except Exception as e:
+                errors.append(f"{fixed_counter} {mov.get('id')}: {str(e)}")
+
+    return {
+        "success": True,
+        "message": f"Corretti {fixed_cassa} movimenti cassa e {fixed_banca} movimenti banca",
+        "fixed_cassa": fixed_cassa,
+        "fixed_banca": fixed_banca,
+        "errors": errors[:20]
+    }
+
+
+async def recalculate_all_balances(anno: Optional[int] = Query(None)) -> Dict:
+    """Ricalcola i saldi di Prima Nota Cassa e Banca."""
+    db = Database.get_db()
+
+    # §6.4: stessa funzione/engine di cassa/banca/stats (filtri ed esclusioni uniformi).
+    query_cassa = filtro_saldo_prima_nota(COLLECTION_PRIMA_NOTA_CASSA)
+    query_banca = filtro_saldo_prima_nota(COLLECTION_PRIMA_NOTA_BANCA)
+    if anno:
+        query_cassa["data"] = {"$regex": f"^{anno}"}
+        query_banca["data"] = {"$regex": f"^{anno}"}
+
+    s_cassa = await aggrega_saldo_prima_nota(db, COLLECTION_PRIMA_NOTA_CASSA, query_cassa, anno=None)
+    s_banca = await aggrega_saldo_prima_nota(db, COLLECTION_PRIMA_NOTA_BANCA, query_banca, anno=None)
+    cassa = {"entrate": s_cassa["totale_entrate"], "uscite": s_cassa["totale_uscite"],
+             "count": await db[COLLECTION_PRIMA_NOTA_CASSA].count_documents(query_cassa)}
+    banca = {"entrate": s_banca["totale_entrate"], "uscite": s_banca["totale_uscite"],
+             "count": await db[COLLECTION_PRIMA_NOTA_BANCA].count_documents(query_banca)}
+
+    saldo_cassa = s_cassa["saldo_anno"]
+    saldo_banca = s_banca["saldo_anno"]
+
+    return {
+        "anno": anno or "tutti",
+        "cassa": {
+            "entrate": round(cassa.get("entrate", 0), 2),
+            "uscite": round(cassa.get("uscite", 0), 2),
+            "saldo": round(saldo_cassa, 2),
+            "movimenti": cassa.get("count", 0)
+        },
+        "banca": {
+            "entrate": round(banca.get("entrate", 0), 2),
+            "uscite": round(banca.get("uscite", 0), 2),
+            "saldo": round(saldo_banca, 2),
+            "movimenti": banca.get("count", 0)
+        },
+        "totale": {
+            "saldo": round(saldo_cassa + saldo_banca, 2),
+            "entrate": round(cassa.get("entrate", 0) + banca.get("entrate", 0), 2),
+            "uscite": round(cassa.get("uscite", 0) + banca.get("uscite", 0), 2)
+        }
+    }
+
+
+async def cleanup_orphan_movements(anno: Optional[int] = Query(None), _admin: Dict = Depends(get_current_admin_user)) -> Dict:
+    """Pulisce i movimenti Prima Nota orfani (fattura inesistente)."""
+    db = Database.get_db()
+
+    query = {"fattura_id": {"$exists": True, "$ne": None}}
+    if anno:
+        query["data"] = {"$regex": f"^{anno}"}
+
+    orphan_cassa = 0
+    orphan_banca = 0
+
+    for collection, counter_name in [(COLLECTION_PRIMA_NOTA_CASSA, "cassa"), (COLLECTION_PRIMA_NOTA_BANCA, "banca")]:
+        movimenti = await db[collection].find(query, {"_id": 0, "id": 1, "fattura_id": 1}).to_list(10000)
+        for mov in movimenti:
+            fattura_id = mov.get("fattura_id")
+            if fattura_id:
+                fattura = await db["invoices"].find_one(
+                    {"$or": [{"id": fattura_id}, {"invoice_key": fattura_id}]},
+                    {"_id": 1}
+                )
+                if not fattura:
+                    await db[collection].delete_one({"id": mov["id"]})
+                    if counter_name == "cassa":
+                        orphan_cassa += 1
+                    else:
+                        orphan_banca += 1
+
+    return {
+        "success": True,
+        "message": f"Eliminati {orphan_cassa} movimenti cassa orfani e {orphan_banca} movimenti banca orfani",
+        "orphan_cassa_deleted": orphan_cassa,
+        "orphan_banca_deleted": orphan_banca,
+        "anno_filtro": anno
+    }
+
+
+async def regenerate_from_invoices(anno: int = Query(...)) -> Dict:
+    """Rigenera solo la Cassa dall'archivio fatture per un anno.
+
+    La Banca non puo' essere ricostruita dalle fatture: richiede sempre la
+    riga reale dell'estratto conto. Le fatture a metodo banca restano quindi
+    provvisorie fino alla riconciliazione.
+    """
+    db = Database.get_db()
+
+    query_delete = {
+        "data": {"$regex": f"^{anno}"},
+        "source": {"$in": ["fattura_pagata", "fatture_import", "xml_upload"]}
+    }
+
+    deleted_cassa = await db[COLLECTION_PRIMA_NOTA_CASSA].delete_many(query_delete)
+    deleted_banca = await db[COLLECTION_PRIMA_NOTA_BANCA].delete_many(query_delete)
+
+    fatture = await db["invoices"].find(
+        {"invoice_date": {"$regex": f"^{anno}"}},
+        {"_id": 0}
+    ).to_list(10000)
+
+    created_cassa = 0
+    created_banca = 0
+    lasciate_provvisorie = 0
+    errors = []
+
+    for fattura in fatture:
+        try:
+            metodo = fattura.get("metodo_pagamento", "bonifico")
+            tipo_movimento, categoria, desc_prefisso = determina_tipo_movimento_fattura(fattura)
+
+            data_fattura = fattura.get("invoice_date") or fattura.get("data_fattura")
+            importo = float(fattura.get("total_amount", 0) or fattura.get("importo_totale", 0) or 0)
+            numero_fattura = fattura.get("invoice_number") or fattura.get("numero_fattura") or "N/A"
+            fornitore = fattura.get("supplier_name") or fattura.get("cedente_denominazione") or "Fornitore"
+            fornitore_piva = fattura.get("supplier_vat") or fattura.get("cedente_piva") or ""
+
+            if importo <= 0:
+                continue
+
+            movimento = {
+                "id": str(uuid.uuid4()),
+                "data": data_fattura,
+                "tipo": tipo_movimento,
+                "importo": importo,
+                "descrizione": f"{desc_prefisso} {numero_fattura} - {fornitore[:40]}",
+                "categoria": categoria,
+                "riferimento": numero_fattura,
+                "fornitore_piva": fornitore_piva,
+                "fattura_id": fattura.get("id"),
+                "tipo_documento": fattura.get("tipo_documento"),
+                "source": "fatture_import",
+                "created_at": datetime.now(timezone.utc).isoformat()
+            }
+
+            if metodo in ["cassa", "contanti"]:
+                await scrivi_movimento(db, "cassa", movimento)
+                created_cassa += 1
+            else:
+                lasciate_provvisorie += 1
+
+        except Exception as e:
+            errors.append(f"Fattura {fattura.get('invoice_number', 'N/A')}: {str(e)}")
+
+    return {
+        "success": True,
+        "anno": anno,
+        "fatture_elaborate": len(fatture),
+        "movimenti_cassa_creati": created_cassa,
+        "movimenti_banca_creati": created_banca,
+        "fatture_banca_lasciate_provvisorie": lasciate_provvisorie,
+        "movimenti_cassa_eliminati": deleted_cassa.deleted_count,
+        "movimenti_banca_eliminati": deleted_banca.deleted_count,
+        "errors": errors[:20]
+    }
+
+
+async def fix_versamenti_duplicati(anno: Optional[int] = Query(None)) -> Dict:
+    """Rimuove i versamenti duplicati con importo errato."""
+    db = Database.get_db()
+
+    query = {"categoria": {"$in": ["Versamento", "Versamento Banca"]}}
+    if anno:
+        query["data"] = {"$regex": f"^{anno}"}
+
+    versamenti_cassa = await db[COLLECTION_PRIMA_NOTA_CASSA].find(query, {"_id": 0}).to_list(10000)
+
+    datetime_format = []
+    date_format = []
+
+    for v in versamenti_cassa:
+        data = v.get("data", "")
+        if " " in data:
+            datetime_format.append(v)
+        else:
+            date_format.append(v)
+
+    removed = 0
+    for v in date_format:
+        data_solo = v.get("data", "")[:10]
+        corresponding = [d for d in datetime_format if d.get("data", "")[:10] == data_solo]
+
+        if corresponding:
+            await db[COLLECTION_PRIMA_NOTA_CASSA].delete_one({"id": v["id"]})
+            removed += 1
+
+    for v in datetime_format:
+        data = v.get("data", "")
+        if " " in data:
+            await db[COLLECTION_PRIMA_NOTA_CASSA].update_one(
+                {"id": v["id"]},
+                {"$set": {"data": data[:10]}}
+            )
+
+    return {
+        "success": True,
+        "anno": anno,
+        "versamenti_datetime": len(datetime_format),
+        "versamenti_date": len(date_format),
+        "duplicati_rimossi": removed,
+        "message": f"Rimossi {removed} versamenti duplicati con importo errato"
+    }
+
+
+# Regola utente 16/07/2026: in contabilità devono restare SOLO i dati
+# dall'anno operativo in poi (2026) — i movimenti/fatture/corrispettivi di
+# anni vecchi (2021-2022, residui di backfill e import storici) falsavano
+# riporti e saldi. Collection ripulite e campi data usati per stabilire
+# l'anno del documento (in ordine di priorità; un documento senza nessuna
+# data riconoscibile NON viene mai eliminato).
+COLLEZIONI_PULIZIA_PRE_ANNO = {
+    "prima_nota_cassa": ["data"],
+    "prima_nota_banca": ["data"],
+    "corrispettivi": ["data"],
+    "invoices": ["invoice_date", "data_fattura", "data_ricezione"],
+    "fatture_emesse": ["invoice_date", "data_emissione"],
+    "estratto_conto_movimenti": ["data_contabile", "data"],
+    "movimenti_contabili": ["data"],
+    "partite_aperte": ["data_documento", "data"],
+}
+
+
+def _estrai_anno(valore) -> Optional[int]:
+    """Anno da una data stringa ISO (YYYY-...) o italiana (GG/MM/AAAA)."""
+    s = str(valore or "")
+    if len(s) >= 4 and s[:4].isdigit():
+        return int(s[:4])
+    if "/" in s:
+        coda = s.split("/")[-1][:4]
+        if len(coda) == 4 and coda.isdigit():
+            return int(coda)
+    return None
+
+
+async def pulizia_dati_pre_anno(
+    anno_da_mantenere: int = Query(2026, description="Primo anno da MANTENERE"),
+    dry_run: bool = Query(True, description="Solo conteggio, non elimina"),
+    crea_backup: bool = Query(True, description="Archivia prima della cancellazione"),
+    _admin: Dict = Depends(get_current_admin_user),
+) -> Dict:
+    """Elimina da tutte le collection operative i documenti con data
+    anteriore ad anno_da_mantenere. Con dry_run=true (default) restituisce
+    solo i conteggi per collection/anno, senza toccare nulla."""
+    db = Database.get_db()
+    report = {}
+    totale_eliminati = 0
+    backup_batch = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+
+    # Eccezione esplicita richiesta dall'utente: cedolini e relativi
+    # bonifici stipendio restano per TUTTI gli anni. `cedolini` e
+    # `prima_nota_salari` non sono mai tra le collection eliminate; qui
+    # raccogliamo anche gli ID bancari collegati per proteggerli dentro
+    # prima_nota_banca ed estratto_conto_movimenti.
+    salari = await db["prima_nota_salari"].find({}, {
+        "_id": 0, "id": 1, "cedolino_id": 1, "movimento_id": 1,
+        "movimento_bancario_id": 1, "movimenti_bancari_ids": 1,
+    }).to_list(200000)
+    ids_bonifici_stipendi = set()
+    ids_cedolini = set()
+    for salario in salari:
+        if salario.get("cedolino_id"):
+            ids_cedolini.add(str(salario["cedolino_id"]))
+        for campo in ("movimento_id", "movimento_bancario_id"):
+            if salario.get(campo):
+                ids_bonifici_stipendi.add(str(salario[campo]))
+        for movimento_id in salario.get("movimenti_bancari_ids") or []:
+            if movimento_id:
+                ids_bonifici_stipendi.add(str(movimento_id))
+
+    def _e_bonifico_cedolino(collection: str, doc: Dict[str, Any]) -> bool:
+        if collection not in {"prima_nota_banca", "estratto_conto_movimenti"}:
+            return False
+        if str(doc.get("id") or "") in ids_bonifici_stipendi:
+            return True
+        if doc.get("stipendio_id") or doc.get("documento_stipendio_id"):
+            return True
+        if str(doc.get("cedolino_id") or "") in ids_cedolini:
+            return True
+        testo = " ".join(str(doc.get(c) or "") for c in (
+            "categoria", "source", "tipo_riconciliazione", "tipo_abbinamento"
+        )).lower()
+        return "stipend" in testo or "cedolin" in testo
+
+    for collection, campi_data in COLLEZIONI_PULIZIA_PRE_ANNO.items():
+        proiezione = {
+            "_id": 1, "id": 1, **{c: 1 for c in campi_data},
+            "stipendio_id": 1, "documento_stipendio_id": 1,
+            "cedolino_id": 1, "categoria": 1, "source": 1,
+            "tipo_riconciliazione": 1, "tipo_abbinamento": 1,
+        }
+        docs = await db[collection].find({}, proiezione).to_list(200000)
+        ids_da_eliminare = []
+        record_ids_da_eliminare = []
+        preservati_cedolini_bonifici = 0
+        per_anno: Dict[int, int] = {}
+        for d in docs:
+            anno_doc = None
+            for campo in campi_data:
+                anno_doc = _estrai_anno(d.get(campo))
+                if anno_doc is not None:
+                    break
+            if anno_doc is not None and anno_doc < anno_da_mantenere and _e_bonifico_cedolino(collection, d):
+                preservati_cedolini_bonifici += 1
+                continue
+            if anno_doc is not None and anno_doc < anno_da_mantenere:
+                if d.get("id") is not None:
+                    ids_da_eliminare.append(d["id"])
+                elif d.get("_id") is not None:
+                    # Alcuni record storici non hanno l'ID applicativo:
+                    # vanno comunque inclusi usando il loro ID interno.
+                    record_ids_da_eliminare.append(d["_id"])
+                else:
+                    continue
+                per_anno[anno_doc] = per_anno.get(anno_doc, 0) + 1
+
+        eliminati = 0
+        backup_collection = None
+        selettori = []
+        if ids_da_eliminare:
+            selettori.append({"id": {"$in": ids_da_eliminare}})
+        if record_ids_da_eliminare:
+            selettori.append({"_id": {"$in": record_ids_da_eliminare}})
+        filtro_eliminazione = (
+            selettori[0] if len(selettori) == 1 else {"$or": selettori}
+        ) if selettori else None
+
+        if filtro_eliminazione and not dry_run:
+            if crea_backup:
+                backup_collection = (
+                    f"backup_cleanup_pre{anno_da_mantenere}_"
+                    f"{backup_batch}_{collection}"
+                )
+                completi = await db[collection].find(filtro_eliminazione).to_list(200000)
+                if completi:
+                    backup_at = datetime.now(timezone.utc).isoformat()
+                    for completo in completi:
+                        completo["_backup_at"] = backup_at
+                        completo["_backup_reason"] = f"cleanup_pre_{anno_da_mantenere}"
+                        completo["_original_collection"] = collection
+                    # Il backup deve riuscire integralmente PRIMA della delete.
+                    await db[backup_collection].insert_many(completi, ordered=True)
+
+            for i in range(0, len(ids_da_eliminare), 500):
+                r = await db[collection].delete_many(
+                    {"id": {"$in": ids_da_eliminare[i:i + 500]}}
+                )
+                eliminati += r.deleted_count
+            for i in range(0, len(record_ids_da_eliminare), 500):
+                r = await db[collection].delete_many(
+                    {"_id": {"$in": record_ids_da_eliminare[i:i + 500]}}
+                )
+                eliminati += r.deleted_count
+        report[collection] = {
+            "trovati_pre_anno": len(ids_da_eliminare) + len(record_ids_da_eliminare),
+            "per_anno": {str(k): v for k, v in sorted(per_anno.items())},
+            "eliminati": eliminati if not dry_run else 0,
+            "preservati_cedolini_bonifici": preservati_cedolini_bonifici,
+            "backup_collection": backup_collection,
+        }
+        totale_eliminati += eliminati
+
+    return {
+        "dry_run": dry_run,
+        "anno_da_mantenere": anno_da_mantenere,
+        "collections": report,
+        "totale_eliminati": totale_eliminati,
+        "cedolini_preservati": True,
+        "prima_nota_salari_preservata": True,
+        "bonifici_stipendi_protetti": len(ids_bonifici_stipendi),
+    }
+
+
+PULIZIA_PREGRESSI_MARKER = "cleanup_pre_2026_preserve_payroll_20260720_v1"
+
+NEUTRALIZZA_VERSAMENTI_EC_MARKER = "neutralize_ec_generated_cash_deposits_20260720_v1"
+
+
+async def neutralizza_versamenti_cassa_generati_da_ec() -> Dict[str, Any]:
+    """Neutralizza solo le doppie scritture create dal vecchio riparatore EC.
+
+    La fonte dedicata rende l'intervento circoscritto e recuperabile: le
+    registrazioni manuali non vengono mai incluse. Prima della modifica viene
+    creata una copia integrale dei documenti interessati.
+    """
+    db = Database.get_db()
+    markers = db["migration_runs"]
+    precedente = await markers.find_one({"id": NEUTRALIZZA_VERSAMENTI_EC_MARKER})
+    if precedente and precedente.get("status") == "completed":
+        return {"skipped": True, "reason": "already_completed"}
+
+    filtro_cassa = {
+        "source": "estratto_conto_auto_versamento_riparazione",
+        "tipo": "uscita",
+        "categoria": "Versamento Banca",
+        "status": {"$nin": ["deleted", "archived"]},
+    }
+    cassa_docs = await db[COLLECTION_PRIMA_NOTA_CASSA].find(filtro_cassa).to_list(10000)
+    ec_ids = sorted({d.get("estratto_conto_id") for d in cassa_docs if d.get("estratto_conto_id")})
+    filtro_banca = {
+        "source": "estratto_conto_auto_versamento_riparazione",
+        "tipo": "entrata",
+        "categoria": "Versamento Banca",
+        "estratto_conto_id": {"$in": ec_ids},
+        "status": {"$nin": ["deleted", "archived"]},
+    }
+    banca_docs = (
+        await db[COLLECTION_PRIMA_NOTA_BANCA].find(filtro_banca).to_list(10000)
+        if ec_ids else []
+    )
+
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    backup_cassa = f"backup_versamenti_ec_{timestamp}_prima_nota_cassa"
+    backup_banca = f"backup_versamenti_ec_{timestamp}_prima_nota_banca"
+    if cassa_docs:
+        await db[backup_cassa].insert_many(cassa_docs)
+    if banca_docs:
+        await db[backup_banca].insert_many(banca_docs)
+
+    nota = "neutralizzato: il solo estratto conto non autorizza un movimento di cassa"
+    esito_cassa = await db[COLLECTION_PRIMA_NOTA_CASSA].update_many(
+        filtro_cassa,
+        {"$set": {"status": "deleted", "entity_status": "deleted",
+                  "nota_migrazione": nota, "deleted_at": datetime.now(timezone.utc).isoformat()}},
+    )
+    esito_banca = None
+    if ec_ids:
+        esito_banca = await db[COLLECTION_PRIMA_NOTA_BANCA].update_many(
+            filtro_banca,
+            {"$set": {"status": "deleted", "entity_status": "deleted",
+                      "nota_migrazione": nota, "deleted_at": datetime.now(timezone.utc).isoformat()}},
+        )
+        await db[COLLECTION_ESTRATTO_CONTO].update_many(
+            {"id": {"$in": ec_ids}},
+            {"$set": {"riconciliato": False, "stato_riconciliazione": "da_verificare"},
+             "$unset": {"tipo_riconciliazione": "", "prima_nota_cassa_id": "",
+                        "prima_nota_banca_id": ""}},
+        )
+
+    risultato = {
+        "skipped": False,
+        "cassa_neutralizzati": esito_cassa.modified_count,
+        "banca_neutralizzati": esito_banca.modified_count if esito_banca else 0,
+        "estratti_da_verificare": len(ec_ids),
+        "backup_cassa": backup_cassa if cassa_docs else None,
+        "backup_banca": backup_banca if banca_docs else None,
+    }
+    await markers.update_one(
+        {"id": NEUTRALIZZA_VERSAMENTI_EC_MARKER},
+        {"$set": {"id": NEUTRALIZZA_VERSAMENTI_EC_MARKER, "status": "completed",
+                  "finished_at": datetime.now(timezone.utc).isoformat(), "result": risultato}},
+        upsert=True,
+    )
+    return risultato
+
+
+async def esegui_pulizia_pregressi_una_tantum() -> Dict[str, Any]:
+    """Pulizia di produzione idempotente, con backup e verifica finale.
+
+    Viene invocata soltanto dal lifecycle Render. La collection marker rende
+    l'operazione una tantum; i backup per collection consentono il ripristino.
+    """
+    db = Database.get_db()
+    marker_collection = db["migration_runs"]
+    esistente = await marker_collection.find_one({"id": PULIZIA_PREGRESSI_MARKER})
+    if esistente and esistente.get("status") == "completed":
+        return {"skipped": True, "reason": "already_completed"}
+
+    cedolini_prima = await db["cedolini"].count_documents({})
+    salari_prima = await db["prima_nota_salari"].count_documents({})
+    anteprima = await pulizia_dati_pre_anno(
+        anno_da_mantenere=2026, dry_run=True, crea_backup=True, _admin={}
+    )
+    await marker_collection.update_one(
+        {"id": PULIZIA_PREGRESSI_MARKER},
+        {"$set": {
+            "id": PULIZIA_PREGRESSI_MARKER,
+            "status": "running",
+            "started_at": datetime.now(timezone.utc).isoformat(),
+            "preview": anteprima,
+        }},
+        upsert=True,
+    )
+
+    esito = await pulizia_dati_pre_anno(
+        anno_da_mantenere=2026, dry_run=False, crea_backup=True, _admin={}
+    )
+    verifica = await pulizia_dati_pre_anno(
+        anno_da_mantenere=2026, dry_run=True, crea_backup=True, _admin={}
+    )
+    residui = sum(
+        voce["trovati_pre_anno"] for voce in verifica["collections"].values()
+    )
+    cedolini_dopo = await db["cedolini"].count_documents({})
+    salari_dopo = await db["prima_nota_salari"].count_documents({})
+    if residui or cedolini_dopo != cedolini_prima or salari_dopo != salari_prima:
+        await marker_collection.update_one(
+            {"id": PULIZIA_PREGRESSI_MARKER},
+            {"$set": {
+                "status": "verification_failed",
+                "finished_at": datetime.now(timezone.utc).isoformat(),
+                "remaining_old_documents": residui,
+                "cedolini_before": cedolini_prima,
+                "cedolini_after": cedolini_dopo,
+                "salari_before": salari_prima,
+                "salari_after": salari_dopo,
+            }},
+        )
+        raise RuntimeError("Verifica pulizia pre-2026 fallita; consultare i backup")
+
+    await marker_collection.update_one(
+        {"id": PULIZIA_PREGRESSI_MARKER},
+        {"$set": {
+            "status": "completed",
+            "finished_at": datetime.now(timezone.utc).isoformat(),
+            "result": esito,
+            "remaining_old_documents": 0,
+            "cedolini_preserved": cedolini_dopo,
+            "salary_rows_preserved": salari_dopo,
+        }},
+    )
+    return {**esito, "skipped": False, "verification_ok": True}
+
+
+# Unificazione categorie (richiesta utente 17/07/2026, screenshot del filtro
+# con 8 nomi diversi): un solo nome per concetto. Regole di rinomina, in
+# ordine di applicazione: (collection, filtro, nuova categoria).
+REGOLE_UNIFICA_CATEGORIE = [
+    # Pagamenti fatture fornitori → "Fatture" (il nome già usato dal 90%)
+    ("prima_nota_cassa", {"categoria": {"$in": ["Pagamento fornitore", "Fornitori", "fornitori"]}}, "Fatture"),
+    ("prima_nota_banca", {"categoria": {"$in": ["Pagamento fornitore", "Fornitori", "fornitori"]}}, "Fatture"),
+    # Contanti da cassa a banca → "Versamento Banca"
+    ("prima_nota_cassa", {"categoria": "Versamento", "tipo": "uscita"}, "Versamento Banca"),
+    ("prima_nota_banca", {"categoria": "Versamento", "tipo": "entrata"}, "Versamento Banca"),
+    ("prima_nota_banca", {"categoria": "trasferimento_interno", "tipo": "entrata"}, "Versamento Banca"),
+    # Contanti da banca a cassa → "Prelevamento Banca" (prelievi)
+    ("prima_nota_cassa", {"categoria": {"$in": ["trasferimento_interno", "Prelievo"]}, "tipo": "entrata"}, "Prelevamento Banca"),
+    ("prima_nota_banca", {"categoria": {"$in": ["trasferimento_interno", "Prelievo"]}, "tipo": "uscita"}, "Prelevamento Banca"),
+]
+
+
+# Fonti AUTOMATICHE dei movimenti fattura: solo queste possono essere
+# rimesse in discussione dalla riparazione per metodo — le registrazioni
+# fatte A MANO dall'utente (conferma dal tab Provvisori, pagamento manuale)
+# e quelle agganciate a un addebito REALE dell'estratto conto
+# (riconciliazione_ec: il denaro è uscito davvero dal conto) non si toccano.
+async def ripristina_abbinamenti_banca_senza_identita(
+    anno: int = 2026,
+    dry_run: bool = True,
+) -> Dict[str, Any]:
+    """Rivalida i vecchi auto-match fattura/estratto conto con la regola forte.
+
+    Interviene solo sulle righe fattura generate automaticamente dal matcher
+    di estratto conto. Le righe bancarie generiche, le conferme manuali e gli
+    altri tipi contabili non sono incluse. Prima della modifica salva una
+    copia dei documenti interessati, poi esegue esclusivamente soft-delete.
+    """
+    from app.services.match_storico_banca_fattura import (
+        SOGLIA_AUTO,
+        punteggio_match_storico,
+    )
+
+    db = Database.get_db()
+    fonti_auto = {
+        "estratto_conto_auto", "ric_auto_esatto_multi",
+        "ric_auto_parziale_singolo", "ric_auto_solo_importo",
+        "ric_auto_identita_unica",
+    }
+    filtro = {
+        "fattura_id": {"$nin": [None, ""]},
+        "tipo": "uscita",
+        "status": {"$nin": ["deleted", "archived"]},
+        "data": {"$regex": f"^{anno}"},
+    }
+    righe = await db[COLLECTION_PRIMA_NOTA_BANCA].find(filtro).to_list(20000)
+    non_valide = []
+    valide = 0
+
+    for riga in righe:
+        ec_id = riga.get("estratto_conto_id") or riga.get("movimento_bancario_id")
+        fattura_id = riga.get("fattura_id")
+        ec = await db[COLLECTION_ESTRATTO_CONTO].find_one({"id": ec_id}) if ec_id else None
+        fattura = await db["invoices"].find_one({"id": fattura_id})
+        # Le righe generiche create durante l'import dell'estratto conservano
+        # la source originale; il flag sulla fattura permette di riconoscere
+        # anche quei successivi auto-abbinamenti. Le conferme manuali non
+        # vengono mai rivalidate o rimosse da questa migrazione.
+        auto_generato = (
+            riga.get("source") in fonti_auto
+            or riga.get("riconciliazione_automatica") is True
+            or bool(fattura and fattura.get("riconciliato_automaticamente") is True)
+        )
+        if not auto_generato:
+            continue
+        if ec and fattura and punteggio_match_storico(ec, fattura) >= SOGLIA_AUTO:
+            valide += 1
+            if not dry_run:
+                await db[COLLECTION_PRIMA_NOTA_BANCA].update_one(
+                    {"id": riga.get("id")},
+                    {"$set": {"riconciliato": True, "estratto_conto_id": ec_id,
+                              "movimento_bancario_id": ec_id,
+                              "validato_regola_identita": True}},
+                )
+            continue
+        non_valide.append((riga, ec_id, fattura_id))
+
+    backup_collection = None
+    if non_valide and not dry_run:
+        timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        backup_collection = f"backup_auto_match_senza_identita_{timestamp}"
+        copie = []
+        for riga, _, _ in non_valide:
+            copia = dict(riga)
+            copia["_backup_at"] = datetime.now(timezone.utc).isoformat()
+            copia["_backup_reason"] = "auto_match_fattura_non_supportato_da_identita"
+            copie.append(copia)
+        await db[backup_collection].insert_many(copie, ordered=True)
+
+        for riga, ec_id, fattura_id in non_valide:
+            pn_id = riga.get("id")
+            await db[COLLECTION_PRIMA_NOTA_BANCA].update_one(
+                {"id": pn_id},
+                {"$set": {
+                    "status": "deleted",
+                    "entity_status": "deleted",
+                    "deleted_at": datetime.now(timezone.utc).isoformat(),
+                    "deleted_reason": "auto_match_fattura_senza_identita_bancaria",
+                }},
+            )
+            if ec_id:
+                await db[COLLECTION_ESTRATTO_CONTO].update_one(
+                    {"id": ec_id, "$or": [
+                        {"fattura_id": fattura_id}, {"documento_id": fattura_id}
+                    ]},
+                    {"$set": {"riconciliato": False, "abbinato": False,
+                              "stato_riconciliazione": "da_verificare"},
+                     "$unset": {"fattura_id": "", "documento_id": "",
+                                "tipo_abbinamento": "", "confidenza": ""}},
+                )
+            await db["invoices"].update_one(
+                {"id": fattura_id, "$or": [
+                    {"prima_nota_banca_id": pn_id},
+                    {"prima_nota_id": pn_id},
+                    {"movimento_bancario_id": ec_id},
+                ]},
+                {"$set": {"pagato": False, "paid": False,
+                          "stato_pagamento": "da_pagare",
+                          "stato_finanziario": "in_attesa_estratto_conto"},
+                 "$unset": {"prima_nota_banca_id": "", "prima_nota_id": "",
+                            "prima_nota_tipo": "", "movimento_bancario_id": "",
+                            "riconciliato": "", "riconciliato_con_ec": "",
+                            "data_pagamento": ""}},
+            )
+
+    return {
+        "analizzati": len(righe),
+        "validi": valide,
+        "ripristinati_provvisori": len(non_valide),
+        "dry_run": dry_run,
+        "backup_collection": backup_collection,
+    }
+
+
+SOURCES_FATTURE_AUTO = [
+    "auto_conferma", "sync_fatture", "backfill_auto_da_fornitore",
+    "auto_metodo", "fix_relazioni", "auto_registrazione_metodo_fornitore",
+    "auto_metodo_fornitore",
+    # sfuggite al primo giro (18/07, caso TOP SPINA 4853/01): altre
+    # scritture automatiche di vecchie pipeline
+    "auto_import", "sync_fatture_banca", "auto_confirm_provvisoria",
+]
+
+
+async def ripristina_provvisori_metodo_errato(
+    dry_run: bool = Query(True, description="Solo conteggio, non modifica"),
+    anno: int = Query(2026),
+    banca_non_riconciliate: bool = Query(False, description=(
+        "REGOLA utente 18/07/2026: una fattura 'banca' e' pagata SOLO se "
+        "riconciliata con estratto conto/PayPal/carta. Con true, TUTTE le "
+        "uscite fattura banca auto MAI riconciliate tornano provvisorie.")),
+    _admin: Dict = Depends(get_current_admin_user),
+) -> Dict:
+    """Richiesta utente 17/07/2026: "abbiamo fornitori che si pagano per
+    cassa e li ha messi in banca — tutti quelli devi mettere nei provvisori".
+
+    Per ogni movimento fattura creato AUTOMATICAMENTE, confronta il lato
+    (cassa/banca) con il metodo del fornitore in anagrafica
+    (classifica_metodo_fornitore, la stessa regola di tutto il resto):
+    - fornitore CASSA ma movimento in BANCA → lato sbagliato
+    - fornitore BANCA ma movimento in CASSA → lato sbagliato
+    - fornitore MISTO/senza metodo → non doveva essere registrato da solo
+    In tutti i casi il movimento viene marcato deleted (soft, recuperabile)
+    e la fattura torna NON pagata: ricompare nei Provvisori con il
+    suggerimento giusto, e decide l'utente."""
+    from .sync import classifica_metodo_fornitore, mappa_fornitori_per_piva
+
+    db = Database.get_db()
+
+    metodo_per_piva, _esclusi = await mappa_fornitori_per_piva(db)
+
+    report = {"banca": [], "cassa": []}
+    corretti = 0
+
+    for collection, lato in ((COLLECTION_PRIMA_NOTA_BANCA, "banca"), (COLLECTION_PRIMA_NOTA_CASSA, "cassa")):
+        movimenti = await db[collection].find(
+            {
+                "tipo": "uscita",
+                # anche le righe legacy con fattura_id vuoto ma riferimento
+                # FATT-<id> (vecchio sync_fatture): la fattura si ricava dal
+                # riferimento — prima sfuggivano alla riparazione (caso ABC
+                # 19/03, riga superstite segnalata dall'utente 18/07).
+                "$or": [
+                    {"fattura_id": {"$nin": [None, ""]}},
+                    {"riferimento": {"$regex": "^FATT-"}},
+                ],
+                # `fattura_pagata` e' condivisa dai flussi manuali e dalla
+                # vecchia auto-registrazione: viene ammessa qui, ma sotto si
+                # corregge solo se la fattura porta il flag auto esplicito.
+                "source": {"$in": SOURCES_FATTURE_AUTO + ["fattura_pagata"]},
+                "status": {"$nin": ["deleted", "archived"]},
+                "data": {"$regex": f"^{anno}"},
+            },
+            {"_id": 0, "id": 1, "fattura_id": 1, "riferimento": 1, "importo": 1, "data": 1,
+             "descrizione": 1, "source": 1, "riconciliato": 1, "estratto_conto_id": 1,
+             "movimento_bancario_id": 1, "movimento_estratto_conto_id": 1, "movimento_banca_id": 1},
+        ).to_list(20000)
+
+        for mov in movimenti:
+            fid = mov.get("fattura_id") or (mov.get("riferimento") or "")[5:]
+            mov["fattura_id"] = fid
+            fattura = await db["invoices"].find_one(
+                filtro_id(fid),
+                {"_id": 0, "supplier_vat": 1, "cedente_piva": 1,
+                 "invoice_number": 1, "supplier_name": 1,
+                 "total_amount": 1, "importo_totale": 1,
+                 "registrata_auto_da_metodo_fornitore": 1},
+            )
+            if not fattura:
+                # Movimento ORFANO: la fattura collegata non esiste più in
+                # archivio — un pagamento automatico senza documento non ha
+                # ragione di restare nei saldi (caso FLA 4-FE, 02/01/2026).
+                report[lato].append({
+                    "fattura": "(fattura inesistente)",
+                    "fornitore": (mov.get("descrizione") or "")[:40],
+                    "importo": mov.get("importo"),
+                    "data": mov.get("data"),
+                    "metodo_fornitore": "-",
+                    "destinazione_giusta": "eliminato (orfano)",
+                })
+                corretti += 1
+                if not dry_run:
+                    await db[collection].update_one(
+                        {"id": mov["id"]},
+                        {"$set": {"status": "deleted",
+                                  "deleted_reason": "movimento_auto_orfano_senza_fattura"}},
+                    )
+                continue
+            if (
+                mov.get("source") == "fattura_pagata"
+                and not fattura.get("registrata_auto_da_metodo_fornitore")
+            ):
+                # Pagamento realmente confermato a mano: mai annullarlo solo
+                # perche' oggi l'anagrafica del fornitore e' cambiata.
+                continue
+            # Il metodo del fornitore e' una previsione, la banca e' una prova: una riga legata a un
+            # movimento d'estratto, o una fattura gia' provata da un'altra riga, non torna mai provvisoria
+            # solo perche' oggi l'anagrafica dice un altro metodo. La riga provvisoria rimasta accanto alla
+            # prova (non conta nei saldi) non vale come pagamento da annullare.
+            if mov.get("riconciliato") or riga_con_prova_bancaria(mov):
+                continue
+            prova_altrove = None
+            for registro in (COLLECTION_PRIMA_NOTA_BANCA, COLLECTION_PRIMA_NOTA_CASSA):
+                prova_altrove = await db[registro].find_one({
+                    "fattura_id": {"$in": varianti_id(fid)}, "id": {"$ne": mov["id"]},
+                    "status": {"$nin": ["deleted", "archived"]},
+                    "$or": [{"riconciliato": True}, {"estratto_conto_id": {"$nin": [None, ""]}},
+                            {"movimento_bancario_id": {"$nin": [None, ""]}}],
+                }, {"_id": 0, "id": 1})
+                if prova_altrove:
+                    break
+            if prova_altrove:
+                continue
+            piva = str(fattura.get("supplier_vat") or fattura.get("cedente_piva") or "").strip()
+            destinazione = classifica_metodo_fornitore(metodo_per_piva.get(piva, ""))
+            senza_riconciliazione = (
+                banca_non_riconciliate and lato == "banca"
+                and not mov.get("riconciliato") and not mov.get("estratto_conto_id")
+            )
+            if destinazione == lato and not senza_riconciliazione:
+                continue  # lato giusto (e riconciliata, se richiesto): non si tocca
+            if destinazione == lato and senza_riconciliazione:
+                destinazione = "provvisoria (in attesa di riconciliazione)"
+
+            report[lato].append({
+                "fattura": fattura.get("invoice_number"),
+                "fornitore": (fattura.get("supplier_name") or "")[:40],
+                "importo": mov.get("importo"),
+                "data": mov.get("data"),
+                "metodo_fornitore": metodo_per_piva.get(piva) or "(nessuno)",
+                "destinazione_giusta": destinazione,
+            })
+            corretti += 1
+            if dry_run:
+                continue
+
+            await db[collection].update_one(
+                {"id": mov["id"]},
+                {"$set": {"status": "deleted",
+                          "deleted_reason": "lato_errato_vs_metodo_fornitore"}},
+            )
+            await db["invoices"].update_one(
+                filtro_id(mov["fattura_id"]),
+                {"$set": {
+                    # Tutte le viste usano ancora alias storici diversi.
+                    # Lasciarne uno solo a True rendeva la fattura
+                    # invisibile in Prima Nota pur avendo il movimento
+                    # collegato soft-deleted (32 casi live il 05/08/2026).
+                    "pagato": False,
+                    "paid": False,
+                    "stato_pagamento": "da_pagare",
+                    "payment_status": "open",
+                    "stato_finanziario": "da_registrare",
+                    "importo_pagato": 0,
+                    "importo_residuo": float(
+                        fattura.get("total_amount")
+                        or fattura.get("importo_totale")
+                        or 0
+                    ),
+                    "prima_nota_id": None,
+                    "prima_nota_tipo": None,
+                },
+                 "$unset": {
+                     "prima_nota_cassa_id": "",
+                     "prima_nota_banca_id": "",
+                     "data_pagamento": "",
+                     "movimento_bancario_id": "",
+                     "estratto_conto_id": "",
+                     "riconciliato": "",
+                     "riconciliato_con_ec": "",
+                     "registrata_auto_da_metodo_fornitore": "",
+                 }},
+            )
+
+    # ── Un addebito reale = UNA riga (caso TOP SPINA 05/01, triplo conteggio) ──
+    # 1) Due o più righe banca agganciate alla STESSA riga di estratto conto:
+    #    lo stesso denaro uscito una volta sola contato più volte. Resta la
+    #    più vecchia; le altre tornano provvisorie (il loro pagamento reale
+    #    non è stato trovato).
+    doppioni_stesso_addebito = 0
+    righe_ec = await db[COLLECTION_PRIMA_NOTA_BANCA].find(
+        {"tipo": "uscita", "estratto_conto_id": {"$nin": [None, ""]},
+         "status": {"$nin": ["deleted", "archived"]}, "data": {"$regex": f"^{anno}"}},
+        {"_id": 0, "id": 1, "estratto_conto_id": 1, "fattura_id": 1, "created_at": 1},
+    ).to_list(20000)
+    per_ec: Dict[str, list] = {}
+    for r in righe_ec:
+        per_ec.setdefault(r["estratto_conto_id"], []).append(r)
+    for gruppo in per_ec.values():
+        if len(gruppo) <= 1:
+            continue
+        gruppo.sort(key=lambda x: x.get("created_at") or "9999")
+        for extra in gruppo[1:]:
+            doppioni_stesso_addebito += 1
+            if dry_run:
+                continue
+            await db[COLLECTION_PRIMA_NOTA_BANCA].update_one(
+                {"id": extra["id"]},
+                {"$set": {"status": "deleted",
+                          "deleted_reason": "stesso_addebito_estratto_conto_duplicato"}})
+            if extra.get("fattura_id"):
+                await db["invoices"].update_one(
+                    {"id": extra["fattura_id"]},
+                    {"$set": {"pagato": False, "stato_pagamento": "da_pagare",
+                              "prima_nota_id": None, "prima_nota_tipo": None}})
+
+    # 2) Riga "Assegno n. X" dell'auto-match quando ESISTE già una riga
+    #    fattura con lo stesso numero assegno: doppione, si elimina la riga
+    #    assegno (resta quella collegata alla fattura).
+    import re as _re2
+    righe_assegno_duplicate = 0
+    asg_rows = await db[COLLECTION_PRIMA_NOTA_BANCA].find(
+        {"tipo": "uscita", "source": "assegno_auto_match",
+         "status": {"$nin": ["deleted", "archived"]}, "data": {"$regex": f"^{anno}"}},
+        {"_id": 0, "id": 1, "descrizione": 1},
+    ).to_list(5000)
+    for r in asg_rows:
+        mnum = _re2.search(r"Assegno n\.\s*0*(\d{6,})", r.get("descrizione") or "")
+        if not mnum:
+            continue
+        num = mnum.group(1)
+        gemella = await db[COLLECTION_PRIMA_NOTA_BANCA].find_one({
+            "id": {"$ne": r["id"]},
+            "numero_assegno": {"$regex": f"0*{num}$"},
+            "status": {"$nin": ["deleted", "archived"]},
+        })
+        if gemella:
+            righe_assegno_duplicate += 1
+            if not dry_run:
+                await db[COLLECTION_PRIMA_NOTA_BANCA].update_one(
+                    {"id": r["id"]},
+                    {"$set": {"status": "deleted",
+                              "deleted_reason": "riga_assegno_duplicata_vs_fattura"}})
+
+    return {
+        "dry_run": dry_run,
+        "anno": anno,
+        "da_correggere" if dry_run else "corretti": corretti,
+        "banca_verso_provvisori": len(report["banca"]),
+        "cassa_verso_provvisori": len(report["cassa"]),
+        "doppioni_stesso_addebito": doppioni_stesso_addebito,
+        "righe_assegno_duplicate": righe_assegno_duplicate,
+        "dettaglio": {k: v[:50] for k, v in report.items()},
+    }
+
+
+async def collega_corrispettivi_prima_nota(
+    dry_run: bool = Query(True, description="Solo conteggio, non collega"),
+    _admin: Dict = Depends(get_current_admin_user),
+) -> Dict:
+    """Ricollega al documento i movimenti corrispettivo con corrispettivo_id
+    vuoto (retaggio dei vecchi documenti senza id: il movimento nasceva con
+    il link a None e il bottone 'Corrisp.' non compariva — segnalato
+    dall'utente 18/07/2026, righe fino al 12/05). Collega SOLO quando per
+    quella data esiste UN corrispettivo univoco."""
+    db = Database.get_db()
+
+    corr_per_data: Dict[str, list] = {}
+    for c in await db["corrispettivi"].find({}, {"_id": 0, "id": 1, "data": 1}).to_list(10000):
+        if c.get("id") and c.get("data"):
+            corr_per_data.setdefault(str(c["data"])[:10], []).append(c["id"])
+
+    filtro_senza_link = {
+        "$or": [{"corrispettivo_id": None}, {"corrispettivo_id": ""},
+                {"corrispettivo_id": {"$exists": False}}],
+        "status": {"$nin": ["deleted", "archived"]},
+    }
+    target = [
+        ("prima_nota_cassa", {"categoria": {"$in": ["Corrispettivi", "POS Verso Banca"]}}),
+        ("prima_nota_banca", {"categoria": "Corrispettivi POS"}),
+    ]
+    collegati = ambigui = senza_documento = 0
+    for collection, filtro_cat in target:
+        movs = await db[collection].find(
+            {**filtro_senza_link, **filtro_cat},
+            {"_id": 0, "id": 1, "data": 1},
+        ).to_list(10000)
+        for m in movs:
+            ids = corr_per_data.get((m.get("data") or "")[:10], [])
+            if len(ids) == 1:
+                collegati += 1
+                if not dry_run:
+                    await db[collection].update_one(
+                        {"id": m["id"]}, {"$set": {"corrispettivo_id": ids[0]}})
+            elif len(ids) > 1:
+                ambigui += 1  # due matricole nello stesso giorno: non si indovina
+            else:
+                senza_documento += 1
+    return {
+        "dry_run": dry_run,
+        "collegati": collegati,
+        "ambigui": ambigui,
+        "senza_documento": senza_documento,
+    }
+
+
+async def arricchisci_pagamenti_banca(
+    dry_run: bool = Query(True, description="Solo conteggio, non scrive"),
+    _admin: Dict = Depends(get_current_admin_user),
+) -> Dict:
+    """Richiesta utente 18/07/2026 (caso TOP SPINA 4853/01): per ogni riga
+    di Prima Nota Banca agganciata a un movimento reale dell'estratto conto,
+    specifica COME è stato pagato leggendo la causale bancaria — bonifico,
+    assegno (con numero), addebito diretto SDD, PayPal — e, se assegno,
+    annota il numero sulla riga.
+
+    Gli assegni non li crea ne' li segna incassati: lo fa solo il giro
+    dell'estratto conto (``assegni_estratto_conto``), con numero e importo al
+    centesimo. Qui nascevano schede «incassato» dalla sola causale e un
+    numero trovato con ``$regex`` di coda, che agganciava l'assegno sbagliato
+    quando due numeri finivano uguali."""
+    import re as _re
+
+    db = Database.get_db()
+    movs = await db[COLLECTION_PRIMA_NOTA_BANCA].find(
+        {"tipo": "uscita", "estratto_conto_id": {"$nin": [None, ""]},
+         "status": {"$nin": ["deleted", "archived"]}},
+        {"_id": 0, "id": 1, "estratto_conto_id": 1, "descrizione": 1,
+         "importo": 1, "data": 1, "fattura_id": 1, "fornitore": 1, "pagato_con": 1},
+    ).to_list(20000)
+
+    aggiornati = 0
+    per_metodo: Dict[str, int] = {}
+
+    for m in movs:
+        ec = await db["estratto_conto_movimenti"].find_one(
+            {"id": m["estratto_conto_id"]},
+            {"_id": 0, "descrizione": 1, "descrizione_originale": 1})
+        if not ec:
+            continue
+        causale = (ec.get("descrizione_originale") or ec.get("descrizione") or "").upper()
+        metodo = None
+        numero = None
+        if "ASSEGNO" in causale:
+            metodo = "assegno"
+            mnum = (_re.search(r"NUM[.:]?\s*0*(\d{6,})", causale)
+                    or _re.search(r"ASSEGNO\D{0,20}0*(\d{7,})", causale))
+            if mnum:
+                numero = mnum.group(1)
+        elif any(k in causale for k in ("BONIF", "VS.DISP", "DISPOSIZIONE")):
+            metodo = "bonifico"
+        elif "PAYPAL" in causale:
+            metodo = "paypal"
+        elif "SDD" in causale or "ADDEBITO" in causale or "ADD." in causale:
+            metodo = "addebito diretto"
+        if not metodo:
+            continue
+
+        per_metodo[metodo] = per_metodo.get(metodo, 0) + 1
+        etichetta = f"assegno n. {numero}" if (metodo == "assegno" and numero) else metodo
+        gia = (m.get("pagato_con") == metodo)
+        if not gia:
+            aggiornati += 1
+        if dry_run:
+            continue
+
+        upd: Dict[str, Any] = {"pagato_con": metodo}
+        if numero:
+            upd["numero_assegno"] = numero
+        descr = m.get("descrizione") or ""
+        if etichetta not in descr:
+            upd["descrizione"] = f"{descr} · {etichetta}"
+        await db[COLLECTION_PRIMA_NOTA_BANCA].update_one({"id": m["id"]}, {"$set": upd})
+
+
+    return {
+        "dry_run": dry_run,
+        "righe_con_estratto_conto": len(movs),
+        "aggiornate": aggiornati,
+        "per_metodo": per_metodo,
+    }
+
+
+async def unifica_categorie(
+    dry_run: bool = Query(True, description="Solo conteggio, non rinomina"),
+    _admin: Dict = Depends(get_current_admin_user),
+) -> Dict:
+    """Rinomina le categorie storiche di Prima Nota nei tre nomi canonici:
+    "Fatture" (pagamenti fatture fornitori), "Versamento Banca" (contanti
+    cassa→banca), "Prelevamento Banca" (contanti banca→cassa). Idempotente:
+    rieseguirla non cambia più nulla."""
+    db = Database.get_db()
+    report = []
+    totale = 0
+    for collection, filtro, nuova in REGOLE_UNIFICA_CATEGORIE:
+        if dry_run:
+            n = await db[collection].count_documents(filtro)
+        else:
+            r = await db[collection].update_many(filtro, {"$set": {"categoria": nuova}})
+            n = r.modified_count
+        if n:
+            report.append({
+                "collection": collection, "filtro": str(filtro),
+                "nuova_categoria": nuova, "movimenti": n,
+            })
+        totale += n
+    return {"dry_run": dry_run, "totale_movimenti": totale, "rinomine": report}
+
+
+async def fix_date_formato_italiano() -> Dict:
+    """Normalizza in ISO (YYYY-MM-DD) le date salvate come GG/MM/AAAA in
+    prima_nota_cassa e prima_nota_banca.
+
+    Bug trovato in verifica live 16/07/2026: 11 movimenti banca legacy
+    (source "riconciliazione_ec", writer non più esistente) hanno la data in
+    formato italiano. Tutti i saldi confrontano le date come STRINGHE:
+    "04/02/2026" < "2024-01-01", quindi quei movimenti finivano nel riporto
+    "anni precedenti" di ogni anno (−17.254€ fantasma nel saldo iniziale)
+    invece che nell'anno vero. Il fix normalizza la data e riallinea anno/mese.
+    """
+    import re as _re
+    db = Database.get_db()
+
+    pattern = _re.compile(r"^(\d{2})/(\d{2})/(\d{4})")
+    corretti = {"prima_nota_cassa": 0, "prima_nota_banca": 0}
+    dettaglio = []
+
+    for collection in (COLLECTION_PRIMA_NOTA_CASSA, COLLECTION_PRIMA_NOTA_BANCA):
+        docs = await db[collection].find(
+            {"data": {"$regex": r"^\d{2}/\d{2}/\d{4}"}},
+            {"_id": 0, "id": 1, "data": 1},
+        ).to_list(10000)
+        for d in docs:
+            m = pattern.match(d["data"])
+            if not m:
+                continue
+            gg, mm, aaaa = m.groups()
+            data_iso = f"{aaaa}-{mm}-{gg}"
+            await db[collection].update_one(
+                {"id": d["id"]},
+                {"$set": {
+                    "data": data_iso,
+                    "anno": int(aaaa),
+                    "mese": int(mm),
+                    "data_originale_malformata": d["data"],
+                }},
+            )
+            corretti[collection] += 1
+            dettaglio.append({"collection": collection, "id": d["id"],
+                              "da": d["data"], "a": data_iso})
+
+    return {
+        "success": True,
+        "corretti": corretti,
+        "totale": sum(corretti.values()),
+        "dettaglio": dettaglio[:50],
+    }
+
+
+async def fix_categories_and_duplicates(anno: Optional[int] = Query(None)) -> Dict:
+    """Corregge le categorie errate e rimuove i duplicati."""
+    db = Database.get_db()
+
+    query = {}
+    if anno:
+        query["data"] = {"$regex": f"^{anno}"}
+
+    fixed_categories = 0
+    removed_duplicates = 0
+
+    movimenti_cassa = await db[COLLECTION_PRIMA_NOTA_CASSA].find(query, {"_id": 0}).to_list(20000)
+
+    category_mappings = [
+        (["altro"], ["pos"], "POS"),
+        (["tasse", "altro"], ["corrispettivo"], "Corrispettivi"),
+        (["altro"], ["versamento"], "Versamento"),
+    ]
+
+    for mov in movimenti_cassa:
+        categoria = (mov.get("categoria") or "").lower()
+        descrizione = (mov.get("descrizione") or "").lower()
+        new_categoria = None
+
+        for cat_matches, desc_keywords, new_cat in category_mappings:
+            if any(c in categoria for c in cat_matches) and any(k in descrizione for k in desc_keywords):
+                new_categoria = new_cat
+                break
+
+        if new_categoria:
+            await db[COLLECTION_PRIMA_NOTA_CASSA].update_one(
+                {"id": mov["id"]},
+                {"$set": {"categoria": new_categoria}}
+            )
+            fixed_categories += 1
+
+    seen = {}
+    for mov in movimenti_cassa:
+        key = f"{mov.get('data')}|{mov.get('importo')}|{mov.get('descrizione', '')[:50]}"
+        if key in seen:
+            await db[COLLECTION_PRIMA_NOTA_CASSA].delete_one({"id": mov["id"]})
+            removed_duplicates += 1
+        else:
+            seen[key] = mov["id"]
+
+    return {
+        "success": True,
+        "anno": anno,
+        "fixed_categories": fixed_categories,
+        "removed_duplicates": removed_duplicates,
+        "movimenti_analizzati": len(movimenti_cassa)
+    }
+
+
+async def sposta_movimento(req: SpostaMovimentoRequest) -> Dict:
+    """Sposta un movimento da cassa a banca o viceversa."""
+    db = Database.get_db()
+    movimento_id = req.movimento_id
+    da = req.da
+    a = req.a
+
+    if da not in ["cassa", "banca"] or a not in ["cassa", "banca"]:
+        raise HTTPException(status_code=400, detail="da/a devono essere 'cassa' o 'banca'")
+
+    if da == a:
+        raise HTTPException(status_code=400, detail="Origine e destinazione uguali")
+    motivo = str(req.motivo or "").strip()
+    if req.conferma and not motivo:
+        raise HTTPException(status_code=400, detail="motivo richiesto per confermare la riclassificazione")
+
+    source_coll = COLLECTION_PRIMA_NOTA_CASSA if da == "cassa" else COLLECTION_PRIMA_NOTA_BANCA
+
+    # Cerca nella collection diretta
+    mov = await db[source_coll].find_one({"id": movimento_id})
+
+    # Se non trovato in prima_nota_banca, cerca anche in estratto_conto_movimenti
+    # (la sezione Banca carica i dati dall'estratto conto)
+    if not mov and da == "banca":
+        mov = await db["estratto_conto_movimenti"].find_one({"id": movimento_id})
+        if mov:
+            if not req.conferma:
+                return {
+                    "success": True,
+                    "preview": True,
+                    "conferma_richiesta": True,
+                    "movimento_id": movimento_id,
+                    "da": da,
+                    "a": a,
+                    "fattura_id": mov.get("fattura_id"),
+                    "importo": mov.get("importo"),
+                    "data": mov.get("data"),
+                    "message": "Anteprima pronta: confermare esplicitamente per riclassificare",
+                }
+            # Il movimento è nell'estratto conto: viene COPIATO in cassa e la
+            # riga originale MARCATA come spostata — mai eliminata. L'estratto
+            # conto è il documento bancario originale: cancellarlo perderebbe
+            # per sempre l'origine documentale (audit 16/07/2026; prima qui
+            # c'era una delete_one).
+            mov = dict(mov)
+            mov.pop("_id", None)
+            mov["moved_from"] = "banca_estratto_conto"
+            mov["moved_at"] = datetime.now(timezone.utc).isoformat()
+            mov["source"] = mov.get("source", "estratto_conto")
+            mov["prima_nota_riclassificazione"] = {
+                "da": da,
+                "a": a,
+                "motivo": motivo,
+                "confermato_at": datetime.now(timezone.utc).isoformat(),
+            }
+            # Assicura che sia un'uscita (addebito) o entrata (accredito) coerente
+            mov.pop("operation_hash", None)
+            try:
+                await scrivi_movimento(db, a, mov, ricollocazione=True)
+            except ScritturaNonValida as exc:
+                raise HTTPException(status_code=409, detail=f"Riclassificazione rifiutata: {exc}") from exc
+            await db["estratto_conto_movimenti"].update_one(
+                {"id": movimento_id},
+                {"$set": {
+                    "escluso_da_vista_banca": True,
+                    "spostato_in": a,
+                    "spostato_at": datetime.now(timezone.utc).isoformat(),
+                    "spostamento_motivo": motivo,
+                }},
+            )
+
+
+            return {
+                "success": True,
+                "message": f"Movimento spostato da estratto conto banca a {a}",
+                "movimento_id": movimento_id
+            }
+
+    if not mov:
+        raise HTTPException(status_code=404, detail=f"Movimento {movimento_id} non trovato in {da}")
+
+    # Una riga con la prova della banca non si declassa a Cassa: l'addebito resterebbe riconciliato
+    # sull'estratto e la stessa uscita peserebbe anche sul contante.
+    if da == "banca" and a == "cassa" and riga_con_prova_bancaria(mov):
+        raise HTTPException(
+            status_code=409,
+            detail=("La riga e' legata a un movimento dell'estratto conto: non si sposta in Cassa. "
+                    "Per cambiare destinazione si annulla prima l'associazione con la banca."),
+        )
+
+    if not req.conferma:
+        return {
+            "success": True,
+            "preview": True,
+            "conferma_richiesta": True,
+            "movimento_id": movimento_id,
+            "da": da,
+            "a": a,
+            "fattura_id": mov.get("fattura_id"),
+            "importo": mov.get("importo"),
+            "data": mov.get("data"),
+            "message": "Anteprima pronta: confermare esplicitamente per riclassificare",
+        }
+    mov = dict(mov)
+    mov.pop("_id", None)
+    mov["moved_from"] = da
+    mov["moved_at"] = datetime.now(timezone.utc).isoformat()
+    # stessa riga, stesso id: ma conto di tesoreria e metodo sono quelli del registro di arrivo
+    mov.update(campi_dopo_spostamento(mov, da, a))
+
+    mov.pop("operation_hash", None)
+    # Prima la scrittura nel registro di arrivo, poi la rimozione dall'origine:
+    # una riga rifiutata dal motore non sparisce da nessuna parte.
+    try:
+        await scrivi_movimento(db, a, mov, ricollocazione=True)
+    except ScritturaNonValida as exc:
+        raise HTTPException(status_code=409, detail=f"Riclassificazione rifiutata: {exc}") from exc
+    await db[source_coll].delete_one({"id": movimento_id})
+
+    # Aggiorna la FATTURA collegata: metodo e riferimenti prima nota devono
+    # seguire lo spostamento (prima restavano puntati alla collection vecchia)
+    fattura_aggiornata = False
+    if mov.get("fattura_id"):
+        upd = {
+            "prima_nota_tipo": a,
+            "prima_nota_id": movimento_id,
+            "metodo_pagamento_effettivo": a,
+            "prima_nota_cassa_id": movimento_id if a == "cassa" else None,
+            "prima_nota_banca_id": movimento_id if a == "banca" else None,
+            "prima_nota_riclassificazione": {
+                "da": da,
+                "a": a,
+                "motivo": motivo,
+                "confermato_at": datetime.now(timezone.utc).isoformat(),
+            },
+        }
+        r = await db["invoices"].update_one(filtro_id(mov["fattura_id"]), {"$set": upd})
+        fattura_aggiornata = r.modified_count > 0
+
+    # NIENTE evento "trasferimento.creato" qui (rimosso 17/07/2026):
+    # spostare un movimento tra Cassa e Banca è una RICLASSIFICAZIONE,
+    # non un trasferimento di denaro. L'evento faceva scattare
+    # on_trasferimento_crea_lato_opposto che creava entrate FANTASMA
+    # ("Prelevamento da banca" in cassa / "Versamento contanti" in banca)
+    # a ogni spostamento di fattura, gonfiando i saldi di entrambi i lati.
+
+    return {
+        "success": True,
+        "message": f"Movimento spostato da {da} a {a}",
+        "movimento_id": movimento_id,
+        "fattura_aggiornata": fattura_aggiornata,
+    }
+
+
+async def verifica_metodo_fattura(fattura_id: str) -> Dict:
+    """Verifica il metodo pagamento di una fattura e fornisce info debug."""
+    db = Database.get_db()
+
+    fattura = await db["invoices"].find_one(
+        {"$or": [{"id": fattura_id}, {"invoice_key": fattura_id}]},
+        {"_id": 0}
+    )
+
+    if not fattura:
+        raise HTTPException(status_code=404, detail="Fattura non trovata")
+
+    tipo_movimento, categoria, _ = determina_tipo_movimento_fattura(fattura)
+
+    fornitore_piva = fattura.get("supplier_vat") or fattura.get("cedente_piva")
+    fornitore_info = None
+    if fornitore_piva:
+        fornitore_info = await db["fornitori"].find_one(
+            {"partita_iva": fornitore_piva},
+            {"_id": 0, "nome": 1, "metodo_pagamento": 1}
+        )
+
+    return {
+        "fattura_id": fattura_id,
+        "tipo_documento": fattura.get("tipo_documento"),
+        "metodo_pagamento_fattura": fattura.get("metodo_pagamento"),
+        "tipo_movimento_calcolato": tipo_movimento,
+        "categoria_calcolata": categoria,
+        "fornitore": {
+            "partita_iva": fornitore_piva,
+            "nome": fornitore_info.get("nome") if fornitore_info else None,
+            "metodo_pagamento_anagrafica": fornitore_info.get("metodo_pagamento") if fornitore_info else None
+        }
+    }
+
+
+async def verifica_entrate_corrispettivi(anno: int = Query(...)) -> Dict:
+    """Verifica entrate corrispettivi in Prima Nota Cassa."""
+    db = Database.get_db()
+
+    date_start = f"{anno}-01-01"
+    date_end = f"{anno}-12-31"
+
+    entrate_corr = await db[COLLECTION_PRIMA_NOTA_CASSA].find(
+        {
+            "data": {"$gte": date_start, "$lte": date_end},
+            "categoria": "Corrispettivi",
+            "tipo": "entrata"
+        },
+        {"_id": 0}
+    ).to_list(10000)
+
+    corrispettivi = await db["corrispettivi"].find(
+        {"data": {"$gte": date_start, "$lte": date_end}},
+        {"_id": 0}
+    ).to_list(10000)
+
+    totale_pn = sum(e.get("importo", 0) for e in entrate_corr)
+    totale_corr = sum(c.get("totale", 0) for c in corrispettivi)
+
+    return {
+        "anno": anno,
+        "prima_nota": {
+            "count": len(entrate_corr),
+            "totale": round(totale_pn, 2)
+        },
+        "corrispettivi": {
+            "count": len(corrispettivi),
+            "totale": round(totale_corr, 2)
+        },
+        "differenza": round(totale_pn - totale_corr, 2),
+        "status": "OK" if abs(totale_pn - totale_corr) < 1 else "DISCREPANZA"
+    }
+
+
+async def fix_corrispettivi_importo(anno: int = Query(...)) -> Dict:
+    """Corregge l'importo dei corrispettivi in Prima Nota Cassa."""
+    db = Database.get_db()
+
+    date_start = f"{anno}-01-01"
+    date_end = f"{anno}-12-31"
+
+    entrate = await db[COLLECTION_PRIMA_NOTA_CASSA].find(
+        {
+            "data": {"$gte": date_start, "$lte": date_end},
+            "categoria": "Corrispettivi"
+        },
+        {"_id": 0}
+    ).to_list(10000)
+
+    fixed = 0
+    for e in entrate:
+        corr_id = e.get("corrispettivo_id") or e.get("riferimento", "").replace("CORR-", "")
+        if not corr_id:
+            continue
+
+        corr = await db["corrispettivi"].find_one({"id": corr_id}, {"_id": 0})
+        if not corr:
+            continue
+
+        totale_corretto = float(corr.get("totale", 0) or 0)
+        importo_attuale = float(e.get("importo", 0))
+
+        if abs(totale_corretto - importo_attuale) > 0.01:
+            await db[COLLECTION_PRIMA_NOTA_CASSA].update_one(
+                {"id": e["id"]},
+                {"$set": {
+                    "importo": totale_corretto,
+                    "importo_originale": importo_attuale,
+                    "fixed_at": datetime.now(timezone.utc).isoformat()
+                }}
+            )
+            fixed += 1
+
+    return {
+        "success": True,
+        "anno": anno,
+        "entrate_analizzate": len(entrate),
+        "corrette": fixed
+    }
+
+
+async def migrazione_pulisci_bancari_da_cassa(_admin: Dict[str, Any] = Depends(get_current_admin_user)) -> Dict[str, Any]:
+    """
+    MIGRAZIONE ONE-SHOT: Elimina tutti i movimenti bancari dalla prima_nota_cassa.
+
+    La Prima Nota Cassa deve contenere SOLO movimenti di denaro CONTANTE:
+    - ENTRATE: Corrispettivi giornalieri, incassi contanti, finanziamenti soci in contanti
+    - USCITE: Versamenti in banca, fatture pagate in contanti, piccole spese contanti
+
+    NON deve contenere:
+    - Bonifici, SDD, RID, pagamenti POS bancari, F24, stipendi,
+    - Pagamenti fornitori via banca, commissioni bancarie
+    """
+    db = Database.get_db()
+
+    tutti = await db[COLLECTION_PRIMA_NOTA_CASSA].find(
+        {"status": {"$nin": ["deleted", "archived"]}},
+        {"_id": 1, "descrizione": 1, "categoria": 1, "source": 1,
+         "importo": 1, "data": 1, "tipo": 1, "riferimento": 1,
+         "fattura_id": 1, "fattura_collegata": 1, "metodo_pagamento": 1,
+         "metodo_pagamento_effettivo": 1}
+    ).to_list(100000)
+    if len(tutti) >= 100000:
+        logger.warning("manutenzione prima nota cassa: raggiunto il tetto di 100000 documenti, possibile troncamento")
+
+    ids_da_eliminare = []
+    campione_eliminati = []
+
+    for m in tutti:
+        desc = (m.get('descrizione') or '')
+        source = m.get('source', '') or ''
+        if _movimento_e_bancario_errato_in_cassa(m):
+            ids_da_eliminare.append(m['_id'])
+            if len(campione_eliminati) < 10:
+                campione_eliminati.append({
+                    "data": m.get("data"), "descrizione": desc[:60],
+                    "importo": m.get("importo"), "source": source,
+                    "motivo": "evidenza_bancaria_in_cassa"
+                })
+
+    deleted_count = 0
+    if ids_da_eliminare:
+        result = await db[COLLECTION_PRIMA_NOTA_CASSA].update_many(
+            {"_id": {"$in": ids_da_eliminare}},
+            {"$set": {
+                "status": "archived", "deleted": True,
+                "archived_at": datetime.now(timezone.utc).isoformat(),
+                "archived_reason": "movimento_bancario_errato_in_cassa",
+            }},
+        )
+        deleted_count = result.modified_count
+
+    remaining = await db[COLLECTION_PRIMA_NOTA_CASSA].count_documents(
+        {"status": {"$nin": ["deleted", "archived"]}}
+    )
+
+    logger.info(f"MIGRAZIONE CASSA: Archiviati {deleted_count} movimenti bancari, rimasti {remaining}")
+
+    return {
+        "success": True,
+        "message": f"Migrazione completata: eliminati {deleted_count} movimenti bancari da Prima Nota Cassa",
+        "movimenti_eliminati": deleted_count,
+        "movimenti_rimasti": remaining,
+        "campione_eliminati": campione_eliminati
+    }
+
+
+async def dedup_fatture_prima_nota(
+    applica: bool = Query(False, description="Se False esegue solo dry-run, se True elimina realmente"),
+    auto_risolvi_certi: bool = Query(
+        False,
+        description="Rimuove automaticamente solo i duplicati con identita fattura certa",
+    ),
+    ripristina_regola_errata: bool = Query(
+        False,
+        description="Ripristina le righe nascoste dalla precedente regola basata su fattura_id",
+    ),
+    anno: Optional[int] = Query(None, description="Limita al singolo anno")
+) -> Dict[str, Any]:
+    """Deduplica esclusivamente la stessa operazione originaria.
+
+    Una relazione comune (per esempio lo stesso ``fattura_id``) non rende
+    duplicate due operazioni: una fattura puo' avere piu' assegni o rate.
+    """
+    db = Database.get_db()
+    from app.services.scritture_contabili import calcola_operation_hash
+
+    ripristino = None
+    if ripristina_regola_errata:
+        ripristino = await ripristina_dedup_fatture_errato()
+
+    report: Dict[str, Any] = {
+        "cassa": {}, "banca": {}, "applica": applica,
+        "auto_risolvi_certi": auto_risolvi_certi,
+        "ripristino_regola_errata": ripristino,
+    }
+
+    def dettaglio_movimento(m: Dict[str, Any]) -> Dict[str, Any]:
+        """Campi leggibili e tracciabili: un contatore non e' un audit."""
+        return {
+            "id": m.get("id"),
+            "data": m.get("data") or m.get("date"),
+            "importo": m.get("importo") if m.get("importo") is not None else m.get("amount"),
+            "descrizione": m.get("descrizione") or m.get("description") or "",
+            "numero_fattura": m.get("numero_fattura") or m.get("invoice_number"),
+            "fattura_id": m.get("fattura_id"),
+            "riferimento": m.get("riferimento"),
+            "fornitore": m.get("fornitore") or m.get("nome_fornitore"),
+            "fornitore_piva": m.get("fornitore_piva"),
+            "source": m.get("source") or m.get("fonte"),
+            "created_at": m.get("created_at"),
+        }
+
+    for collection_name in [COLLECTION_PRIMA_NOTA_CASSA, COLLECTION_PRIMA_NOTA_BANCA]:
+        label = "cassa" if "cassa" in collection_name else "banca"
+
+        query: Dict[str, Any] = {"status": {"$nin": ["deleted", "archived"]}}
+        if anno:
+            query["data"] = {"$gte": f"{anno}-01-01", "$lte": f"{anno}-12-31"}
+
+        movimenti = await db[collection_name].find(query, {"_id": 0}).to_list(50000)
+        if len(movimenti) >= 50000:
+            logger.warning(
+                "manutenzione prima nota %s: raggiunto il tetto di 50000 "
+                "documenti, possibile troncamento", label)
+
+        # Raggruppamento solo per identita della singola prova/operazione.
+        gruppi: Dict[str, list] = {}
+        for m in movimenti:
+            chiave = m.get("operation_hash") or calcola_operation_hash(label, m)
+            if not chiave:
+                continue
+            gruppi.setdefault(chiave, []).append(m)
+
+        duplicati_trovati = []
+        ids_certi = []
+        ids_da_verificare = []
+        for chiave, mov_list in gruppi.items():
+            if len(mov_list) <= 1:
+                continue
+            # Ordina per created_at crescente: il primo resta, gli altri vanno eliminati
+            mov_list.sort(key=lambda x: x.get("created_at") or "9999")
+            tenuto = mov_list[0]
+            da_eliminare = mov_list[1:]
+            certezza = "certo"
+            motivo = "Stesso hash della prova originaria della singola operazione"
+            duplicati_trovati.append({
+                "chiave": chiave,
+                "certezza": certezza,
+                "motivo": motivo,
+                "tenuto_id": tenuto.get("id"),
+                "tenuto_importo": tenuto.get("importo"),
+                "tenuto_data": tenuto.get("data"),
+                "tenuto": dettaglio_movimento(tenuto),
+                "eliminati_count": len(da_eliminare),
+                "eliminati_ids": [d.get("id") for d in da_eliminare],
+                "duplicati": [dettaglio_movimento(d) for d in da_eliminare],
+            })
+            destinazione = ids_certi if certezza == "certo" else ids_da_verificare
+            destinazione.extend(d.get("id") for d in da_eliminare if d.get("id"))
+
+        # Soft delete (reversibile)
+        deleted = 0
+        # Fase 0 (15/09/2026, PROMPT_CLAUDE_CODE_FASE_0.md punto 8): con
+        # applica=false non si scrive MAI, qualunque sia auto_risolvi_certi
+        # — prima "false" scriveva comunque se auto_risolvi_certi era true,
+        # contraddicendo sia il nome del parametro sia il commento in testa
+        # a PuliziaPrimaNota.jsx che promette un'anteprima.
+        ids_da_eliminare = ids_certi if applica else []
+        if ids_da_eliminare:
+            result = await db[collection_name].update_many(
+                {"id": {"$in": ids_da_eliminare}},
+                {"$set": {
+                    "status": "deleted",
+                    "deleted_at": datetime.now(timezone.utc).isoformat(),
+                    "deleted_reason": "dedup_fatture_prima_nota",
+                }}
+            )
+            deleted = result.modified_count
+
+        report[label] = {
+            "gruppi_duplicati": len(duplicati_trovati),
+            "movimenti_da_eliminare": len(ids_certi),
+            "movimenti_certi": len(ids_certi),
+            "movimenti_da_verificare": len(ids_da_verificare),
+            "eliminati_effettivi": deleted,
+            # Lista completa: ogni alert numerico deve essere verificabile.
+            "dettagli": duplicati_trovati,
+            "campione": duplicati_trovati[:20],
+        }
+
+    report["nota"] = (
+        "DRY-RUN (niente è stato toccato). Rilancia con ?applica=true per eseguire."
+        if not (applica or auto_risolvi_certi) else
+        "Duplicati marchiati come deleted (soft delete, recuperabili da DB)."
+    )
+    return report
+
+
+async def ripristina_dedup_fatture_errato() -> Dict[str, Any]:
+    """Ripristina le righe nascoste dalla vecchia regola basata su fattura_id.
+
+    La regola era semanticamente errata: piu' operazioni possono pagare la
+    stessa fattura. Il ripristino e' idempotente e conserva la traccia.
+    """
+    db = Database.get_db()
+    report = {}
+    totale = 0
+    now = datetime.now(timezone.utc).isoformat()
+    for collection_name in [COLLECTION_PRIMA_NOTA_CASSA, COLLECTION_PRIMA_NOTA_BANCA]:
+        label = "cassa" if "cassa" in collection_name else "banca"
+        result = await db[collection_name].update_many(
+            {"status": "deleted", "deleted_reason": "dedup_fatture_prima_nota"},
+            {
+                "$set": {
+                    "status": "active",
+                    "restored_at": now,
+                    "restored_reason": "rollback_dedup_basato_su_fattura_id",
+                },
+                "$unset": {"deleted_at": "", "deleted_reason": ""},
+            },
+        )
+        report[label] = result.modified_count
+        totale += result.modified_count
+    return {"success": True, "ripristinati": totale, **report}
+
+
+async def diagnostica_corrispettivi_vs_cassa(
+    anno: int = Query(..., description="Anno da analizzare")
+) -> Dict[str, Any]:
+    """Confronta corrispettivi nella sorgente con quelli presenti in Prima Nota Cassa.
+
+    Restituisce:
+      - corrispettivi presenti nella sorgente ma MANCANTI in cassa
+      - corrispettivi con importo=0 su tutti i campi noti (non sincronizzabili)
+      - eventuali duplicati (stesso corrispettivo_id inserito più volte)
+    """
+    db = Database.get_db()
+
+    sorgente = await db["corrispettivi"].find({"anno": anno}, {"_id": 0}).to_list(10000)
+    cassa = await db[COLLECTION_PRIMA_NOTA_CASSA].find(
+        {"source": "corrispettivi_sync", "corrispettivo_id": {"$ne": None},
+         "status": {"$nin": ["deleted", "archived"]}},
+        {"_id": 0, "corrispettivo_id": 1, "importo": 1, "data": 1, "id": 1},
+    ).to_list(10000)
+
+    cassa_by_corr: Dict[str, list] = {}
+    for m in cassa:
+        cassa_by_corr.setdefault(m["corrispettivo_id"], []).append(m)
+
+    mancanti = []
+    non_sincronizzabili = []  # totale = 0 su tutti i campi
+    duplicati = []
+
+    for c in sorgente:
+        cid = c.get("id")
+        totale = float(
+            c.get("totale", 0) or c.get("totale_complessivo", 0)
+            or c.get("importo", 0) or c.get("totale_giornaliero", 0) or 0
+        )
+        contanti = float(c.get("pagato_contanti", 0) or 0)
+        pos = float(c.get("pagato_pos", 0) or c.get("pagato_elettronico", 0) or 0)
+        if totale <= 0 and (contanti + pos) <= 0:
+            non_sincronizzabili.append({
+                "id": cid, "data": c.get("data"),
+                "totale": c.get("totale"), "totale_complessivo": c.get("totale_complessivo"),
+                "importo": c.get("importo"), "pagato_contanti": c.get("pagato_contanti"),
+                "pagato_pos": c.get("pagato_pos"),
+            })
+            continue
+        mov_in_cassa = cassa_by_corr.get(cid, [])
+        if not mov_in_cassa:
+            mancanti.append({
+                "id": cid, "data": c.get("data"),
+                "totale_calcolato": totale or (contanti + pos),
+            })
+        elif len(mov_in_cassa) > 1:
+            duplicati.append({
+                "corrispettivo_id": cid,
+                "data": c.get("data"),
+                "count_in_cassa": len(mov_in_cassa),
+                "ids_movimenti": [m.get("id") for m in mov_in_cassa],
+            })
+
+    return {
+        "anno": anno,
+        "corrispettivi_sorgente": len(sorgente),
+        "corrispettivi_in_cassa": len(cassa_by_corr),
+        "mancanti_in_cassa": len(mancanti),
+        "non_sincronizzabili_importo_zero": len(non_sincronizzabili),
+        "duplicati_in_cassa": len(duplicati),
+        "mancanti_dettaglio": mancanti[:100],
+        "non_sincronizzabili_dettaglio": non_sincronizzabili[:50],
+        "duplicati_dettaglio": duplicati[:50],
+        "azione_consigliata_duplicati": "POST /api/prima-nota/dedup-fatture?applica=true (per fatture) o cleanup manuale per corrispettivi",
+        "azione_consigliata_mancanti": "POST /api/prima-nota/cassa/sync-corrispettivi?anno={anno}",
+    }
+
+
+async def lista_movimenti_ec_non_in_prima_nota(
+    anno: int = Query(..., description="Anno da analizzare"),
+    tipo: Optional[str] = Query(None, description="Filtra per tipo: 'entrata' o 'uscita'"),
+    limit: int = Query(500, description="Max risultati"),
+) -> Dict[str, Any]:
+    """Elenca i movimenti dell'Estratto Conto bancario che NON hanno
+    corrispondenza in Prima Nota Banca.
+
+    Un movimento è considerato "mancante" se uno dei due casi:
+      1. ha flag `riconciliato` == False/None, OPPURE
+      2. non c'è nessun movimento in prima_nota_banca con stesso
+         importo e data (±3 giorni di tolleranza) non soft-deleted
+
+    Il secondo controllo è un safety net nel caso il flag di
+    riconciliazione non fosse stato aggiornato correttamente.
+    """
+    db = Database.get_db()
+
+    # Movimenti EC non riconciliati dell'anno
+    ec_query: Dict[str, Any] = {
+        "data": {"$gte": f"{anno}-01-01", "$lte": f"{anno}-12-31"},
+        "$or": [
+            {"riconciliato": {"$ne": True}},
+            {"riconciliato": {"$exists": False}},
+        ],
+    }
+    if tipo in ("entrata", "uscita"):
+        ec_query["tipo"] = tipo
+
+    ec_movimenti = await db[COLLECTION_ESTRATTO_CONTO].find(
+        ec_query, {"_id": 0}
+    ).sort("data", -1).limit(limit).to_list(limit)
+
+    # Per il safety-net, carico anche i movimenti di prima nota banca dell'anno
+    pn_query: Dict[str, Any] = {
+        "data": {"$gte": f"{anno}-01-01", "$lte": f"{anno}-12-31"},
+        "status": {"$nin": ["deleted", "archived"]},
+    }
+    pn_movimenti = await db[COLLECTION_PRIMA_NOTA_BANCA].find(
+        pn_query, {"_id": 0, "importo": 1, "data": 1, "tipo": 1, "riferimento": 1,
+                   "fattura_id": 1, "estratto_conto_ref": 1}
+    ).to_list(10000)
+
+    # Set di EC già referenziati da qualche movimento PN (attraverso estratto_conto_ref)
+    ec_refs_in_pn = {m.get("estratto_conto_ref") for m in pn_movimenti if m.get("estratto_conto_ref")}
+
+    # Indice per match importo+data (per safety net)
+    def _keys_for_safety(m):
+        d = m.get("data", "")[:10]
+        imp = round(float(m.get("importo", 0) or 0), 2)
+        t = m.get("tipo", "")
+        # chiave con tolleranza ±1 giorno
+        try:
+            from datetime import datetime as _dt, timedelta as _td
+            dt = _dt.fromisoformat(d)
+            return [
+                f"{imp}|{t}|{(dt + _td(days=off)).date().isoformat()}"
+                for off in (-1, 0, 1)
+            ]
+        except Exception:
+            return [f"{imp}|{t}|{d}"]
+
+    pn_index = set()
+    for m in pn_movimenti:
+        for k in _keys_for_safety(m):
+            pn_index.add(k)
+
+    mancanti = []
+    for m in ec_movimenti:
+        if m.get("id") in ec_refs_in_pn:
+            continue  # già riferenziato da prima nota, saltiamo
+        # Controllo match su importo+data: se c'è un candidato PN lo segnalo come "sospetto"
+        keys = _keys_for_safety(m)
+        sospetto = any(k in pn_index for k in keys)
+        mancanti.append({
+            "id": m.get("id"),
+            "data": m.get("data"),
+            "tipo": m.get("tipo"),
+            "importo": round(float(m.get("importo", 0) or 0), 2),
+            "descrizione": m.get("descrizione", ""),
+            "categoria": m.get("categoria"),
+            "riconciliato": bool(m.get("riconciliato")),
+            # True = c'è forse già un record in Prima Nota con stessi dati ma non
+            # collegato. Probabilmente serve solo un match, non un nuovo insert.
+            "possibile_match_esistente": sospetto,
+        })
+
+    return {
+        "anno": anno,
+        "tipo_filtro": tipo,
+        "totale_mancanti": len(mancanti),
+        "totale_entrate": sum(1 for x in mancanti if x["tipo"] == "entrata"),
+        "totale_uscite": sum(1 for x in mancanti if x["tipo"] == "uscita"),
+        "importo_totale_entrate": round(
+            sum(x["importo"] for x in mancanti if x["tipo"] == "entrata"), 2
+        ),
+        "importo_totale_uscite": round(
+            sum(x["importo"] for x in mancanti if x["tipo"] == "uscita"), 2
+        ),
+        "movimenti": mancanti,
+    }
+
+
+async def diagnostica_metodi_discordanti(anno: int = Query(...)) -> Dict:
+    """Fatture registrate in un registro DIVERSO dal metodo attuale del
+    fornitore ("doppio sistema" segnalato dall'utente il 10/07: Varriale
+    Cassa in anagrafica ma fatture in Banca).
+
+    Succede quando la fattura è stata confermata PRIMA che il metodo del
+    fornitore venisse corretto in anagrafica. La diagnostica confronta ogni
+    movimento collegato a fattura col metodo CANONICO attuale (motore unico)
+    e riporta i discordanti; lo spostamento resta un'azione dell'utente
+    (POST /sposta-scrittura per ogni voce).
+    Fornitori misto o senza metodo: esclusi (nessuna destinazione certa).
+    """
+    from app.engines.prima_nota_engine import normalizza_metodo_pagamento
+
+    db = Database.get_db()
+
+    # Metodo canonico attuale per P.IVA (tutte le chiavi storiche; un
+    # doppione senza metodo non sovrascrive il record buono)
+    from .sync import mappa_fornitori_per_piva
+
+    metodi_grezzi, _esclusi = await mappa_fornitori_per_piva(db)
+
+    discordanti = []
+    per_registro = {"cassa": COLLECTION_PRIMA_NOTA_CASSA, "banca": COLLECTION_PRIMA_NOTA_BANCA}
+    for registro, coll in per_registro.items():
+        async for mov in db[coll].find(
+            {"fattura_id": {"$nin": [None, ""]},
+             "data": {"$regex": f"^{anno}"},
+             "status": {"$nin": ["deleted", "archived"]}},
+            {"_id": 0, "id": 1, "data": 1, "importo": 1, "descrizione": 1,
+             "numero_fattura": 1, "fornitore_piva": 1, "fattura_id": 1},
+        ):
+            piva = (mov.get("fornitore_piva") or "").strip()
+            if not piva:
+                continue
+            atteso = normalizza_metodo_pagamento(metodi_grezzi.get(piva, "")) or ""
+            if atteso in ("cassa", "banca") and atteso != registro:
+                discordanti.append({
+                    "movimento_id": mov["id"],
+                    "registro_attuale": registro,
+                    "registro_atteso": atteso,
+                    "data": mov.get("data"),
+                    "importo": mov.get("importo"),
+                    "numero_fattura": mov.get("numero_fattura"),
+                    "descrizione": (mov.get("descrizione") or "")[:80],
+                    "fornitore_piva": piva,
+                    "fattura_id": mov.get("fattura_id"),
+                })
+
+    discordanti.sort(key=lambda d: d.get("data") or "", reverse=True)
+    return {
+        "anno": anno,
+        "totale_discordanti": len(discordanti),
+        "discordanti": discordanti[:200],
+        "azione": "POST /api/prima-nota/sposta-scrittura {movimento_id, destinazione} per ogni voce",
+    }
+
+
+async def collega_banca_a_estratto_conto(
+    dry_run: bool = Query(True, description="Solo conteggio"),
+    anno: int = Query(2026),
+) -> Dict[str, Any]:
+    """COLLAUDO → Lavoro 1 (18/07/2026): le righe di Prima Nota Banca nate
+    da conferme manuali/pagamenti diretti non hanno il collegamento
+    all'estratto conto (violazione della regola 'mai pagata banca senza
+    riscontro'). Questo retro-collegamento cerca per ognuna l'addebito
+    reale (stesso importo ±0,01 E nome fornitore nella descrizione, entro
+    45 giorni) e aggancia riga+movimento. Chi non trova l'addebito resta
+    scollegato e continua a essere contato dal collaudo — corretto così:
+    o l'addebito arriverà col prossimo export banca, o il pagamento è da
+    rivedere."""
+
+    db = Database.get_db()
+    now = datetime.now(timezone.utc).isoformat()
+
+    righe = await db["prima_nota_banca"].find(
+        {"data": {"$regex": f"^{anno}"}, "tipo": "uscita",
+         "fattura_id": {"$exists": True, "$nin": [None, ""]},
+         "riconciliato": {"$ne": True},
+         "$or": [{"estratto_conto_id": None},
+                 {"estratto_conto_id": {"$exists": False}},
+                 {"estratto_conto_id": ""}],
+         "status": {"$nin": ["deleted", "archived"]}},
+        {"_id": 0, "id": 1, "fattura_id": 1, "data": 1, "importo": 1,
+         "descrizione": 1, "fornitore": 1, "source": 1},
+    ).to_list(5000)
+
+    movimenti = await db["estratto_conto_movimenti"].find(
+        {"data": {"$regex": f"^{anno}"}, "tipo": "uscita",
+         "riconciliato": {"$ne": True}},
+        {"_id": 0, "id": 1, "data": 1, "importo": 1,
+         "descrizione_originale": 1, "descrizione": 1},
+    ).to_list(20000)
+    per_importo: Dict[float, list] = {}
+    for m in movimenti:
+        per_importo.setdefault(round(abs(float(m.get("importo") or 0)), 2), []).append(m)
+
+    collegate = 0
+    senza_match = 0
+    dettaglio = []
+    for r in righe:
+        fatt = await db["invoices"].find_one(
+            {"id": r["fattura_id"]}, {"_id": 0, "supplier_name": 1, "invoice_number": 1})
+        nome = ((fatt or {}).get("supplier_name") or r.get("fornitore") or "").upper()
+        token = [p for p in nome.replace(".", " ").replace(",", " ").split() if len(p) > 3][:3]
+        candidati = per_importo.get(round(abs(float(r.get("importo") or 0)), 2), [])
+        match = None
+        try:
+            data_riga = datetime.fromisoformat(str(r.get("data"))[:10])
+        except ValueError:
+            data_riga = None
+        for m in candidati:
+            desc = (m.get("descrizione_originale") or m.get("descrizione") or "").upper()
+            if token and not any(t in desc for t in token):
+                continue
+            if data_riga:
+                try:
+                    delta = abs((datetime.fromisoformat(str(m.get("data"))[:10]) - data_riga).days)
+                    if delta > 45:
+                        continue
+                except ValueError:
+                    pass
+            match = m
+            break
+        if not match:
+            senza_match += 1
+            continue
+
+        collegate += 1
+        if len(dettaglio) < 40:
+            dettaglio.append({"fattura": (fatt or {}).get("invoice_number"),
+                              "fornitore": nome[:35], "importo": r.get("importo"),
+                              "addebito_ec": match.get("data")})
+        if dry_run:
+            continue
+        await db["prima_nota_banca"].update_one(
+            {"id": r["id"]},
+            {"$set": {"estratto_conto_id": match["id"], "riconciliato": True,
+                      "tipo_riconciliazione": "retro_collegamento_ec",
+                      "updated_at": now}})
+        await db["estratto_conto_movimenti"].update_one(
+            {"id": match["id"]},
+            {"$set": {"riconciliato": True,
+                      "tipo_riconciliazione": "retro_collegamento_prima_nota",
+                      "dettagli_riconciliazione": {"prima_nota_id": r["id"],
+                                                   "fattura_id": r["fattura_id"]}}})
+        candidati.remove(match)
+
+    return {"dry_run": dry_run, "anno": anno,
+            "righe_scollegate_analizzate": len(righe),
+            "collegate" if not dry_run else "da_collegare": collegate,
+            "senza_addebito_in_ec": senza_match,
+            "dettaglio": dettaglio}
+
+
+async def ripristina_fatture_con_movimento_cancellato(
+    dry_run: bool = Query(True, description="Solo conteggio"),
+) -> Dict[str, Any]:
+    """COLLAUDO → Lavoro 2 (18/07/2026): fatture marcate pagate il cui
+    prima_nota_id punta a una riga soft-deletata (residuo delle pulizie):
+    tornano 'da pagare' e rientrano nel giro normale (provvisori /
+    attesa banca / riconciliazione)."""
+    from app.services.prima_nota_integrity import (
+        filtro_fatture_marcate_pagate,
+        ripristina_fattura_senza_movimento_attivo,
+        trova_movimento_prima_nota_attivo,
+    )
+
+    db = Database.get_db()
+    fatture = await db["invoices"].find(
+        filtro_fatture_marcate_pagate(),
+        {"id": 1, "invoice_key": 1,
+         "invoice_number": 1, "supplier_name": 1,
+         "prima_nota_id": 1, "prima_nota_cassa_id": 1,
+         "prima_nota_banca_id": 1, "total_amount": 1,
+         "importo_totale": 1},  # _id incluso: le legacy non hanno id
+    ).to_list(10000)
+
+    ripristinate = 0
+    dettaglio = []
+    for f in fatture:
+        if await trova_movimento_prima_nota_attivo(db, f):
+            continue
+        ripristinate += 1
+        if len(dettaglio) < 40:
+            dettaglio.append({"fattura": f.get("invoice_number"),
+                              "fornitore": f.get("supplier_name"),
+                              "importo": f.get("total_amount")})
+        if not dry_run:
+            await ripristina_fattura_senza_movimento_attivo(db, f)
+    return {"dry_run": dry_run,
+            "ripristinate" if not dry_run else "da_ripristinare": ripristinate,
+            "dettaglio": dettaglio}
+
+
+async def dedup_righe_stesso_estratto_conto(
+    dry_run: bool = Query(True, description="Solo conteggio"),
+) -> Dict[str, Any]:
+    """COLLAUDO → Lavoro 3 (18/07/2026): un addebito reale = una riga.
+    - Più righe banca ATTIVE con lo stesso estratto_conto_id (es. commissioni
+      CBILL registrate due volte): resta la più vecchia, le altre soft-delete.
+    - Righe collegate a un movimento EC che non esiste più: se la riga era
+      NATA dall'EC (source sync/riconciliazione) viene soft-deletata col
+      suo genitore; altrimenti viene solo scollegata e torna al giro di
+      riconciliazione."""
+    db = Database.get_db()
+    now = datetime.now(timezone.utc).isoformat()
+    SOURCE_NATE_DA_EC = ("sync_generico", "estratto_conto", "riconciliazione_ec_auto",
+                         "retro_collegamento_ec", "ec_override_metodo_cassa")
+
+    from app.services.collaudo_invarianti import (
+        _fattura_id_riga_banca,
+        _importo_assoluto,
+        gruppo_multi_fattura_valido,
+    )
+
+    movimenti_ec = {
+        m["id"]: m async for m in db["estratto_conto_movimenti"].find(
+            {}, {"_id": 0, "id": 1, "importo": 1, "riconciliato": 1,
+                 "tipo_riconciliazione": 1}
+        ) if m.get("id")
+    }
+    gruppi: Dict[str, list] = {}
+    async for r in db["prima_nota_banca"].find(
+            {"estratto_conto_id": {"$exists": True, "$nin": [None, ""]},
+             "status": {"$nin": ["deleted", "archived"]}},
+            {"_id": 0, "id": 1, "estratto_conto_id": 1, "created_at": 1,
+             "data": 1, "importo": 1, "descrizione": 1, "source": 1,
+             "fattura_id": 1, "invoice_id": 1, "riconciliato": 1}):
+        gruppi.setdefault(r["estratto_conto_id"], []).append(r)
+
+    duplicate_rimosse = orfane_rimosse = orfane_scollegate = 0
+    multi_fattura_preservati = ambigui_non_modificati = 0
+    dettaglio = []
+    for eid, righe in gruppi.items():
+        righe.sort(key=lambda x: str(x.get("created_at") or ""))
+        if eid not in movimenti_ec:
+            for r in righe:
+                nata_da_ec = any((r.get("source") or "").startswith(s) for s in SOURCE_NATE_DA_EC)
+                if len(dettaglio) < 40:
+                    dettaglio.append({"caso": "ec_inesistente", "data": r.get("data"),
+                                      "importo": r.get("importo"),
+                                      "descrizione": (r.get("descrizione") or "")[:50],
+                                      "azione": "elimina" if nata_da_ec else "scollega"})
+                if dry_run:
+                    continue
+                if nata_da_ec and not r.get("fattura_id"):
+                    await db["prima_nota_banca"].update_one(
+                        {"id": r["id"]},
+                        {"$set": {"status": "deleted", "deleted": True,
+                                  "deleted_reason": "movimento_ec_genitore_inesistente",
+                                  "deleted_at": now}})
+                    orfane_rimosse += 1
+                else:
+                    await db["prima_nota_banca"].update_one(
+                        {"id": r["id"]},
+                        {"$set": {"estratto_conto_id": None, "riconciliato": False,
+                                  "updated_at": now}})
+                    orfane_scollegate += 1
+            continue
+        if len(righe) <= 1:
+            continue
+        if gruppo_multi_fattura_valido(righe, movimenti_ec[eid]):
+            multi_fattura_preservati += 1
+            continue
+
+        fatture_collegate = {
+            _fattura_id_riga_banca(r) for r in righe
+            if _fattura_id_riga_banca(r)
+        }
+        importi = {_importo_assoluto(r.get("importo")) for r in righe}
+        if len(fatture_collegate) > 1 or len(importi) > 1:
+            ambigui_non_modificati += 1
+            if len(dettaglio) < 40:
+                dettaglio.append({"caso": "duplicato_ambiguo", "righe": len(righe),
+                                  "azione": "nessuna_modifica"})
+            continue
+
+        # La riga collegata alla fattura contiene più contesto probatorio di
+        # una riga generica, anche quando è stata creata successivamente.
+        collegate = [r for r in righe if _fattura_id_riga_banca(r)]
+        keeper = collegate[0] if collegate else righe[0]
+        duplicate = [r for r in righe if r.get("id") != keeper.get("id")]
+        for r in duplicate:
+            if len(dettaglio) < 40:
+                dettaglio.append({"caso": "duplicata", "data": r.get("data"),
+                                  "importo": r.get("importo"),
+                                  "descrizione": (r.get("descrizione") or "")[:50],
+                                  "azione": "elimina"})
+            duplicate_rimosse += 1
+            if not dry_run:
+                await db["prima_nota_banca"].update_one(
+                    {"id": r["id"]},
+                    {"$set": {"status": "deleted", "deleted": True,
+                              "deleted_reason": "stesso_addebito_ec_duplicato",
+                              "deleted_at": now}})
+                fattura_id_rimossa = _fattura_id_riga_banca(r)
+                if fattura_id_rimossa:
+                    await db["invoices"].update_one(
+                        {"id": fattura_id_rimossa,
+                         "$or": [{"prima_nota_id": r["id"]},
+                                 {"prima_nota_banca_id": r["id"]}]},
+                        {"$set": {"prima_nota_id": keeper["id"],
+                                  "prima_nota_banca_id": keeper["id"],
+                                  "prima_nota_tipo": "banca"}})
+
+    return {"dry_run": dry_run,
+            "duplicate": duplicate_rimosse,
+            "orfane_eliminate": orfane_rimosse,
+            "orfane_scollegate": orfane_scollegate,
+            "multi_fattura_preservati": multi_fattura_preservati,
+            "ambigui_non_modificati": ambigui_non_modificati,
+            "dettaglio": dettaglio}
+
+
+async def migra_pos_accrediti_reali(
+    dry_run: bool = Query(True, description="Solo conteggio"),
+    anno: int = Query(2026),
+) -> Dict[str, Any]:
+    """REGOLA CANONICA POS (utente 18/07/2026): per ogni giorno con
+    corrispettivo, l'uscita cassa "POS Verso Banca" e l'entrata banca sono
+    lo STESSO trasferimento con il POS REALE della chiusura serale
+    (fallback XML). Migrazione del pregresso:
+    1) uscita cassa del giorno → importo = POS reale, trasferimento_id;
+    2) riga banca sintetica del giorno → convertita nel trasferimento
+       speculare (stesso importo, source trasferimento_pos); se manca
+       viene creata, se doppia le eccedenti vengono soft-deletate;
+    3) gli accrediti EC POS riconciliano i trasferimenti per giorno di
+       vendita (accumulo circuiti, quadratura al centesimo)."""
+    from app.services.scritture_contabili import (
+        chiusura_pos_del_giorno, riconcilia_accredito_pos_ec,
+        query_accrediti_pos_ec, raggruppa_accrediti_pos_per_giorno,
+        scrivi_movimento)
+
+    db = Database.get_db()
+    now = datetime.now(timezone.utc).isoformat()
+
+    corrispettivi = await db["corrispettivi"].find(
+        {"data": {"$regex": f"^{anno}"}},
+        {"_id": 0, "id": 1, "data": 1, "pagato_elettronico": 1, "pagato_pos": 1},
+    ).to_list(1000)
+    per_giorno: Dict[str, float] = {}
+    for c in corrispettivi:
+        per_giorno[c["data"]] = per_giorno.get(c["data"], 0) + float(
+            c.get("pagato_elettronico") or c.get("pagato_pos") or 0)
+
+    accrediti_pos = await db["estratto_conto_movimenti"].find(
+        query_accrediti_pos_ec(anno), {"_id": 0}
+    ).to_list(20000)
+    pos_ec_per_giorno = raggruppa_accrediti_pos_per_giorno(accrediti_pos)
+
+    aggiornate_cassa = convertite_banca = create_banca = rimosse_doppie = 0
+    tot_trasferimenti = 0.0
+    for giorno, elettronico in sorted(per_giorno.items()):
+        chiusura = await chiusura_pos_del_giorno(db, giorno)
+        evidenza_ec = pos_ec_per_giorno.get(giorno) or {}
+        quota = (
+            chiusura if chiusura is not None
+            else round(float(evidenza_ec.get("totale") or 0), 2)
+        )
+        fonte = (
+            "chiusura_manuale" if chiusura is not None
+            else "estratto_conto_backfill"
+        )
+        if quota <= 0:
+            if not dry_run:
+                motivo = "pos_xml_non_ammesso_senza_fonte_operativa"
+                filtro_xml = {
+                    "data": giorno,
+                    "quota_pos_fonte": "xml",
+                    "status": {"$nin": ["deleted", "archived"]},
+                }
+                await db["prima_nota_cassa"].update_many(
+                    filtro_xml,
+                    {"$set": {"status": "archived", "deleted": True,
+                              "deleted_reason": motivo, "deleted_at": now}},
+                )
+                await db["prima_nota_banca"].update_many(
+                    filtro_xml,
+                    {"$set": {"status": "archived", "deleted": True,
+                              "deleted_reason": motivo, "deleted_at": now}},
+                )
+            continue
+        tot_trasferimenti += quota
+        trasferimento_id = str(uuid.uuid4())
+
+        uscite = await db["prima_nota_cassa"].find(
+            {"data": giorno, "tipo": "uscita",
+             "$or": [{"categoria": "POS Verso Banca"},
+                     {"categoria": "POS"},
+                     {"descrizione": {"$regex": "POS.*Banca|Battuto POS", "$options": "i"}}],
+             "status": {"$nin": ["deleted", "archived"]}},
+            {"_id": 0, "id": 1, "importo": 1}).to_list(10)
+        if not dry_run:
+            # Il POS non muove contante. Conserviamo le vecchie righe come
+            # storico reversibile, ma le escludiamo dal registro operativo.
+            for uscita in uscite:
+                aggiornate_cassa += 1
+                await db["prima_nota_cassa"].update_one(
+                    {"id": uscita["id"]},
+                    {"$set": {"status": "archived", "deleted": True,
+                              "deleted_reason": "pos_non_movimenta_contanti",
+                              "deleted_at": now, "updated_at": now}})
+
+        entrate = await db["prima_nota_banca"].find(
+            {"data": giorno, "tipo": "entrata",
+             "source": {"$in": ["corrispettivo_pos", "trasferimento_pos", "ec_accredito_pos"]},
+             "status": {"$nin": ["deleted", "archived"]}},
+            {"_id": 0, "id": 1, "importo": 1, "source": 1}).to_list(10)
+        if dry_run:
+            if entrate and entrate[0].get("source") != "trasferimento_pos":
+                convertite_banca += 1
+            elif not entrate:
+                create_banca += 1
+            rimosse_doppie += max(0, len(entrate) - 1)
+            continue
+        if entrate:
+            if entrate[0].get("source") != "trasferimento_pos":
+                convertite_banca += 1
+            await db["prima_nota_banca"].update_one(
+                {"id": entrate[0]["id"]},
+                {"$set": {"importo": quota, "source": "trasferimento_pos",
+                          "categoria": "Corrispettivi POS",
+                          "quota_pos_fonte": fonte, "giorno_vendita": giorno,
+                          "trasferimento_id": trasferimento_id,
+                          "riconciliato": False, "accreditato_ec": 0,
+                          "estratto_conto_ids": [], "updated_at": now}})
+            for extra in entrate[1:]:
+                rimosse_doppie += 1
+                await db["prima_nota_banca"].update_one(
+                    {"id": extra["id"]},
+                    {"$set": {"status": "deleted", "deleted": True,
+                              "deleted_reason": "trasferimento_pos_doppio",
+                              "deleted_at": now}})
+        else:
+            create_banca += 1
+            await scrivi_movimento(db, "banca", {
+                "data": giorno, "tipo": "entrata", "importo": quota,
+                "descrizione": f"POS {giorno} da cassa"
+                               + (" (chiusura terminale)" if fonte == "chiusura_manuale" else " (recupero estratto conto)"),
+                "categoria": "Corrispettivi POS", "source": "trasferimento_pos",
+                "quota_pos_fonte": fonte, "giorno_vendita": giorno,
+                "trasferimento_id": trasferimento_id, "riconciliato": False,
+            })
+
+    # 3) riconciliazione con gli accrediti EC (per giorno di vendita)
+    ec_riconciliati = 0
+    if not dry_run:
+        accrediti = await db["estratto_conto_movimenti"].find(
+            query_accrediti_pos_ec(anno), {"_id": 0},
+        ).to_list(20000)
+        # azzera i riconciliati "vecchio modello" per ripartire puliti
+        await db["estratto_conto_movimenti"].update_many(
+            {**query_accrediti_pos_ec(anno),
+             "tipo_riconciliazione": {"$in": ["auto_pos_accredito", "accredito_pos_prima_nota"]}},
+            {"$set": {"riconciliato": False, "tipo_riconciliazione": None}})
+        for m in sorted(accrediti, key=lambda x: x.get("data") or ""):
+            if await riconcilia_accredito_pos_ec(db, m):
+                ec_riconciliati += 1
+
+    return {"dry_run": dry_run, "anno": anno,
+            "giorni_con_pos": len([v for v in per_giorno.values() if v > 0]),
+            "totale_trasferimenti": round(tot_trasferimenti, 2),
+            "uscite_cassa_aggiornate": aggiornate_cassa,
+            "banca_convertite_in_trasferimento": convertite_banca,
+            "banca_create": create_banca,
+            "banca_doppie_rimosse": rimosse_doppie,
+            "accrediti_ec_riconciliati": ec_riconciliati}

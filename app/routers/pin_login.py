@@ -1,0 +1,190 @@
+"""
+PIN Login router — consente l'accesso veloce via PIN (tastierino web/mobile).
+Il PIN corretto concede un JWT admin, senza richiedere username/password.
+
+Flow:
+  POST /api/auth/pin-login
+  body: {"pin": "123456"}
+  → ritorna {"access_token": "...", "token_type": "bearer", ...}
+
+Configurazione (variabili d'ambiente, basta UNA delle due):
+  (ADMIN_PIN in chiaro NON è più supportato — audit sicurezza 18/07/2026)
+  PIN_HASH_ADMIN = SHA-256 hex del PIN, per chi preferisce non tenere il PIN
+                   in chiaro nell'ambiente:
+                   python -c "import hashlib;print(hashlib.sha256(b'PIN').hexdigest())"
+
+Se nessuna delle due è impostata, il login via PIN è disattivato (fail-safe)
+e l'endpoint risponde 503 con un messaggio chiaro invece di un 401 generico.
+
+Le variabili vengono lette A OGNI RICHIESTA (non all'import del modulo):
+elimina i problemi di ordine di caricamento del file .env.
+"""
+from fastapi import APIRouter, HTTPException, Body, Request, Response, status
+from typing import Dict, Any
+import logging
+
+from app.config import settings
+from app.database import Database
+from app.utils.auth_tokens import create_access_token, create_mfa_challenge, set_session_cookies
+from app.services import pin_authentication
+from app.services.admin_pin import configured as admin_pin_configured
+
+logger = logging.getLogger(__name__)
+router = APIRouter()
+
+# ============================================================================
+# CONFIG
+# ============================================================================
+
+# Durata del token emesso via PIN (in minuti). Default: stesso del login normale.
+PIN_TOKEN_EXPIRE_MINUTES = settings.ACCESS_TOKEN_EXPIRE_MINUTES
+
+
+# ============================================================================
+# ANTI BRUTE FORCE — modulo condiviso con il login email (5 tentativi / 5 min)
+# ============================================================================
+from app.utils import login_lockout
+
+_client_ip = login_lockout.client_ip
+_is_locked = login_lockout.seconds_locked
+_register_failure = login_lockout.register_failure
+_clear_failures = login_lockout.clear_failures
+
+
+# ============================================================================
+# ENDPOINT
+# ============================================================================
+
+@router.post(
+    "/pin-login",
+    summary="Login via PIN (mobile app)",
+    description="Login rapido via PIN a 6 cifre per l'app mobile. "
+                "Il PIN amministratore concede un JWT admin.",
+)
+async def pin_login(
+    request: Request,
+    response: Response,
+    payload: Dict[str, Any] = Body(..., examples=[{"pin": "<ADMIN_PIN>"}]),
+) -> Dict[str, Any]:
+    ip = _client_ip(request)
+
+    # Rate limit / lock
+    lock_sec = _is_locked(ip)
+    if lock_sec > 0:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=f"Troppi tentativi, riprova tra {lock_sec}s",
+        )
+
+    # Estrai e valida PIN
+    pin = str(payload.get("pin", "")).strip()
+    if not pin or not pin.isdigit() or len(pin) < 4 or len(pin) > 12:
+        _register_failure(ip)
+        raise HTTPException(status_code=400, detail="PIN non valido")
+
+    # Autenticazione canonica: il router non decide piu' sorgenti credenziali,
+    # lookup utenti o fallback. Queste responsabilita' vivono nel servizio unico.
+    db = Database.get_db()
+    identity = await pin_authentication.authenticate_pin(db, pin)
+    if identity is None:
+        _register_failure(ip)
+        if not await pin_authentication.has_any_pin_identity(db):
+            logger.error("PIN-login: nessuna identita PIN configurata")
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Login PIN non configurato sul server",
+            )
+        logger.warning(f"PIN-login: PIN errato da IP {ip}")
+        try:
+            from app.services.audit_logger import log_sicurezza
+            await log_sicurezza(
+                db,
+                azione="login_fallito",
+                dettaglio="PIN errato",
+                utente="pin",
+                ip=ip,
+            )
+        except Exception:
+            pass
+        raise HTTPException(status_code=401, detail="PIN non valido")
+
+    user = identity.as_user()
+    user_repo = identity.user_repo
+
+    # Estrai user_id
+    user_id = str(user.get("id") or user.get("_id"))
+
+    # Il PIN verifica solo il primo fattore quando l'admin ha MFA attiva.
+    # Nessun cookie/token di sessione viene emesso prima del secondo fattore.
+    if user.get("role") == "admin":
+        from app.services.mfa_service import canonical_identity, is_enabled
+        identity = canonical_identity(user_id, user.get("email", ""), "admin")
+        if await is_enabled(db, identity):
+            _clear_failures(ip)
+            return {
+                "mfa_required": True,
+                "challenge_token": create_mfa_challenge(user, "pin"),
+                "auth_method": "pin",
+            }
+
+    # Crea JWT con la stessa logica di auth_service._create_access_token
+    token = create_access_token(
+        user_id=user_id,
+        email=user.get("email", ""),
+        name=user.get("name"),
+        role=user.get("role", "admin"),
+        auth_method="pin",
+        mfa_verified=False,
+    )
+
+    # Aggiorna last_login se il repo lo supporta
+    try:
+        if user_repo is not None:
+            await user_repo.update_last_login(user_id)
+    except Exception:
+        pass
+
+    # Reset tentativi per questo IP
+    _clear_failures(ip)
+
+    logger.info(f"PIN-login OK · IP {ip} · user {user_id} · role {user.get('role')}")
+    try:
+        from app.services.audit_logger import log_sicurezza
+        await log_sicurezza(db, azione="login_ok", dettaglio="Login PIN riuscito",
+                            utente=user.get("name") or user_id, ip=ip,
+                            extra={"ruolo": user.get("role")})
+    except Exception:
+        pass
+
+    # Cookie di sessione: permette di aprire i link diretti alle API
+    # (es. "Vedi fattura" in nuova scheda) senza header Authorization.
+    set_session_cookies(response, token)
+
+    return {
+        "access_token": token,
+        "token_type": "bearer",
+        "user_id": user_id,
+        "email": user.get("email", ""),
+        "name": user.get("name"),
+        "role": user.get("role", "admin"),
+        "auth_method": "pin",
+    }
+
+
+@router.get(
+    "/pin-login/health",
+    summary="Health check endpoint PIN login",
+)
+async def pin_login_health() -> Dict[str, Any]:
+    """Verifica che il router PIN sia registrato e configurato.
+
+    Diagnostica: dice QUALE variabile e' attiva senza rivelarne il valore.
+    """
+    pin_hash_set = admin_pin_configured()
+    return {
+        "ok": True,
+        "configured": pin_hash_set,
+        "fonte": "PIN_HASH_ADMIN" if pin_hash_set else None,
+        "admin_username": pin_authentication.PIN_ADMIN_USERNAME,
+        "token_expire_minutes": PIN_TOKEN_EXPIRE_MINUTES,
+    }

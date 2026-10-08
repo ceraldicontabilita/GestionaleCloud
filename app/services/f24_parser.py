@@ -1,0 +1,693 @@
+"""
+Parser Quietanze F24
+Estrazione automatica dati da PDF quietanze F24 Agenzia delle Entrate
+"""
+import os
+import re
+import fitz  # PyMuPDF
+from datetime import datetime
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
+from typing import Dict, Any, List, Optional
+import logging
+
+from app.engines.tributi_engine import e_rateazione, mese_da_rateazione
+from app.services.codici_tributo_f24 import get_descrizione_causale_inps, get_descrizione_tributo
+from app.utils.numeri_italiani import parse_importo_ita
+
+logger = logging.getLogger(__name__)
+
+
+_QUIETANZA_SECTION_LABELS = {
+    "ERARIO": "sezione_erario",
+    "INPS": "sezione_inps",
+    "INAIL": "sezione_inail",
+    "REGIONI": "sezione_regioni",
+    "TRIB.LOCALI": "sezione_tributi_locali",
+    # Stampe del modello con i dati sovrapposti (2018-2019): stessa sezione.
+    "IMU/TRIB.LOCALI": "sezione_tributi_locali",
+}
+
+
+def _open_pdf(pdf_path: str = None, pdf_content: bytes = None):
+    if pdf_content:
+        return fitz.open(stream=pdf_content, filetype="pdf")
+    if pdf_path:
+        return fitz.open(pdf_path)
+    raise ValueError("Nessun PDF fornito")
+
+
+def _row_amount(words: list[tuple[float, str]], start_x: float, end_x: float | None) -> float:
+    """Ricompone un importo anche quando euro, virgola e centesimi sono separati."""
+    tokens = []
+    for x, token in sorted(words):
+        if x < start_x or (end_x is not None and x >= end_x):
+            continue
+        clean = token.strip().replace("\x00", "")
+        if re.fullmatch(r"[0-9.,]+", clean):
+            tokens.append(clean)
+    if not tokens:
+        return 0.0
+    joined = re.sub(r",+", ",", "".join(tokens))
+    return parse_importo(joined)
+
+
+def _period_from_words(words: list[tuple[float, str]]) -> dict[str, str]:
+    tokens = [
+        token.strip()
+        for x, token in sorted(words)
+        if 300 <= x < 410 and re.fullmatch(r"[0-9/]+", token.strip())
+    ]
+    raw = " ".join(tokens)
+    if not tokens:
+        return {"periodo_riferimento": "", "periodo_raw": ""}
+
+    # RC01 puo' essere estratto come: 10 201912 2019, cioe'
+    # da 10/2019 a 12/2019. Conserviamo entrambi gli estremi.
+    for index, token in enumerate(tokens):
+        if re.fullmatch(r"20\d{2}\d{2}", token):
+            start_month = tokens[index - 1].zfill(2) if index else ""
+            start_year, end_month = token[:4], token[4:]
+            end_year = next((item for item in tokens[index + 1:] if re.fullmatch(r"20\d{2}", item)), "")
+            start = f"{start_month}/{start_year}" if start_month else start_year
+            end = f"{end_month}/{end_year}" if end_year else ""
+            return {
+                "periodo_riferimento": start,
+                "periodo_da": start,
+                "periodo_a": end,
+                "periodo_raw": raw,
+            }
+
+    year = next((token for token in reversed(tokens) if re.fullmatch(r"20\d{2}", token)), "")
+    month_token = next((token for token in tokens if token != year and re.fullmatch(r"(?:\d{1,2}|\d{2}/\d{2})", token)), "")
+    if "/" in month_token:
+        # «00/12» e' il mese 12; «01/01» e «03/03» sono rate (rata 1 di 1,
+        # rata 3 di 3): la riga e' annuale e la rata resta in ``rateazione``.
+        rateazione = month_token.replace("/", "")
+        month = mese_da_rateazione(rateazione)
+        month = "" if month == "00" else month
+        esito = {"periodo_riferimento": f"{month}/{year}" if month and year else year,
+                 "periodo_raw": raw}
+        if e_rateazione(rateazione):
+            esito["rateazione"] = rateazione
+        return esito
+    if not month_token:
+        # Rateazione/mese di 4 cifre («0002» = febbraio, «0101» = rata unica).
+        rata = next((t for t in tokens if t != year and re.fullmatch(r"\d{4}", t)), "")
+        if rata:
+            mese = mese_da_rateazione(rata)
+            mese = "" if mese == "00" else mese
+            esito = {"periodo_riferimento": f"{mese}/{year}" if mese and year else year,
+                     "periodo_raw": raw}
+            if e_rateazione(rata):
+                esito["rateazione"] = rata
+            return esito
+    month = month_token.zfill(2) if month_token and int(month_token) else ""
+    period = f"{month}/{year}" if month and year else year
+    return {"periodo_riferimento": period, "periodo_raw": raw}
+
+
+def _stampa_f24_sovrapposta(pdf_path: str = None, pdf_content: bytes = None) -> dict[str, Any]:
+    """Data e totale di una stampa del modello con i dati sovrapposti (senza protocollo).
+
+    Le F24 del 2018-2019 escono come il modulo con i dati scritti sopra: la data
+    e' una cifra per casella (8 caselle, gg mm aaaa) e il totale sta in alto a
+    destra. Nessun protocollo telematico: la delega si riconosce per contenuto.
+    """
+    esito: dict[str, Any] = {"data_pagamento": None, "saldo_delega": None}
+    try:
+        doc = _open_pdf(pdf_path=pdf_path, pdf_content=pdf_content)
+    except Exception:  # noqa: BLE001 - senza documento non c'e' niente da leggere
+        return esito
+    try:
+        if not len(doc):
+            return esito
+        parole = doc[0].get_text("words")
+    finally:
+        doc.close()
+    cifre = sorted(
+        (float(w[0]), w[4]) for w in parole
+        if re.fullmatch(r"\d", w[4].strip()) and 215 <= float(w[1]) <= 240 and float(w[0]) < 300
+    )
+    if len(cifre) == 8:
+        try:
+            esito["data_pagamento"] = datetime.strptime(
+                "".join(c for _x, c in cifre), "%d%m%Y").date().isoformat()
+        except ValueError:
+            pass
+    importi = sorted(
+        (float(w[0]), w[4]) for w in parole
+        if float(w[0]) >= 480 and float(w[1]) < 215
+        and re.fullmatch(r"(?:\d{1,3}(?:\.\d{3})+|\d+),\d{2}", w[4].strip())
+    )
+    if importi:
+        esito["saldo_delega"] = parse_importo(importi[0][1])
+    return esito
+
+
+def _coordinate_quietanza(doc) -> dict[str, Any]:
+    """Legge la tabella AdE dalle coordinate, indipendentemente dai ritorni a capo."""
+    parsed: dict[str, Any] = {name: [] for name in _QUIETANZA_SECTION_LABELS.values()}
+    parsed["saldo_delega"] = None
+    parsed["data_pagamento"] = None
+    parsed["protocollo_telematico"] = None
+    parsed["numero_modello"] = None
+
+    for page in doc:
+        grouped: dict[int, list[tuple[float, str]]] = {}
+        for word in page.get_text("words"):
+            x0, y0, _x1, _y1, token, *_rest = word
+            grouped.setdefault(round(y0 / 2) * 2, []).append((float(x0), token.replace("\x00", "").strip()))
+
+        for words in grouped.values():
+            words.sort()
+            left = " ".join(token for x, token in words if x < 115).strip()
+            target = _QUIETANZA_SECTION_LABELS.get(left)
+            if target:
+                debit = _row_amount(words, 410, 500)
+                credit = _row_amount(words, 500, None)
+                if debit == 0 and credit == 0:
+                    continue
+                period = _period_from_words(words)
+                common = {
+                    **period,
+                    "importo_debito": debit,
+                    "importo_credito": credit,
+                }
+                if left == "ERARIO":
+                    code = next((token for x, token in words if 145 <= x < 200 and re.fullmatch(r"[A-Z0-9]{4}", token)), "")
+                    if code:
+                        parsed[target].append({**common, "codice_tributo": code,
+                                               "descrizione": get_descrizione_tributo(code)})
+                elif left == "INPS":
+                    office = next((token for x, token in words if 110 <= x < 150), "")
+                    causale = next((token for x, token in words if 145 <= x < 200), "")
+                    matricola = next((token for x, token in words if 195 <= x < 300), "")
+                    if causale:
+                        parsed[target].append({**common, "codice_sede": office,
+                                               "causale": causale, "matricola": matricola,
+                                               "descrizione": get_descrizione_causale_inps(causale)})
+                elif left == "INAIL":
+                    office = next((token for x, token in words if 110 <= x < 150), "")
+                    act = next((token for x, token in words if 145 <= x < 200), "")
+                    details = next((token for x, token in words if 195 <= x < 320), "")
+                    parsed[target].append({**common, "codice_ufficio": office,
+                                           "codice_atto": act,
+                                           "estremi_identificativi": details})
+                elif left == "REGIONI":
+                    region = next((token for x, token in words if 110 <= x < 150), "")
+                    code = next((token for x, token in words if 145 <= x < 200 and re.fullmatch(r"\d{4}", token)), "")
+                    if code:
+                        parsed[target].append({**common, "codice_regione": region,
+                                               "codice_tributo": code,
+                                               "descrizione": get_descrizione_tributo(code)})
+                else:
+                    municipality = next((token for x, token in words if 110 <= x < 150), "")
+                    code = next((token for x, token in words if 145 <= x < 200 and re.fullmatch(r"[A-Z0-9]{4}", token)), "")
+                    if code:
+                        parsed[target].append({**common, "codice_comune": municipality,
+                                               "codice_tributo": code,
+                                               "descrizione": get_descrizione_tributo(code)})
+                continue
+
+            protocol_word = next(
+                ((x, token) for x, token in words if x < 300 and re.fullmatch(r"\d{17}", token)),
+                None,
+            )
+            if protocol_word:
+                protocol_x, protocol = protocol_word
+                numero_modello = next(
+                    (
+                        token for x, token in words
+                        if protocol_x < x < 450 and re.fullmatch(r"\d{6}", token)
+                    ),
+                    None,
+                )
+                parsed["protocollo_telematico"] = (
+                    f"{protocol}/{numero_modello}" if numero_modello else protocol
+                )
+                parsed["numero_modello"] = numero_modello
+                if parsed["saldo_delega"] is None:
+                    parsed["saldo_delega"] = _row_amount(words, 500, None)
+
+            abi = next((token for x, token in words if 350 <= x < 450 and re.fullmatch(r"\d{5}", token)), None)
+            date_digits = [token for x, token in words if 140 <= x < 300 and re.fullmatch(r"\d", token)]
+            if abi and len(date_digits) >= 8:
+                candidate = "".join(date_digits[:8])
+                try:
+                    parsed["data_pagamento"] = datetime.strptime(candidate, "%d%m%Y").date().isoformat()
+                except ValueError:
+                    pass
+    return parsed
+
+
+def parse_importo(value: str) -> float:
+    """Converte stringa importo italiano in float."""
+    return parse_importo_ita(value)
+
+
+def _importo_cents(value: Any) -> int:
+    """Valore canonico in centesimi senza passare da aritmetica binaria."""
+    if value in (None, ""):
+        return 0
+    try:
+        text = str(value).strip()
+        if "," in text:
+            text = text.replace(".", "").replace(",", ".")
+        return int((Decimal(text) * 100).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+    except (InvalidOperation, TypeError, ValueError):
+        return 0
+
+
+def parse_data(value: str) -> Optional[str]:
+    """Converte data italiana DD/MM/YYYY in ISO format."""
+    if not value or value.strip() == "":
+        return None
+    value = value.strip()
+    # Prova vari formati
+    for fmt in ["%d/%m/%Y", "%d-%m-%Y", "%Y-%m-%d"]:
+        try:
+            dt = datetime.strptime(value, fmt)
+            return dt.strftime("%Y-%m-%d")
+        except Exception:
+            continue
+    return value
+
+
+def extract_text_from_pdf(pdf_path: str = None, pdf_content: bytes = None) -> str:
+    """
+    Estrae tutto il testo da un PDF.
+    Supporta sia filepath (legacy) che bytes (architettura Drive/Supabase).
+    """
+    try:
+        if pdf_content:
+            doc = fitz.open(stream=pdf_content, filetype="pdf")
+        elif pdf_path:
+            doc = fitz.open(pdf_path)
+        else:
+            return ""
+        text = ""
+        for page in doc:
+            text += page.get_text()
+        doc.close()
+        return text
+    except Exception as e:
+        logger.error(f"Errore estrazione PDF: {e}")
+        return ""
+
+
+# Stampa dal Cassetto fiscale / Entratel: «Data: gg/mm/aaaa - Ore: hh:mm:ss - Utente: <cf>» e
+# «Soggetto: <ragione sociale> ( <cf> )» in testa. E' la copia che l'Agenzia rilascia di una
+# delega versata: una quietanza, anche se il protocollo telematico non c'e'. La data in testa
+# e' quella della stampa, mai quella del pagamento.
+_RE_STAMPA_DATA_ORA = re.compile(r"Data:\s*\d{2}/\d{2}/\d{4}\s*-\s*Ore:\s*\d{2}:\d{2}:\d{2}", re.IGNORECASE)
+_RE_STAMPA_SOGGETTO = re.compile(r"Soggetto:\s*[^\n]+?\s*\(\s*[A-Z0-9]{11,16}\s*\)", re.IGNORECASE)
+
+
+def e_stampa_cassetto(text: str) -> bool:
+    """Vero se il testo porta l'intestazione «Data/Ore/Utente» e «Soggetto» del Cassetto fiscale.
+
+    Nel livello testo l'intestazione non e' per forza in testa: le sue parti si cercano in tutto
+    il documento, ma devono esserci tutte (data e ora di stampa, utente, soggetto col codice).
+    """
+    t = text or ""
+    return bool(_RE_STAMPA_DATA_ORA.search(t) and re.search(r"Utente:\s*[A-Z0-9]{11,16}", t, re.IGNORECASE)
+                and _RE_STAMPA_SOGGETTO.search(t.replace("\n", " ")))
+
+
+def parse_quietanza_f24(pdf_path: str = None, pdf_content: bytes = None) -> Dict[str, Any]:
+    """
+    Parsa una quietanza F24 ed estrae tutti i dati strutturati.
+    Supporta sia filepath (legacy) che bytes (Drive/Supabase).
+
+    Args:
+        pdf_path: Percorso file PDF (legacy)
+        pdf_content: Contenuto PDF in bytes (architettura Drive/Supabase)
+
+    Returns:
+        Dict con:
+        - dati_generali: codice_fiscale, ragione_sociale, data_pagamento, etc.
+        - sezione_erario: lista tributi erario
+        - sezione_inps: lista contributi INPS
+        - sezione_inail: lista contributi INAIL
+        - sezione_regioni: lista tributi regionali
+        - sezione_tributi_locali: lista tributi locali
+        - totali: importo_debito, importo_credito, saldo
+    """
+    text = extract_text_from_pdf(pdf_path=pdf_path, pdf_content=pdf_content)
+
+    if not text:
+        return {"error": "Impossibile estrarre testo dal PDF"}
+
+    result = {
+        "dati_generali": {},
+        "sezione_erario": [],
+        "sezione_inps": [],
+        "sezione_inail": [],
+        "sezione_regioni": [],
+        "sezione_tributi_locali": [],
+        "totali": {},
+        "raw_text_preview": text[:200]  # Solo per debug
+    }
+
+    try:
+        coordinate_doc = _open_pdf(pdf_path=pdf_path, pdf_content=pdf_content)
+        coordinate_data = _coordinate_quietanza(coordinate_doc)
+        coordinate_doc.close()
+    except Exception as exc:
+        logger.warning("Estrazione coordinate quietanza non disponibile: %s", exc)
+        coordinate_data = {name: [] for name in _QUIETANZA_SECTION_LABELS.values()}
+        coordinate_data.update({
+            "saldo_delega": None,
+            "data_pagamento": None,
+            "protocollo_telematico": None,
+            "numero_modello": None,
+        })
+
+    # ============================================
+    # DATI GENERALI
+    # ============================================
+
+    # Codice Fiscale - dopo "Soggetto:" o "CODICE FISCALE"
+    cf_patterns = [
+        r'Soggetto:\s*[A-Z\s\.]+\(\s*(\d{11})\s*\)',
+        r'Utente:\s*(\d{11})',
+        r'\(\s*(\d{11})\s*\)',
+    ]
+    for pattern in cf_patterns:
+        cf_match = re.search(pattern, text, re.IGNORECASE)
+        if cf_match:
+            result["dati_generali"]["codice_fiscale"] = cf_match.group(1)
+            break
+
+    # Ragione Sociale - dopo "Soggetto:"
+    rs_match = re.search(r'Soggetto:\s*([A-Z][A-Z\s\.]+(?:S\.R\.L\.|S\.P\.A\.|S\.N\.C\.|S\.A\.S\.))', text)
+    if rs_match:
+        result["dati_generali"]["ragione_sociale"] = rs_match.group(1).strip()
+    else:
+        # Fallback: cerca CERALDI GROUP S.R.L. o simili
+        rs_match2 = re.search(r'([A-Z][A-Z\s]+(?:S\.R\.L\.|S\.P\.A\.|S\.N\.C\.|S\.A\.S\.))', text)
+        if rs_match2:
+            result["dati_generali"]["ragione_sociale"] = rs_match2.group(1).strip()
+
+    # Protocollo Telematico: nei PDF AE il numero modello puo essere in una
+    # casella separata senza slash nel layer testuale ("...3961 000001").
+    pt_match = re.search(
+        r'PROTOCOLLO\s+TELEMATICO\s*(\d{17})\s*(?:/\s*)?(\d{6})',
+        text, re.IGNORECASE,
+    )
+    if pt_match:
+        protocollo = f"{pt_match.group(1)}/{pt_match.group(2)}"
+        result["dati_generali"]["protocollo_telematico"] = protocollo
+        result["dati_generali"]["numero_modello"] = pt_match.group(2)
+    else:
+        pt_match = re.search(r'(\d{17}(?:\s*/\s*\d{6})?)', text)
+    if pt_match:
+        if "protocollo_telematico" not in result["dati_generali"]:
+            protocollo = re.sub(r"\s+", "", pt_match.group(1))
+            result["dati_generali"]["protocollo_telematico"] = protocollo
+            if "/" in protocollo:
+                result["dati_generali"]["numero_modello"] = protocollo.split("/", 1)[1]
+
+    # Data e Ora documento
+    data_ora_match = re.search(r'Data:\s*(\d{2}/\d{2}/\d{4})\s*-\s*Ore:\s*(\d{2}:\d{2}:\d{2})', text)
+    if data_ora_match:
+        result["dati_generali"]["data_documento"] = parse_data(data_ora_match.group(1))
+        result["dati_generali"]["ora_documento"] = data_ora_match.group(2)
+
+    # Data del versamento - pattern con cifre separate seguite dall'ABI (5 cifre).
+    # Pattern: 1 7 0 1 2 0 2 5 05034 (17/01/2025 + ABI). L'ABI e' generico
+    # (qualsiasi banca, scelta utente): viene catturato qui perche' questa e' la
+    # posizione piu' affidabile in cui compare nella quietanza.
+    abi_dalla_delega = None
+    data_vers_match = re.search(r'(\d)\s+(\d)\s+(\d)\s+(\d)\s+(\d)\s+(\d)\s+(\d)\s+(\d)\s+(\d{5})', text)
+    if data_vers_match:
+        giorno = data_vers_match.group(1) + data_vers_match.group(2)
+        mese = data_vers_match.group(3) + data_vers_match.group(4)
+        anno = data_vers_match.group(5) + data_vers_match.group(6) + data_vers_match.group(7) + data_vers_match.group(8)
+        result["dati_generali"]["data_pagamento"] = f"{anno}-{mese}-{giorno}"
+        abi_dalla_delega = data_vers_match.group(9)
+
+    # Saldo Delega - pattern: 5.498,79 o simile prima di data+ABI (5 cifre generico)
+    saldo_patterns = [
+        r'Saldo\s*delega\s*[\n\s]*(\d{1,3}(?:[.,]\d{3})*[.,]\d{2})',
+        r'(\d{1,3}(?:\.\d{3})*,\d{2})\s*\d\s*\d\s*\d\s*\d\s*\d\s*\d\s*\d\s*\d\s*\d{5}',  # Prima di data e ABI
+        r',\s*(\d{1,3}(?:\.\d{3})*,\d{2})\s*\n',
+    ]
+    for pattern in saldo_patterns:
+        saldo_match = re.search(pattern, text)
+        if saldo_match:
+            result["dati_generali"]["saldo_delega"] = parse_importo(saldo_match.group(1))
+            break
+
+    # ABI e CAB (generici: qualsiasi banca). Priorita' all'ABI letto dalla delega;
+    # in fallback, una coppia ABI+CAB (5+5 cifre) e' un segnale bancario forte.
+    abi = abi_dalla_delega
+    if not abi:
+        coppia = re.search(r'\b(\d{5})\s*\n?\s*(\d{5})\b', text)
+        if coppia:
+            abi = coppia.group(1)
+            result["dati_generali"]["cab"] = coppia.group(2)
+    if abi:
+        result["dati_generali"]["abi"] = abi
+        if not result["dati_generali"].get("cab"):
+            cab_match = re.search(re.escape(abi) + r'\s*\n?\s*(\d{5})', text)
+            if cab_match:
+                result["dati_generali"]["cab"] = cab_match.group(1)
+
+    if coordinate_data.get("data_pagamento"):
+        result["dati_generali"]["data_pagamento"] = coordinate_data["data_pagamento"]
+    if coordinate_data.get("protocollo_telematico"):
+        result["dati_generali"]["protocollo_telematico"] = coordinate_data["protocollo_telematico"]
+        if coordinate_data.get("numero_modello"):
+            result["dati_generali"]["numero_modello"] = coordinate_data["numero_modello"]
+    if (
+        coordinate_data.get("saldo_delega") is not None
+        and (
+            coordinate_data["saldo_delega"] > 0
+            or result["dati_generali"].get("saldo_delega") is None
+        )
+    ):
+        result["dati_generali"]["saldo_delega"] = coordinate_data["saldo_delega"]
+
+    if not result["dati_generali"].get("data_pagamento") or not result["dati_generali"].get("saldo_delega"):
+        sovrapposta = _stampa_f24_sovrapposta(pdf_path, pdf_content)
+        if not result["dati_generali"].get("data_pagamento") and sovrapposta["data_pagamento"]:
+            result["dati_generali"]["data_pagamento"] = sovrapposta["data_pagamento"]
+        if not result["dati_generali"].get("saldo_delega") and sovrapposta["saldo_delega"]:
+            result["dati_generali"]["saldo_delega"] = sovrapposta["saldo_delega"]
+
+    # ============================================
+    # SEZIONE ERARIO
+    # ============================================
+    # Pattern: ERARIO 1001 12 2024 2.610,51 0,00
+
+    erario_pattern = r'ERARIO\s+(\d{4})\s+(\d{0,2})\s*(\d{4})\s+([0-9.,]+)\s+([0-9.,]+)'
+    for match in re.finditer(erario_pattern, text):
+        codice = match.group(1)
+        mese = match.group(2) or "00"
+        anno = match.group(3)
+        debito = parse_importo(match.group(4))
+        credito = parse_importo(match.group(5))
+
+        periodo = f"{mese}/{anno}" if mese != "00" else anno
+
+        result["sezione_erario"].append({
+            "codice_tributo": codice,
+            "periodo_riferimento": periodo,
+            "importo_debito": debito,
+            "importo_credito": credito,
+            "descrizione": get_descrizione_tributo(codice)
+        })
+    if coordinate_data["sezione_erario"]:
+        result["sezione_erario"] = coordinate_data["sezione_erario"]
+
+    # ============================================
+    # SEZIONE INPS
+    # ============================================
+    # Pattern: INPS 5100 DM10 5124776507 12 2024 3.628,00 0,00
+
+    inps_pattern = r'INPS\s+(\d{4})\s+(DM10|CXX|RC01|C10|CF10)\s+([A-Z0-9]+)\s+(\d{1,2})\s+(\d{4})\s+([0-9.,]+)\s+([0-9.,]+)'
+    for match in re.finditer(inps_pattern, text):
+        result["sezione_inps"].append({
+            "codice_sede": match.group(1),
+            "causale": match.group(2),
+            "matricola": match.group(3),
+            "periodo_riferimento": f"{match.group(4)}/{match.group(5)}",
+            "importo_debito": parse_importo(match.group(6)),
+            "importo_credito": parse_importo(match.group(7)),
+            "descrizione": get_descrizione_causale_inps(match.group(2))
+        })
+    if coordinate_data["sezione_inps"]:
+        result["sezione_inps"] = coordinate_data["sezione_inps"]
+
+    # ============================================
+    # SEZIONE INAIL
+    # ============================================
+    # Pattern: INAIL con codice ufficio e atto
+
+    inail_pattern = r'INAIL\s+(\d{5})\s+(\d+)\|([A-Z0-9\s]+)\s+([0-9.,]+)\s+([0-9.,]+)'
+    for match in re.finditer(inail_pattern, text):
+        result["sezione_inail"].append({
+            "codice_ufficio": match.group(1),
+            "codice_atto": match.group(2),
+            "estremi_identificativi": match.group(3).strip(),
+            "importo_debito": parse_importo(match.group(4)),
+            "importo_credito": parse_importo(match.group(5))
+        })
+    if coordinate_data["sezione_inail"]:
+        result["sezione_inail"] = coordinate_data["sezione_inail"]
+
+    # ============================================
+    # SEZIONE REGIONI
+    # ============================================
+    # Pattern: REGIONI 05 3802 00/12 2024 142,55 0,00
+
+    regioni_pattern = r'REGIONI\s+(\d{2})\s+(\d{4})\s+(\d{2}/\d{2})\s*(\d{4})\s+([0-9.,]+)\s+([0-9.,]+)'
+    for match in re.finditer(regioni_pattern, text):
+        result["sezione_regioni"].append({
+            "codice_regione": match.group(1),
+            "codice_tributo": match.group(2),
+            "periodo_riferimento": f"{match.group(3)} {match.group(4)}",
+            "importo_debito": parse_importo(match.group(5)),
+            "importo_credito": parse_importo(match.group(6)),
+            "descrizione": get_descrizione_tributo(match.group(2))
+        })
+    if coordinate_data["sezione_regioni"]:
+        result["sezione_regioni"] = coordinate_data["sezione_regioni"]
+
+    # ============================================
+    # SEZIONE TRIBUTI LOCALI (IMU, TARI, etc.)
+    # ============================================
+    # Pattern: TRIB.LOCALI F839 1671 2024 0,00 32,73
+
+    locali_pattern = r'TRIB\.LOCALI\s+([A-Z]\d{3})\s+(\d{4})\s+(\d{4})\s+([0-9.,]+)\s+([0-9.,]+)'
+    for match in re.finditer(locali_pattern, text):
+        result["sezione_tributi_locali"].append({
+            "codice_comune": match.group(1),
+            "codice_tributo": match.group(2),
+            "periodo_riferimento": match.group(3),
+            "importo_debito": parse_importo(match.group(4)),
+            "importo_credito": parse_importo(match.group(5)),
+            "descrizione": get_descrizione_tributo(match.group(2))
+        })
+    if coordinate_data["sezione_tributi_locali"]:
+        result["sezione_tributi_locali"] = coordinate_data["sezione_tributi_locali"]
+
+    # Da questo punto in poi il ledger usa esclusivamente centesimi interi.
+    # I float mantenuti nei campi storici sono solo una vista compatibile.
+    for section_name in _QUIETANZA_SECTION_LABELS.values():
+        for item in result[section_name]:
+            item["importo_debito_cents"] = _importo_cents(item.get("importo_debito"))
+            item["importo_credito_cents"] = _importo_cents(item.get("importo_credito"))
+
+    # ============================================
+    # CALCOLO TOTALI
+    # ============================================
+
+    totale_debito_cents = 0
+    totale_credito_cents = 0
+
+    for sezione in [result["sezione_erario"], result["sezione_inps"],
+                    result["sezione_inail"], result["sezione_regioni"],
+                    result["sezione_tributi_locali"]]:
+        for item in sezione:
+            totale_debito_cents += item.get("importo_debito_cents", 0)
+            totale_credito_cents += item.get("importo_credito_cents", 0)
+
+    totale_debito = totale_debito_cents / 100
+    totale_credito = totale_credito_cents / 100
+    saldo_netto_cents = totale_debito_cents - totale_credito_cents
+
+    result["totali"] = {
+        "totale_debito": round(totale_debito, 2),
+        "totale_credito": round(totale_credito, 2),
+        "saldo_netto": round(saldo_netto_cents / 100, 2),
+        "saldo_delega": result["dati_generali"].get("saldo_delega", 0),
+        "totale_debito_cents": totale_debito_cents,
+        "totale_credito_cents": totale_credito_cents,
+        "saldo_netto_cents": saldo_netto_cents,
+        "saldo_delega_cents": _importo_cents(result["dati_generali"].get("saldo_delega")),
+    }
+    saldo_delega_cents = result["totali"]["saldo_delega_cents"]
+    difference_cents = saldo_netto_cents - saldo_delega_cents
+    result["validazione"] = {
+        "righe_estratte": sum(len(result[name]) for name in _QUIETANZA_SECTION_LABELS.values()),
+        "saldo_quadrato": difference_cents == 0,
+        "differenza_saldo": difference_cents / 100,
+        "differenza_saldo_cents": difference_cents,
+        "parser_version": "quietanza-coordinate-v2",
+    }
+
+    # Rimuovi raw_text prima di restituire
+    del result["raw_text_preview"]
+
+    return result
+
+
+
+
+
+
+
+
+
+
+def process_multiple_f24(pdf_paths: List[str]) -> List[Dict[str, Any]]:
+    """Processa multiple quietanze F24."""
+    results = []
+    for path in pdf_paths:
+        try:
+            result = parse_quietanza_f24(path)
+            result["file_path"] = path
+            result["file_name"] = os.path.basename(path)
+            results.append(result)
+        except Exception as e:
+            results.append({
+                "file_path": path,
+                "file_name": os.path.basename(path),
+                "error": str(e)
+            })
+    return results
+
+
+def generate_f24_summary(parsed_data: Dict[str, Any]) -> str:
+    """Genera un riepilogo testuale della quietanza F24."""
+    dg = parsed_data.get("dati_generali", {})
+    totali = parsed_data.get("totali", {})
+
+    summary = []
+    summary.append(f"QUIETANZA F24 - {dg.get('ragione_sociale', 'N/A')}")
+    summary.append(f"Codice Fiscale: {dg.get('codice_fiscale', 'N/A')}")
+    summary.append(f"Data Pagamento: {dg.get('data_pagamento', 'N/A')}")
+    summary.append(f"Protocollo: {dg.get('protocollo_telematico', 'N/A')}")
+    summary.append("")
+    summary.append(f"TOTALE PAGATO: € {totali.get('saldo_delega', 0):,.2f}")
+    summary.append(f"  - Debiti: € {totali.get('totale_debito', 0):,.2f}")
+    summary.append(f"  - Crediti: € {totali.get('totale_credito', 0):,.2f}")
+    summary.append("")
+
+    # Sezione Erario
+    if parsed_data.get("sezione_erario"):
+        summary.append("SEZIONE ERARIO:")
+        for item in parsed_data["sezione_erario"]:
+            summary.append(f"  {item['codice_tributo']} - {item['descrizione']}: € {item['importo_debito']:,.2f}")
+
+    # Sezione INPS
+    if parsed_data.get("sezione_inps"):
+        summary.append("SEZIONE INPS:")
+        for item in parsed_data["sezione_inps"]:
+            summary.append(f"  {item['causale']} ({item['matricola']}): € {item['importo_debito']:,.2f}")
+
+    # Sezione Regioni
+    if parsed_data.get("sezione_regioni"):
+        summary.append("SEZIONE REGIONI:")
+        for item in parsed_data["sezione_regioni"]:
+            summary.append(f"  {item['codice_tributo']} - {item['descrizione']}: € {item['importo_debito']:,.2f}")
+
+    # Sezione Tributi Locali
+    if parsed_data.get("sezione_tributi_locali"):
+        summary.append("SEZIONE TRIBUTI LOCALI:")
+        for item in parsed_data["sezione_tributi_locali"]:
+            summary.append(f"  {item['codice_tributo']} - {item['descrizione']}: € {item['importo_debito']:,.2f}")
+
+    return "\n".join(summary)

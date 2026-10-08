@@ -1,0 +1,576 @@
+"""
+CARTA DI CREDITO NEXI (richiesta utente 18/07/2026).
+
+Le singole spese con carta di credito NON compaiono mai nell'estratto
+conto bancario: arriva solo l'ADDEBITO MENSILE Nexi (riga con "NEXI" nella
+causale). Quindi:
+
+1. quando in estratto conto BANCARIO compare un addebito Nexi, il sistema
+   controlla di avere lo STATEMENT CARTA Nexi del periodo; se manca genera
+   l'alert "Estratto conto Nexi mancante" che chiede di allegarlo;
+2. quando lo statement carta c'è, l'addebito mensile si riconcilia con la
+   somma delle operazioni della carta di quel periodo (tolleranza 0,01€);
+   se non quadra → alert dedicato.
+
+Riusa la pipeline PDF già esistente (`app.parsers.estratto_conto_nexi_parser`,
+già collegata al download email in `email_monitor_service.py` /
+`documenti.py:sync_estratti_conto`): stesse collezioni, stesso schema —
+`estratto_conto_nexi` (un doc per statement caricato) e le singole
+operazioni carta dentro `estratto_conto_movimenti` con `tipo="carta_credito"`.
+Questo endpoint aggiunge solo la via MANUALE (allegare da Prima Nota
+quando l'email non è arrivata) più il controllo di quadratura.
+"""
+import asyncio
+import logging
+import re
+import hashlib
+import unicodedata
+from collections import Counter, defaultdict
+from contextlib import asynccontextmanager
+from datetime import datetime, timezone
+from typing import Any, Dict, Optional
+
+logger = logging.getLogger(__name__)
+
+COLL_ESTRATTI = "estratto_conto_nexi"
+COLL_MOVIMENTI = "estratto_conto_movimenti"
+
+# Riconoscimento dell'addebito mensile Nexi nella riga di BANCA (non delle
+# singole spese carta, che vivono con tipo="carta_credito"/banca="Nexi").
+_RE_NEXI = re.compile(r"\bNEXI\b|CARTASI|CARTA\s+SI\b", re.IGNORECASE)
+
+_TOLLERANZA = 0.01
+
+
+@asynccontextmanager
+async def _write_batch(db):
+    factory = getattr(db, "batch_writes", None)
+    if callable(factory):
+        async with factory():
+            yield
+    else:
+        yield
+
+
+def _nexi_description(value: Any) -> str:
+    text = unicodedata.normalize("NFKD", str(value or "").strip()).upper()
+    # I due export reali scrivono lo stesso esercente in modi diversi:
+    # ``F LLI CASOLARO`` / ``F LLICASOLARO`` e ``AMZNBusiness*...`` /
+    # ``Amznbusiness ...``. La chiave usa quindi solo caratteri alfanumerici;
+    # la descrizione originale resta invariata e visibile all'utente.
+    return re.sub(r"[^A-Z0-9]", "", text)[:180]
+
+
+def nexi_operation_identity(
+    data_iso: str, importo: float, descrizione: str, occurrence: int,
+) -> tuple[str, str]:
+    """Identita' della singola operazione carta, indipendente dal PDF.
+
+    Due statement sovrapposti riconoscono la stessa spesa; due righe davvero
+    identiche nello stesso statement restano distinte tramite l'occorrenza.
+    """
+    cents = int(round(float(importo or 0) * 100))
+    base = "|".join((
+        "nexi:v2", _norm_data(data_iso), str(cents),
+        _nexi_description(descrizione),
+    ))
+    operation_key = hashlib.sha256(
+        f"{base}|occurrence:{int(occurrence)}".encode("utf-8")
+    ).hexdigest()
+    return operation_key, f"nexi:{operation_key}"
+
+
+def _descr(doc: Dict[str, Any]) -> str:
+    return doc.get("descrizione_originale") or doc.get("descrizione") or ""
+
+
+def _norm_data(raw: str) -> str:
+    """Normalizza a YYYY-MM-DD. In estratto_conto_movimenti convivono righe
+    più vecchie in formato italiano GG/MM/AAAA e quelle più recenti già ISO:
+    senza normalizzare, il calcolo del periodo (mese precedente) falliva in
+    silenzio sulle righe italiane (returned "")."""
+    s = str(raw or "").strip()[:10]
+    if re.match(r"^\d{4}-\d{2}-\d{2}$", s):
+        return s
+    m = re.match(r"^(\d{2})/(\d{2})/(\d{4})$", s)
+    if m:
+        return f"{m.group(3)}-{m.group(2)}-{m.group(1)}"
+    return s
+
+
+def _data(doc: Dict[str, Any]) -> str:
+    return _norm_data(doc.get("data_contabile") or doc.get("data") or "")
+
+
+def _e_movimento_carta(doc: Dict[str, Any]) -> bool:
+    """Vero se la riga è una singola spesa carta (non un movimento banca)."""
+    return doc.get("tipo") == "carta_credito" or doc.get("banca") == "Nexi"
+
+
+def is_addebito_nexi(doc: Dict[str, Any]) -> bool:
+    """Vero se la riga è l'addebito mensile Nexi sul CONTO BANCARIO."""
+    if _e_movimento_carta(doc):
+        return False
+    tipo = doc.get("tipo")
+    if tipo == "entrata":
+        return False
+    if tipo is None and float(doc.get("importo") or 0) > 0:
+        return False
+    return bool(_RE_NEXI.search(_descr(doc)))
+
+
+def _periodo_addebito(data_addebito: str) -> str:
+    """L'addebito Nexi di inizio mese salda le spese del MESE PRECEDENTE."""
+    try:
+        anno, mese = int(data_addebito[:4]), int(data_addebito[5:7])
+    except (ValueError, TypeError):
+        return ""
+    if mese == 1:
+        return f"{anno - 1}-12"
+    return f"{anno}-{mese - 1:02d}"
+
+
+def _chiave_addebito(doc: Dict[str, Any]) -> tuple:
+    """Identita' prudente dell'addebito mensile.
+
+    Gli import legacy possono aver copiato la stessa riga con ID tecnici
+    diversi. Data, importo, conto/carta e periodo restano invece uguali. Un
+    conto o carta differenti impediscono l'accorpamento.
+    """
+    data = _data(doc)
+    importo = round(abs(float(doc.get("importo") or 0)), 2)
+    rapporto = str(
+        doc.get("conto") or doc.get("iban") or doc.get("rapporto")
+        or doc.get("numero_carta_ultime4") or doc.get("carta") or ""
+    ).strip().upper()
+    return (_periodo_addebito(data), data, importo, rapporto)
+
+
+async def verifica_addebiti_nexi(db, anno: Optional[int] = None) -> Dict[str, Any]:
+    """Trova gli addebiti Nexi in EC bancario e verifica statement carta + quadratura.
+
+    Per ogni addebito: se non ci sono operazioni carta di quel periodo →
+    alert ESTRATTO_NEXI_MANCANTE; se ci sono → confronto con la somma delle
+    operazioni (alert NEXI_ADDEBITO_NON_QUADRA se non torna, risoluzione
+    automatica degli alert quando tutto quadra).
+    """
+    from app.services.alert_engine import genera_alert, risolvi_alert
+
+    stats = {
+        "addebiti_trovati": 0,
+        "estratti_mancanti": 0,
+        "riconciliati": 0,
+        "non_quadrano": 0,
+        "duplicati_ignorati": 0,
+        "dettagli": [],
+    }
+    addebiti_visti = set()
+    rapporti_per_addebito = {}
+    statement_per_periodo: Dict[str, Dict[str, Any]] = {}
+
+    # Rivalida i PDF gia' salvati con il parser corrente. I vecchi record
+    # potevano avere le operazioni ma non ``totale_addebito``/bollo; senza
+    # questo passaggio restavano falsi "Non quadra" anche dopo il fix.
+    from app.parsers.estratto_conto_nexi_parser import parse_estratto_conto_nexi
+    import base64
+    async for statement in db[COLL_ESTRATTI].find({}):
+        metadata = dict(statement.get("metadata") or {})
+        if not metadata.get("totale_addebito") and statement.get("pdf_data"):
+            try:
+                # Il parser PDF e' lavoro pesante e sincrono: in un thread,
+                # cosi' non tiene fermo il processo mentre gira.
+                parsed = await asyncio.to_thread(
+                    parse_estratto_conto_nexi, base64.b64decode(statement["pdf_data"]),
+                )
+                if parsed.get("success"):
+                    metadata = parsed.get("metadata") or metadata
+                    await db[COLL_ESTRATTI].update_one(
+                        {"id": statement.get("id")},
+                        {"$set": {
+                            "metadata": metadata,
+                            "parser_updated_at": datetime.now(timezone.utc).isoformat(),
+                        }},
+                    )
+            except Exception:
+                logger.exception(
+                    "Rivalidazione statement Nexi fallita: %s",
+                    statement.get("id"),
+                )
+        periodo_statement = str(metadata.get("data_estratto_iso") or "")[:7]
+        if periodo_statement:
+            statement_per_periodo[periodo_statement] = {
+                **statement, "metadata": metadata,
+            }
+
+    # Nessun filtro anno lato repository: estratto_conto_movimenti ha righe
+    # più vecchie con data in formato italiano GG/MM/AAAA accanto a quelle
+    # ISO — un range string $gte/$lte sul grezzo escluderebbe le prime
+    # silenziosamente (bug trovato in produzione il 18/07/2026). Si filtra
+    # dopo, sulla data normalizzata.
+    async for doc in db[COLL_MOVIMENTI].find({}):
+        if not is_addebito_nexi(doc):
+            continue
+        data_add = _data(doc)
+        if anno and not data_add.startswith(f"{anno}-"):
+            continue
+        identita_addebito = _chiave_addebito(doc)
+        base_addebito = identita_addebito[:3]
+        rapporto = identita_addebito[-1]
+        rapporti_precedenti = rapporti_per_addebito.setdefault(base_addebito, set())
+        duplicato_compatibile = bool(rapporti_precedenti) and (
+            not rapporto or "" in rapporti_precedenti or rapporto in rapporti_precedenti
+        )
+        if identita_addebito in addebiti_visti or duplicato_compatibile:
+            stats["duplicati_ignorati"] += 1
+            continue
+        addebiti_visti.add(identita_addebito)
+        rapporti_precedenti.add(rapporto)
+        stats["addebiti_trovati"] += 1
+        importo = round(abs(float(doc.get("importo") or 0)), 2)
+        periodo = _periodo_addebito(data_add)
+        suffisso_conto = hashlib.sha1(str(identita_addebito[-1]).encode("utf-8")).hexdigest()[:8]
+        chiave = f"nexi_{periodo}_{suffisso_conto}"
+        chiave_legacy = f"nexi_{periodo}"
+        # Le versioni precedenti usavano una chiave solo per periodo e hanno
+        # lasciato alert ripetuti/obsoleti. Li chiudiamo prima di applicare la
+        # chiave per conto, cosi' il widget mostra una sola segnalazione viva.
+        await risolvi_alert("ESTRATTO_NEXI_MANCANTE", chiave_legacy, db)
+        await risolvi_alert("NEXI_ADDEBITO_NON_QUADRA", chiave_legacy, db)
+        dettaglio_row = {
+            "data_addebito": data_add,
+            "importo": importo,
+            "periodo": periodo,
+            "stato": None,
+        }
+
+        totale_carta = 0.0
+        n_operazioni = 0
+        async for m in db[COLL_MOVIMENTI].find({
+            "$and": [
+                {"$or": [{"tipo": "carta_credito"}, {"banca": "Nexi"}]},
+                {"data": {"$gte": f"{periodo}-01", "$lte": f"{periodo}-31"}},
+            ]
+        }):
+            # NETTO, non valore assoluto: gli accrediti/storni (importo
+            # negativo, es. rimborsi Amazon) vanno SOTTRATTI dal totale
+            # addebitato, non sommati — altrimenti un rimborso gonfia la
+            # spesa invece di ridurla e la quadratura con l'addebito
+            # bancario (che è già il netto) non torna mai (bug 18/07/2026,
+            # visto sul primo estratto Nexi reale caricato dall'utente).
+            totale_carta += float(m.get("importo") or 0)
+            n_operazioni += 1
+        totale_carta = round(totale_carta, 2)
+
+        if n_operazioni == 0:
+            stats["estratti_mancanti"] += 1
+            dettaglio_row["stato"] = "estratto_mancante"
+            await genera_alert(
+                "ESTRATTO_NEXI_MANCANTE", chiave, COLL_ESTRATTI,
+                f"Addebito Nexi di {importo:.2f}€ del {data_add}: manca lo "
+                f"statement carta Nexi del periodo {periodo}. Il gestionale lo "
+                f"cerca automaticamente nell'area Documenti/Drive Carte; usa "
+                f"l'allegato manuale soltanto se il file non e' presente, per riconciliare "
+                f"le operazioni della carta.",
+                db,
+                extra={"data_addebito": data_add, "importo": importo, "periodo": periodo},
+            )
+        else:
+            await risolvi_alert("ESTRATTO_NEXI_MANCANTE", chiave, db)
+            statement_periodo = statement_per_periodo.get(periodo)
+            metadata = (statement_periodo or {}).get("metadata") or {}
+            oneri = round(float(metadata.get("imposta_bollo") or 0), 2)
+            totale_addebito_statement = round(
+                float(metadata.get("totale_addebito") or 0), 2
+            )
+            differenza_senza_oneri = round(importo - totale_carta, 2)
+            if (not totale_addebito_statement and not oneri and statement_periodo
+                    and abs(differenza_senza_oneri - 2.0) <= _TOLLERANZA):
+                oneri = 2.0
+                dettaglio_row["imposta_bollo_inferita_da_statement"] = True
+            # Il totale ufficiale del PDF prevale sulla somma del mese:
+            # Nexi puo' riportare crediti e residui dai periodi precedenti.
+            totale_quadratura = (
+                totale_addebito_statement
+                if totale_addebito_statement
+                else round(totale_carta + oneri, 2)
+            )
+            diff = round(importo - totale_quadratura, 2)
+            dettaglio_row["totale_carta"] = totale_carta
+            dettaglio_row["oneri_carta"] = oneri
+            dettaglio_row["totale_carta_con_oneri"] = totale_quadratura
+            dettaglio_row["totale_addebito_statement"] = (
+                totale_addebito_statement or None
+            )
+            dettaglio_row["operazioni_carta"] = n_operazioni
+            dettaglio_row["differenza"] = diff
+            if abs(diff) <= _TOLLERANZA:
+                stats["riconciliati"] += 1
+                dettaglio_row["stato"] = "riconciliato"
+                await risolvi_alert("NEXI_ADDEBITO_NON_QUADRA", chiave, db)
+                await db[COLL_MOVIMENTI].update_one(
+                    {"_id": doc["_id"]},
+                    # Anche lo stato che leggono le pagine di riconciliazione:
+                    # col solo flag Nexi l'addebito quadrato restava «aperto».
+                    {"$set": {"nexi_riconciliato": True, "nexi_periodo": periodo,
+                              "riconciliato": True,
+                              "tipo_riconciliazione": "addebito_nexi_quadrato",
+                              "stato_riconciliazione": "riconciliato"}},
+                )
+            else:
+                stats["non_quadrano"] += 1
+                dettaglio_row["stato"] = "non_quadra"
+                await genera_alert(
+                    "NEXI_ADDEBITO_NON_QUADRA", chiave, COLL_ESTRATTI,
+                    f"Addebito Nexi {importo:.2f}€ del {data_add} ≠ somma "
+                    f"operazioni carta {totale_carta:.2f}€ ({n_operazioni} "
+                    f"operazioni) del periodo {periodo} (Δ {diff:+.2f}€).",
+                    db,
+                    extra=dettaglio_row,
+                )
+        stats["dettagli"].append(dettaglio_row)
+
+    if anno is None:
+        await _salva_istantanea(db, stats)
+    return stats
+
+
+# ---------------------------------------------------------------------------
+# Istantanea della verifica. La verifica legge tutti gli estratti (PDF compresi)
+# e tutti i movimenti di banca: farla a ogni apertura della Prima Nota Banca
+# costava da 10 a 68 secondi. Si rifà quando cambia un dato (posta, estratto
+# conto, PDF Nexi: chi la chiama gia'), e la pagina legge l'ultimo risultato.
+# ---------------------------------------------------------------------------
+CHIAVE_ISTANTANEA = "nexi_verifica_istantanea"
+ISTANTANEA_VALIDA_SECONDI = 30 * 60
+_ricalcolo_in_corso: Dict[str, Any] = {"task": None}
+
+
+async def _salva_istantanea(db, stats: Dict[str, Any]) -> None:
+    try:
+        await db["sistema_stato"].update_one(
+            {"chiave": CHIAVE_ISTANTANEA},
+            {"$set": {"chiave": CHIAVE_ISTANTANEA, "verifica": stats,
+                      "calcolata_at": datetime.now(timezone.utc).isoformat()}},
+            upsert=True,
+        )
+    except Exception as exc:
+        logger.warning("Istantanea verifica Nexi non salvata: %s: %s", type(exc).__name__, exc)
+
+
+def filtra_verifica_per_anno(verifica: Dict[str, Any], anno: Optional[int]) -> Dict[str, Any]:
+    """La verifica di un anno, ricavata da quella di tutti gli anni.
+
+    I dettagli sono gli stessi che la verifica con ``anno`` produrrebbe (stesso
+    filtro sulla data dell'addebito, stesso ordine); i conteggi si rifanno sui
+    dettagli. I duplicati ignorati non si possono attribuire a un anno: restano
+    vuoti, non si inventano.
+    """
+    if not anno:
+        return verifica
+    dettagli = [d for d in verifica.get("dettagli") or []
+                if str(d.get("data_addebito") or "").startswith(f"{anno}-")]
+    conta = Counter(d.get("stato") for d in dettagli)
+    return {
+        "addebiti_trovati": len(dettagli),
+        "estratti_mancanti": conta.get("estratto_mancante", 0),
+        "riconciliati": conta.get("riconciliato", 0),
+        "non_quadrano": conta.get("non_quadra", 0),
+        "duplicati_ignorati": None,
+        "dettagli": dettagli,
+    }
+
+
+async def _ricalcola_in_sottofondo(db) -> None:
+    try:
+        await verifica_addebiti_nexi(db)
+    except Exception as exc:
+        logger.warning("Ricalcolo verifica Nexi non riuscito: %s: %s", type(exc).__name__, exc)
+
+
+async def leggi_verifica_nexi(db, anno: Optional[int] = None) -> Dict[str, Any]:
+    """La verifica dall'istantanea; la prima volta la calcola.
+
+    Se l'istantanea e' piu' vecchia di ``ISTANTANEA_VALIDA_SECONDI`` si risponde
+    subito con quella e la si rifà in sottofondo, uno alla volta.
+    """
+    doc = await db["sistema_stato"].find_one({"chiave": CHIAVE_ISTANTANEA}, {"_id": 0}) or {}
+    verifica = doc.get("verifica")
+    if not verifica:
+        verifica = await verifica_addebiti_nexi(db)
+        salvata = await db["sistema_stato"].find_one({"chiave": CHIAVE_ISTANTANEA}, {"_id": 0}) or {}
+        calcolata_at = salvata.get("calcolata_at") or datetime.now(timezone.utc).isoformat()
+    else:
+        calcolata_at = doc.get("calcolata_at")
+        try:
+            eta = (datetime.now(timezone.utc) - datetime.fromisoformat(str(calcolata_at))).total_seconds()
+        except (TypeError, ValueError):
+            eta = ISTANTANEA_VALIDA_SECONDI + 1
+        task = _ricalcolo_in_corso["task"]
+        if eta > ISTANTANEA_VALIDA_SECONDI and (task is None or task.done()):
+            _ricalcolo_in_corso["task"] = asyncio.create_task(
+                _ricalcola_in_sottofondo(db), name="ricalcolo_verifica_nexi",
+            )
+    return {**filtra_verifica_per_anno(verifica, anno), "calcolata_at": calcolata_at}
+
+
+async def importa_estratto_nexi_pdf(
+    db,
+    filename: str,
+    pdf_content: bytes,
+    *,
+    source: str = "upload_manuale_prima_nota",
+    drive_file_id: Optional[str] = None,
+    source_path: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Allega manualmente uno statement carta Nexi (PDF) da Prima Nota,
+    stessa pipeline/schema del download automatico via email."""
+    import base64
+
+    from app.parsers.estratto_conto_nexi_parser import parse_estratto_conto_nexi
+
+    content_sha256 = hashlib.sha256(pdf_content).hexdigest()
+    result = parse_estratto_conto_nexi(pdf_content)
+    if not result.get("success"):
+        return {"success": False, "message": result.get("error", "Parsing PDF fallito")}
+
+    condizioni = [{"content_sha256": content_sha256}]
+    if drive_file_id:
+        condizioni.append({"drive_file_id": drive_file_id})
+    existing = await db[COLL_ESTRATTI].find_one(
+        {"$or": condizioni}, {"_id": 0, "id": 1, "drive_file_id": 1},
+    )
+    statement_is_duplicate = bool(existing)
+    if existing:
+        # Un parser migliorato deve poter arricchire anche un PDF gia' noto
+        # (es. imposta di bollo Nexi), senza duplicare documento o movimenti.
+        # Continuiamo comunque fino alle transazioni: cosi' i record storici
+        # ricevono la chiave operazione stabile e un import interrotto puo'
+        # completare solo le righe realmente mancanti.
+        aggiorna = {
+            "metadata": result.get("metadata", {}),
+            "parser_updated_at": datetime.now(timezone.utc).isoformat(),
+        }
+        # Il collegamento al file Drive si scrive una volta e non si sovrascrive:
+        # lo statement nato da email o da Import non lo aveva.
+        if drive_file_id and not existing.get("drive_file_id"):
+            aggiorna["drive_file_id"] = drive_file_id
+            aggiorna["content_sha256"] = content_sha256
+        await db[COLL_ESTRATTI].update_one({"id": existing.get("id")}, {"$set": aggiorna})
+
+    transazioni = result.get("transazioni", [])
+    if not transazioni:
+        return {"success": False, "message": "Nessuna transazione riconosciuta nel PDF"}
+
+    estratto_id = (
+        existing.get("id") if existing and existing.get("id")
+        else f"nexi_statement:{content_sha256}"
+    )
+    now_iso = datetime.now(timezone.utc).isoformat()
+    statement_record = {
+        "id": estratto_id,
+        "filename": filename,
+        "pdf_data": base64.b64encode(pdf_content).decode("utf-8"),
+        "tipo": "nexi_carta",
+        "metadata": result.get("metadata", {}),
+        "totale_transazioni": len(transazioni),
+        "import_date": now_iso,
+        "source": source,
+        "drive_file_id": drive_file_id,
+        "source_path": source_path,
+        "content_sha256": content_sha256,
+    }
+
+    # Un solo caricamento delle identita' gia' note. Il file sorgente e il suo
+    # hash non fanno parte dell'identita' contabile: scansioni diverse o
+    # statement con periodi sovrapposti non devono duplicare una spesa.
+    existing_by_key = set()
+    legacy_by_base: Counter = Counter()
+    existing_docs_by_base = defaultdict(list)
+    async for movement in db[COLL_MOVIMENTI].find({
+        "$or": [{"tipo": "carta_credito"}, {"banca": "Nexi"}],
+    }):
+        if movement.get("operation_key"):
+            existing_by_key.add(str(movement["operation_key"]))
+        legacy_base = (
+            _norm_data(movement.get("data") or movement.get("data_contabile") or ""),
+            int(round(float(movement.get("importo") or 0) * 100)),
+            _nexi_description(movement.get("descrizione_originale") or movement.get("descrizione")),
+        )
+        legacy_by_base[legacy_base] += 1
+        existing_docs_by_base[legacy_base].append(movement)
+
+    incoming_occurrences: Counter = Counter()
+    movement_records = []
+    duplicate_count = 0
+    backfills = []
+    for t in transazioni:
+        data_iso = _norm_data(t.get("data") or "")
+        amount = float(t.get("importo") or 0)
+        description = str(t.get("descrizione") or "").strip()
+        base = (data_iso, int(round(amount * 100)), _nexi_description(description))
+        incoming_occurrences[base] += 1
+        occurrence = incoming_occurrences[base]
+        operation_key, operation_id = nexi_operation_identity(
+            data_iso, amount, description, occurrence,
+        )
+        if operation_key in existing_by_key or legacy_by_base[base] >= occurrence:
+            duplicate_count += 1
+            if operation_key not in existing_by_key:
+                legacy = existing_docs_by_base[base][occurrence - 1]
+                if legacy.get("id"):
+                    backfills.append((legacy["id"], operation_key, operation_id, occurrence))
+            continue
+        movement_records.append({
+            "id": operation_id,
+            "operation_id": operation_id,
+            "operation_key": operation_key,
+            "identity_version": "nexi_v2",
+            "occurrence_index": occurrence,
+            "estratto_id": estratto_id,
+            "data": data_iso,
+            "descrizione": description,
+            "descrizione_originale": description,
+            "importo": amount,
+            "tipo": "carta_credito",
+            "banca": "Nexi",
+            "categoria": t.get("categoria"),
+            "riconciliato": False,
+            "fattura_id": None,
+            "source_filename": filename,
+            "drive_file_id": drive_file_id,
+            "drive_source_path": source_path,
+            "created_at": now_iso,
+        })
+
+    async with _write_batch(db):
+        if not statement_is_duplicate:
+            await db[COLL_ESTRATTI].insert_one(statement_record)
+        for record_id, operation_key, operation_id, occurrence in backfills:
+            await db[COLL_MOVIMENTI].update_one(
+                {"id": record_id}, {"$set": {
+                    "operation_key": operation_key,
+                    "operation_id": operation_id,
+                    "identity_version": "nexi_v2",
+                    "occurrence_index": occurrence,
+                }},
+            )
+        if movement_records:
+            collection = db[COLL_MOVIMENTI]
+            insert_many = getattr(collection, "insert_many", None)
+            if callable(insert_many):
+                await insert_many(movement_records, ordered=False)
+            else:  # Compatibilita' per adapter/test minimali.
+                for record in movement_records:
+                    await collection.insert_one(record)
+
+    verifica = await verifica_addebiti_nexi(db)
+    return {
+        "success": True,
+        "duplicate": statement_is_duplicate,
+        "estratto_id": estratto_id,
+        "operazioni": len(movement_records),
+        "operazioni_lette": len(transazioni),
+        "duplicati_operazione": duplicate_count,
+        "totale_importo": round(sum(t.get("importo") or 0 for t in transazioni), 2),
+        "verifica": verifica,
+    }

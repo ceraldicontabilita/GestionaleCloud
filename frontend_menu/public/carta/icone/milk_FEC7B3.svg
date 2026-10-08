@@ -1,0 +1,17 @@
+<svg id="icon-milk-allergens" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="30" height="30" viewBox="0 0 30 30">
+  <defs>
+    <clipPath id="clip-path">
+      <rect id="Rectangle_16" data-name="Rectangle 16" width="30" height="30" fill="none"/>
+    </clipPath>
+    <clipPath id="clip-path-2">
+      <rect id="Rectangle_30" data-name="Rectangle 30" width="9.088" height="17.892" fill="none"/>
+    </clipPath>
+  </defs>
+  <g id="Group_13" data-name="Group 13" clip-path="url(#clip-path)">
+    <g id="Group_41" data-name="Group 41" transform="translate(10.456 6)">
+      <g id="Group_40" data-name="Group 40" transform="translate(0 0)" clip-path="url(#clip-path-2)">
+        <path id="Path_197" data-name="Path 197" d="M8.733,5.209h0a1.217,1.217,0,0,0-.092-.091L6.391,2.9V1.668H6.5A.826.826,0,0,0,7.322.842V.826A.826.826,0,0,0,6.5,0h-3.9a.826.826,0,0,0-.827.826V.842a.826.826,0,0,0,.814.825V2.952L.343,5.209H.356A1.337,1.337,0,0,0,0,6.114V16.545a1.346,1.346,0,0,0,1.347,1.346H7.742a1.346,1.346,0,0,0,1.347-1.346V6.114a1.337,1.337,0,0,0-.355-.905" transform="translate(0 0)" fill="#FEC7B3"/>
+      </g>
+    </g>
+  </g>
+</svg>

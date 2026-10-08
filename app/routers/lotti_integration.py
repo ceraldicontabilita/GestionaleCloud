@@ -1,0 +1,331 @@
+"""Proiezione read-only dei dati GestionaleCloud necessari a CeraldiApp/Lotti.
+
+GestionaleCloud resta proprietario dei dati contabili e del personale. Lotti
+riceve soltanto proiezioni con identificativi stabili e conserva la propria
+copia operativa su Supabase, senza dipendere da Drive o fogli di calcolo.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import hmac
+import json
+import os
+from datetime import date, datetime
+from typing import Any, Optional
+
+from fastapi import APIRouter, Header, HTTPException, Query
+
+from app.database import Database
+
+
+router = APIRouter(prefix="/integrations/lotti", tags=["Integrazione Lotti"])
+
+
+def _text(value: Any) -> str:
+    return str(value or "").strip()
+
+
+def _invoice_date(document: dict[str, Any]) -> str:
+    value = (
+        document.get("invoice_date")
+        or document.get("data_fattura")
+        or document.get("data_documento")
+        or ""
+    )
+    if isinstance(value, (date, datetime)):
+        return value.date().isoformat() if isinstance(value, datetime) else value.isoformat()
+    return _text(value)
+
+
+def _year(value: str) -> Optional[int]:
+    for fmt in ("%Y-%m-%d", "%d/%m/%Y", "%d-%m-%Y"):
+        try:
+            return datetime.strptime(value[:10], fmt).year
+        except (TypeError, ValueError):
+            continue
+    return None
+
+
+def _source_id(document: dict[str, Any]) -> str:
+    explicit = _text(document.get("id") or document.get("invoice_key"))
+    if explicit:
+        return explicit
+    identity = "|".join(
+        (
+            _text(document.get("supplier_vat") or document.get("fornitore_partita_iva")),
+            _text(document.get("invoice_number") or document.get("numero_fattura") or document.get("numero_documento")),
+            _invoice_date(document),
+        )
+    )
+    return "invoice-" + hashlib.sha256(identity.encode("utf-8")).hexdigest()[:32]
+
+
+def _portable(value: Any) -> Any:
+    if isinstance(value, (date, datetime)):
+        return value.isoformat()
+    if isinstance(value, dict):
+        return {str(k): _portable(v) for k, v in value.items() if k != "_id"}
+    if isinstance(value, list):
+        return [_portable(v) for v in value]
+    return value
+
+
+def _xml_of(document: dict[str, Any]) -> str:
+    """XML della fattura, da qualunque campo lo conservi.
+
+    Le 786 fatture 2026 arrivate dall'archivio legacy (14/09) e quelle del
+    vecchio CeraldiFatture tengono l'XML in ``fattura_allegata``; il feed
+    guardava solo ``xml_raw`` e Lotti le scartava come «senza XML» (15/09:
+    Lotti aveva 20 fatture 2026 su 1.085). Si accetta il primo campo che
+    contiene davvero un documento FatturaElettronica."""
+    for campo in ("xml_raw", "fattura_allegata", "xml_content", "xml"):
+        valore = document.get(campo)
+        if isinstance(valore, bytes):
+            try:
+                valore = valore.decode("utf-8", "ignore")
+            except Exception:  # pragma: no cover - byte non decodificabili
+                continue
+        testo = _text(valore)
+        if testo.lstrip().startswith("<") and "FatturaElettronica" in testo[:4000]:
+            return testo
+    return ""
+
+
+def _projection(document: dict[str, Any], *, include_xml: bool) -> dict[str, Any]:
+    lines = document.get("linee") or document.get("righe") or document.get("prodotti") or []
+    xml_raw = _xml_of(document)
+    # 17/09/2026: l'elenco viene letto SENZA XML (versione leggera dalla
+    # cache); l'impronta e' `content_hash`, che e' esattamente sha256 dell'XML
+    # (stesso calcolo dell'import Drive e di fatture_identita), quindi il
+    # source_hash resta identico a quello calcolato dall'XML. Un documento
+    # con XML ma senza impronta viene idratato per id da _documents().
+    impronta = (
+        hashlib.sha256(xml_raw.encode("utf-8")).hexdigest() if xml_raw
+        else _text(document.get("content_hash"))
+    )
+    projected = {
+        "source_id": _source_id(document),
+        "invoice_number": _text(
+            document.get("invoice_number")
+            or document.get("numero_fattura")
+            or document.get("numero_documento")
+        ),
+        "invoice_date": _invoice_date(document),
+        "supplier_name": _text(
+            document.get("supplier_name")
+            or document.get("cedente_denominazione")
+            or document.get("fornitore_ragione_sociale")
+        ),
+        "supplier_vat": _text(
+            document.get("supplier_vat")
+            or document.get("cedente_piva")
+            or document.get("fornitore_partita_iva")
+        ),
+        "total_amount": document.get("total_amount") or document.get("importo_totale") or 0,
+        "document_type": _text(document.get("tipo_documento") or "TD01"),
+        "lines": _portable(lines if isinstance(lines, list) else []),
+        "has_xml": bool(impronta),
+        "source": "gestionalecloud",
+    }
+    hash_payload = dict(projected)
+    hash_payload["xml_sha256"] = impronta
+    projected["source_hash"] = hashlib.sha256(
+        json.dumps(hash_payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str).encode("utf-8")
+    ).hexdigest()
+    if include_xml:
+        projected["xml_raw"] = xml_raw
+    return projected
+
+
+def _authorized(x_lotti_key: Optional[str]) -> None:
+    expected = _text(os.environ.get("LOTTI_INTEGRATION_KEY"))
+    if not expected:
+        raise HTTPException(status_code=503, detail="Integrazione Lotti non configurata")
+    supplied = _text(x_lotti_key)
+    if not supplied or not hmac.compare_digest(supplied, expected):
+        raise HTTPException(status_code=401, detail="Chiave integrazione non valida")
+
+
+# Le due grafie dello stato archiviato convivono in archivio (regola 13 di
+# CLAUDE.md): un filtro che ne conosce una sola lascia passare documenti che
+# doveva escludere.
+_STATI_NON_ATTIVI = {"deleted", "archived", "archiviata"}
+
+
+def _attiva(doc: dict[str, Any]) -> bool:
+    """Le stesse fatture che il gestionale considera attive, non altre.
+
+    Qui c'era un filtro PARALLELO che guardava solo `deleted`: il 20/09/2026
+    mandava a Lotti **1.444** fatture del 2026 mentre nel gestionale le attive
+    erano **889** — 555 archiviate in piu', piu' 46 collisioni di identita'
+    ancora da decidere. Lotti si ritrovava cosi' righe di magazzino nate da
+    doppioni che la contabilita' aveva gia' scartato.
+
+    Il criterio e' quello del libro giornale
+    (`registrazione_contabile._FILTRO_FATTURE_DA_REGISTRARE`): archiviata
+    significa fuori dai conti, e una collisione aperta aspetta che un operatore
+    decida quale originale vale — finche' non lo decide, non e' merce."""
+    if doc.get("entity_status") == "deleted" or doc.get("deleted"):
+        return False
+    if _text(doc.get("status")).lower() in _STATI_NON_ATTIVI:
+        return False
+    if _text(doc.get("stato_import")) == "archivio_storico":
+        return False
+    if doc.get("duplicate_review_required") is True:
+        return False
+    return True
+
+
+async def _documents() -> list[dict[str, Any]]:
+    """Fatture attive nella versione LEGGERA (senza XML/PDF): l'elenco per
+    Lotti veniva calcolato ogni 15 minuti scaricando tutte le fatture con
+    l'XML (fino a 10.000 documenti per id). L'impronta dell'XML e'
+    `content_hash`; solo chi ne e' privo viene letto per intero, per id."""
+    from app.document_repository import metadata_projection
+
+    db = Database.get_db()
+    leggeri = await db["invoices"].find({}, metadata_projection("invoices")).to_list(10000)
+    docs: list[dict[str, Any]] = []
+    for doc in leggeri:
+        if not _attiva(doc):
+            continue
+        if not _text(doc.get("content_hash")) and doc.get("id"):
+            completo = await db["invoices"].find_one({"id": doc["id"]}, {"_id": 0})
+            if completo is not None:
+                doc = completo
+        docs.append(doc)
+    return docs
+
+
+async def _documento_per_source_id(source_id: str) -> Optional[dict[str, Any]]:
+    """Documento completo (con XML) per il source_id usato da Lotti: id o
+    invoice_key, altrimenti l'impronta derivata calcolata sulle versioni
+    leggere; una sola lettura completa, per id."""
+    db = Database.get_db()
+    for campo in ("id", "invoice_key"):
+        document = await db["invoices"].find_one({campo: source_id}, {"_id": 0})
+        if document is not None and _attiva(document):
+            return document
+    for leggero in await _documents():
+        if _source_id(leggero) == source_id and leggero.get("id"):
+            return await db["invoices"].find_one({"id": leggero["id"]}, {"_id": 0})
+    return None
+
+
+def _db_hr():
+    try:
+        from app.hr.database import Database as DatabaseHR, DatabaseNonConfigurato
+    except Exception:  # pragma: no cover - modulo HR assente
+        return None
+    try:
+        db_hr = DatabaseHR.get_db()
+    except Exception:
+        return None
+    if db_hr is None or isinstance(db_hr, DatabaseNonConfigurato):
+        return None
+    return db_hr
+
+
+async def _employees(includi_cessati: bool = False) -> list[dict[str, Any]]:
+    """Dipendenti dall'anagrafica HR (la fonte unica dal 14/09/2026: «l'anagrafica
+    HR comanda, Lotti legge»). Senza database HR configurato (test locali) si
+    legge la vecchia collezione ``dipendenti`` del gestionale."""
+    from app.hr.services import stato_rapporto
+
+    db_hr = _db_hr()
+    if db_hr is not None:
+        docs = await db_hr["dipendenti"].find(
+            {"merged_into": {"$exists": False}},
+            {"_id": 0, "id": 1, "nome": 1, "cognome": 1, "nome_completo": 1, "codice_fiscale": 1,
+             "mansione": 1, "qualifica": 1, "ruolo": 1, "qualifica_unilav": 1, "matricola": 1,
+             "codice_dipendente": 1, "attivo": 1, "in_carico": 1, "stato": 1, "data_fine_rapporto": 1,
+             "data_cessazione": 1, "data_dimissione": 1, "motivo_cessazione": 1, "riferimento_cessazione": 1,
+             "dimissioni": 1, "lotti_operatore": 1, "ruolo_app": 1},
+        ).to_list(1000)
+    else:
+        db = Database.get_db()
+        docs = await db["dipendenti"].find(
+            {"merged_into": {"$exists": False}},
+            {"_id": 0, "id": 1, "nome": 1, "cognome": 1, "nome_completo": 1, "codice_fiscale": 1,
+             "mansione": 1, "qualifica": 1, "matricola": 1, "codice_dipendente": 1, "attivo": 1,
+             "in_carico": 1, "stato": 1},
+        ).to_list(1000)
+    result = []
+    seen = set()
+    for doc in docs:
+        employee_id = _text(doc.get("id"))
+        fiscal_code = _text(doc.get("codice_fiscale")).upper()
+        if not employee_id:
+            continue
+        st = stato_rapporto.riepilogo_stato(doc)
+        if st["stato"] != "attivo" and not includi_cessati:
+            continue
+        dedup_key = fiscal_code or employee_id
+        if dedup_key in seen:
+            continue
+        seen.add(dedup_key)
+        full_name = _text(doc.get("nome_completo"))
+        first_name = _text(doc.get("nome"))
+        last_name = _text(doc.get("cognome"))
+        if not full_name:
+            full_name = " ".join(x for x in (first_name, last_name) if x)
+        result.append({
+            "source_id": employee_id,
+            "nome": first_name or full_name,
+            "cognome": last_name,
+            "nome_completo": full_name,
+            "codice_fiscale": fiscal_code,
+            "mansione": _text(doc.get("mansione") or doc.get("qualifica") or doc.get("ruolo") or doc.get("qualifica_unilav")),
+            "matricola": _text(doc.get("matricola") or doc.get("codice_dipendente")),
+            "stato": st["stato"],
+            "data_fine_rapporto": st["data_fine_rapporto"],
+            "motivo_cessazione": st["motivo_cessazione"],
+            "lotti_operatore": doc.get("lotti_operatore") is not False,
+            "ruolo_app": _text(doc.get("ruolo_app")) or "dipendente",
+            "source": "gestionalecloud",
+        })
+    result.sort(key=lambda item: (item["nome_completo"].casefold(), item["source_id"]))
+    return result
+
+
+@router.get("/invoices")
+async def list_invoices_for_lotti(
+    anno: Optional[int] = Query(None, ge=2000, le=2100),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(200, ge=1, le=500),
+    x_lotti_key: Optional[str] = Header(None, alias="X-Lotti-Key"),
+) -> dict[str, Any]:
+    """Elenco paginato delle fatture disponibili per Lotti."""
+    _authorized(x_lotti_key)
+    projected = [_projection(doc, include_xml=False) for doc in await _documents()]
+    if anno is not None:
+        projected = [item for item in projected if _year(item["invoice_date"]) == anno]
+    projected.sort(key=lambda item: (item["invoice_date"], item["source_id"]))
+    total = len(projected)
+    return {"data": projected[skip: skip + limit], "total": total, "skip": skip, "limit": limit}
+
+
+@router.get("/invoices/{source_id}")
+async def get_invoice_for_lotti(
+    source_id: str,
+    x_lotti_key: Optional[str] = Header(None, alias="X-Lotti-Key"),
+) -> dict[str, Any]:
+    """Dettaglio della fattura con XML originale quando disponibile."""
+    _authorized(x_lotti_key)
+    document = await _documento_per_source_id(source_id)
+    if document is not None:
+        return _projection(document, include_xml=True)
+    raise HTTPException(status_code=404, detail="Fattura non trovata")
+
+
+@router.get("/employees")
+async def list_employees_for_lotti(
+    x_lotti_key: Optional[str] = Header(None, alias="X-Lotti-Key"),
+    includi_cessati: bool = Query(False),
+) -> dict[str, Any]:
+    """Dipendenti dell'anagrafica HR (attivi; con ``includi_cessati`` anche i
+    cessati con data e motivo) con ID stabile e codice fiscale."""
+    _authorized(x_lotti_key)
+    data = await _employees(includi_cessati=includi_cessati is True)
+    return {"data": data, "total": len(data), "source": "gestionalecloud"}

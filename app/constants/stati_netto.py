@@ -1,0 +1,72 @@
+"""I quattro stati del netto di un cedolino — punto unico.
+
+CLAUDE.md, «Personale»: il netto si legge **solo** dalla cella graficamente
+associata a `TOTALE NETTO` / `NETTO DEL MESE` / `NETTO IN BUSTA`, mai da
+`ARR. PREC.`, competenze, trattenute, TFR, arrotondamenti o dal nome del file.
+**Cella vuota → valore nullo, mai zero.** E soltanto
+`NETTO_VERIFICATO_DA_CEDOLINO` alimenta Salari e bonifici.
+
+Prima del 19/09/2026 nel codice esisteva un solo stato, e le sue uniche due
+occorrenze stavano dentro una guardia che trattava lo stato **assente** come
+verificato. Il parser non scriveva mai gli altri tre: un netto illeggibile
+tornava `0.0`, cioe' indistinguibile da uno zero vero, e da li' passava.
+"""
+from __future__ import annotations
+
+#: Il netto e' stato letto dalla cella giusta del cedolino. **L'unico** che
+#: alimenta Prima Nota Salari e i bonifici.
+NETTO_VERIFICATO_DA_CEDOLINO = "NETTO_VERIFICATO_DA_CEDOLINO"
+
+#: La cella del netto non c'e' o non e' leggibile. L'importo resta **nullo**,
+#: non zero: zero e' un valore, l'assenza no.
+NETTO_NON_PRESENTE_O_NON_LEGGIBILE = "NETTO_NON_PRESENTE_O_NON_LEGGIBILE"
+
+#: Piu' candidati plausibili e discordanti per il netto: serve un occhio umano,
+#: non si sceglie il primo o il piu' grande.
+MULTIPLE_NETS_DA_VERIFICARE = "MULTIPLE_NETS_DA_VERIFICARE"
+
+#: Il parser si e' rotto su quel documento. Diverso da «non l'ho trovato»:
+#: qui non sappiamo nemmeno se il dato ci fosse.
+ERRORE_PARSER = "ERRORE_PARSER"
+
+STATI_NETTO = (
+    NETTO_VERIFICATO_DA_CEDOLINO,
+    NETTO_NON_PRESENTE_O_NON_LEGGIBILE,
+    MULTIPLE_NETS_DA_VERIFICARE,
+    ERRORE_PARSER,
+)
+
+#: Gli stati che **non** possono alimentare Salari e bonifici.
+STATI_NON_UTILIZZABILI = tuple(
+    s for s in STATI_NETTO if s != NETTO_VERIFICATO_DA_CEDOLINO
+)
+
+# ── da dove viene il netto (``netto_fonte``) ────────────────────────────────
+# Lo stato dice *se* il netto vale; la fonte dice *da dove* il lettore l'ha
+# preso. Il minisito del titolare aveva anche «calcolato_da_totali»: qui non
+# esiste, competenze − trattenute resta un controllo e non produce mai un
+# netto (CLAUDE.md, «Personale»).
+
+#: Il netto viene dalla cella graficamente associata all'etichetta.
+NETTO_FONTE_CELLA = "cella"
+
+#: Pagina del Libro Unico del Lavoro in cui il lettore per posizione
+#: (`_netto_dalla_cella`) non trova nessun valore sotto «NETTO»: il netto resta
+#: nullo (stato ``NETTO_NON_PRESENTE_O_NON_LEGGIBILE``), mai zero. Non e' un
+#: lettore mancante: una cella stampata vuota (mese a zero, cassa integrazione
+#: a pagamento diretto, stampa di controllo senza totali) e' vuota davvero.
+NETTO_FONTE_NON_LETTO_DA_LUL = "non_letto_da_lul"
+
+#: Ogni altro caso (netto dal testo, netto assente su una busta normale) ha
+#: fonte ``None``.
+FONTI_NETTO = (NETTO_FONTE_CELLA, NETTO_FONTE_NON_LETTO_DA_LUL, None)
+
+
+def alimenta_salari(stato: object) -> bool:
+    """True solo per il netto verificato.
+
+    Fallisce **chiuso**: uno stato assente, vuoto o sconosciuto non passa. Il
+    contrario — trattare l'assenza come verificato — e' esattamente il difetto
+    corretto il 19/09/2026 in `prima_nota_salari.import_salari_verificati`.
+    """
+    return str(stato or "").strip().upper() == NETTO_VERIFICATO_DA_CEDOLINO
