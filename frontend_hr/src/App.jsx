@@ -5400,9 +5400,11 @@ function PagheBonificiPage({ dipendenti = [] }) {
   // voci di busta, simulazione F24, griglia annuale.
   const mesi = ["Gennaio","Febbraio","Marzo","Aprile","Maggio","Giugno","Luglio","Agosto","Settembre","Ottobre","Novembre","Dicembre"];
   const annoCorr = new Date().getFullYear();
-  const [anno, setAnno] = useState(annoCorr);
-  const [mese, setMese] = useState(0); // 0 = tutto l'anno
-  const [filtroStato, setFiltroStato] = useState("");
+  const importSession = useImportSession('hr-paghe', { importing: false, importMsg: null, pnMsg: null, csvMsg: null, storicoMsg: null, files: [], anno: 0, mese: 0, filtroStato: "" });
+  const { anno, mese, filtroStato } = importSession.state;
+  const setAnno = value => importSession.setField('anno', value);
+  const setMese = value => importSession.setField('mese', value);
+  const setFiltroStato = value => importSession.setField('filtroStato', value);
   const [data, setData] = useState({ righe: [], totali: {}, count: 0 });
   const [loading, setLoading] = useState(false);
   const [aperta, setAperta] = useState(null); // chiave riga espansa
@@ -5416,7 +5418,6 @@ function PagheBonificiPage({ dipendenti = [] }) {
   const [griglia, setGriglia] = useState(false);
   // Import (ex pagina Buste Paga)
   const [showImport, setShowImport] = useState(false);
-  const importSession = useImportSession('hr-paghe', { importing: false, importMsg: null, pnMsg: null, csvMsg: null, storicoMsg: null, files: [] });
   const { importing, importMsg, pnMsg, csvMsg, storicoMsg } = importSession.state;
   const setImporting = value => importSession.setField('importing', value);
   const setImportMsg = value => importSession.setField('importMsg', value);
@@ -5434,21 +5435,32 @@ function PagheBonificiPage({ dipendenti = [] }) {
   const eur = (n) => (Number(n) || 0).toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   const keyOf = (r) => `${r.dipendente_id}_${r.anno}_${r.mese}`;
 
+  const [loadError, setLoadError] = useState("");
+  const requestVersion = useRef(0);
+  const activeFilters = useRef("");
+  const filterKey = `${anno}:${mese}:${filtroStato}`;
+  activeFilters.current = filterKey;
+  useEffect(() => () => { requestVersion.current += 1; }, []);
   const load = async () => {
-    setLoading(true);
+    if (!importSession.ready) return;
+    const version = ++requestVersion.current;
+    const current = () => version === requestVersion.current && filterKey === activeFilters.current;
+    setLoading(true); setLoadError("");
     try {
       const params = new URLSearchParams();
       if (anno) params.set("anno", anno);
       if (mese) params.set("mese", mese);
       if (filtroStato) params.set("stato", filtroStato);
       const r = await axios.get(`${API}/paghe/associazioni-bonifici?${params.toString()}`);
-      setData(r.data || { righe: [], totali: {}, count: 0 });
+      if (current()) setData(r.data || { righe: [], totali: {}, count: 0 });
     } catch (e) {
-      console.error(e);
-      setData({ righe: [], totali: {}, count: 0 });
-    } finally { setLoading(false); }
+      if (current()) {
+        setLoadError(e?.response?.data?.detail || "Impossibile aggiornare l'archivio paghe. Premi Aggiorna per riprovare.");
+        setData({ righe: [], totali: {}, count: 0 });
+      }
+    } finally { if (current()) setLoading(false); }
   };
-  useEffect(() => { load(); }, [anno, mese, filtroStato]);
+  useEffect(() => { load(); }, [anno, mese, filtroStato, importing, importSession.ready]);
 
   const conferma = async (r, val) => {
     setBusy(keyOf(r));
@@ -5580,7 +5592,13 @@ function PagheBonificiPage({ dipendenti = [] }) {
   };
 
   // ── Import (dalla vecchia pagina Buste Paga) ──
-  const vaiAlMese = (r) => { if (r?.mesi?.length) { const u = r.mesi[r.mesi.length - 1]; setAnno(u.anno); setMese(u.mese); } };
+  const vaiAlMese = (r) => {
+    const periods = r?.mesi || [];
+    const years = [...new Set(periods.map(p => p.anno).filter(Boolean))];
+    setAnno(years.length === 1 ? years[0] : 0);
+    setMese(periods.length === 1 ? periods[0].mese : 0);
+    setFiltroStato("");
+  };
   const handleImportLul = async (e) => {
     const fs = e ? Array.from(e.target.files || []).map(file => ({ file, name: file.name })) : importSession.state.files;
     if (!fs.length || importing || !importSession.ready) return;
@@ -5615,7 +5633,7 @@ function PagheBonificiPage({ dipendenti = [] }) {
           result.file_pdf += done.file_pdf || 1;
           result.totale_associati += done.totale_associati || 0;
           for (const field of ['associati', 'errori', 'duplicati', 'mesi', 'da_controllare']) result[field].push(...(done[field] || []));
-          if (done.success === false && !done.errori?.length) result.errori.push(`${item.name}: nessuna busta acquisita. Controlla il documento e le segnalazioni.`);
+          if (done.success === false && !done.errori?.length && !done.da_controllare?.length) result.errori.push(`${item.name}: nessuna busta acquisita. Controlla il documento e le segnalazioni.`);
           if (done.errori?.length || done.success === false) item.jobId = null;
           item.done = !done.errori?.length && done.success !== false;
           item.result = item.done ? done : null;
@@ -5628,7 +5646,7 @@ function PagheBonificiPage({ dipendenti = [] }) {
         result.success = result.errori.length === 0;
         setImportMsg({ ...result });
       }
-      vaiAlMese(result); await load();
+      vaiAlMese(result);
     } catch (err) { setImportMsg({ errore: err.response?.data?.detail || "Errore durante l'import" }); }
     finally { setImporting(false); if (fileRef.current) fileRef.current.value = ""; }
   };
@@ -5636,7 +5654,7 @@ function PagheBonificiPage({ dipendenti = [] }) {
     setImporting(true); setImportMsg(null);
     try {
       const res = await axios.post(`${API}/paghe/importa-email`);
-      setImportMsg(res.data); vaiAlMese(res.data); await load();
+      setImportMsg(res.data); vaiAlMese(res.data);
     } catch (err) { setImportMsg({ errore: err.response?.data?.detail || "Errore durante l'import da email" }); }
     finally { setImporting(false); }
   };
@@ -5716,6 +5734,7 @@ function PagheBonificiPage({ dipendenti = [] }) {
 
   const t = data.totali || {};
   const STATI = {
+    vuoto: { label: "Nessun importo da pagare", variant: "default" },
     pagato: { label: "✓ Pagato", variant: "success" },
     parziale: { label: "Parziale", variant: "warning" },
     da_verificare: { label: "Da verificare", variant: "warning" },
@@ -5822,7 +5841,7 @@ function PagheBonificiPage({ dipendenti = [] }) {
           {importMsg.errore ? <div style={{ color: "#d35f4e", fontWeight: 600 }}>⚠ {importMsg.errore}</div> : (
             <div>
               <div style={{ fontWeight: 700, marginBottom: 6 }}>
-                {importMsg.errori?.length || importMsg.success === false ? "⚠ Import non completato" : "✓ Elaborazione terminata"} · {importMsg.file_pdf} documenti · {importMsg.totale_associati} buste{importMsg.bonifici?.length ? ` · ${importMsg.bonifici.length} bonifici` : ""}{importMsg.prestiti?.length ? ` · ${importMsg.prestiti.length} prestiti` : ""}{importMsg.presenze?.length ? ` · ${importMsg.presenze.length} presenze` : ""}
+                {importMsg.errori?.length || importMsg.success === false ? "⚠ Import non completato" : importMsg.da_controllare?.length ? "⚠ Elaborazione con segnalazioni" : "✓ Elaborazione terminata"} · {importMsg.file_pdf} documenti · {importMsg.totale_associati} buste{importMsg.bonifici?.length ? ` · ${importMsg.bonifici.length} bonifici` : ""}{importMsg.prestiti?.length ? ` · ${importMsg.prestiti.length} prestiti` : ""}{importMsg.presenze?.length ? ` · ${importMsg.presenze.length} presenze` : ""}
               </div>
               {importMsg.errori?.length > 0 && <div role="alert" style={{ color: "#a13e30", marginBottom: 10 }}>
                 {importMsg.errori.map((errore, i) => <div key={i}>{errore}</div>)}
@@ -5830,11 +5849,11 @@ function PagheBonificiPage({ dipendenti = [] }) {
               {importMsg.messaggio && <div style={{ marginBottom: 6 }}>{importMsg.messaggio}</div>}
               {importMsg.duplicati?.length > 0 && <div style={{ marginBottom: 6 }}>{importMsg.duplicati.length} buste già presenti, nessuna nuova copia.</div>}
               {importMsg.da_controllare?.length > 0 && <div role="alert" style={{ color: "#7d5526", marginBottom: 10 }}>
-                Da controllare: {importMsg.da_controllare.map((voce, i) => <div key={i}>{voce.errore || voce.motivo || voce.dipendente || voce.file || "Documento da verificare"}</div>)}
+                Da controllare: {importMsg.da_controllare.map((voce, i) => <div key={i}>{voce.file ? `${voce.file}: ` : ""}{voce.errore || voce.motivo || voce.dipendente || "Documento da verificare"}</div>)}
               </div>}
               {importMsg.mesi?.length > 0 && <div style={{ fontSize: 13, marginBottom: 6 }}>Mesi importati: {importMsg.mesi.map(mm => `${mesi[mm.mese - 1]} ${mm.anno} (${mm.n})`).join(" · ")}</div>}
               <div style={{ fontSize: 13, color: "#6b7669", display: "flex", flexWrap: "wrap", gap: "2px 14px" }}>
-                {importMsg.associati?.map((a, i) => <span key={i}>{a.dipendente}: € {eur(a.netto)}{importMsg.mesi?.length > 1 ? ` (${a.mese}/${a.anno})` : ""}{a.metodo !== "codice fiscale" ? " ⚠" : ""}</span>)}
+                {importMsg.associati?.map((a, i) => <span key={i}>{a.dipendente}: {a.netto == null ? "netto da verificare nel PDF" : `€ ${eur(a.netto)}`}{importMsg.mesi?.length > 1 ? ` (${a.mese}/${a.anno})` : ""}{a.metodo !== "codice fiscale" ? " ⚠" : ""}</span>)}
               </div>
               {importMsg.bonifici?.length > 0 && (
                 <div style={{ marginTop: 10, fontSize: 13 }}>
@@ -5949,9 +5968,11 @@ function PagheBonificiPage({ dipendenti = [] }) {
       )}
 
       {/* Filtri */}
+      <button className="dc-btn" style={{ marginBottom: 10 }} onClick={() => { setAnno(0); setMese(0); setFiltroStato(""); if (!anno && !mese && !filtroStato) load(); }}>Mostra tutte le buste</button>
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", marginBottom: 16 }}>
         <select style={sel} aria-label="Anno" value={anno} onChange={e => setAnno(Number(e.target.value))}>
-          {Array.from({ length: 9 }, (_, i) => annoCorr + 1 - i).map(a => <option key={a} value={a}>{a}</option>)}
+          <option value={0}>Tutti gli anni</option>
+          {Array.from({ length: annoCorr + 2 - 2018 }, (_, i) => annoCorr + 1 - i).map(a => <option key={a} value={a}>{a}</option>)}
         </select>
         <select style={sel} aria-label="Mese" value={mese} onChange={e => setMese(Number(e.target.value))}>
           <option value={0}>Tutto l'anno</option>
@@ -5967,12 +5988,21 @@ function PagheBonificiPage({ dipendenti = [] }) {
           <option value="da_pagare">Da pagare</option>
           <option value="in_attesa_busta">In attesa della busta</option>
         </select>
-        <label style={{ display: "flex", alignItems: "center", gap: 5, cursor: "pointer", fontSize: 13 }}><input type="checkbox" checked={griglia} onChange={e => setGriglia(e.target.checked)} /> Griglia annuale</label>
+        <label style={{ display: "flex", alignItems: "center", gap: 5, cursor: "pointer", fontSize: 13 }}><input type="checkbox" checked={griglia && Boolean(anno)} disabled={!anno} onChange={e => setGriglia(e.target.checked)} /> Griglia annuale</label>
         <button className="dc-btn" onClick={load} style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
           <RefreshCw size={15} /> Aggiorna
         </button>
       </div>
 
+      {loadError && <div role="alert" className="dc-card" style={{ color: "#b04a3a" }}>{loadError}</div>}
+      {!loading && data.cedolini_da_verificare?.length > 0 && <div className="dc-card">
+        <strong>PDF acquisiti: netto da verificare ({data.cedolini_da_verificare.length})</strong>
+        <p>Questi cedolini sono conservati. L'importo non è stato letto con certezza e non viene conteggiato come zero.</p>
+        {data.cedolini_da_verificare.map(r => <div key={r.cedolino_id} style={{ display: "flex", gap: 12, alignItems: "center", marginTop: 8 }}>
+          <span>{r.dipendente} · {mesi[r.mese - 1] || r.mese} {r.anno}</span>
+          <button className="dc-btn" onClick={() => apriCedolino(r)}>Apri PDF da verificare</button>
+        </div>)}
+      </div>}
       {/* Riepilogo */}
       <div style={cardWrap}>
         <div style={card}><div style={lbl}>Totale buste</div><div style={val}>€ {eur(t.buste)}</div></div>
@@ -5984,7 +6014,7 @@ function PagheBonificiPage({ dipendenti = [] }) {
         <div style={card}><div style={lbl}>Da verificare</div><div style={{ ...val, color: "#7a3b32" }}>{t.da_verificare || 0}</div></div>
       </div>
 
-      {griglia && (
+      {griglia && Boolean(anno) && (
         <div style={{ background: "#fffefb", border: "1px solid #e6e0d4", borderRadius: 12, overflow: "hidden", marginBottom: 16 }}>
           <div style={{ overflowX: "auto" }}>
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
@@ -6038,7 +6068,7 @@ function PagheBonificiPage({ dipendenti = [] }) {
             </thead>
             <tbody>
               {loading && <tr><td style={td} colSpan={10}>Caricamento…</td></tr>}
-              {!loading && data.righe.length === 0 && <tr><td style={td} colSpan={10}>Nessuna busta per il periodo selezionato. Se le buste sono in archivio premi «Sincronizza da cedolini».</td></tr>}
+              {!loading && !loadError && data.righe.length === 0 && <tr><td style={td} colSpan={10}>Nessuna busta con importo letto per il periodo selezionato.</td></tr>}
               {!loading && data.righe.map(r => {
                 const k = keyOf(r);
                 const exp = aperta === k;
@@ -6063,7 +6093,7 @@ function PagheBonificiPage({ dipendenti = [] }) {
                           </div>
                         ) : (
                           <span>
-                            {r.busta > 0 ? `€ ${eur(r.busta)}` : "—"}
+                            {r.busta != null ? `€ ${eur(r.busta)}` : "—"}
                             <button className="dc-btn" title={r.busta_manuale ? `Importo corretto a mano (prima: € ${eur(r.busta_originale)})${r.busta_nota ? " — " + r.busta_nota : ""}` : "Correggi l'importo della busta se non torna col cedolino"}
                               onClick={() => setEditBusta({ k, dipendente_id: r.dipendente_id, anno: r.anno, mese: r.mese, importo: r.busta || "", nota: r.busta_nota || "" })}
                               aria-label={`Correggi importo busta ${r.mese}/${r.anno} di ${r.dipendente_nome || ""}`}

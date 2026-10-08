@@ -1000,6 +1000,21 @@ class SupabaseDatabase:
         r = righe[0]
         return int(r["n"]), int(r["x"])
 
+    async def refresh_collections(self, *nomi: str) -> None:
+        """Rilegge i dati scritti anche dai writer ERP, senza attendere il TTL.
+
+        Il deposito cedolini usa una connessione SQL propria: un import appena
+        concluso non deve sincronizzare o mostrare la copia precedente.
+        """
+        for nome in nomi:
+            collection = self[nome]
+            async with collection._cache_lock:
+                collection._cache = None
+                collection._cache_firma = None
+                collection._pesanti = {}
+            async with self._firme_lock:
+                self._firme.pop(collection._tab, None)
+
     async def _firma(self, tab: str) -> Optional[Tuple[int, int]]:
         """Firma della tabella, letta con quelle di tutte le tabelle in cache
         al piu' ogni _FIRMA_TTL secondi. None = non disponibile: il chiamante

@@ -63,6 +63,10 @@ def _mese_registro(c: Dict[str, Any]) -> int:
 
 
 async def sincronizza(db, anno: int = None) -> Dict[str, Any]:
+    from app.hr.db_supabase import SupabaseDatabase
+
+    if isinstance(db, SupabaseDatabase):
+        await db.refresh_collections("cedolini", "paghe_mensili", "dipendenti")
     filtro_ced: Dict[str, Any] = {
         "tipo_cedolino": {"$in": ["ordinario", "mensile", "tredicesima", "quattordicesima", None]}
     }
@@ -124,7 +128,7 @@ async def sincronizza(db, anno: int = None) -> Dict[str, Any]:
         dipendenti_idx[d.get("id")] = d
 
     adesso = datetime.now(timezone.utc).isoformat()
-    creati = aggiornati = saltati_manuali = 0
+    creati = aggiornati = saltati_manuali = invariati = 0
 
     for c in cedolini:
         dip, anno_c = c["dipendente_id"], int(c["anno"])
@@ -169,12 +173,17 @@ async def sincronizza(db, anno: int = None) -> Dict[str, Any]:
         doc.update(_stato_e_saldo(c["netto"], round(bonifico_importo + acconti_pagati, 2)))
         doc = {k: v for k, v in doc.items() if v is not None or k in ("acconti",)}
 
+        if esistente and all(esistente.get(k) == v for k, v in doc.items() if k != "updated_at"):
+            invariati += 1
+            continue
+
         await db["paghe_mensili"].update_one(
             {"dipendente_id": dip, "anno": anno_c, "mese": mese_c}, {"$set": doc}, upsert=True)
         if esistente:
             aggiornati += 1
         else:
             creati += 1
+        esistenti_idx[(dip, anno_c, mese_c)] = {**(esistente or {}), **doc}
 
     return {"cedolini_considerati": len(cedolini), "creati": creati,
-            "aggiornati": aggiornati, "saltati_manuali": saltati_manuali}
+            "aggiornati": aggiornati, "saltati_manuali": saltati_manuali, "invariati": invariati}

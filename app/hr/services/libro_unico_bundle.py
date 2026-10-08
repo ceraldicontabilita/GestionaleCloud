@@ -69,6 +69,7 @@ async def dividi_e_registra(db, pdf_bytes: bytes, filename: str = "", *, drive_f
         "success": esito.get("success", False),
         "partial": esito.get("partial", False),
         "errori": esito.get("errori") or [],
+        "sincronizzazione_paghe": esito.get("sincronizzazione_paghe"),
         "pagine_totali": pagine_totali,
         "dipendenti_nel_documento": len(cf_documento),
         "inseriti": inseriti, "gia_presenti": saltati,
