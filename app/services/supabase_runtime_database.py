@@ -1480,6 +1480,12 @@ class SupabaseRuntimeDatabase(ArchivioDocumenti):
         after: list[dict[str, Any]],
     ) -> None:
         self._known_collections.add(collection_name)
+        # Il trasferimento dell'originale può attendere Drive per molti
+        # secondi. Non deve occupare il lock delle scritture di TUTTE le
+        # collezioni, bloccando anche i cedolini e lo stato della loro coda.
+        if method not in {"delete_one", "delete_many", "find_one_and_delete"}:
+            from app.services.pdf_drive_only import externalize_documents
+            await externalize_documents(collection_name, after)
         async with self._remote_write_lock:
             await self._persist_mutation(collection_name, method, before, after)
         table = self._tables.get(collection_name)
@@ -1499,8 +1505,6 @@ class SupabaseRuntimeDatabase(ArchivioDocumenti):
                 [str(document.get("_id")) for document in before],
             )
             return
-        from app.services.pdf_drive_only import externalize_documents
-        await externalize_documents(collection_name, after)
         rifiuti = await self._upsert_documents(collection_name, after)
         if rifiuti:
             # Il chiamante e' ancora in attesa della mutazione: l'eccezione

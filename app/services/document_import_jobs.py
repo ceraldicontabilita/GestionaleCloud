@@ -12,6 +12,7 @@ import asyncio
 import base64
 import hashlib
 import logging
+from time import perf_counter
 from datetime import datetime, timezone
 from typing import Any, Awaitable, Callable, Dict
 
@@ -70,17 +71,27 @@ async def _run_job(
     runner: Callable[[], Awaitable[Dict[str, Any]]],
 ) -> None:
     """Un solo esecutore per ogni import accodato (POS, archivi ZIP)."""
+    queued_at = perf_counter()
     try:
         async with _POS_IMPORT_LOCK:
+            started = perf_counter()
             await _save_job(db, job_id, {
                 "status": "running", "started_at": _now(), "error": None,
             })
+            logger.info("Import avviato: %s | job=%s | attesa_coda=%.2fs",
+                        filename, job_id, started - queued_at)
             result = await runner()
             await _save_job(db, job_id, {
                 "status": "completed", "completed_at": _now(),
                 "result": result, "error": None,
             })
-            logger.info("Import documentale asincrono completato: %s", filename)
+            warning = result.get("success") is False or result.get("partial") or result.get("errori") or result.get("da_controllare")
+            log = logger.warning if warning else logger.info
+            log("Import %s: %s | job=%s | durata=%.2fs | acquisiti=%s | segnalazioni=%s",
+                "con segnalazioni" if warning else "completato", filename, job_id,
+                perf_counter() - started,
+                result.get("totale_associati", result.get("imported", result.get("inserted", 0))),
+                len(result.get("errori") or []) + len(result.get("da_controllare") or []))
     except Exception as exc:
         logger.exception(
             "Import documentale asincrono fallito: %s (%s)", filename, type(exc).__name__,
@@ -144,6 +155,11 @@ async def _enqueue(
 
     if existing and existing.get("status") == "completed":
         precedente = existing.get("result") or {}
+        if document_type == "hr_libro_unico" and precedente.get("esito") == "solo_presenze" and not precedente.get("errori"):
+            # Una lettura completa senza pagina retributiva è definitiva per
+            # quel contenuto. Riprendere la coda non deve ricaricare lo stesso
+            # PDF né trasformarlo in una busta con importo inventato.
+            return {"queued": False, **(public_job(existing) or {}), "reused": True}
         # Una vecchia risposta 200 con zero letti o import parziale non deve
         # impedire di riprovare lo stesso originale dopo la correzione.
         acquisiti = int(precedente.get("imported") or precedente.get("inserted") or precedente.get("totale_associati") or 0)

@@ -66,6 +66,7 @@ async def dividi_e_registra(db, pdf_bytes: bytes, filename: str = "", *, drive_f
     cf_documento = {b.get("codice_fiscale") for b in esito.get("dettaglio") or [] if b.get("codice_fiscale")}
 
     return {
+        "esito": esito.get("esito"),
         "success": esito.get("success", False),
         "partial": esito.get("partial", False),
         "errori": esito.get("errori") or [],
