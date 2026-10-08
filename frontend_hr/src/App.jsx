@@ -5606,7 +5606,7 @@ function PagheBonificiPage({ dipendenti = [] }) {
     importSession.setField('interrupted', false);
     setImporting(true); setImportMsg(null);
     try {
-      const result = { file_pdf: 0, totale_associati: 0, associati: [], errori: [], duplicati: [], mesi: [], da_controllare: [] };
+      const result = { file_pdf: 0, totale_associati: 0, associati: [], errori: [], duplicati: [], mesi: [], da_controllare: [], saltati_presenze: [] };
       for (let i = 0; i < fs.length; i++) {
         const item = fs[i];
         try {
@@ -5632,10 +5632,11 @@ function PagheBonificiPage({ dipendenti = [] }) {
           const done = job.result || {};
           result.file_pdf += done.file_pdf || 1;
           result.totale_associati += done.totale_associati || 0;
-          for (const field of ['associati', 'errori', 'duplicati', 'mesi', 'da_controllare']) result[field].push(...(done[field] || []));
+          for (const field of ['associati', 'errori', 'duplicati', 'mesi', 'da_controllare', 'saltati_presenze']) result[field].push(...(done[field] || []));
           if (done.success === false && !done.errori?.length && !done.da_controllare?.length) result.errori.push(`${item.name}: nessuna busta acquisita. Controlla il documento e le segnalazioni.`);
-          if (done.errori?.length || done.success === false) item.jobId = null;
-          item.done = !done.errori?.length && done.success !== false;
+          const soloPresenze = done.esito === 'solo_presenze';
+          item.done = !done.errori?.length && (done.success !== false || soloPresenze);
+          if (!item.done) item.jobId = null;
           item.result = item.done ? done : null;
         } catch (error) {
           if (error.response?.status === 404) item.jobId = null;
@@ -5646,7 +5647,7 @@ function PagheBonificiPage({ dipendenti = [] }) {
         result.success = result.errori.length === 0;
         setImportMsg({ ...result });
       }
-      vaiAlMese(result);
+      if (result.mesi.length) vaiAlMese(result);
     } catch (err) { setImportMsg({ errore: err.response?.data?.detail || "Errore durante l'import" }); }
     finally { setImporting(false); if (fileRef.current) fileRef.current.value = ""; }
   };
@@ -5848,6 +5849,7 @@ function PagheBonificiPage({ dipendenti = [] }) {
               </div>}
               {importMsg.messaggio && <div style={{ marginBottom: 6 }}>{importMsg.messaggio}</div>}
               {importMsg.duplicati?.length > 0 && <div style={{ marginBottom: 6 }}>{importMsg.duplicati.length} buste già presenti, nessuna nuova copia.</div>}
+              {importMsg.saltati_presenze?.length > 0 && <details style={{ marginBottom: 6 }}><summary>{importMsg.saltati_presenze.length} fogli presenze saltati (non sono cedolini)</summary>{importMsg.saltati_presenze.map((voce, i) => <div key={i}>{voce.file}</div>)}</details>}
               {importMsg.da_controllare?.length > 0 && <div role="alert" style={{ color: "#7d5526", marginBottom: 10 }}>
                 Da controllare: {importMsg.da_controllare.map((voce, i) => <div key={i}>{voce.file ? `${voce.file}: ` : ""}{voce.errore || voce.motivo || voce.dipendente || "Documento da verificare"}</div>)}
               </div>}

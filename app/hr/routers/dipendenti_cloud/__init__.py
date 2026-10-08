@@ -1994,6 +1994,8 @@ async def importa_libro_unico_canonico(files: List[UploadFile] = File(...)):
 
     db = get_db()
     associati, duplicati, da_controllare = [], [], []
+    saltati_presenze = []
+    esiti_lettura = []
     sincronizzazione = None
     da_sincronizzare = False
     for nome, pdf_bytes in pdf_items:
@@ -2005,6 +2007,7 @@ async def importa_libro_unico_canonico(files: List[UploadFile] = File(...)):
             errori.append(f"{nome}: {exc}")
             continue
         errori.extend(f"{nome}: {errore}" for errore in esito.get("errori") or [])
+        esiti_lettura.append(esito.get("esito"))
         if esito.get("sincronizzazione_paghe") is not None:
             sincronizzazione = esito["sincronizzazione_paghe"]
         elif esito.get("inseriti") or esito.get("gia_presenti"):
@@ -2023,7 +2026,10 @@ async def importa_libro_unico_canonico(files: List[UploadFile] = File(...)):
                 "metodo": "codice fiscale",
             })
         duplicati.extend(esito.get("gia_presenti") or [])
-        da_controllare.extend(esito.get("senza_pagina_retributiva") or [])
+        if esito.get("esito") == "presenze" and not esito.get("errori"):
+            saltati_presenze.append({"file": nome, "motivo": "Foglio presenze, nessuna pagina retributiva"})
+        else:
+            da_controllare.extend(esito.get("senza_pagina_retributiva") or [])
         da_controllare.extend(esito.get("senza_anagrafica") or [])
 
     if da_sincronizzare:
@@ -2038,9 +2044,11 @@ async def importa_libro_unico_canonico(files: List[UploadFile] = File(...)):
     ]
     return {
         "associati": associati,
-        "success": bool(associati or duplicati) and not errori,
+        "esito": "solo_presenze" if not errori and len(esiti_lettura) == len(pdf_items) and all(e == "presenze" for e in esiti_lettura) else "buste",
+        "success": bool(associati or duplicati or saltati_presenze) and not errori,
         "partial": bool(associati or duplicati) and bool(errori),
         "da_controllare": da_controllare,
+        "saltati_presenze": saltati_presenze,
         "totale_associati": len(associati),
         "file_pdf": len(pdf_items),
         "mesi": mesi,

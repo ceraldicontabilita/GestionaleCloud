@@ -5413,6 +5413,18 @@ La pulizia dei riferimenti Git non garantisce la cancellazione delle copie local
 
 # 120. Verifica delle modifiche
 
+08/10/2026, controllo live import: i PDF di Murolo con sola pagina presenze
+venivano riletti 4–5 volte e segnalati come buste fallite. Ora l'import HR
+restituisce `saltati_presenze`, senza errore né importi inventati; riprendere
+la coda riusa il risultato. Le letture illeggibili restano riprovabili.
+I log della coda distinguono esito, tempo di attesa e durata di elaborazione.
+Il trasferimento degli originali su Drive non occupa più il lock delle
+scritture di tutte le collezioni. F24 e quietanze ricevuti da Drive conservano
+il riferimento originale, evitando un nuovo upload che falliva per quota.
+Prova isolata: trasferimento Drive bloccato e aggiornamento della coda HR
+completato indipendentemente; import parziale riprovabile, skip riusato.
+La PR #1169 è live su Render dal 08/10/2026 18:50 UTC (commit `0637944`).
+
 Per ogni modifica pertinente:
 
 1. compilazione Python;

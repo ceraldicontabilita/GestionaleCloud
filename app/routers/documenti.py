@@ -3088,7 +3088,8 @@ async def upload_documento_automatico(
             from app.services.f24_canonico import importa_modello_bytes
 
             f24_result = await importa_modello_bytes(
-                db, content, filename, source="documenti_upload_auto"
+                db, content, filename, source="documenti_upload_auto",
+                source_metadata=source_context,
             )
             result["data"] = f24_result
             result["workflow"] = "F24_CANONICO"
@@ -3111,7 +3112,8 @@ async def upload_documento_automatico(
             from app.services.f24_canonico import importa_quietanza
 
             quietanza = await importa_quietanza(
-                db, content, filename, source="documenti_upload_auto"
+                db, content, filename, source="documenti_upload_auto",
+                source_metadata=source_context,
             )
             result["data"] = quietanza
             result["workflow"] = "F24_CANONICO"
