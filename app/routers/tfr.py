@@ -2,12 +2,12 @@
 from fastapi import APIRouter
 
 from app.hr.routers.tfr import (
-    ALIQUOTA_TFR, RIVALUTAZIONE_FISSA, TFR_DIVISORE,
+    RIVALUTAZIONE_FISSA, TFR_DIVISORE,
     _estrai_acconto_da_cedolino, get_situazione_tfr, get_riepilogo_tfr_aziendale,
 )
 
 __all__ = [
-    "router", "ALIQUOTA_TFR", "RIVALUTAZIONE_FISSA", "TFR_DIVISORE",
+    "router", "RIVALUTAZIONE_FISSA", "TFR_DIVISORE",
     "_estrai_acconto_da_cedolino", "get_situazione_tfr", "get_riepilogo_tfr_aziendale",
 ]
 

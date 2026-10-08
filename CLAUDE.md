@@ -3476,6 +3476,23 @@ Il giornale è quello del gestionale.
 
 Non creare un secondo giornale HR.
 
+La pagina `/hr/dipendenti/tfr` usa le API `/hr/api/tfr/simulazione/...`,
+non il vecchio `POST /hr/api/tfr/liquidazione`: quest'ultimo applicava una
+ritenuta fissa del 23%, senza determinarla dai dati fiscali del dipendente.
+L'endpoint inutilizzato e la costante `ALIQUOTA_TFR` sono rimossi dal codice.
+
+Il simulatore restituisce stime lorde e `tassazione_calcolata: false`, non un
+netto fiscale. UI e stampa devono dirlo esplicitamente; la ripartizione in
+rate non è un piano di pagamento definitivo né una quietanza. Non inventare
+un'aliquota sostitutiva: ritenute, conguagli e netto effettivo richiedono il
+prospetto del consulente. Il calcolatore IRPEF dello stipendio, separato nella
+stessa pagina, non è la tassazione separata del TFR.
+
+Errori di lettura e ferie mancanti devono impedire il riepilogo completo e le
+rate, non azzerare le componenti. Uno zero documentato o inserito esplicitamente
+resta ammesso. La data di un acconto non ne prova la competenza: senza
+`scalato_su_anno_mese` esplicito non chiude automaticamente una busta.
+
 ---
 
 # 65. Fork HR
@@ -5088,7 +5105,9 @@ Il perimetro è il gestionale ERP, HR, Lotti/HACCP, Menu/Cassa e Convenzioni B&B
 | ERP Importa / Email / Archivio | Allegati validi scartati perché senza classificazione riconosciuta; categoria fattura imposta dal nome; IMAP sincrono nell'event loop | Acquisizione degli allegati ammessi, categoria `altro`/da verificare conservata, classificazione dal contenuto, IMAP in thread. Da verificare ingestione reale dei tre file Drive segnalati: nessuna conferma di malware deriva da questi controlli locali. |
 | ERP Documenti da classificare | Il giro dei soli non classificati saltava i documenti già marcati `altro` | `altro` e `auto` inclusi nel giro; errori di classificazione non cancellano l'originale. |
 | ERP Cespiti / Fondo TFR | Secondo fondo letto da dipendenti ERP anziché HR; totale sconosciuto rappresentato come zero | Alias delle letture HR; `totale_fondo` ignoto se mancano dati, `totale_fondo_noto` separato. Verifica in memoria riuscita, non certificazione fiscale. |
-| HR TFR / Riepilogo | Fonti diverse fra riepilogo e dettaglio, query ripetute per dipendente, liquidazioni sottratte due volte alla fonte manuale netta | Prefetch delle quote, calcolo canonico, distinzione fondo lordo documentale/manuale già netto. Resta aperta la liquidazione: aliquota approssimata e lettura del solo campo piatto non sono ancora una liquidazione fiscalmente verificata. |
+| HR TFR / Riepilogo | Fonti diverse fra riepilogo e dettaglio, query ripetute per dipendente, liquidazioni sottratte due volte alla fonte manuale netta | Prefetch delle quote, distinzione fondo lordo documentale/manuale già netto. La successiva verifica mirata ha trovato ancora lettori di storico/acconti basati sul solo campo piatto e differenze sui fondi già liquidati: non dichiarare completato il saldo canonico. |
+| HR TFR / Simulatore / Stampa / Rate | Endpoint inutilizzato con ritenuta fissa 23%; simulatore chiamava netto il lordo; errori e ferie mancanti azzerati nelle rate; vecchi dati visibili dopo cambio dipendente | Rimosso `POST /hr/api/tfr/liquidazione` e la costante, nessuna nuova aliquota. Stime esplicitamente non fiscali anche nelle API e nel report; errori propagati, ferie obbligatorie per il totale completo, risposte obsolete scartate, rate invalidate dopo modifica e ripartite al centesimo. Verifiche mirate sotto. Il netto fiscale reale non è implementato dal simulatore. |
+| HR Acconti / Modifica / Competenza | Fondo rettificato prima della validazione di tutti i campi; stato riconciliato assegnabile dalla modifica generica; mese dedotto dalla data del pagamento | Validazione prima degli effetti, stati con prova riservati ai comandi dedicati, dati riconciliati protetti, valori non finiti/date invalide respinti. Eliminata la deduzione della competenza nel writer e nei lettori posizione/mensilità. Restano da correggere atomicità/idempotenza del fondo, annullamento degli acconti e deduplica basata su data/importo nei lettori. |
 | HR Importa paghe / Documenti | Primo omonimo scelto automaticamente; anno/mese dedotti dalla data o dall'importo; PDF disposizione segnato riconciliato | Alias ambigui non assegnati; deposito senza competenza esplicita va in verifica; PDF nel deposito canonico, non conferma automatica. Errore di registrazione import non silenziato. |
 | HR Paghe / Associazioni bonifici | Identità certa scambiata per prova di addebito; esiti PDF etichettati banca; riscontro bancario successivo non ricalcolava il periodo; due pagamenti uguali a date vicine fusi | Criterio unico: identità certa + movimento/estratto bancario per conferma automatica. PDF solo → `da_verificare`; arricchimento con banca ricalcola. Dedup tra fonti richiede hash/chiave/riferimento comune, non solo importo e data. Conferma manuale esplicita preservata. Diagnostica in memoria riuscita. |
 | HR Cedolini / Portale documenti | Ricerca cedolino per solo cognome; `/regolamento/file` intercettato da `/{doc_id}/file`; `/simulazione-f24` da `/{cedolino_id}` | Nessun cedolino di altro dipendente per omonimia; route statiche precedono quelle dinamiche. Verificato matching delle route senza avviare job. |
@@ -5104,6 +5123,26 @@ Il perimetro è il gestionale ERP, HR, Lotti/HACCP, Menu/Cassa e Convenzioni B&B
 | ERP Tabelle / Tablet / Telefono | La PR #1158 adattava le tabelle allo spazio disponibile ma non rilevava il solo ridimensionamento del contenitore | Modifiche grafiche conservate per scelta esplicita del titolare. Aggiunto ResizeObserver sulla larghezza, aggiornamento delle etichette quando cambia il testo e disconnessione degli osservatori. Prova Chromium con CSS compilato: 390–1600 px, contenitore 300–1200 px, matrici escluse, nessun overflow orizzontale nei casi verificati e nessun errore JavaScript. Non è una verifica di ogni pagina autenticata. |
 
 ## Cosa non è dimostrato
+
+### Verifica mirata TFR dell'08/10/2026
+
+Il dominio `impresasemplice.online` e il servizio Render esponevano entrambi
+il commit `eb34b7586a4d14ac66a73abbbdc87b74c0f3a626` prima della correzione.
+La ricerca dei chiamanti non ha trovato frontend o job che usino il vecchio
+POST con il 23%; la pagina attiva chiama situazione, simulazione, componenti
+di liquidazione e registro acconti. Nessun dato operativo è stato inserito.
+
+Controlli locali: compilazione e analisi statica Python, build HR, diagnostica
+in memoria su route rimossa, numeri/date invalidi, competenza assente,
+validazione prima delle rettifiche, errori delle componenti, ferie mancanti,
+somma rate al centesimo e scadenze di fine mese. Prova Chromium sul componente
+TFR reale con sole API simulate: render completo, errore acconti visibile,
+ferie mancanti che bloccano rate/stampa, risposte del dipendente precedente
+scartate, vecchie rate rimosse se il ricalcolo fallisce, report esplicitamente
+non fiscale e note stampate come testo. Non è una certificazione
+delle formule fiscali/contrattuali o del saldo del fondo. Non sono state
+ricreate suite permanenti. Pubblicazione e controllo del commit online sono
+passaggi distinti dalle verifiche locali.
 
 La revisione ha controllato codice e dispatch di route, non ha eseguito ogni pagina nel browser autenticato né ogni operazione economica. Il vecchio conteggio di pagine non va usato come prova di copertura completa: i registri di navigazione ERP, HR, Lotti e Menu hanno viste e sottoschede ulteriori.
 

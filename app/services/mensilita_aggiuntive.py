@@ -150,7 +150,7 @@ def _etichetta(anno: int, mese: int) -> str:
 
 
 def _collocazione_acconto(acc: Dict[str, Any]) -> Optional[Tuple[int, int]]:
-    comp = str(acc.get("scalato_su_anno_mese") or str(acc.get("data") or "")[:7])
+    comp = str(acc.get("scalato_su_anno_mese") or "")
     a, m = pos._intero(comp[:4]), pos._intero(comp[5:7])
     return (a, m) if a and m else None
 

@@ -484,7 +484,7 @@ def componi_movimenti(*, paghe: Iterable[Dict[str, Any]], esiti: Iterable[Dict[s
         if (data, imp) in visti:
             continue  # lo stesso acconto gia' scritto nel registro paghe
         visti.add((data, imp))
-        comp = str(acc.get("scalato_su_anno_mese") or data[:7])
+        comp = str(acc.get("scalato_su_anno_mese") or "")
         a, m = _intero(comp[:4]), _intero(comp[5:7])
         mezzo = "bonifico" if acc.get("source") == "bonifici_da_associare" else str(acc.get("tipo_bonifico") or "")
         registro.append(_mov(data, "acconto",
@@ -927,8 +927,8 @@ def acconti_registro_del_mese(acconti: Iterable[Dict[str, Any]], anno: int, mese
 
     Gli stessi criteri della posizione (``componi_movimenti``): un acconto e' un
     pagamento, conta se e' di stipendio (``TIPI_ACCONTO_STIPENDIO``), non e'
-    annullato, ha una data valida e la sua competenza (``scalato_su_anno_mese``,
-    altrimenti il mese della data) e' questa busta; lo stesso (data, importo)
+    annullato, ha una data valida e la sua competenza esplicita
+    (``scalato_su_anno_mese``) e' questa busta; lo stesso (data, importo)
     gia' scritto fra gli acconti in contanti del registro paghe non si conta due
     volte. Lo stato del mese (``paghe_mensili``) e la posizione devono dire la
     stessa cosa: senza questo una busta chiusa dalla posizione restava «parziale»."""
@@ -942,7 +942,7 @@ def acconti_registro_del_mese(acconti: Iterable[Dict[str, Any]], anno: int, mese
         imp, data = importo(acc.get("importo")), _data_iso(acc.get("data"))
         if not imp or imp <= 0 or not data or (data, imp) in visti:
             continue
-        comp = str(acc.get("scalato_su_anno_mese") or data[:7])
+        comp = str(acc.get("scalato_su_anno_mese") or "")
         if (_intero(comp[:4]), _intero(comp[5:7])) != (int(anno), int(mese)):
             continue
         visti.add((data, imp))
