@@ -8,7 +8,9 @@ import PinModal from '../components/PinModal';
 // interni delle app del gruppo, mai un indirizzo esterno.
 export function destinazioneDopoLogin(search = window.location.search) {
   const next = new URLSearchParams(search).get('next') || '';
-  return /^\/(hr|lotti|menu)(\/|$)/.test(next) && !next.startsWith('//') ? next : '';
+  const appDelGruppo = /^\/(hr|lotti|menu)(\/|$)/.test(next);
+  const primaNotaCeraldi = next === '/primanota-ceraldi.html';
+  return (appDelGruppo || primaNotaCeraldi) && !next.startsWith('//') ? next : '';
 }
 
 function vaiDopoLogin(navigate) {

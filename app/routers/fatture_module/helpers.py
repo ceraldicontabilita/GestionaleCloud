@@ -87,13 +87,13 @@ def generate_invoice_html(fattura: Dict, righe_fattura: List[Dict] = None) -> st
     if not is_paid and fattura_id:
         pay_buttons = f"""
         <div class="pay-section">
-            <h3 style="margin:0 0 12px;font-size:15px;color:#1e293b;">Segna come Pagata</h3>
+            <h3 style="margin:0 0 12px;font-size:15px;color:#1e293b;">Pagamento fattura</h3>
             <div style="display:flex;gap:12px;flex-wrap:wrap;">
                 <button onclick="pagaFattura('{fattura_id}', 'cassa', {importo}, '{data}', '{fornitore.replace(chr(39), "")}', '{numero}')" class="btn btn-green">
                     Paga in CASSA
                 </button>
                 <button onclick="pagaFattura('{fattura_id}', 'banca', {importo}, '{data}', '{fornitore.replace(chr(39), "")}', '{numero}')" class="btn btn-blue">
-                    Paga in BANCA
+                    Registra attesa BANCA
                 </button>
             </div>
         </div>
@@ -230,7 +230,10 @@ def generate_invoice_html(fattura: Dict, righe_fattura: List[Dict] = None) -> st
     </div>
     <script>
     async function pagaFattura(fatturaId, metodo, importo, data, fornitore, numero) {{
-        if (!confirm('Confermi il pagamento in ' + metodo.toUpperCase() + ' di EUR ' + importo.toFixed(2) + '?')) return;
+        const conferma = metodo === 'banca'
+            ? 'Registri la dichiarazione bancaria di EUR ' + importo.toFixed(2) + "? Il pagamento sarà confermato con l'estratto conto ufficiale."
+            : 'Confermi il pagamento in CASSA di EUR ' + importo.toFixed(2) + '?';
+        if (!confirm(conferma)) return;
         try {{
             const res = await fetch('/api/fatture-ricevute/paga-manuale', {{
                 method: 'POST',
@@ -246,7 +249,9 @@ def generate_invoice_html(fattura: Dict, righe_fattura: List[Dict] = None) -> st
             }});
             const result = await res.json();
             if (result.success) {{
-                alert('Pagamento registrato in ' + metodo.toUpperCase() + '!\\nMovimento creato in Prima Nota.');
+                alert(result.message || (result.pagamento_confermato === true
+                    ? 'Pagamento registrato in ' + metodo.toUpperCase() + '.'
+                    : "Dichiarazione bancaria registrata in attesa dell'estratto conto ufficiale."));
                 location.reload();
             }} else {{
                 alert('Errore: ' + (result.detail || 'Errore sconosciuto'));
