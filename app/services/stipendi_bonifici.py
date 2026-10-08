@@ -852,7 +852,11 @@ async def associa_bonifici_stipendi(
     associati = righe_completate = ambigui = 0
     dettaglio: List[Dict[str, Any]] = []
 
-    for movimento in movimenti:
+    for indice_movimento, movimento in enumerate(movimenti):
+        # Le righe senza corrispondenza non eseguono query e possono tenere
+        # occupato il loop durante migliaia di confronti con l'anagrafica.
+        if indice_movimento and indice_movimento % 50 == 0:
+            await asyncio.sleep(0)
         importo_grezzo = float(movimento.get("importo") or 0)
         if not (movimento.get("tipo") == "uscita" or importo_grezzo < 0):
             continue

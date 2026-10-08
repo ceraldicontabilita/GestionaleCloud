@@ -5413,6 +5413,28 @@ La pulizia dei riferimenti Git non garantisce la cancellazione delle copie local
 
 # 120. Verifica delle modifiche
 
+08/10/2026: recuperati nel Menu canonico 320 prodotti, cinque categorie e
+29 sottocategorie dal registro originale CeraldiERP. Conservati gli ID e i
+prezzi documentati, senza sovrascrivere i 247 prodotti provenienti da Lotti.
+193 foto sono disponibili negli asset WebP del sito e collegate ai prodotti;
+le altre non sono state inventate. Verificato il menu pubblico live: 320
+prodotti e 193 immagini. Questo recupero non ripristina dipendenze da Qromo.
+Frigoriferi, congelatori e temperature storiche non sono stati ritrovati
+nelle fonti controllate: il recupero di questi dati resta aperto.
+
+Gli import delle sottocartelle Drive conservano per ogni file ID, percorso e
+hash dell'originale fino al writer: gli F24 non tentano più un secondo upload
+perché è stato perso il contesto della cartella. I membri ZIP non ricevono
+l'ID dell'archivio come se fosse il loro PDF. Verificato il passaggio del
+contesto nei due casi. La riconciliazione stipendi riusa i token dei nomi in
+una cache limitata e cede il loop ogni 50 movimenti, per lasciare proseguire
+le richieste web anche durante confronti che non producono scritture.
+La PR #1171 è live dalle 19:21 UTC, commit `b256b2c`.
+La rilettura dell'originale di giugno 2020 ha ripristinato lo zero esplicito
+anche nella riga HR e nella proiezione mensile. Un secondo caricamento di
+una busta già presente a zero o senza netto viene contato come duplicato,
+non come nuovo inserimento; gli aggiornamenti del deposito sono esiti validi.
+
 08/10/2026: import importi HR esteso a XLSX, CSV, TSV e tabella incollata,
 con anteprima e conferma in coda persistente. Il documento del titolare
 contiene 623 righe di importi attribuiti dai bonifici: sono confronti da
