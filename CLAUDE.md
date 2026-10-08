@@ -5430,6 +5430,10 @@ contesto nei due casi. La riconciliazione stipendi riusa i token dei nomi in
 una cache limitata e cede il loop ogni 50 movimenti, per lasciare proseguire
 le richieste web anche durante confronti che non producono scritture.
 La PR #1171 è live dalle 19:21 UTC, commit `b256b2c`.
+La rilettura dell'originale di giugno 2020 ha ripristinato lo zero esplicito
+anche nella riga HR e nella proiezione mensile. Un secondo caricamento di
+una busta già presente a zero o senza netto viene contato come duplicato,
+non come nuovo inserimento; gli aggiornamenti del deposito sono esiti validi.
 
 08/10/2026: import importi HR esteso a XLSX, CSV, TSV e tabella incollata,
 con anteprima e conferma in coda persistente. Il documento del titolare

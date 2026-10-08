@@ -154,7 +154,10 @@ async def _registra_busta(db, ced: Dict[str, Any], *, filename: str, pdf_data: O
             **ced, "filename": filename, "pdf_data": pdf_data,
             "source": "cedolino_v2",
         })
-        if deposito.get("esito") in ("inserito", "gia_presente"):
+        if deposito.get("esito") == "gia_presente":
+            results["gia_presenti"] = results.get("gia_presenti", 0) + 1
+            _annota_busta(results, ced, "gia_presente")
+        elif deposito.get("esito") in ("inserito", "aggiornato"):
             results["buste_senza_netto"] += 1
             _annota_busta(results, ced, "solo_hr")
         else:
