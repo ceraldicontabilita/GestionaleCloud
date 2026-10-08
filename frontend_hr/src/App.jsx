@@ -3684,8 +3684,10 @@ ${rate?.rate?.length ? `<h2>Ripartizione indicativa in ${rate.numero_rate} rate<
 <table><thead><tr><th>Rata</th><th>Data</th><th class="n">Importo</th></tr></thead>
 <tbody>${rate.rate.map(r => `<tr><td>${r.numero}/${rate.numero_rate}</td><td>${r.data ? formatDate(r.data) : "da concordare"}</td><td class="n">€ ${eur(r.importo)}</td></tr>`).join("")}</tbody>
 <tfoot><tr><td colspan="2">Totale simulato, non netto da pagare</td><td class="n">€ ${eur(rate.totale_complessivo)}</td></tr></tfoot></table>` : ""}
-<script>window.print()<\\/script></body></html>`);
+</body></html>`);
     w.document.close();
+    w.focus();
+    w.print();
   };
 
   const eliminaUltimoPeriodo = async (periodoId) => {
