@@ -2,7 +2,7 @@
 Fatture Module - CRUD e Visualizzazione fatture.
 """
 from fastapi import HTTPException, Query
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from typing import Dict, Any, Optional
 from datetime import datetime, timezone
 import calendar
@@ -11,7 +11,6 @@ import re
 from app.database import Database
 from app.utils.id_fattura import filtro_id
 from .common import COL_FORNITORI, COL_FATTURE_RICEVUTE, COL_DETTAGLIO_RIGHE, COL_ALLEGATI, logger
-from .helpers import generate_invoice_html
 from app.services.payment_allocation_validator import (
     allocation_summary,
     is_credit_note,
@@ -633,12 +632,12 @@ def html_fattura_da_xml(xml_bytes: bytes, indice: int = 0, etichetta: str = "") 
         # l'XSL emetta <html> sia che no.
         return _rendi_fattura_responsive(html_str)
     except Exception as xsl_err:  # noqa: BLE001 - il chiamante ha il suo ripiego
-        logger.warning("Errore XSLT per %s: %s: %s — fallback HTML generico",
+        logger.warning("Errore XSLT per %s: %s: %s — XML non renderizzato",
                        etichetta, type(xsl_err).__name__, xsl_err)
         return None
 
 
-async def view_fattura_assoinvoice(fattura_id: str) -> HTMLResponse:
+async def view_fattura_assoinvoice(fattura_id: str):
     """
     Visualizza fattura nel formato ASSO Software (FoglioStileAssoSoftware.xsl).
     1. Cerca la fattura in `invoices` (poi fallback `indice_documenti`)
@@ -654,19 +653,14 @@ async def view_fattura_assoinvoice(fattura_id: str) -> HTMLResponse:
     if xml_bytes:
         html_str = html_fattura_da_xml(xml_bytes, fattura.get("xml_body_index", 0), fattura_id)
         if html_str:
-            return HTMLResponse(content=html_str)
+            return HTMLResponse(content=html_str, headers={"X-Fattura-Formato": "assosoftware"})
+        raise HTTPException(422, "XML originale presente, ma non visualizzabile con il foglio AssoSoftware. Scarica l'originale per verificarlo.")
 
-    # ── Fallback: HTML generico se XML non disponibile ────────────────────────
-    # ATTENZIONE (richiesta utente 19/07/2026): questo NON è il documento
-    # originale, è un riepilogo ricostruito con un sottoinsieme di campi —
-    # generate_invoice_html() lo segnala esplicitamente nell'HTML, cosi'
-    # l'utente sa sempre quando NON sta vedendo l'originale.
-    db = Database.get_db()
-    righe = await db[COL_DETTAGLIO_RIGHE].find({"fattura_id": fattura_id}, {"_id": 0}).to_list(1000)
-    if not righe and fattura.get("linee"):
-        righe = fattura.get("linee", [])
-    html = generate_invoice_html(fattura, righe)
-    return HTMLResponse(content=_rendi_fattura_responsive(html))
+    # Le fatture estere PDF hanno un originale, ma nessun XML SDI da
+    # trasformare. Il reader canonico restituisce quel file o un errore
+    # esplicito: mai un riepilogo ricostruito spacciato per la fattura.
+    from app.services.originale_documento import url_originale
+    return RedirectResponse(url_originale("fattura", fattura_id), status_code=307)
 
 
 _MIME_ALLEGATO = {

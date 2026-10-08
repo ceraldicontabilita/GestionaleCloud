@@ -9,6 +9,8 @@ si rompe diventano rossi. Pensato per la pagina "Diagnostica" (solo admin).
 Ogni check ritorna: {area, nome, stato: "ok"|"warn"|"err", dettaglio}.
 """
 import os
+import asyncio
+import shutil
 import logging
 from typing import Dict, Any, List
 from fastapi import APIRouter
@@ -41,12 +43,6 @@ ENV_VARS = [
     ("HR_SUPABASE_DB_URL|APPDIPENDENTI_DB_URL|SUPABASE_DB_URL", True, "Connessione Supabase/Postgres"),
     ("HR_JWT_SECRET|JWT_SECRET", True, "Firma token login"),
     ("PIN_HASH_ADMIN", True, "PIN amministratore centrale GestionaleCloud"),
-    ("IMAP_HOST", False, "Import documenti da Gmail"),
-    ("IMAP_USER", False, "Import documenti da Gmail"),
-    ("IMAP_PASSWORD", False, "Import documenti da Gmail (App Password)"),
-    ("CONVERTAPI_TOKEN", False, "Conversione docx→PDF (firma)"),
-    ("OPENAPI_CLIENT_ID", False, "Firma digitale OpenAPI"),
-    ("OPENAPI_CLIENT_SECRET", False, "Firma digitale OpenAPI"),
     ("ANTHROPIC_API_KEY", False, "Estrazione AI documenti (opzionale)"),
 ]
 
@@ -62,7 +58,7 @@ async def diagnostica() -> Dict[str, Any]:
     db = None
     try:
         db = Database.get_db()
-        await db.command("ping")
+        await asyncio.wait_for(db.ping(), timeout=10)
         add("Database", "Connessione Supabase/Postgres", "ok", "Connesso")
     except Exception as e:
         add("Database", "Connessione Supabase/Postgres", "err", str(e)[:200])
@@ -82,15 +78,33 @@ async def diagnostica() -> Dict[str, Any]:
         if presente:
             add("Configurazione", nome, "ok", f"impostata · {scopo}")
         else:
-            add("Configurazione", nome, "err" if obbligatoria else "warn",
-                f"{'MANCANTE (obbligatoria)' if obbligatoria else 'non impostata'} · {scopo}")
+            add("Configurazione", nome, "err" if obbligatoria else "info",
+                f"{'MANCANTE (obbligatoria)' if obbligatoria else 'Opzionale, non configurata'} · {scopo}")
+
+    # Le stesse alternative dei servizi effettivi; assenza totale = funzione
+    # opzionale non attivata, configurazione parziale = intervento necessario.
+    imap = [bool(os.getenv(a) or os.getenv(b)) for a, b in (
+        ("IMAP_HOST", "IMAP_SERVER"), ("IMAP_USER", "IMAP_EMAIL"), ("IMAP_PASSWORD", "IMAP_PASS"))]
+    add("Configurazione", "Import diretto dalla posta HR", "ok" if all(imap) else "warn" if any(imap) else "info",
+        "Configurazione presente; connessione non provata" if all(imap) else
+        "Configurazione incompleta: host, utente e password necessari" if any(imap) else
+        "Non configurato; il caricamento dei file dalla pagina resta disponibile")
+    conversione = bool(os.getenv("CONVERTAPI_TOKEN") or shutil.which("soffice") or shutil.which("libreoffice"))
+    add("Configurazione", "Conversione DOCX in PDF", "ok" if conversione else "info",
+        "Convertitore disponibile; conversione non eseguita" if conversione else
+        "Non disponibile: configurare ConvertAPI oppure LibreOffice per convertire i contratti")
+    firma = [bool(os.getenv(k)) for k in ("OPENAPI_CLIENT_ID", "OPENAPI_CLIENT_SECRET")]
+    add("Configurazione", "Firma digitale OpenAPI", "ok" if all(firma) else "warn" if any(firma) else "info",
+        "Credenziali configurate; firma non eseguita" if all(firma) else
+        "Configurazione incompleta: servono entrambi i parametri OpenAPI" if any(firma) else
+        "Servizio opzionale non attivato")
 
     # ---- FLUSSI / MOTORI ----
     # 1) Turni → Presenze
     try:
         from app.hr.routers import dipendenti_cloud
         getattr(dipendenti_cloud, "consolida_presenze_da_turni")
-        add("Flussi", "Motore Turni→Presenze", "ok", "Consolidamento disponibile")
+        add("Flussi", "Motore Turni→Presenze", "info", "Funzione presente; consolidamento non eseguito dalla diagnostica")
     except Exception as e:
         add("Flussi", "Motore Turni→Presenze", "err", str(e)[:160])
 
@@ -99,11 +113,8 @@ async def diagnostica() -> Dict[str, Any]:
         from app.hr.routers import dipendenti_cloud
         getattr(dipendenti_cloud, "_archivia_documento_cloud")
         getattr(dipendenti_cloud, "_indici_dipendenti")
-        imap_ok = all(os.getenv(v) for v in ("IMAP_HOST", "IMAP_USER", "IMAP_PASSWORD"))
-        if imap_ok:
-            add("Flussi", "Gmail→Documenti", "ok", "Motore pronto e casella collegata")
-        else:
-            add("Flussi", "Gmail→Documenti", "warn", "Motore pronto, ma manca la casella (IMAP_* su Render)")
+        add("Flussi", "Posta HR→Documenti", "info",
+            "Funzione presente; accesso alla casella e import non eseguiti dalla diagnostica")
     except Exception as e:
         add("Flussi", "Gmail→Documenti", "err", str(e)[:160])
 
@@ -111,16 +122,17 @@ async def diagnostica() -> Dict[str, Any]:
     try:
         from app.hr.routers import dipendenti_cloud
         getattr(dipendenti_cloud, "associazioni_bonifici")
-        add("Flussi", "Associazione cedolino↔bonifico", "ok", "Vista disponibile")
+        add("Flussi", "Associazione cedolino↔bonifico", "info", "Funzione presente; nessuna associazione eseguita")
     except Exception as e:
         add("Flussi", "Associazione cedolino↔bonifico", "err", str(e)[:160])
 
     # ---- DATI UTILI ----
     if db is not None:
         try:
-            attivi = await db.dipendenti.count_documents(
-                {"$and": [{"merged_into": {"$exists": False}},
-                          {"stato": {"$nin": ["cessato", "disattivo", "inattivo"]}}]})
+            from app.hr.services.stato_rapporto import e_in_forza
+            attivi = 0
+            async for dip in db.dipendenti.find({}, {"stato": 1, "attivo": 1, "in_carico": 1, "merged_into": 1}):
+                attivi += int(e_in_forza(dip))
             add("Dati", "Dipendenti attivi", "ok" if attivi > 0 else "warn", f"{attivi} attivi")
         except Exception as e:
             add("Dati", "Dipendenti attivi", "err", str(e)[:120])
@@ -135,6 +147,7 @@ async def diagnostica() -> Dict[str, Any]:
         "ok": sum(1 for c in checks if c["stato"] == "ok"),
         "warn": sum(1 for c in checks if c["stato"] == "warn"),
         "err": sum(1 for c in checks if c["stato"] == "err"),
+        "info": sum(1 for c in checks if c["stato"] == "info"),
         "totale": len(checks),
     }
     return {"riepilogo": riepilogo, "checks": checks}

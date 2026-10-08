@@ -2847,9 +2847,6 @@ async def process_fattura_estera_pdf(db, pdf_base64: str, filename: str,
         {"file_hash": digest, "entity_status": {"$ne": "deleted"}, "status": {"$ne": "deleted"}},
         {"_id": 0, "id": 1, "invoice_number": 1, "supplier_name": 1},
     )
-    if existing:
-        return {"status": "duplicate", "filename": filename, "id": existing.get("id"),
-                "invoice_number": existing.get("invoice_number"), "supplier": existing.get("supplier_name")}
     if not documento_inbox_id:
         inbox = await db["documents_inbox"].find_one({"sha256": digest}, {"_id": 0, "id": 1})
         documento_inbox_id = (inbox or {}).get("id") or f"fattura-pdf-{digest}"
@@ -2860,6 +2857,21 @@ async def process_fattura_estera_pdf(db, pdf_base64: str, filename: str,
                 "processed": False, "source": source,
                 "created_at": datetime.now(timezone.utc).isoformat(),
             })
+        else:
+            # Ripristina un payload mancante anche sulla stessa inbox. Il
+            # deposito canonico lo conserva su Drive; non crea una fattura.
+            await db["documents_inbox"].update_one(
+                {"id": documento_inbox_id}, {"$set": {"pdf_data": pdf_base64}},
+            )
+    if existing:
+        await db[Collections.INVOICES].update_one(
+            {"id": existing["id"]}, {"$set": {"documento_inbox_id": documento_inbox_id}},
+        )
+        await db["documents_inbox"].update_one(
+            {"id": documento_inbox_id}, {"$set": {"invoice_id": existing["id"]}},
+        )
+        return {"status": "duplicate", "filename": filename, "id": existing.get("id"),
+                "invoice_number": existing.get("invoice_number"), "supplier": existing.get("supplier_name")}
     try:
         from app.services.document_ai_extractor import process_document_from_base64
         result = await process_document_from_base64(pdf_base64, filename, document_type="fattura")
