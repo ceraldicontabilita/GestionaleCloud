@@ -3481,6 +3481,8 @@ function TfrPage({ dipendenti, getDipendente }) {
     nessuna: "Nessun valore in scheda e nessuna busta con la quota TFR: dato non disponibile.",
   };
   const [dipId, setDipId] = useState(dipendenti[0]?.id || "");
+  const dipTfrAttivo = useRef(dipId);
+  dipTfrAttivo.current = dipId;
   const [situazione, setSituazione] = useState(null);
   const [sim, setSim] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -3496,6 +3498,7 @@ function TfrPage({ dipendenti, getDipendente }) {
 
   const [liquidazione, setLiquidazione] = useState(null);
   const [acconti, setAcconti] = useState(null);          // acconti TFR già erogati (sistema unico acconti_dipendenti)
+  const caricamentoTfr = useRef(0);
   const [formAcconto, setFormAcconto] = useState({ data: "", importo: "", note: "" });
   const [scalaGiorni, setScalaGiorni] = useState("");
 
@@ -3550,31 +3553,37 @@ function TfrPage({ dipendenti, getDipendente }) {
   };
 
   const carica = useCallback(async (id) => {
-    if (!id) return;
+    if (id !== dipTfrAttivo.current) return;
+    const richiesta = ++caricamentoTfr.current;
+    setSituazione(null); setSim(null); setLiquidazione(null); setAcconti(null); setRate(null);
+    setFormPeriodo({ data_inizio: "", data_fine: "", importo_settimanale: "" });
+    setFormAcconto({ data: "", importo: "", note: "" });
+    setScalaGiorni(""); setModificaPeriodo(null);
+    if (!id) { setLoading(false); return; }
     setLoading(true); setErrore(""); setRate(null);
     try {
-      const [s, sm] = await Promise.all([
+      const [s, sm, a] = await Promise.all([
         axios.get(`${API_TFR}/situazione/${id}`),
         axios.get(`${API_TFR}/simulazione/${id}`),
+        axios.get(`${API_TFR}/acconti/${id}`),
       ]);
+      if (richiesta !== caricamentoTfr.current) return;
       setSituazione(s.data);
       setSim(sm.data);
+      setAcconti(a.data);
       setFormPeriodo({ data_inizio: sm.data.prossimo_data_inizio || "", data_fine: "", importo_settimanale: "" });
       setComeChiuso(false);
-      try {
+      if (sm.data.periodi?.length) {
         const l = await axios.get(`${API_TFR}/simulazione/${id}/liquidazione`);
+        if (richiesta !== caricamentoTfr.current) return;
         setLiquidazione(l.data);
-      } catch { setLiquidazione(null); }
-      try {
-        const a = await axios.get(`${API_TFR}/acconti/${id}`);
-        setAcconti(a.data);
-      } catch { setAcconti(null); }
+      }
     } catch (e) {
-      setErrore(e?.response?.data?.detail || "Errore nel caricamento");
-    } finally { setLoading(false); }
+      if (richiesta === caricamentoTfr.current) setErrore(e?.response?.data?.detail || "Dati TFR incompleti: riprova il caricamento");
+    } finally { if (richiesta === caricamentoTfr.current) setLoading(false); }
   }, []);
 
-  useEffect(() => { carica(dipId); }, [dipId, carica]);
+  useEffect(() => { carica(dipId); return () => { ++caricamentoTfr.current; }; }, [dipId, carica]);
 
   const aggiungiPeriodo = async () => {
     if (!formPeriodo.importo_settimanale || (comeChiuso && !formPeriodo.data_fine)) return;
@@ -3592,15 +3601,15 @@ function TfrPage({ dipendenti, getDipendente }) {
 
   // Valori manuali della liquidazione (13ª, 14ª, giorni ferie): null = torna al calcolo automatico
   const salvaOverride = async (campo, valore) => {
+    setRate(null);
     try {
       await axios.put(`${API_TFR}/simulazione/${dipId}/liquidazione-override`, { [campo]: valore });
-      const l = await axios.get(`${API_TFR}/simulazione/${dipId}/liquidazione`);
-      setLiquidazione(l.data);
+      await carica(dipId);
     } catch (e) { setErrore(e?.response?.data?.detail || "Errore nel salvataggio"); }
   };
 
   const ricaricaAcconti = async () => {
-    try { const a = await axios.get(`${API_TFR}/acconti/${dipId}`); setAcconti(a.data); } catch { /* niente */ }
+    await carica(dipId);
   };
   const registraAcconto = async () => {
     const importo = Number(String(formAcconto.importo).replace(",", "."));
@@ -3621,20 +3630,23 @@ function TfrPage({ dipendenti, getDipendente }) {
     catch (e) { setErrore(e?.response?.data?.detail || "Errore nell'eliminazione dell'acconto"); }
   };
 
-  // Report stampabile: periodi, totali, liquidazione, acconti e netto residuo
+  const riepilogoCompleto = Boolean(sim?.periodi?.length && acconti && liquidazione?.ferie
+    && Number.isFinite(liquidazione.ferie.controvalore));
+  // Prospetto indicativo, senza determinazione della tassazione separata.
   const stampaReport = () => {
+    if (!riepilogoCompleto) { setErrore("Completa i dati TFR, acconti e ferie prima di stampare il riepilogo"); return; }
+    const testoHtml = (v) => String(v ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
     const dip = dipendenti.find(d => d.id === dipId) || {};
-    const nome = dip.nome_completo || `${dip.cognome || ""} ${dip.nome || ""}`.trim() || "Dipendente";
+    const nome = testoHtml(dip.nome_completo || `${dip.cognome || ""} ${dip.nome || ""}`.trim() || "Dipendente");
     const oggi = new Date().toLocaleDateString("it-IT");
     const righe = (sim?.periodi || []).map(p =>
       `<tr><td>${formatDate(p.data_inizio)}</td><td>${p.data_fine ? formatDate(p.data_fine) : "in corso"}</td>` +
       `<td class="n">€ ${eur(p.importo_settimanale)}</td><td class="n">${p.settimane}</td>` +
-      `<td class="n">€ ${eur(p.retribuzione_utile)}</td><td class="n">€ ${eur(p.lordo)}</td>` +
-      `<td class="n"><b>€ ${eur(p.netto)}</b></td></tr>`).join("");
+      `<td class="n">€ ${eur(p.retribuzione_utile)}</td><td class="n"><b>€ ${eur(p.lordo)}</b></td></tr>`).join("");
     const accTfr = acconti?.acconti?.tfr || [];
     const totAcc = acconti?.tfr_acconti || 0;
-    const residuo = (sim?.totale_netto || 0) - totAcc;
-    const accRighe = accTfr.map(a => `<tr><td>${formatDate(a.data)}</td><td class="n">€ ${eur(a.importo)}</td><td>${a.note || ""}</td></tr>`).join("");
+    const residuo = sim.totale_lordo - totAcc;
+    const accRighe = accTfr.map(a => `<tr><td>${formatDate(a.data)}</td><td class="n">€ ${eur(a.importo)}</td><td>${testoHtml(a.note)}</td></tr>`).join("");
     const liq = liquidazione;
     const w = window.open("", "_blank");
     if (!w) { setErrore("Sblocca i popup per stampare il report"); return; }
@@ -3646,35 +3658,36 @@ table{width:100%;border-collapse:collapse;font-size:12px;margin-bottom:4px}
 th,td{border:1px solid #cbd5c9;padding:4px 6px;text-align:left}.n{text-align:right}
 tfoot td{font-weight:bold;background:#eef1ea}.mini{font-size:11px;color:#6b7669}</style></head><body>
 <h1>Report TFR — ${nome}</h1>
+<p><b>STIMA NON FISCALE — imposte e conguagli non calcolati. Non è un netto da pagare né una quietanza.</b></p>
 <div class="mini">Ceraldi Group S.r.l. · generato il ${oggi}${liq ? ` · calcolo fino al ${formatDate(liq.calcolato_fino_a)}` : ""}${liq?.cessato ? " · rapporto cessato" : ""}</div>
 <h2>Periodi retributivi</h2>
-<table><thead><tr><th>Dal</th><th>Al</th><th class="n">€/sett.</th><th class="n">Sett.</th><th class="n">Retrib. utile</th><th class="n">Lordo</th><th class="n">Netto</th></tr></thead>
+<table><thead><tr><th>Dal</th><th>Al</th><th class="n">€/sett.</th><th class="n">Sett.</th><th class="n">Retrib. utile</th><th class="n">Stima lorda</th></tr></thead>
 <tbody>${righe}</tbody>
-<tfoot><tr><td colspan="5">Totale (incluso il periodo in corso)</td><td class="n">€ ${eur(sim?.totale_lordo)}</td><td class="n">€ ${eur(sim?.totale_netto)}</td></tr></tfoot></table>
-${liq ? `<h2>Liquidazione finale</h2><table>
-<tr><td>Tredicesima maturata (${formatDate(liq.tredicesima.dal)} → ${formatDate(liq.tredicesima.al)})${liq.tredicesima.manuale ? " — inserita a mano" : ""}</td><td class="n">€ ${eur(liq.tredicesima.netto)}</td></tr>
-<tr><td>Quattordicesima maturata (${formatDate(liq.quattordicesima.dal)} → ${formatDate(liq.quattordicesima.al)})${liq.quattordicesima.manuale ? " — inserita a mano" : ""}</td><td class="n">€ ${eur(liq.quattordicesima.netto)}</td></tr>
+<tfoot><tr><td colspan="5">Totale (incluso il periodo in corso)</td><td class="n">€ ${eur(sim.totale_lordo)}</td></tr></tfoot></table>
+${liq ? `<h2>Altre componenti simulate prima delle imposte</h2><table>
+<tr><td>Tredicesima maturata (${formatDate(liq.tredicesima.dal)} → ${formatDate(liq.tredicesima.al)})${liq.tredicesima.manuale ? " — inserita a mano" : ""}</td><td class="n">€ ${eur(liq.tredicesima.lordo)}</td></tr>
+<tr><td>Quattordicesima maturata (${formatDate(liq.quattordicesima.dal)} → ${formatDate(liq.quattordicesima.al)})${liq.quattordicesima.manuale ? " — inserita a mano" : ""}</td><td class="n">€ ${eur(liq.quattordicesima.lordo)}</td></tr>
 ${liq.ferie ? `<tr><td>Ferie residue: ${liq.ferie.giorni_residui} gg × € ${eur(liq.ferie.paga_giornaliera)}/giorno${liq.ferie.manuale ? " — inserite a mano" : ""}</td><td class="n">€ ${eur(liq.ferie.controvalore)}</td></tr>` : ""}
 </table>` : ""}
 ${accTfr.length ? `<h2>Acconti TFR già erogati</h2><table><thead><tr><th>Data</th><th class="n">Importo</th><th>Note</th></tr></thead><tbody>${accRighe}</tbody>
 <tfoot><tr><td>Totale acconti</td><td class="n">€ ${eur(totAcc)}</td><td></td></tr></tfoot></table>` : ""}
 <h2>Riepilogo</h2><table>
 <tr><td>TFR lordo maturato</td><td class="n">€ ${eur(sim?.totale_lordo)}</td></tr>
-<tr><td>= TFR netto simulato</td><td class="n">€ ${eur(sim?.totale_netto)}</td></tr>
 <tr><td>− Acconti TFR erogati</td><td class="n">€ ${eur(totAcc)}</td></tr>
-<tr><td><b>= TFR netto residuo</b></td><td class="n"><b>€ ${eur(residuo)}</b></td></tr>
-${liq ? `<tr><td>+ Tredicesima maturata</td><td class="n">€ ${eur(liq.tredicesima.netto)}</td></tr>
-<tr><td>+ Quattordicesima maturata</td><td class="n">€ ${eur(liq.quattordicesima.netto)}</td></tr>
+<tr><td><b>= Saldo TFR simulato, imposte da determinare</b></td><td class="n"><b>€ ${eur(residuo)}</b></td></tr>
+${liq ? `<tr><td>+ Tredicesima maturata</td><td class="n">€ ${eur(liq.tredicesima.lordo)}</td></tr>
+<tr><td>+ Quattordicesima maturata</td><td class="n">€ ${eur(liq.quattordicesima.lordo)}</td></tr>
 ${liq.ferie ? `<tr><td>${(liq.ferie.controvalore || 0) < 0 ? "−" : "+"} Ferie (${liq.ferie.giorni_residui} gg)</td><td class="n">€ ${eur(Math.abs(liq.ferie.controvalore || 0))}</td></tr>` : ""}
-<tr><td><b>TOTALE COMPLESSIVO DA LIQUIDARE</b></td><td class="n"><b>€ ${eur(Math.round((residuo + liq.tredicesima.netto + liq.quattordicesima.netto + (liq.ferie?.controvalore || 0)) * 100) / 100)}</b></td></tr>` : ""}
-${rate?.rate?.length ? `<tr><td>Pagamento concordato</td><td class="n"><b>${rate.numero_rate} rate</b></td></tr>` : ""}</table>
-${rate?.rate?.length ? `<h2>Piano di pagamento in ${rate.numero_rate} rate</h2>
+<tr><td><b>STIMA COMPLESSIVA — IMPOSTE DA DETERMINARE</b></td><td class="n"><b>€ ${eur(Math.round((residuo + liq.tredicesima.lordo + liq.quattordicesima.lordo + liq.ferie.controvalore) * 100) / 100)}</b></td></tr>` : ""}
+</table>
+${rate?.rate?.length ? `<h2>Ripartizione indicativa in ${rate.numero_rate} rate</h2>
 <table><thead><tr><th>Rata</th><th>Data</th><th class="n">Importo</th></tr></thead>
 <tbody>${rate.rate.map(r => `<tr><td>${r.numero}/${rate.numero_rate}</td><td>${r.data ? formatDate(r.data) : "da concordare"}</td><td class="n">€ ${eur(r.importo)}</td></tr>`).join("")}</tbody>
-<tfoot><tr><td colspan="2">Totale complessivo da pagare</td><td class="n">€ ${eur(rate.totale_complessivo ?? rate.netto_residuo ?? rate.totale_netto)}</td></tr></tfoot></table>
-<div class="mini">Firma per accettazione del piano: dipendente ______________________ · titolare ______________________</div>` : ""}
-<script>window.print()<\\/script></body></html>`);
+<tfoot><tr><td colspan="2">Totale simulato, non netto da pagare</td><td class="n">€ ${eur(rate.totale_complessivo)}</td></tr></tfoot></table>` : ""}
+</body></html>`);
     w.document.close();
+    w.focus();
+    w.print();
   };
 
   const eliminaUltimoPeriodo = async (periodoId) => {
@@ -3744,12 +3757,14 @@ ${rate?.rate?.length ? `<h2>Piano di pagamento in ${rate.numero_rate} rate</h2>
   };
 
   const calcolaRate = async () => {
+    setRate(null); setErrore("");
+    const richiesta = caricamentoTfr.current;
     try {
       const r = await axios.post(`${API_TFR}/simulazione/${dipId}/rate`, {
         numero_rate: Number(numeroRate),
         data_prima_rata: dataPrimaRata || undefined,
       });
-      setRate(r.data);
+      if (richiesta === caricamentoTfr.current) setRate(r.data);
     } catch (e) { setErrore(e?.response?.data?.detail || "Errore nel calcolo delle rate"); }
   };
 
@@ -3835,15 +3850,15 @@ ${rate?.rate?.length ? `<h2>Piano di pagamento in ${rate.numero_rate} rate</h2>
           <div className="dc-card" style={{ marginBottom: 16 }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
               <h3 style={{ marginTop: 0, marginBottom: 0 }}>Simulazione storica TFR</h3>
-              <button className="dc-btn" onClick={stampaReport} disabled={!sim?.periodi?.length}
-                title="Apre il report completo (periodi, liquidazione, acconti, netto residuo) pronto da stampare o salvare in PDF">
+              <button className="dc-btn" onClick={stampaReport} disabled={!riepilogoCompleto}
+                title="Stampa la stima non fiscale: imposte e conguagli restano da determinare">
                 🖨 Stampa report
               </button>
             </div>
             <p className="dc-muted" style={{ fontSize: 13, marginTop: -6 }}>
-              Formula: importo settimanale × settimane = retribuzione utile → ÷ divisore = quota lorda = netto
-              (nessuna trattenuta: l'accantonamento non è tassato anno per anno). L'ultimo periodo è sempre
-              "in corso" e matura fino ad oggi da solo. Non modifica il TFR ufficiale qui sopra.
+              Formula: importo settimanale × settimane = retribuzione utile → ÷ divisore = stima lorda.
+              <b> Imposte e conguagli non sono calcolati: non è il netto da pagare.</b> Un periodo aperto
+              matura fino ad oggi o alla cessazione. Non modifica il TFR ufficiale qui sopra.
             </p>
 
             {sim?.paga_attuale != null && (
@@ -3863,8 +3878,7 @@ ${rate?.rate?.length ? `<h2>Piano di pagamento in ${rate.numero_rate} rate</h2>
                       <th style={{ textAlign: "right" }}>Settimane</th>
                       <th style={{ textAlign: "right" }}>Mensile €</th>
                       <th style={{ textAlign: "right" }}>Retrib. utile €</th>
-                      <th style={{ textAlign: "right" }}>Lordo €</th>
-                      <th style={{ textAlign: "right" }}>Netto €</th><th></th>
+                      <th style={{ textAlign: "right" }}>Stima lorda €</th><th></th>
                     </tr>
                   </thead>
                   <tbody>
@@ -3882,8 +3896,7 @@ ${rate?.rate?.length ? `<h2>Piano di pagamento in ${rate.numero_rate} rate</h2>
                         <td style={{ textAlign: "right" }}>{p.settimane}</td>
                         <td style={{ textAlign: "right" }}>{eur(p.mensile)}</td>
                         <td style={{ textAlign: "right" }}>{eur(p.retribuzione_utile)}</td>
-                        <td style={{ textAlign: "right" }}>{eur(p.lordo)}</td>
-                        <td style={{ textAlign: "right", fontWeight: 700 }}>{eur(p.netto)}</td>
+                        <td style={{ textAlign: "right", fontWeight: 700 }}>{eur(p.lordo)}</td>
                         <td style={{ display: "flex", gap: 4 }}>
                           <button className="dc-btn" style={{ padding: "2px 8px", fontSize: 12 }} onClick={() => apriModificaPeriodo(p)} title="Correggi le date" aria-label="Correggi le date del periodo">✎</button>
                           {i === sim.periodi.length - 1 && (
@@ -3895,7 +3908,6 @@ ${rate?.rate?.length ? `<h2>Piano di pagamento in ${rate.numero_rate} rate</h2>
                     <tr style={{ fontWeight: 700, borderTop: "2px solid #e6e0d4" }}>
                       <td colSpan={6}>Totale (incluso il periodo in corso, ad oggi)</td>
                       <td style={{ textAlign: "right" }}>{eur(sim.totale_lordo)}</td>
-                      <td style={{ textAlign: "right" }}>{eur(sim.totale_netto)}</td>
                       <td></td>
                     </tr>
                   </tbody>
@@ -3937,14 +3949,14 @@ ${rate?.rate?.length ? `<h2>Piano di pagamento in ${rate.numero_rate} rate</h2>
           {liquidazione && (
             <div className="dc-card" style={{ marginBottom: 16 }}>
               <h3 style={{ marginTop: 0 }}>
-                Liquidazione finale{liquidazione.cessato ? " — rapporto cessato" : " (simulata ad oggi)"}
+                Altre componenti simulate{liquidazione.cessato ? " — rapporto cessato" : " ad oggi"}
               </h3>
               <p className="dc-muted" style={{ fontSize: 13, marginTop: -6 }}>
                 {liquidazione.cessato
                   ? `Calcolata fino alla data di cessazione (${formatDate(liquidazione.data_cessazione)}): il rapporto non matura più nulla dopo.`
                   : `Il dipendente è ancora in forza: questa è una simulazione "se finisse oggi" (${formatDate(liquidazione.calcolato_fino_a)}).`}
                 {" "}Tredicesima e quattordicesima = importo settimanale × settimane del ciclo ÷ 12
-                (una mensilità piena per un ciclo intero).
+                (una mensilità piena per un ciclo intero). Importi prima delle imposte, da verificare sul prospetto del consulente.
               </p>
               <div style={{ display: "flex", gap: 24, flexWrap: "wrap" }}>
                 <div>
@@ -3952,10 +3964,10 @@ ${rate?.rate?.length ? `<h2>Piano di pagamento in ${rate.numero_rate} rate</h2>
                     Tredicesima maturata (rateo){liquidazione.tredicesima.manuale && <> · <b>manuale</b> <button className="dc-btn" style={{ padding: "0 6px", fontSize: 11 }} title="Torna al calcolo automatico" onClick={() => salvaOverride("tredicesima", null)}>↺ auto</button></>}
                   </div>
                   <div style={{ fontWeight: 700, fontSize: 18, display: "flex", alignItems: "center", gap: 4 }}>
-                    € <input key={`t13-${liquidazione.tredicesima.netto}`} type="text" inputMode="decimal"
-                      defaultValue={liquidazione.tredicesima.netto}
+                    € <input key={`t13-${liquidazione.tredicesima.lordo}`} type="text" inputMode="decimal"
+                      defaultValue={liquidazione.tredicesima.lordo}
                       style={{ width: 100, fontWeight: 700, fontSize: 17, border: "1px solid #e6e0d4", borderRadius: 8, padding: "3px 6px" }}
-                      onBlur={e => { const v = Number(String(e.target.value).replace(",", ".")); if (!isNaN(v) && v !== liquidazione.tredicesima.netto) salvaOverride("tredicesima", v); }}
+                      onBlur={e => { const v = Number(String(e.target.value).replace(",", ".")); if (e.target.value !== "" && Number.isFinite(v) && v !== liquidazione.tredicesima.lordo) salvaOverride("tredicesima", v); }}
                       onKeyDown={e => { if (e.key === "Enter") e.target.blur(); }} />
                   </div>
                   <div className="dc-muted" style={{ fontSize: 11.5 }}>{formatDate(liquidazione.tredicesima.dal)} → {formatDate(liquidazione.tredicesima.al)}</div>
@@ -3965,10 +3977,10 @@ ${rate?.rate?.length ? `<h2>Piano di pagamento in ${rate.numero_rate} rate</h2>
                     Quattordicesima maturata (totale){liquidazione.quattordicesima.manuale && <> · <b>manuale</b> <button className="dc-btn" style={{ padding: "0 6px", fontSize: 11 }} title="Torna al calcolo automatico" onClick={() => salvaOverride("quattordicesima", null)}>↺ auto</button></>}
                   </div>
                   <div style={{ fontWeight: 700, fontSize: 18, display: "flex", alignItems: "center", gap: 4 }}>
-                    € <input key={`t14-${liquidazione.quattordicesima.netto}`} type="text" inputMode="decimal"
-                      defaultValue={liquidazione.quattordicesima.netto}
+                    € <input key={`t14-${liquidazione.quattordicesima.lordo}`} type="text" inputMode="decimal"
+                      defaultValue={liquidazione.quattordicesima.lordo}
                       style={{ width: 100, fontWeight: 700, fontSize: 17, border: "1px solid #e6e0d4", borderRadius: 8, padding: "3px 6px" }}
-                      onBlur={e => { const v = Number(String(e.target.value).replace(",", ".")); if (!isNaN(v) && v !== liquidazione.quattordicesima.netto) salvaOverride("quattordicesima", v); }}
+                      onBlur={e => { const v = Number(String(e.target.value).replace(",", ".")); if (e.target.value !== "" && Number.isFinite(v) && v !== liquidazione.quattordicesima.lordo) salvaOverride("quattordicesima", v); }}
                       onKeyDown={e => { if (e.key === "Enter") e.target.blur(); }} />
                   </div>
                   <div className="dc-muted" style={{ fontSize: 11.5 }}>{formatDate(liquidazione.quattordicesima.dal)} → {formatDate(liquidazione.quattordicesima.al)}</div>
@@ -4014,7 +4026,7 @@ ${rate?.rate?.length ? `<h2>Piano di pagamento in ${rate.numero_rate} rate</h2>
           <div className="dc-card" style={{ marginBottom: 16 }}>
             <h3 style={{ marginTop: 0 }}>Acconti sul TFR (anticipi già dati)</h3>
             <p className="dc-muted" style={{ fontSize: 13, marginTop: -6 }}>
-              Gli acconti si scalano dal totale netto della simulazione. Stesso registro degli
+              Gli acconti si sottraggono alla stima lorda: il saldo non include il conguaglio fiscale. Stesso registro degli
               acconti dell'app (niente doppioni): compaiono anche in Cedolini &amp; Bonifici.
             </p>
             {(acconti?.acconti?.tfr || []).length > 0 && (
@@ -4052,36 +4064,36 @@ ${rate?.rate?.length ? `<h2>Piano di pagamento in ${rate.numero_rate} rate</h2>
               <button className="dc-btn-primary" disabled={!formAcconto.importo} onClick={registraAcconto}>+ Registra acconto</button>
             </div>
             <div style={{ marginTop: 12, background: "#eef1ea", border: "1px solid #d7e0d3", borderRadius: 10, padding: "10px 14px", display: "flex", gap: 24, flexWrap: "wrap", fontSize: 14 }}>
-              <span>TFR netto simulato: <b>€ {eur(sim?.totale_netto || 0)}</b></span>
-              <span>− Acconti erogati: <b>€ {eur(acconti?.tfr_acconti || 0)}</b></span>
-              <span>= <b style={{ fontSize: 16 }}>Netto residuo € {eur((sim?.totale_netto || 0) - (acconti?.tfr_acconti || 0))}</b></span>
+              <span>TFR lordo simulato: <b>{eurOpt(sim?.periodi?.length ? sim.totale_lordo : null)}</b></span>
+              <span>− Acconti registrati: <b>{eurOpt(acconti?.tfr_acconti)}</b></span>
+              <span>= <b style={{ fontSize: 16 }}>Saldo simulato {eurOpt(sim?.periodi?.length && acconti ? sim.totale_lordo - acconti.tfr_acconti : null)}</b> (imposte da determinare)</span>
             </div>
           </div>
 
-          {liquidazione && (() => {
-            const tfrResiduo = (sim?.totale_netto || 0) - (acconti?.tfr_acconti || 0);
-            const t13 = liquidazione.tredicesima?.netto || 0;
-            const t14 = liquidazione.quattordicesima?.netto || 0;
-            const fer = liquidazione.ferie?.controvalore || 0;
+          {liquidazione && !riepilogoCompleto && <p role="status" className="dc-muted">Riepilogo e rate non disponibili: completa i dati TFR, acconti e ferie. Un dato mancante non vale zero.</p>}
+          {riepilogoCompleto && (() => {
+            const tfrResiduo = sim.totale_lordo - acconti.tfr_acconti;
+            const t13 = liquidazione.tredicesima.lordo;
+            const t14 = liquidazione.quattordicesima.lordo;
+            const fer = liquidazione.ferie.controvalore;
             const totale = Math.round((tfrResiduo + t13 + t14 + fer) * 100) / 100;
             const riga = { display: "flex", justifyContent: "space-between", padding: "6px 4px", borderBottom: "1px solid #f0ece1", fontSize: 14 };
             return (
               <div className="dc-card" style={{ marginBottom: 16, border: "2px solid #5b7a6b" }}>
-                <h3 style={{ marginTop: 0 }}>💰 Totale complessivo da liquidare</h3>
+                <h3 style={{ marginTop: 0 }}>Stima complessiva — imposte da determinare</h3>
                 <p className="dc-muted" style={{ fontSize: 13, marginTop: -6 }}>
                   TFR residuo (dopo gli acconti) più tredicesima, quattordicesima e ferie della
-                  liquidazione qui sopra. Le ferie negative si sottraggono.
+                  simulazione qui sopra. Le ferie negative si sottraggono. Non è il netto da pagare.
                 </p>
                 <div style={{ maxWidth: 460 }}>
                   <div style={riga}><span>TFR lordo maturato (dalla tabella)</span><b>€ {eur(sim?.totale_lordo || 0)}</b></div>
-                  <div style={riga}><span>= TFR netto</span><b>€ {eur(sim?.totale_netto || 0)}</b></div>
                   <div style={riga}><span>− Acconti già erogati</span><b>€ {eur(acconti?.tfr_acconti || 0)}</b></div>
-                  <div style={riga}><span>= TFR netto residuo</span><b>€ {eur(tfrResiduo)}</b></div>
+                  <div style={riga}><span>= Saldo TFR simulato</span><b>€ {eur(tfrResiduo)}</b></div>
                   <div style={riga}><span>+ Tredicesima maturata{liquidazione.tredicesima?.manuale ? " (manuale)" : ""}</span><b>€ {eur(t13)}</b></div>
                   <div style={riga}><span>+ Quattordicesima maturata{liquidazione.quattordicesima?.manuale ? " (manuale)" : ""}</span><b>€ {eur(t14)}</b></div>
                   <div style={riga}><span>{fer < 0 ? "−" : "+"} Ferie ({liquidazione.ferie ? `${liquidazione.ferie.giorni_residui} gg` : "—"}{liquidazione.ferie?.manuale ? ", manuale" : ""})</span><b style={fer < 0 ? { color: "#b3261e" } : {}}>€ {eur(Math.abs(fer))}</b></div>
                   <div style={{ ...riga, borderBottom: "none", background: "#eef1ea", borderRadius: 10, padding: "10px 12px", marginTop: 6, fontSize: 16 }}>
-                    <span><b>TOTALE COMPLESSIVO</b></span><b>€ {eur(totale)}</b>
+                    <span><b>TOTALE SIMULATO, NON NETTO</b></span><b>€ {eur(totale)}</b>
                   </div>
                 </div>
               </div>
@@ -4090,10 +4102,10 @@ ${rate?.rate?.length ? `<h2>Piano di pagamento in ${rate.numero_rate} rate</h2>
 
           {sim?.periodi?.length > 0 && (
             <div className="dc-card">
-              <h3 style={{ marginTop: 0 }}>Dividi il totale complessivo in rate</h3>
+              <h3 style={{ marginTop: 0 }}>Ripartizione indicativa in rate</h3>
               <p className="dc-muted" style={{ fontSize: 13, marginTop: -6 }}>
-                Le rate si calcolano sul <b>totale complessivo da liquidare</b> (TFR residuo dopo gli
-                acconti + tredicesima + quattordicesima ± ferie), lo stesso della card qui sopra.
+                Le rate ripartiscono la <b>stima prima delle imposte</b> (TFR meno acconti + tredicesima
+                + quattordicesima ± ferie). Non costituiscono un piano di pagamento definitivo.
               </p>
               <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "flex-end" }}>
                 <div>
@@ -4104,7 +4116,7 @@ ${rate?.rate?.length ? `<h2>Piano di pagamento in ${rate.numero_rate} rate</h2>
                   <label className="dc-muted" style={{ fontSize: 12, display: "block" }}>Data 1ª rata (opzionale)</label>
                   <input type="date" style={inp} value={dataPrimaRata} onChange={e => setDataPrimaRata(e.target.value)} />
                 </div>
-                <button className="dc-btn dc-btn-primary" onClick={calcolaRate}>Calcola rate</button>
+                <button className="dc-btn dc-btn-primary" disabled={!riepilogoCompleto} onClick={calcolaRate}>Simula rate</button>
               </div>
               {rate && (
                 <div style={{ overflowX: "auto", marginTop: 14 }}>
@@ -4119,13 +4131,13 @@ ${rate?.rate?.length ? `<h2>Piano di pagamento in ${rate.numero_rate} rate</h2>
                         </tr>
                       ))}
                       <tr style={{ fontWeight: 700, borderTop: "2px solid #e6e0d4" }}>
-                        <td colSpan={rate.rate[0]?.data ? 2 : 1}>Totale complessivo da pagare</td>
-                        <td style={{ textAlign: "right" }}>{eur(rate.totale_complessivo ?? rate.netto_residuo ?? rate.totale_netto)}</td>
+                        <td colSpan={rate.rate[0]?.data ? 2 : 1}>Totale simulato, imposte da determinare</td>
+                        <td style={{ textAlign: "right" }}>{eur(rate.totale_complessivo)}</td>
                       </tr>
                       {rate.totale_complessivo !== undefined && (
                         <tr className="dc-muted" style={{ fontSize: 12.5 }}>
                           <td colSpan={rate.rate[0]?.data ? 2 : 1}>
-                            TFR residuo € {eur(rate.netto_residuo)} + 13ª € {eur(rate.tredicesima || 0)} + 14ª € {eur(rate.quattordicesima || 0)}
+                            Saldo TFR simulato € {eur(rate.residuo_simulato)} + 13ª € {eur(rate.tredicesima)} + 14ª € {eur(rate.quattordicesima)}
                             {rate.ferie < 0 ? ` − ferie € ${eur(Math.abs(rate.ferie))}` : ` + ferie € ${eur(rate.ferie || 0)}`}
                           </td>
                           <td></td>
