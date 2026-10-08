@@ -531,6 +531,7 @@ async def modifica_importo_busta(data: dict = Body(...)):
     db = get_db()
     paga = await db.paghe_mensili.find_one({"dipendente_id": dip, "anno": anno, "mese": mese}, {"_id": 0}) or {}
     set_doc = {"dipendente_id": dip, "anno": anno, "mese": mese, "importo_busta": importo,
+               "netto_confermato": None,
                "origine": "manuale", "importo_busta_manuale": True,
                "importo_busta_nota": str(data.get("nota") or ""),
                "importo_busta_modificato_il": now_iso(), "updated_at": now_iso()}
@@ -3515,7 +3516,8 @@ async def verifica_importo_excel(data: dict = Body(...)):
         entry = next((e for e in entries if e.get("id") == data.get("confronto_id")), None)
         if not entry:
             raise HTTPException(404, "Confronto non trovato")
-        entry.update(verificato=True, verificato_il=now_iso(), verificato_importo=paga.get("importo_busta"))
+        entry.update(verificato=True, verificato_il=now_iso(), verificato_importo=paga.get("importo_busta"),
+                     verificato_netto=paga.get("netto_stampato"))
         await db.paghe_mensili.update_one(key, {"$set": {"importi_excel": entries}})
     return {"ok": True}
 
@@ -4296,18 +4298,22 @@ async def _calcola_associazioni_bonifici(db, anno: Optional[int] = None, mese: O
            "pagati": 0, "parziali": 0, "da_pagare": 0, "senza_busta": 0,
            "associati": 0, "da_verificare": 0}
 
-    from app.services.posizione_dipendente import ZERO, importo as _dec
+    from app.services.posizione_dipendente import ZERO, dovuto_busta, importo as _dec
     from app.hr.services import stato_rapporto as stato_rapporto_service
     from app.hr.services.regole_pagamenti_dipendenti import filtra_acconti_contanti
 
     async for p in db.paghe_mensili.find(q, {"_id": 0}):
+        dip_id = p.get("dipendente_id")
+        dip = dip_map.get(dip_id) or {}
+        ced = ced_by_id.get(p.get("cedolino_id"))
+        if not ced or ced.get("dipendente_id") != dip_id:
+            ced = trova_cedolino(dip_id, dip.get("cognome"), p.get("mese"), p.get("anno"))
+        dovuto = dovuto_busta(p, ced)
         # busta assente (``None``) = non ancora arrivata, non uno zero
-        busta_dec = _dec(p.get("importo_busta"))
+        busta_dec = dovuto["dovuto"]
         busta = float(busta_dec or ZERO)
         bon_dec = _dec(p.get("bonifico_importo")) or ZERO
         bon = float(bon_dec)
-        dip_id = p.get("dipendente_id")
-        dip = dip_map.get(dip_id) or {}
         acc_list, acc_scartati = filtra_acconti_contanti(dip, p.get("acconti") or [])
         acc_dec = sum((_dec(a.get("importo")) or ZERO for a in acc_list), ZERO)
         acc = float(acc_dec)
@@ -4366,8 +4372,10 @@ async def _calcola_associazioni_bonifici(db, anno: Optional[int] = None, mese: O
             st = stato_importo
 
         from app.hr.services.importi_paghe_tabellari import avvisi
-        avvisi_excel = avvisi(p)
-        if avvisi_excel:
+        avvisi_excel = avvisi({**p, "importo_busta": float(busta_dec) if busta_dec is not None else None,
+                               "netto_stampato": float(dovuto["netto_busta"]) if dovuto["netto_busta"] is not None else None})
+        acconto_da_verificare = bool(((ced or {}).get("dati_chiave") or {}).get("acconto_recuperato_da_verificare"))
+        if avvisi_excel or acconto_da_verificare:
             st = "da_verificare"
 
         if st == STATO_PAGA_PAGATO:
@@ -4404,9 +4412,6 @@ async def _calcola_associazioni_bonifici(db, anno: Optional[int] = None, mese: O
 
         # Esiste il cedolino per questo periodo? (il PDF non è stato letto qui,
         # vedi nota sul prefetch sopra — quasi ogni cedolino importato ne ha uno)
-        ced = ced_by_id.get(p.get("cedolino_id"))
-        if not ced or ced.get("dipendente_id") != dip_id:
-            ced = trova_cedolino(dip_id, dip.get("cognome"), p.get("mese"), p.get("anno"))
         has_pdf = bool(ced)
         cedolino_id = ced.get("id") if ced else None
 
@@ -4425,6 +4430,11 @@ async def _calcola_associazioni_bonifici(db, anno: Optional[int] = None, mese: O
             "anno": p.get("anno"),
             "mese": p.get("mese"),
             "busta": round(busta, 2) if busta_dec is not None else None,
+            "netto_stampato": float(dovuto["netto_busta"]) if dovuto["netto_busta"] is not None else None,
+            "acconto_recuperato": float(dovuto["acconto"]),
+            "fonte_acconto_recuperato": dovuto["fonte_acconto"],
+            "acconto_da_verificare": acconto_da_verificare,
+            "netto_confermato": p.get("netto_confermato"),
             "avvisi_importo": avvisi_excel,
             "bonifico": round(bon, 2),
             "acconti": round(acc, 2),
@@ -4492,9 +4502,10 @@ async def associazioni_bonifici_export_excel(anno: Optional[int] = None, mese: O
     wb = openpyxl.Workbook()
     ws = wb.active
     ws.title = "Cedolini e Bonifici"
-    intestazioni = ["Dipendente", "Periodo", "Importo Cedolino", "Importo Bonifico",
+    intestazioni = ["Dipendente", "Periodo", "Dovuto del periodo", "Importo Bonifico",
                     "Acconti", "Erogato", "Saldo", "Stato", "Qualità match", "Fonte",
-                    "N. Bonifici", "Data ultimo bonifico", "CRO / riferimento bonifici", "PDF Cedolino"]
+                    "N. Bonifici", "Data ultimo bonifico", "CRO / riferimento bonifici", "PDF Cedolino",
+                    "Netto stampato", "Recupero acconto"]
     ws.append(intestazioni)
     header_font = Font(bold=True, color="FFFFFF")
     header_fill = PatternFill(start_color="5B7A6B", end_color="5B7A6B", fill_type="solid")
@@ -4527,12 +4538,16 @@ async def associazioni_bonifici_export_excel(anno: Optional[int] = None, mese: O
             r.get("fonte") or "", r.get("n_bonifici") or 0,
             data_italiana(data_ultimo) if data_ultimo else "", riferimenti,
             "Sì" if r.get("cedolino_pdf") else "No",
+            r.get("netto_stampato"), r.get("acconto_recuperato"),
         ])
     # Importi in euro all'italiana, incolonnati a destra (colonne C..G).
     for riga in ws.iter_rows(min_row=2, min_col=3, max_col=7):
         for cella in riga:
             cella.number_format = '#,##0.00 "€"'
             cella.alignment = Alignment(horizontal="right")
+    for riga in ws.iter_rows(min_row=2, min_col=15, max_col=16):
+        for cella in riga:
+            cella.number_format = '#,##0.00 "€"'
     for col in ws.columns:
         larghezza = max((len(str(c.value)) if c.value is not None else 0) for c in col) + 2
         ws.column_dimensions[col[0].column_letter].width = min(max(larghezza, 10), 40)

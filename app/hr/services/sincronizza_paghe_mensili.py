@@ -7,14 +7,12 @@ bonifico ricevuto, acconti). Con 1466 cedolini importati e 203 bonifici gia'
 riconciliati, non ha senso ricopiarli a mano — questo modulo lo fa una volta
 per tutti i mesi in archivio, e resta richiamabile a ogni nuovo import.
 
-Scelta prudente sul saldo: `bonifico_importo` viene SOLO dai bonifici bancari
-davvero abbinati al cedolino (tabella `bonifici`, campo `cedolino_id`, gia'
-verificato: 85 abbinamenti su 107 coincidono col netto al centesimo). Gli
-acconti letti sulla busta (`cedolino.acconti.acconto_erogato`) vengono esposti
-come campo informativo a parte, non sommati dentro `acconti[]`: sommarli al
-bonifico rischierebbe di contare due volte la stessa somma, se il bonifico e'
-gia' al netto dell'acconto trattenuto in busta. Il saldo del registro resta
-quindi "netto dovuto meno bonifico ricevuto", il confronto piu' sicuro.
+Il dovuto usa la regola unica di `posizione_dipendente.dovuto_busta`:
+netto stampato + recupero acconto esplicito del cedolino. Entrambi restano
+visibili separatamente. L'acconto recuperato non viene inserito in
+`acconti[]` e non prova che un bonifico sia stato pagato. I pagamenti
+provengono da `pagamenti_esiti`, `bonifici` e dagli acconti registrati,
+contati una sola volta. Il saldo e' dovuto meno pagamenti effettivi.
 
 Non tocca un mese che un umano ha gia' modificato a mano (`origine` diverso da
 "cedolino"): l'inserimento manuale vince sempre sulla sincronizzazione.
@@ -31,7 +29,7 @@ from typing import Any, Dict, Optional
 from app.constants.stati_associazione_bonifico import stato_paga_mese
 from app.hr.database import Collections
 from app.hr.services.regole_pagamenti_dipendenti import filtra_acconti_contanti
-from app.services.posizione_dipendente import ZERO, acconti_registro_del_mese, importo
+from app.services.posizione_dipendente import ZERO, acconti_registro_del_mese, dovuto_busta, importo
 
 
 def _num(v: Any) -> Optional[float]:
@@ -146,7 +144,8 @@ async def _sincronizza(db, anno: int = None) -> Dict[str, Any]:
         mese_competenza = int(c["mese"])
         mese_c = _mese_registro(c)
         esistente = esistenti_idx.get((dip, anno_c, mese_c))
-        if esistente and esistente.get("origine") not in (None, "cedolino"):
+        netto_confermato = (esistente or {}).get("netto_confermato")
+        if esistente and esistente.get("origine") not in (None, "cedolino") and netto_confermato is None:
             saltati_manuali += 1
             continue
 
@@ -159,29 +158,33 @@ async def _sincronizza(db, anno: int = None) -> Dict[str, Any]:
         if tot_esiti is not None:
             bonifico_importo = tot_esiti
 
-        acconti_busta = (c.get("acconti") or {}).get("acconto_erogato")
+        dovuto = dovuto_busta(esistente if netto_confermato is not None else {}, c)
+        importo_dovuto = float(dovuto["dovuto"]) if dovuto["dovuto"] is not None else None
 
         doc = {
             "dipendente_id": dip, "anno": anno_c, "mese": mese_c,
             "mese_competenza": mese_competenza,
             "tipo_cedolino": str(c.get("tipo_cedolino") or "ordinario").strip().lower(),
-            "importo_busta": c["netto"],
+            "importo_busta": importo_dovuto,
+            "netto_stampato": float(dovuto["netto_busta"]) if dovuto["netto_busta"] is not None else None,
+            "acconto_recuperato": float(dovuto["acconto"]),
+            "dovuto_periodo": importo_dovuto,
             "bonifico_ricevuto": bonifico_importo > 0,
             "bonifico_importo": bonifico_importo or None,
             "bonifico_data": bonifico_data,
             "acconti": esistente.get("acconti", []) if esistente else [],
             "giorni_lavorati": (c.get("periodo") or {}).get("giorni_lavorati") or c.get("giorni_lavorati"),
-            "acconto_da_cedolino": acconti_busta,
+            "acconto_da_cedolino": float(dovuto["acconto"]),
             "livello": c.get("livello"),
             "cedolino_id": c.get("id"),
-            "origine": "cedolino",
+            "origine": "excel_cedolino" if netto_confermato is not None else "cedolino",
             "updated_at": adesso,
         }
         in_busta, _ = filtra_acconti_contanti(
             dipendenti_idx.get(dip, {}), (esistente or {}).get("acconti") or [])
         acconti_pagati = (sum(_num(a.get("importo")) or 0 for a in in_busta)
                           + float(acconti_registro_del_mese(acconti_per_dip.get(dip, []), anno_c, mese_c, in_busta)))
-        doc.update(_stato_e_saldo(c["netto"], round(bonifico_importo + acconti_pagati, 2)))
+        doc.update(_stato_e_saldo(importo_dovuto, round(bonifico_importo + acconti_pagati, 2)))
         doc = {k: v for k, v in doc.items() if v is not None or k in ("acconti",)}
 
         if esistente and all(esistente.get(k) == v for k, v in doc.items() if k != "updated_at"):

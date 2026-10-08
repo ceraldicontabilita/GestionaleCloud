@@ -5413,6 +5413,27 @@ La pulizia dei riferimenti Git non garantisce la cancellazione delle copie local
 
 # 120. Verifica delle modifiche
 
+08/10/2026: recupero acconto collegato al dovuto di Archivio paghe, posizione
+dipendente ed export. Il netto PDF resta distinto: Dias marzo 2023 stampa
+7,00 EUR e recupera 800,00 EUR con voce 000306, quindi il dovuto e' 807,00 EUR.
+Nessun pagamento viene creato da quella trattenuta. Rimosse le deduzioni di
+acconto dalla differenza competenze/trattenute. Il parser unico verifica la
+voce e l'importo nella stessa riga della colonna TRATTENUTE, conserva pagina
+e voce come prova e segnala valori ambigui o negativi. Prestiti e anticipi
+TFR restano separati. Riletti 21 PDF originali Zucchetti, TeamSystem e CSC:
+12 recuperi espliciti confermati; nessuna variazione dei netti stampati.
+Verificati su snapshot SQL di 210 cedolini: dovuto Dias 807 EUR anche prima
+del riallineamento della proiezione, secondo sync zero scritture, pagamenti
+invariati, importi manuali preservati. Chromium conferma dettaglio netto,
+recupero e dovuto. Nell'import XLSX il foglio Cedolini viene scelto anche se
+preceduto da Pagamenti: 623 righe lette dal file reale del titolare. I netti
+Excel si confrontano con il netto PDF; gli importi ricostruiti con il dovuto.
+Gli importi confermati dal titolare conservano il netto separato dal dovuto;
+un PDF successivo aggiunge soltanto il recupero esplicito, senza perdere
+il valore confermato. Due netti diversi nello stesso file per dipendente,
+mese e anno restano entrambi in verifica: nessun valore viene scelto in
+base all'ordine delle righe. Importi vuoti non diventano zero.
+
 08/10/2026: recuperati nel Menu canonico 320 prodotti, cinque categorie e
 29 sottocategorie dal registro originale CeraldiERP. Conservati gli ID e i
 prezzi documentati, senza sovrascrivere i 247 prodotti provenienti da Lotti.

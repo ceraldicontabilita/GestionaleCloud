@@ -287,11 +287,14 @@ def _con_voci(busta: Dict[str, Any]) -> Dict[str, Any]:
                     chiave[f"{campo}_importo"] = ratei[tipo]
     # Acconto gia' dato e recuperato in questa busta (voce codificata): va
     # in HR con i dati chiave, la posizione del dipendente lo somma al netto.
-    acconto = acconto_recuperato_in_busta(testo)
-    if acconto:
+    acconto = acconto_recuperato_in_busta(testo, base64.b64decode(busta["_pdf_data"]) if busta.get("_pdf_data") else None)
+    if acconto and acconto.get("da_verificare"):
+        busta.setdefault("dati_chiave", {})["acconto_recuperato_da_verificare"] = True
+    elif acconto:
         busta["dati_chiave"] = {**(busta.get("dati_chiave") or {}),
                                 "acconto_recuperato_busta": acconto["importo"],
-                                "acconto_recuperato_voce": acconto["codice"]}
+                                "acconto_recuperato_voce": acconto["codice"],
+                                "acconto_recuperato_prova": acconto.get("righe", [])}
     # Anticipo TFR pagato dentro la busta (voce codificata): resta nei dati chiave
     # e il motore degli acconti TFR lo scala dal fondo (`tfr_anticipo_busta`).
     anticipo = anticipo_tfr_in_busta(testo)

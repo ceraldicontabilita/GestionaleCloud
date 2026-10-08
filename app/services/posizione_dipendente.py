@@ -37,9 +37,6 @@ logger = logging.getLogger(__name__)
 VALUTA = "EUR"
 CENT = Decimal("0.01")
 ZERO = Decimal("0.00")
-#: Arrotondamento della busta fra il netto del mese e busta + acconto (lo
-#: stesso della riverifica dei netti, ``cedolini_hr_riverifica``).
-SCARTO_ARROTONDAMENTO = Decimal("1.00")
 
 COLL_CONCILIAZIONI = "conciliazioni"
 #: Eccedenze dei pagamenti di conciliazione (titolare 02/10/2026): il bonifico
@@ -183,27 +180,20 @@ def acconto_in_busta(ced: Dict[str, Any], netto_cella: Optional[Decimal]) -> Tup
 
     1. la voce codificata (``dati_chiave.acconto_recuperato_busta``, dal
        lettore unico con ``VOCI_ACCONTO_RECUPERATO``);
-    2. ``acconti.acconto_recuperato`` del vecchio lettore;
-    3. competenze − trattenute oltre la cella del netto di piu' di 1,00 €.
+    2. ``acconti.acconto_recuperato`` del vecchio lettore.
+
+    Una differenza fra competenze e trattenute non prova un acconto.
     """
     dati = ced.get("dati_chiave") or {}
+    if dati.get("acconto_recuperato_da_verificare"):
+        return ZERO, None
     voce = importo(dati.get("acconto_recuperato_busta"))
     if voce and voce > 0:
         return voce, "voce " + str(dati.get("acconto_recuperato_voce") or "acconto")
     registrato = importo((ced.get("acconti") or {}).get("acconto_recuperato"))
     if registrato and registrato > 0:
         return registrato, "acconto recuperato in busta"
-    calcolato = _netto_calcolato(ced)
-    if calcolato is not None and netto_cella is not None and calcolato - netto_cella > SCARTO_ARROTONDAMENTO:
-        return calcolato - netto_cella, "competenze meno trattenute"
     return ZERO, None
-
-
-def _netto_calcolato(ced: Dict[str, Any]) -> Optional[Decimal]:
-    comp, tratt = importo(ced.get("competenze")), importo(ced.get("trattenute"))
-    if comp is None or tratt is None:
-        return None
-    return comp - tratt
 
 
 def dovuto_busta(paga: Dict[str, Any], ced: Optional[Dict[str, Any]]) -> Dict[str, Any]:
@@ -214,28 +204,31 @@ def dovuto_busta(paga: Dict[str, Any], ced: Optional[Dict[str, Any]]) -> Dict[st
     del mese e la cella sta in ``netto_busta``: l'acconto non si somma due volte.
     """
     registro = importo(paga.get("importo_busta"))
-    if paga.get("importo_busta_manuale") or not ced:
+    if not ced:
         return {"dovuto": registro, "netto_busta": registro, "acconto": ZERO, "fonte_acconto": None,
                 "manuale": bool(paga.get("importo_busta_manuale"))}
     netto = importo(ced.get("netto"))
     if netto is None:
         netto = registro
-    cella = importo(ced.get("netto_busta"))
+    cella = importo(ced.get("netto_stampato"))
+    if cella is None:
+        cella = importo(ced.get("netto_busta"))
     base = cella if cella is not None else netto
+    if paga.get("importo_busta_manuale"):
+        acconto, fonte = acconto_in_busta(ced, base)
+        netto_confermato = importo(paga.get("netto_confermato"))
+        return {"dovuto": netto_confermato + acconto if netto_confermato is not None else registro,
+                "netto_busta": base, "acconto": acconto,
+                "fonte_acconto": fonte, "manuale": True}
     if base is None:
         return {"dovuto": None, "netto_busta": None, "acconto": ZERO, "fonte_acconto": None, "manuale": False}
     acconto, fonte = acconto_in_busta(ced, base)
     if not acconto:
         return {"dovuto": netto if cella is None else cella, "netto_busta": base, "acconto": ZERO,
                 "fonte_acconto": None, "manuale": False}
-    if cella is None:
-        calcolato = _netto_calcolato(ced)
-        if (fonte != "competenze meno trattenute" and calcolato is not None
-                and abs(calcolato - netto) <= SCARTO_ARROTONDAMENTO):
-            # il netto registrato e' gia' busta + acconto (vecchio import):
-            # la cella si ricava togliendo l'acconto
-            return {"dovuto": netto, "netto_busta": netto - acconto, "acconto": acconto,
-                    "fonte_acconto": fonte, "manuale": False}
+    # Il recupero e' gia' compreso nelle trattenute del PDF: la loro
+    # differenza dal lordo non dimostra che il netto includa l'acconto.
+    # I totali storici gia' comprensivi conservano la cella in netto_busta.
     return {"dovuto": base + acconto, "netto_busta": base, "acconto": acconto,
             "fonte_acconto": fonte, "manuale": False}
 

@@ -9,6 +9,7 @@ indennita' L.207/24, trattamento integrativo L.21), e le chiama il motore unico
 `services/cedolini_motore.py` sulla stessa busta, non su un secondo giro.
 """
 import re
+from decimal import Decimal
 from typing import Dict, List, Optional
 
 
@@ -240,7 +241,7 @@ def leggi_foglio_presenze(text: str) -> Dict:
 
 
 #: Voci che dicono «acconto gia' dato e recuperato in questa busta»: la cella
-#: TOTALE NETTO e' allora piu' bassa di competenze − trattenute, e il dovuto
+#: TOTALE NETTO comprende gia' la trattenuta, e il dovuto
 #: del mese e' netto + acconto (regola del titolare per la posizione in HR).
 #: Un solo elenco: codice come lo stampa il software paghe, descrizione.
 VOCI_ACCONTO_RECUPERATO = (
@@ -272,20 +273,64 @@ def _regola_voce(codice: str, descrizione: str) -> "re.Pattern[str]":
     )
 
 
-_REGOLE_ACCONTO = [(c, d, _regola_voce(c, d)) for c, d in VOCI_ACCONTO_RECUPERATO]
+_REGOLE_ACCONTO = [(c, d, re.compile(
+    r"(?<!\d)0*" + re.escape(c.lstrip("0")) + r"\s+"
+    + r"\s+".join(re.escape(p) for p in d.split())
+    + r"\s+([+-]?\s*(?:\d{1,3}(?:\.\d{3})*|\d+),\d{2}\s*[+-]?)(?!\d)"
+)) for c, d in VOCI_ACCONTO_RECUPERATO]
 
 
-def acconto_recuperato_in_busta(testo: str) -> Optional[Dict[str, str]]:
+def acconto_recuperato_in_busta(testo: str, pdf: Optional[bytes] = None) -> Optional[Dict]:
     """La voce di acconto recuperato stampata nella busta, o None.
 
     Cerca solo i codici di ``VOCI_ACCONTO_RECUPERATO``: «ACCONTI GIA'
-    EROGATI» delle buste TFR non e' stipendio e non passa di qui.
+    EROGATI» delle buste TFR non e' stipendio e non passa di qui. Con il PDF
+    verifica la stessa riga nella colonna TRATTENUTE e conserva la prova.
+    Una voce negativa, senza importo o ambigua richiede verifica: non diventa
+    un acconto positivo prendendo il primo numero del testo successivo.
     """
+    if pdf:
+        import fitz
+
+        righe = []
+        presente = False
+        with fitz.open(stream=pdf, filetype="pdf") as documento:
+            for pagina in documento:
+                parole = pagina.get_text("words")
+                for codice, descrizione in VOCI_ACCONTO_RECUPERATO:
+                    for voce in parole:
+                        if voce[4].lstrip("0") != codice.lstrip("0"):
+                            continue
+                        centro_y = (voce[1] + voce[3]) / 2
+                        riga = sorted((w for w in parole if abs((w[1] + w[3]) / 2 - centro_y) < 2), key=lambda w: w[0])
+                        if descrizione not in " ".join(w[4].upper() for w in riga):
+                            continue
+                        presente = True
+                        intestazioni = [w for w in parole if w[4].upper() == "TRATTENUTE" and w[1] < voce[1]]
+                        if not intestazioni:
+                            return {"da_verificare": True, "codice": codice}
+                        h = max(intestazioni, key=lambda w: w[1])
+                        vicine = [w for w in parole if abs(w[1] - h[1]) < 2 and w[4].upper() in ("RIFERIMENTO", "IMPORTO", "COMPETENZE")]
+                        hx = (h[0] + h[2]) / 2
+                        sinistra = max(((w[0] + w[2]) / 2 for w in vicine if w[2] < h[0]), default=h[0] - 40)
+                        destra = min(((w[0] + w[2]) / 2 for w in vicine if w[0] > h[2]), default=h[2] + 40)
+                        cella = "".join(w[4] for w in riga if (sinistra + hx) / 2 < (w[0] + w[2]) / 2 < (destra + hx) / 2)
+                        if not re.fullmatch(r"(?:\d{1,3}(?:\.\d{3})*|\d+),\d{2}\+?", cella):
+                            return {"da_verificare": True, "codice": codice}
+                        righe.append({"codice": codice, "descrizione": descrizione, "importo": cella.rstrip("+"),
+                                      "pagina": pagina.number + 1, "colonna": "TRATTENUTE"})
+        if righe:
+            totale = sum((Decimal(r["importo"].replace(".", "").replace(",", ".")) for r in righe), Decimal(0))
+            return {"codice": righe[0]["codice"], "descrizione": righe[0]["descrizione"],
+                    "importo": f"{totale:.2f}".replace(".", ","), "righe": righe}
+        if presente:
+            return {"da_verificare": True}
+        return None
     alto = re.sub(r"\s+", " ", str(testo or "").upper())
     for codice, descrizione, regola in _REGOLE_ACCONTO:
         m = regola.search(alto)
-        if m:
-            return {"codice": codice, "descrizione": descrizione, "importo": m.group(1)}
+        if m and "-" not in m.group(1):
+            return {"codice": codice, "descrizione": descrizione, "importo": m.group(1).replace("+", "").strip()}
     return None
 
 
