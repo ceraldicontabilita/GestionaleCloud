@@ -5245,8 +5245,9 @@ Registrare per ogni prova originale, writer, destinazione, esito e limiti.
   i conflitti restano visibili. Non si inventano PIN, contratto, paga o data
   di cessazione. Prove browser e handler sul file originale in archivio
   isolato: 30 create, 16/14, secondo import 30 invariate, filtri, scheda,
-  annulla e schermo mobile verificati. **Queste 30 anagrafiche non sono state
-  inserite nel Supabase reale dalla prova isolata.**
+  annulla e schermo mobile verificati. La prova isolata non ha inserito le
+  schede in produzione; il successivo import dell'utente delle 17:24 UTC
+  dell'08/10 è registrato nei log e le 30 schede risultano ora in HR reale.
 - `/hr/dipendenti/diagnostica`: `db.command("ping")` apparteneva al vecchio
   adattatore e generava «SupabaseCollection object is not callable» pur con
   tabelle leggibili. Usa ora il `ping()` Postgres effettivo con timeout.
@@ -5263,6 +5264,68 @@ Registrare per ogni prova originale, writer, destinazione, esito e limiti.
   XML un PDF. Il reimport per hash può ripristinare il collegamento
   all'originale senza ripetere l'estrazione AI o creare una seconda fattura.
 
+
+### Cedolini, importazioni persistenti e originali — 08/10/2026
+
+I log di produzione mostravano ripetuti `service_account_storage_quota`:
+ogni pagina retributiva del Libro Unico tentava di creare una copia Drive.
+Il riepilogo HR nascondeva gli errori e presentava «20 documenti, 2 buste»
+come successo completo. La correzione conserva un solo originale per PDF;
+se è già su Drive lo riusa, altrimenti, quando Drive non permette la copia,
+usa `gestionale.blobs`, deposito protetto già presente, con chiave SHA-256.
+Questa eccezione al Drive-only è necessaria per il caricamento manuale
+richiesto dal titolare. Il binario non viene copiato su ciascuna busta né
+nei JSON HR; ogni cedolino conserva solo riferimento e intervallo di pagine.
+Le risposte PDF autenticate espongono soltanto le pagine della persona.
+Un mancato deposito persistente blocca l'acquisizione e viene segnalato.
+Manuale e Drive usano lo stesso writer e la stessa deduplica. Il reimport
+di una busta ERP riprova il deposito HR e completa il collegamento a una
+nuova anagrafica con lo stesso CF, senza cambiare importi o pagamenti.
+
+HR accoda PDF/ZIP e conserva gli identificativi dei job. La coda ERP copre
+anche i cedolini; il job è salvato prima della risposta 202. I file delle
+operazioni lunghe sono conservati per la ripresa dopo riavvio. I job HR ed
+ERP dello stesso file hanno identificativi e copie temporanee distinti;
+un risultato parziale non blocca un nuovo tentativo. Nessun cedolino
+importato comporta l'affermazione di un bonifico realmente pagato.
+
+File, anteprime e riepiloghi delle due pagine restano disponibili fuori dal
+componente e in IndexedDB per la scheda del browser, anche al ricaricamento.
+Il logout elimina queste copie locali. Cambiando applicazione, un job già
+accodato prosegue sul server; i file non ancora ricevuti sono riprendibili
+dalla pagina. Il throttling ERP attende `Retry-After` sullo stesso file,
+invece di trasformare in errori tutta la selezione dopo un 429.
+
+Lo ZIP allegato dall'utente è byte-identico all'Excel movimenti già caricato:
+il MIME riconosce ora la struttura XLSX. Il visualizzatore non apre Excel
+in un iframe che provoca download automatici; Scarica conserva nome,
+formato e byte originali e scarta risposte riferite al documento precedente.
+
+La posta HR usa credenziali e mittenti del gestionale, con downloader comune
+(ultimi 90 giorni, massimo 200 messaggi per lettura) e writer canonico delle
+buste. L'assenza delle vecchie variabili IMAP HR non costituisce più un
+errore quando la casella centrale è configurata. Accesso reale alla casella
+non attestato dalla diagnostica o dalle prove isolate.
+
+Verifiche locali: PDF reale Ceraldi Valerio; archivio unico e fallback
+persistente, isolamento delle pagine, errori parziali, deduplica e riparazione
+del legame HR. Browser sui componenti reali con API simulate: 20 file,
+2 successi/18 errori visibili; navigazione e reload con file conservati;
+429 e ripresa; download dell'Excel allegato e PDF identici agli originali.
+Le prove non equivalgono a una sessione amministratore nel browser live.
+
+PIN richiesti dal titolare: assegnati e verificati su Supabase 23 hash
+bcrypt delle ultime quattro cifre del cellulare; nessuna collisione fra i
+numeri presenti. Sette schede senza telefono restano senza PIN. I lookup
+sono calcolati dal servizio al primo accesso; ruoli e stato del rapporto
+non sono stati modificati. Non riportare PIN o telefoni in questo documento.
+
+Riattivazione selettiva richiesta: `SCHEDULER_JOB_ALLOWLIST` abilita soltanto
+`drive_cartella_unica`, `import_cartelle_drive`, `enable_banking_giro`,
+anche se l'interruttore generale resta spento. Gli altri job e gli scheduler
+HR/Lotti restano sospesi. Drive unico ogni 15 minuti, cartelle configurate
+ogni 30 minuti, Banca alle 07:15 e 09:00 Europe/Rome. Il job bancario richiede
+anche credenziali e consenso valido: abilitare il job non ricollega un conto.
 
 ### Verifica mirata TFR dell'08/10/2026
 

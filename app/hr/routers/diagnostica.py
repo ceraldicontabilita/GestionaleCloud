@@ -83,12 +83,16 @@ async def diagnostica() -> Dict[str, Any]:
 
     # Le stesse alternative dei servizi effettivi; assenza totale = funzione
     # opzionale non attivata, configurazione parziale = intervento necessario.
-    imap = [bool(os.getenv(a) or os.getenv(b)) for a, b in (
-        ("IMAP_HOST", "IMAP_SERVER"), ("IMAP_USER", "IMAP_EMAIL"), ("IMAP_PASSWORD", "IMAP_PASS"))]
-    add("Configurazione", "Import diretto dalla posta HR", "ok" if all(imap) else "warn" if any(imap) else "info",
-        "Configurazione presente; connessione non provata" if all(imap) else
-        "Configurazione incompleta: host, utente e password necessari" if any(imap) else
-        "Non configurato; il caricamento dei file dalla pagina resta disponibile")
+    from app.database import Database as ERPDatabase
+    from app.services.email_monitor_service import _build_gmail_credentials
+    try:
+        utente, password, host = await _build_gmail_credentials(ERPDatabase.get_db())
+        configurata = bool(utente and password and host)
+        add("Configurazione", "Posta condivisa con il gestionale", "ok" if configurata else "info",
+            "Configurazione presente; connessione non provata" if configurata else
+            "Da configurare nelle Impostazioni del gestionale; import manuale e Drive indipendenti")
+    except Exception:
+        add("Configurazione", "Posta condivisa con il gestionale", "warn", "Configurazione non leggibile")
     conversione = bool(os.getenv("CONVERTAPI_TOKEN") or shutil.which("soffice") or shutil.which("libreoffice"))
     add("Configurazione", "Conversione DOCX in PDF", "ok" if conversione else "info",
         "Convertitore disponibile; conversione non eseguita" if conversione else

@@ -251,6 +251,7 @@ def mappa_cedolino_per_hr(cedolino: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         "cedolino_dedup_key": cedolino.get("cedolino_dedup_key") or cedolino.get("dedup_key"),
     }
     for chiave in ("drive_file_id", "source_file_hash", "source_path", "source_container",
+                   "drive_md5", "blob_key", "pdf_source_scope", "source_page_start", "source_page_end", "source_document_pages",
                    "canale", "stato_netto", "netto_fonte", "dati_chiave"):
         if cedolino.get(chiave):
             doc[chiave] = cedolino[chiave]
@@ -267,7 +268,7 @@ def mappa_cedolino_per_hr(cedolino: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     if isinstance(cedolino.get("retribuzione"), dict):
         doc["retribuzione"] = cedolino["retribuzione"]
     pdf = _pdf_base64(cedolino.get("pdf_data"))
-    if pdf:
+    if pdf and not (doc.get("drive_file_id") or doc.get("blob_key")):
         doc["pdf_data"] = pdf
     return doc
 
@@ -331,7 +332,8 @@ async def _segui_vincitore(con, esistente: Dict[str, Any], doc: Dict[str, Any], 
     }
     for campo in ("filename", "pdf_filename", "pdf_data", "stato_netto", "netto_fonte", "lordo",
                   "competenze", "trattenute", "gestionale_cedolino_id", "cedolino_dedup_key",
-                  "drive_file_id", "source_file_hash", "canale", "dati_chiave"):
+                  "drive_file_id", "drive_md5", "blob_key", "pdf_source_scope", "source_page_start", "source_page_end", "source_document_pages",
+                  "source_file_hash", "canale", "dati_chiave"):
         if doc.get(campo) is not None:
             patch[campo] = doc[campo]
     if dry_run:
@@ -396,6 +398,21 @@ async def deposita_cedolino_in_hr(
             if esistente and cedolino.get("rettificato"):
                 return await _segui_vincitore(con, esistente, doc, chiave, dry_run=dry_run)
             if esistente:
+                # Il cedolino puo' precedere l'import dell'anagrafica. Il
+                # reimport ripara solo questo legame per CF esatto, senza
+                # cambiare importi, pagamenti o un'identita' gia' assegnata.
+                corrente = await con.fetchrow(
+                    "SELECT doc FROM " + TABELLA_CEDOLINI + " WHERE id = $1", esistente["id"],
+                )
+                corrente = _json(corrente["doc"]) if corrente else {}
+                if not corrente.get("dipendente_id") and _codice_fiscale(corrente) == doc["codice_fiscale"]:
+                    dip = await _trova_dipendente_hr(con, doc["codice_fiscale"])
+                    if dip and not dry_run:
+                        await con.execute(_SQL_AGGIORNA, esistente["id"], json.dumps({
+                            "dipendente_id": dip["id"],
+                            "dipendente_nome": _nome_da_anagrafica(dip),
+                            "nome_dipendente": _nome_da_anagrafica(dip),
+                        }))
                 logger.info("[HR deposito] gia_presente %s -> id=%s (%s)",
                             chiave, esistente["id"], esistente["motivo"])
                 return {"esito": "gia_presente", "id": esistente["id"], **_riepilogo(doc)}

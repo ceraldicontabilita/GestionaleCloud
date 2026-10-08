@@ -17,6 +17,7 @@ import {
   Wallet, Receipt, Building2, Inbox, CheckCircle2, Link2, Activity, Send, ShieldCheck, Scale, Upload
 } from "lucide-react";
 import { esciDalGruppo } from "../../frontend_shared/SessioneGruppo";
+import { createUseImportSession } from "../../frontend_shared/importSession";
 import SelettoreSezioni from "./SelettoreSezioni";
 import { CodaRiferimenti, AvvisoMultiDipendente, CandidatiBonifico, periodoCandidato, eurDaCentesimi } from "./bonificiCoda";
 import "./App.css";
@@ -5387,6 +5388,8 @@ function PosizioneDipendentePage({ dipendenti }) {
   );
 }
 
+const useImportSession = createUseImportSession(React);
+
 function PagheBonificiPage({ dipendenti = [] }) {
   // 14/09/2026 (titolare): «Buste Paga» e «Cedolini & Bonifici» erano due
   // pagine sulla stessa tabella (paghe_mensili) con numeri diversi: la prima
@@ -5413,11 +5416,13 @@ function PagheBonificiPage({ dipendenti = [] }) {
   const [griglia, setGriglia] = useState(false);
   // Import (ex pagina Buste Paga)
   const [showImport, setShowImport] = useState(false);
-  const [importing, setImporting] = useState(false);
-  const [importMsg, setImportMsg] = useState(null);
-  const [pnMsg, setPnMsg] = useState(null);
-  const [csvMsg, setCsvMsg] = useState(null);
-  const [storicoMsg, setStoricoMsg] = useState(null);
+  const importSession = useImportSession('hr-paghe', { importing: false, importMsg: null, pnMsg: null, csvMsg: null, storicoMsg: null, files: [] });
+  const { importing, importMsg, pnMsg, csvMsg, storicoMsg } = importSession.state;
+  const setImporting = value => importSession.setField('importing', value);
+  const setImportMsg = value => importSession.setField('importMsg', value);
+  const setPnMsg = value => importSession.setField('pnMsg', value);
+  const setCsvMsg = value => importSession.setField('csvMsg', value);
+  const setStoricoMsg = value => importSession.setField('storicoMsg', value);
   const fileRef = useRef(null); const excelRef = useRef(null); const csvRef = useRef(null); const storicoRef = useRef(null);
   // Strumenti
   const [showStrumenti, setShowStrumenti] = useState(false);
@@ -5577,13 +5582,53 @@ function PagheBonificiPage({ dipendenti = [] }) {
   // ── Import (dalla vecchia pagina Buste Paga) ──
   const vaiAlMese = (r) => { if (r?.mesi?.length) { const u = r.mesi[r.mesi.length - 1]; setAnno(u.anno); setMese(u.mese); } };
   const handleImportLul = async (e) => {
-    const fs = Array.from(e.target.files || []);
-    if (!fs.length) return;
+    const fs = e ? Array.from(e.target.files || []).map(file => ({ file, name: file.name })) : importSession.state.files;
+    if (!fs.length || importing || !importSession.ready) return;
+    importSession.setField('files', fs);
+    importSession.setField('interrupted', false);
     setImporting(true); setImportMsg(null);
     try {
-      const fd = new FormData(); fs.forEach(f => fd.append("files", f));
-      const res = await axios.post(`${API}/paghe/importa-libro-unico-canonico`, fd, { headers: { "Content-Type": "multipart/form-data" } });
-      setImportMsg(res.data); vaiAlMese(res.data); await load();
+      const result = { file_pdf: 0, totale_associati: 0, associati: [], errori: [], duplicati: [], mesi: [], da_controllare: [] };
+      for (let i = 0; i < fs.length; i++) {
+        const item = fs[i];
+        try {
+          let job = item.result ? { status: 'completed', result: item.result } : null;
+          if (!item.jobId) {
+            const fd = new FormData(); fd.append('file', item.file);
+            const queued = await axios.post(`${API}/paghe/importa-libro-unico-coda`, fd);
+            item.jobId = queued.data.job_id;
+            if (queued.data.status === 'completed') job = queued.data;
+            importSession.setField('files', fs.map(f => ({ ...f })));
+          }
+          const deadline = Date.now() + 30 * 60 * 1000;
+          while (job?.status !== 'completed') {
+            job = (await axios.get(`${API}/paghe/importa-libro-unico-coda/${encodeURIComponent(item.jobId)}`)).data;
+            if (job.status === 'failed') {
+              item.jobId = null;
+              throw new Error(job.error || 'Import non riuscito');
+            }
+            if (job.status === 'completed') break;
+            if (Date.now() > deadline) throw new Error('Import ancora in coda: premi Riprendi per controllare il risultato.');
+            await new Promise(resolve => setTimeout(resolve, 2000));
+          }
+          const done = job.result || {};
+          result.file_pdf += done.file_pdf || 1;
+          result.totale_associati += done.totale_associati || 0;
+          for (const field of ['associati', 'errori', 'duplicati', 'mesi', 'da_controllare']) result[field].push(...(done[field] || []));
+          if (done.success === false && !done.errori?.length) result.errori.push(`${item.name}: nessuna busta acquisita. Controlla il documento e le segnalazioni.`);
+          if (done.errori?.length || done.success === false) item.jobId = null;
+          item.done = !done.errori?.length && done.success !== false;
+          item.result = item.done ? done : null;
+        } catch (error) {
+          if (error.response?.status === 404) item.jobId = null;
+          result.errori.push(`${item.name}: ${error.response?.data?.detail || error.message}`);
+          result.file_pdf += 1;
+        }
+        importSession.setField('files', fs.map(f => ({ ...f })));
+        result.success = result.errori.length === 0;
+        setImportMsg({ ...result });
+      }
+      vaiAlMese(result); await load();
     } catch (err) { setImportMsg({ errore: err.response?.data?.detail || "Errore durante l'import" }); }
     finally { setImporting(false); if (fileRef.current) fileRef.current.value = ""; }
   };
@@ -5692,7 +5737,7 @@ function PagheBonificiPage({ dipendenti = [] }) {
   const sel = { border: "1px solid #e6e0d4", borderRadius: 8, padding: "7px 10px", fontSize: 14, background: "#fffefb", color: "#2a3329" };
   const th = { textAlign: "left", padding: "10px 12px", fontSize: 11, color: "#7a8576", textTransform: "uppercase", letterSpacing: 0.4, fontWeight: 700, borderBottom: "2px solid #e6e0d4", whiteSpace: "nowrap" };
   const td = { padding: "10px 12px", fontSize: 14, color: "#2a3329", borderBottom: "1px solid #efe9dd", verticalAlign: "top" };
-  const msgCard = (m, ok) => ({ marginBottom: 16, borderLeft: `4px solid ${m?.errore ? '#d35f4e' : '#3d8168'}` });
+  const msgCard = (m) => ({ marginBottom: 16, borderLeft: `4px solid ${m?.errore || m?.errori?.length || m?.success === false ? '#d35f4e' : '#3d8168'}` });
   const nomeBtn = { background: "none", border: "none", color: "#5b7a6b", cursor: "pointer", textDecoration: "underline", padding: 0, font: "inherit", fontWeight: 600 };
 
   // Griglia annuale (dipendente × mese) calcolata dalle stesse righe
@@ -5736,7 +5781,7 @@ function PagheBonificiPage({ dipendenti = [] }) {
           <input ref={csvRef} type="file" accept=".csv,text/csv" onChange={handleImportPagamenti} style={{ display: "none" }} />
           <input ref={storicoRef} type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" onChange={handleImportStorico} style={{ display: "none" }} />
           <div style={{ position: "relative" }}>
-            <button className="dc-btn dc-btn-primary" onClick={() => setShowImport(s => !s)} disabled={importing}>
+            <button className="dc-btn dc-btn-primary" onClick={() => setShowImport(s => !s)} disabled={importing || !importSession.ready}>
               {importing ? "Importo…" : "⤵ Importa ▾"}
             </button>
             {showImport && (
@@ -5765,13 +5810,28 @@ function PagheBonificiPage({ dipendenti = [] }) {
         </div>
       </div>
 
+      {importSession.error && <div role="alert" className="dc-card">{importSession.error}</div>}
+      {importing && <div role="status" className="dc-card">Import in corso. Puoi cambiare pagina: file e risultati vengono conservati.</div>}
+      {!importing && importSession.state.files.length > 0 && <div className="dc-card">
+        {importSession.state.files.length} file conservati per questo import.
+        <button className="dc-btn" onClick={() => handleImportLul(null)}>Riprendi / verifica import</button>
+        <button className="dc-btn" onClick={() => { importSession.setField('files', []); setImportMsg(null); }}>Chiudi riepilogo</button>
+      </div>}
       {importMsg && (
         <div className="dc-card" style={msgCard(importMsg)}>
           {importMsg.errore ? <div style={{ color: "#d35f4e", fontWeight: 600 }}>⚠ {importMsg.errore}</div> : (
             <div>
               <div style={{ fontWeight: 700, marginBottom: 6 }}>
-                ✓ Elaborati {importMsg.file_pdf} documenti · {importMsg.totale_associati} buste{importMsg.bonifici?.length ? ` · ${importMsg.bonifici.length} bonifici` : ""}{importMsg.prestiti?.length ? ` · ${importMsg.prestiti.length} prestiti` : ""}{importMsg.presenze?.length ? ` · ${importMsg.presenze.length} presenze` : ""}
+                {importMsg.errori?.length || importMsg.success === false ? "⚠ Import non completato" : "✓ Elaborazione terminata"} · {importMsg.file_pdf} documenti · {importMsg.totale_associati} buste{importMsg.bonifici?.length ? ` · ${importMsg.bonifici.length} bonifici` : ""}{importMsg.prestiti?.length ? ` · ${importMsg.prestiti.length} prestiti` : ""}{importMsg.presenze?.length ? ` · ${importMsg.presenze.length} presenze` : ""}
               </div>
+              {importMsg.errori?.length > 0 && <div role="alert" style={{ color: "#a13e30", marginBottom: 10 }}>
+                {importMsg.errori.map((errore, i) => <div key={i}>{errore}</div>)}
+              </div>}
+              {importMsg.messaggio && <div style={{ marginBottom: 6 }}>{importMsg.messaggio}</div>}
+              {importMsg.duplicati?.length > 0 && <div style={{ marginBottom: 6 }}>{importMsg.duplicati.length} buste già presenti, nessuna nuova copia.</div>}
+              {importMsg.da_controllare?.length > 0 && <div role="alert" style={{ color: "#7d5526", marginBottom: 10 }}>
+                Da controllare: {importMsg.da_controllare.map((voce, i) => <div key={i}>{voce.errore || voce.motivo || voce.dipendente || voce.file || "Documento da verificare"}</div>)}
+              </div>}
               {importMsg.mesi?.length > 0 && <div style={{ fontSize: 13, marginBottom: 6 }}>Mesi importati: {importMsg.mesi.map(mm => `${mesi[mm.mese - 1]} ${mm.anno} (${mm.n})`).join(" · ")}</div>}
               <div style={{ fontSize: 13, color: "#6b7669", display: "flex", flexWrap: "wrap", gap: "2px 14px" }}>
                 {importMsg.associati?.map((a, i) => <span key={i}>{a.dipendente}: € {eur(a.netto)}{importMsg.mesi?.length > 1 ? ` (${a.mese}/${a.anno})` : ""}{a.metodo !== "codice fiscale" ? " ⚠" : ""}</span>)}

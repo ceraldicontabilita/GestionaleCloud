@@ -3426,6 +3426,10 @@ async def upload_documento_automatico(
                     f"Cedolino non registrato: {esito.get('motivo') or 'nessuna busta letta'}"
                     + (f" ({errori})" if errori else "")
                 )
+            if esito.get("errori") and (scritte or esito.get("gia_presenti")):
+                result["partial"] = True
+                result["success"] = False
+                result["message"] += ". Import incompleto: " + "; ".join(str(e) for e in esito["errori"][:3])
 
         elif tipo_rilevato == 'distinte_bpm':
             # Import distinte stipendi BPM - riconcilia con buste paga
@@ -3824,9 +3828,24 @@ async def upload_documento_automatico(
 
 # Import che superano i 2 minuti del browser e i 5 del proxy Render: vanno in
 # coda (`document_import_jobs`) con lo stesso motore dell'upload diretto.
+async def _importa_cedolino_file(filename: str, content: bytes) -> Dict[str, Any]:
+    import io
+
+    return await upload_documento_automatico(file=UploadFile(filename=filename, file=io.BytesIO(content)))
+
+
+async def _importa_libro_unico_hr(filename: str, content: bytes) -> Dict[str, Any]:
+    import io
+    from app.hr.routers.dipendenti_cloud import importa_libro_unico_canonico
+
+    return await importa_libro_unico_canonico(files=[UploadFile(filename=filename, file=io.BytesIO(content))])
+
+
 ELABORATORI_IN_CODA = {
     "archivio_zip": _process_zip_upload_a_blocchi,
     "estratto_conto": _importa_estratto_conto_file,
+    "cedolino": _importa_cedolino_file,
+    "hr_libro_unico": _importa_libro_unico_hr,
 }
 
 
@@ -3855,7 +3874,7 @@ async def accoda_upload_documento_voluminoso(
     if not pos and tipo_rilevato not in ELABORATORI_IN_CODA:
         raise HTTPException(
             status_code=400,
-            detail="La coda asincrona e' riservata a export POS, archivi ZIP ed estratti conto.",
+            detail="La coda asincrona e' riservata a export POS, archivi ZIP, cedolini ed estratti conto.",
         )
 
     from app.services.document_import_preview import verify_confirmation_token

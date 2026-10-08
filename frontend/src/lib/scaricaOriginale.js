@@ -4,7 +4,7 @@ import api, { messaggioErrore } from '../api';
 // autenticato: prima c'erano sei copie dello stesso codice, e la maggior parte
 // dei visualizzatori non aveva il pulsante «Scarica». Il nome del file arriva
 // dall'intestazione del server quando c'e', altrimenti dal suggerimento.
-const nomeDaIntestazione = intestazione => {
+export const nomeDaIntestazione = intestazione => {
   const testo = String(intestazione || '');
   const utf8 = testo.match(/filename\*=UTF-8''([^;]+)/i);
   if (utf8) {
@@ -36,6 +36,8 @@ const ESTENSIONI = {
   'text/html': '.html',
   'image/jpeg': '.jpg',
   'image/png': '.png',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': '.xlsx',
+  'application/zip': '.zip',
 };
 
 // Un nome senza estensione la prende dal tipo del file: un documento HTML

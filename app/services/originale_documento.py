@@ -101,6 +101,16 @@ _ESTENSIONI = {"pdf": "application/pdf", "xml": "application/xml", "png": "image
 
 def mime_dai_byte(contenuto: bytes, nome: str = "", dichiarato: Optional[str] = None) -> str:
     """Il tipo guarda prima i byte (un PDF resta PDF anche con un nome sbagliato)."""
+    if contenuto.startswith(b"PK\x03\x04"):
+        import io
+        import zipfile
+
+        try:
+            with zipfile.ZipFile(io.BytesIO(contenuto)) as archive:
+                if "xl/workbook.xml" in archive.namelist() and "[Content_Types].xml" in archive.namelist():
+                    return _ESTENSIONI["xlsx"]
+        except (zipfile.BadZipFile, OSError):
+            pass
     for firma, mime in _MAGIC:
         if contenuto.startswith(firma):
             return mime

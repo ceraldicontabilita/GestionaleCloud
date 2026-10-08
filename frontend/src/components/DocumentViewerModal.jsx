@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { toast } from 'sonner';
 import { Download, Expand, Maximize, MoveHorizontal, Printer, X } from 'lucide-react';
 import api from '../api';
-import { conEstensione, messaggioErroreOriginale, salvaBlob, scaricaOriginale } from '../lib/scaricaOriginale';
+import { conEstensione, nomeDaIntestazione, messaggioErroreOriginale, salvaBlob, scaricaOriginale } from '../lib/scaricaOriginale';
 
 /**
  * Componente CANONICO "Vedi Documento" (PROMPT_DEFINITIVO §8.2): modale in-page per
@@ -50,7 +50,10 @@ export default function DocumentViewerModal({
   maxWidth = 960,
   testIdPrefix = 'document-viewer',
 }) {
-  const [blobUrl, setBlobUrl] = useState(null);
+  const [loaded, setLoaded] = useState(null);
+  const documentReady = loaded?.fetchUrl === fetchUrl;
+  const blobUrl = documentReady ? loaded?.url : null;
+  const canPreview = !fetchUrl || (documentReady && /^(application\/pdf|text\/html|image\/)/i.test(loaded?.type || ''));
   const [loadError, setLoadError] = useState(null);
   const [zoom, setZoom] = useState(1);
   const [fit, setFit] = useState('width'); // 'width' | 'page' | null
@@ -75,8 +78,7 @@ export default function DocumentViewerModal({
   const scaricaPredefinito = useCallback(async () => {
     try {
       if (blobUrl && fetchUrl) {
-        const blob = await (await fetch(blobUrl)).blob();
-        salvaBlob(blob, conEstensione(nomeFile, blob.type || mimeType));
+        salvaBlob(loaded.blob, loaded.name || conEstensione(nomeFile, loaded.type || mimeType));
         return;
       }
       await scaricaOriginale(urlInterno, nomeFile);
@@ -85,7 +87,7 @@ export default function DocumentViewerModal({
         description: await messaggioErroreOriginale(e, e?.message),
       });
     }
-  }, [blobUrl, fetchUrl, urlInterno, nomeFile, mimeType]);
+  }, [blobUrl, loaded, fetchUrl, urlInterno, nomeFile, mimeType]);
   const scarica = onDownload || (urlInterno ? scaricaPredefinito : null);
 
   const stampa = useCallback(() => {
@@ -166,14 +168,17 @@ export default function DocumentViewerModal({
     let revoked = false;
     let url = null;
     setLoadError(null);
+    setLoaded(null);
     api
       .get(fetchUrl, { responseType: 'blob' })
       .then(response => {
         if (revoked) return;
         // Il tipo lo dice il server (l'originale puo' essere un PDF, un XML, un'immagine).
         const tipoServer = String(response.headers?.['content-type'] || '').split(';')[0].trim();
-        url = window.URL.createObjectURL(new Blob([response.data], { type: tipoServer || mimeType }));
-        setBlobUrl(url);
+        const blob = new Blob([response.data], { type: tipoServer || mimeType });
+        url = window.URL.createObjectURL(blob);
+        setLoaded({ fetchUrl, url, blob, type: blob.type,
+          name: nomeDaIntestazione(response.headers?.['content-disposition']) });
       })
       .catch(async error => {
         const status = error.response?.status;
@@ -319,7 +324,7 @@ export default function DocumentViewerModal({
               style={btn({ width: 'auto', padding: '0 10px', fontSize: 16, opacity: fit === 'page' ? 1 : 0.7 })}><Maximize size={18} aria-hidden /></button>
             <button onClick={apriSchermoIntero} aria-label="Schermo intero" title="Schermo intero"
               data-testid={`${testIdPrefix}-fullscreen`} style={btn({ fontSize: 18 })}><Expand size={18} aria-hidden /></button>
-            <button onClick={stampa} aria-label="Stampa documento" title="Stampa"
+            <button onClick={stampa} disabled={!canPreview} aria-label="Stampa documento" title="Stampa"
               data-testid={`${testIdPrefix}-print`}
               style={btn({ width: 'auto', padding: '0 12px', fontSize: 13, gap: 6 })}><Printer size={16} aria-hidden /> Stampa</button>
             {scarica && (
@@ -346,6 +351,11 @@ export default function DocumentViewerModal({
             }}
           >
             {loadError}
+          </div>
+        ) : blobUrl && !canPreview ? (
+          <div role="status" style={{ padding: 24 }}>
+            Questo originale è un file {loaded?.name?.toLowerCase().endsWith('.xlsx') ? 'Excel' : 'non visualizzabile nel browser'}.
+            Usa Scarica per salvarlo con il suo nome e formato originali.
           </div>
         ) : iframeSrc ? (
           <div

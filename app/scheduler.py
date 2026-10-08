@@ -62,6 +62,9 @@ class SchedulerConLease(AsyncIOScheduler):
 
     def add_job(self, func, trigger=None, args=None, kwargs=None, id=None, **options):
         job_id = id or getattr(func, "__name__", str(uuid.uuid4()))
+        selezionati = {value.strip() for value in os.getenv("SCHEDULER_JOB_ALLOWLIST", "").split(",") if value.strip()}
+        if selezionati and job_id not in selezionati:
+            return None
 
         @wraps(func)
         async def _locked(*job_args, **job_kwargs):

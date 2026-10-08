@@ -113,8 +113,11 @@ async def registra_busta(db, ced: Dict[str, Any], *, filename: str, pdf_data: Op
     from app.services.tfr_anticipo_busta import registra_dalla_busta
 
     async with _lock_busta(ced):
+        errori_prima = len(results["errori"])
         await _registra_busta(db, ced, filename=filename, pdf_data=pdf_data,
                               pdf_text=pdf_text, results=results)
+        if len(results["errori"]) > errori_prima:
+            return
         # Anticipo TFR pagato dentro la busta: va nel motore degli acconti TFR
         # (una volta sola, idempotente), anche se la busta e' gia' in archivio.
         # Sotto lo stesso lock: due copie della busta non lo registrano due volte.
@@ -168,6 +171,10 @@ async def _registra_busta(db, ced: Dict[str, Any], *, filename: str, pdf_data: O
             "filename": filename, "drive_file_id": ced.get("drive_file_id"),
             "source_file_hash": ced.get("source_file_hash"),
         }}})
+        originale = await db["cedolini"].find_one({"id": gia["id"]}, {"_id": 0, "pdf_data": 0})
+        deposito = await deposita_cedolino_in_hr(originale)
+        if deposito.get("esito") not in {"inserito", "gia_presente", "aggiornato", "sostituita"}:
+            results["errori"].append(f"{chi}: busta in ERP, deposito HR non completato ({deposito.get('esito')})")
         results["gia_presenti"] = results.get("gia_presenti", 0) + 1
         _annota_busta(results, ced, "gia_presente")
         return
@@ -229,6 +236,8 @@ async def _registra_busta(db, ced: Dict[str, Any], *, filename: str, pdf_data: O
             results["prima_nota_create"] += 1
         if res.get("riconciliato"):
             results["riconciliati"] += 1
+        if res.get("deposito_hr") not in {"inserito", "gia_presente", "aggiornato"}:
+            results["errori"].append(f"{chi}: busta in ERP, deposito HR non completato ({res.get('deposito_hr') or 'errore'})")
     elif res.get("errore"):
         results["errori"].append(f"{chi}: {res.get('errore')}")
 
@@ -296,6 +305,33 @@ async def processa_tutti_cedolini_pdf(
         esito=lettura["esito"], motivo=lettura["motivo"],
         fogli_presenze=len(lettura["presenze"]),
     )
+    canale = canale_obbligatorio(fonte or source_container, drive_file_id=drive_file_id)
+    drive_md5 = None
+    blob_key = None
+    if lettura["esito"] == ESITO_BUSTE and not drive_file_id:
+        from app.services.email_drive_archive import archive_binary_copy
+
+        try:
+            originale = await asyncio.to_thread(
+                archive_binary_copy, file_content, filename,
+                source=canale, area="cedolini",
+            )
+            if originale.get("status") not in {"archived", "duplicate"} or not originale.get("drive_file_id"):
+                motivo = originale.get("reason") or originale.get("status")
+                raise ValueError(f"Originale non archiviato su Drive: {motivo}")
+            drive_file_id = originale["drive_file_id"]
+            drive_md5 = originale.get("md5")
+        except Exception as exc:
+            # Il caricamento manuale non dipende dalla quota del service account
+            # Drive: il deposito protetto conserva un solo originale, per SHA.
+            from app.services.cedolino_originale import conserva_originale
+            try:
+                blob_key = await conserva_originale(db, file_content)
+                logger.info("Originale cedolini conservato nel deposito protetto (%s)", type(exc).__name__)
+            except Exception as storage_error:
+                results.update(success=False, motivo="Impossibile conservare il PDF originale")
+                results["errori"].append(f"{results['motivo']}: {storage_error}")
+                return results
     await _scrivi_scheda(db, lettura, file_content, filename, source_file_hash, drive_file_id,
                          source_path, results)
     if lettura["esito"] != ESITO_BUSTE:
@@ -304,13 +340,17 @@ async def processa_tutti_cedolini_pdf(
             results["errori"].append(f"{filename}: {lettura['motivo']}")
         return results
 
-    canale = canale_obbligatorio(fonte or source_container, drive_file_id=drive_file_id)
     for ced in lettura["buste"]:
         ced["source_path"] = source_path or filename
         ced["source_container"] = source_container or None
         ced["canale"] = canale
         if drive_file_id:
             ced["drive_file_id"] = drive_file_id
+            ced["drive_md5"] = drive_md5
+            ced["pdf_source_scope"] = "document"
+        elif blob_key:
+            ced["blob_key"] = blob_key
+            ced["pdf_source_scope"] = "document"
         if source_file_hash:
             ced["source_file_hash"] = source_file_hash
         cedolino_pdf_data = ced.pop("_pdf_data", pdf_data)
@@ -324,6 +364,9 @@ async def processa_tutti_cedolini_pdf(
     if not (results["cedolini_processati"] or results["buste_senza_netto"]
             or results.get("gia_presenti") or results.get("sostituite")):
         results["success"] = False
+    if results["errori"]:
+        results["success"] = False
+        results["partial"] = bool(results["cedolini_processati"] or results["buste_senza_netto"] or results.get("gia_presenti"))
     return results
 
 

@@ -1973,6 +1973,7 @@ async def importa_libro_unico_canonico(files: List[UploadFile] = File(...)):
     from app.hr.services import libro_unico_bundle, sincronizza_paghe_mensili
 
     pdf_items, errori = [], []
+    riferimenti_drive = {}
     for uf in files:
         nome = uf.filename or ""
         try:
@@ -1983,6 +1984,8 @@ async def importa_libro_unico_canonico(files: List[UploadFile] = File(...)):
         items, err = _espandi_in_pdf(nome, data)
         pdf_items.extend(items)
         errori.extend(err)
+        if nome.lower().endswith('.pdf') and getattr(uf, 'drive_file_id', None):
+            riferimenti_drive[hashlib.sha256(data).hexdigest()] = uf.drive_file_id
     if not pdf_items:
         raise HTTPException(
             status_code=400,
@@ -1993,10 +1996,13 @@ async def importa_libro_unico_canonico(files: List[UploadFile] = File(...)):
     associati, duplicati, da_controllare = [], [], []
     for nome, pdf_bytes in pdf_items:
         try:
-            esito = await libro_unico_bundle.dividi_e_registra(db, pdf_bytes, nome)
+            esito = await libro_unico_bundle.dividi_e_registra(
+                db, pdf_bytes, nome, drive_file_id=riferimenti_drive.get(hashlib.sha256(pdf_bytes).hexdigest()),
+            )
         except Exception as exc:
             errori.append(f"{nome}: {exc}")
             continue
+        errori.extend(f"{nome}: {errore}" for errore in esito.get("errori") or [])
         for record in esito.get("inseriti") or []:
             tipo = record.get("tipo_cedolino") or "ordinario"
             mese = 13 if tipo == "tredicesima" else 14 if tipo == "quattordicesima" else None
@@ -2014,7 +2020,12 @@ async def importa_libro_unico_canonico(files: List[UploadFile] = File(...)):
         da_controllare.extend(esito.get("senza_pagina_retributiva") or [])
         da_controllare.extend(esito.get("senza_anagrafica") or [])
 
-    sincronizzazione = await sincronizza_paghe_mensili.sincronizza(db)
+    sincronizzazione = None
+    if associati or duplicati:
+        try:
+            sincronizzazione = await sincronizza_paghe_mensili.sincronizza(db)
+        except Exception as exc:
+            errori.append(f"Buste archiviate, aggiornamento Paghe non completato: {exc}")
     mesi_set = sorted({(a["anno"], a["mese"]) for a in associati if a.get("anno") and a.get("mese")})
     mesi = [
         {"anno": anno, "mese": mese, "n": sum(1 for a in associati if a.get("anno") == anno and a.get("mese") == mese)}
@@ -2022,6 +2033,8 @@ async def importa_libro_unico_canonico(files: List[UploadFile] = File(...)):
     ]
     return {
         "associati": associati,
+        "success": bool(associati or duplicati) and not errori,
+        "partial": bool(associati or duplicati) and bool(errori),
         "da_controllare": da_controllare,
         "totale_associati": len(associati),
         "file_pdf": len(pdf_items),
@@ -2036,110 +2049,84 @@ async def importa_libro_unico_canonico(files: List[UploadFile] = File(...)):
     }
 
 
+@router.post("/paghe/importa-libro-unico-coda", status_code=202)
+async def accoda_libro_unico(file: UploadFile = File(...)):
+    from app.database import Database as ERPDatabase
+    from app.routers.documenti import _importa_libro_unico_hr, MAX_UPLOAD_BYTES, MAX_ZIP_UPLOAD_BYTES
+    from app.services.document_import_jobs import enqueue_import
+    from app.utils.upload_validation import verifica_pdf_reale
+
+    nome = os.path.basename(file.filename or "libro_unico.pdf")
+    data = await file.read()
+    if not data or len(data) > (MAX_ZIP_UPLOAD_BYTES if nome.lower().endswith('.zip') else MAX_UPLOAD_BYTES):
+        raise HTTPException(413, "File vuoto o oltre il limite di caricamento")
+    if nome.lower().endswith('.pdf'):
+        verifica_pdf_reale(data, nome)
+    elif not nome.lower().endswith('.zip'):
+        raise HTTPException(400, "Seleziona un PDF o un archivio ZIP")
+    return await enqueue_import(ERPDatabase.get_db(), content=data, filename=nome,
+                                document_type="hr_libro_unico", process=_importa_libro_unico_hr)
+
+
+@router.get("/paghe/importa-libro-unico-coda/{job_id}")
+async def stato_import_libro_unico(job_id: str):
+    from app.database import Database as ERPDatabase
+    from app.services.document_import_jobs import get_import_job
+
+    job = await get_import_job(ERPDatabase.get_db(), job_id)
+    if not job or job.get("document_type") != "hr_libro_unico":
+        raise HTTPException(404, "Import non trovato")
+    return job
+
+
 @router.post("/paghe/importa-email")
-async def importa_da_email(cartella: Optional[str] = None, solo_non_letti: bool = False):
-    """Scarica gli allegati PDF dalla casella di posta (INBOX + tutte le cartelle) e li
-    importa con la stessa pipeline. Credenziali dalle variabili ambiente Render:
-    IMAP_HOST, IMAP_PORT (default 993), IMAP_USER, IMAP_PASSWORD.
-    L'anti-duplicazione per hash evita di re-importare email già lette in passato."""
-    import imaplib, email
-    host = os.getenv("IMAP_HOST") or os.getenv("IMAP_SERVER")
-    user = os.getenv("IMAP_USER") or os.getenv("IMAP_EMAIL")
-    pwd = os.getenv("IMAP_PASSWORD") or os.getenv("IMAP_PASS")
-    port = int(os.getenv("IMAP_PORT") or 993)
-    mancano = [n for n, v in [("IMAP_HOST", host), ("IMAP_USER", user), ("IMAP_PASSWORD", pwd)] if not v]
-    if mancano:
-        raise HTTPException(status_code=400,
-            detail="Variabili ambiente IMAP mancanti su Render: " + ", ".join(mancano) +
-                   ". Servono IMAP_HOST, IMAP_USER, IMAP_PASSWORD (IMAP_PORT opzionale, default 993).")
-    try:
-        M = imaplib.IMAP4_SSL(host, port)
-        M.login(user, pwd)
-    except Exception as e:
-        raise HTTPException(status_code=502, detail=f"Connessione/login IMAP fallito ({host}:{port}): {e}") from e
+async def importa_da_email():
+    """Usa la casella, i mittenti e gli originali del gestionale, poi il writer HR canonico."""
+    from app.database import Database as ERPDatabase
+    from app.services.email_monitor_service import (
+        _build_gmail_credentials, _load_allowed_gmail_patterns, _download_email_batch,
+    )
+    from app.services.originale_documento import byte_dal_record
 
-    pdf_items, errori, cartelle_lette = [], [], []
+    erp = ERPDatabase.get_db()
+    user, password, host = await _build_gmail_credentials(erp)
+    if not user or not password:
+        raise HTTPException(400, "Configura la casella di posta nelle Impostazioni del gestionale. Puoi comunque importare i PDF dal dispositivo o da Drive.")
+    patterns = await _load_allowed_gmail_patterns(erp)
+    if not patterns:
+        raise HTTPException(400, "Nessun mittente autorizzato nella posta del gestionale. Aggiungi il mittente dei cedolini nelle Impostazioni.")
     try:
-        # Elenco cartelle: una specifica se richiesta, altrimenti tutte
-        if cartella:
-            target = [cartella]
-        else:
-            target = []
-            typ, data = M.list()
-            if typ == "OK":
-                for raw in data:
-                    line = raw.decode(errors="ignore") if isinstance(raw, bytes) else str(raw)
-                    # l'ultimo token tra virgolette è il nome cartella
-                    nome_c = line.split(' "')[-1].strip().strip('"') if '"' in line else line.split()[-1]
-                    if nome_c and "\\Noselect" not in line:
-                        target.append(nome_c)
-            if "INBOX" not in target:
-                target.insert(0, "INBOX")
-        for box in target:
-            try:
-                typ, _ = M.select(f'"{box}"', readonly=True)
-                if typ != "OK":
-                    continue
-                crit = "(UNSEEN)" if solo_non_letti else "ALL"
-                typ, msgnums = M.search(None, crit)
-                if typ != "OK":
-                    continue
-                ids = msgnums[0].split()
-                cartelle_lette.append({"cartella": box, "messaggi": len(ids)})
-                for num in ids:
-                    typ, msgdata = M.fetch(num, "(RFC822)")
-                    if typ != "OK" or not msgdata or not msgdata[0]:
-                        continue
-                    msg = email.message_from_bytes(msgdata[0][1])
-                    for part in msg.walk():
-                        if part.get_content_maintype() == "multipart":
-                            continue
-                        fn = part.get_filename()
-                        if not fn:
-                            continue
-                        try:
-                            payload = part.get_payload(decode=True)
-                        except Exception:
-                            continue
-                        if not payload:
-                            continue
-                        its, err = _espandi_in_pdf(fn, payload)
-                        pdf_items += [(f"[{box}] {o}", d) for (o, d) in its]
-                        errori += err
-            except Exception as e:
-                errori.append(f"cartella {box}: {e}")
-    finally:
-        try:
-            M.logout()
-        except Exception:
-            pass
+        download = await _download_email_batch(erp, user, password, host, 90, 200, patterns)
+    except Exception as exc:
+        logger.warning("Posta HR: download fallito (%s)", type(exc).__name__)
+        raise HTTPException(502, "Lettura della posta non riuscita. Controlla il collegamento alla casella nelle Impostazioni del gestionale.") from exc
+    if download.get("success") is False:
+        raise HTTPException(502, "La casella del gestionale non ha completato la lettura. Controlla l'esito nella pagina Importa.")
 
-    if not pdf_items:
-        return {"associati": [], "da_controllare": [], "totale_associati": 0, "file_pdf": 0,
-                "mesi": [], "errori": errori, "bonifici": [], "presenze": [], "duplicati": [],
-                "tfr": [], "prestiti": [], "cartelle_lette": cartelle_lette,
-                "documenti": {"caricati": 0, "non_assegnati": 0, "duplicati": 0},
-                "messaggio": "Nessun allegato PDF trovato nella casella."}
-    res = await _importa_documenti(pdf_items, errori)
-    res["cartelle_lette"] = cartelle_lette
-    # Oltre a paghe/bonifici, archivia OGNI allegato nelle cartelle Documenti del dipendente
-    # (UNILAV, Certificazione Unica, contratti, codice fiscale…): stesso motore dell'upload massivo.
-    db_doc = get_db()
-    indici = await _indici_dipendenti(db_doc)
-    doc_caricati, doc_non_ass, doc_dup = 0, 0, 0
-    for origine, raw in pdf_items:
+    docs = await erp["documents_inbox"].find({"$or": [
+        {"category": "busta_paga"}, {"tipo_documento": {"$in": ["busta_paga", "cedolino"]}},
+    ]}, {"_id": 0}).to_list(200)
+    files, errori = [], []
+    for doc in docs:
+        nome = doc.get("filename") or "cedolino.pdf"
         try:
-            esito, _cat, _nome = await _archivia_documento_cloud(db_doc, origine, raw, indici=indici, origine="email")
-            if esito == "caricato":
-                doc_caricati += 1
-            elif esito == "non_assegnato":
-                doc_non_ass += 1
-            elif esito == "duplicato":
-                doc_dup += 1
-        except Exception as e:
-            errori.append(f"archivio doc {origine}: {e}")
-    res["documenti"] = {"caricati": doc_caricati, "non_assegnati": doc_non_ass, "duplicati": doc_dup}
-    return res
+            originale = await byte_dal_record(doc, [])
+            if not originale:
+                raise ValueError("Originale non disponibile")
+            file = UploadFile(filename=nome, file=io.BytesIO(originale[0]))
+            file.drive_file_id = doc.get("drive_file_id")
+            files.append(file)
+        except Exception as exc:
+            errori.append(f"{nome}: {exc}")
+    result = await importa_libro_unico_canonico(files=files) if files else {
+        "file_pdf": 0, "totale_associati": 0, "associati": [], "duplicati": [], "errori": [], "mesi": [],
+    }
+    result.setdefault("errori", []).extend(errori)
+    result["success"] = not result["errori"] and result.get("success", True)
+    result["messaggio"] = "Posta del gestionale: ultimi 90 giorni, fino a 200 messaggi per lettura. Elaborati i cedolini presenti nell'archivio documenti."
+    if not files:
+        result["messaggio"] += " Nessun cedolino disponibile."
+    return result
 
 
 # ============ PRESENZE ============
