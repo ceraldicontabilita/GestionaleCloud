@@ -4270,7 +4270,14 @@ async def _calcola_associazioni_bonifici(db, anno: Optional[int] = None, mese: O
     # proiezioni "ad esclusione" (campo: 0) — una proiezione a inclusione
     # come questa arriverebbe comunque per intero, PDF in base64 compresi
     # (anche centinaia di MB su ~1500 cedolini). Il PDF si scarica a parte,
-    # da qui basta sapere che il cedolino esiste (has_pdf = bool(ced)).
+    # l'esistenza del record da sola non prova però la presenza dell'originale.
+    pdf_incorporati = {c.get("id") async for c in db.cedolini.find(
+        {"pdf_data": {"$exists": True}}, {"_id": 0, "pdf_data": 0})}
+
+    def ha_originale(c):
+        return bool(c and (c.get("blob_key") or c.get("drive_file_id") or c.get("ha_pdf")
+                          or ((c.get("_drive_payloads") or {}).get("pdf_data") or {}).get("drive_file_id")
+                          or c.get("id") in pdf_incorporati))
     cedolini_lista: List[Dict[str, Any]] = []
     ced_by_periodo: Dict[tuple, Dict[str, Any]] = {}
     ced_by_id = {}
@@ -4378,6 +4385,9 @@ async def _calcola_associazioni_bonifici(db, anno: Optional[int] = None, mese: O
         if avvisi_excel or acconto_da_verificare:
             st = "da_verificare"
 
+        if stato and st != stato:
+            continue
+
         if st == STATO_PAGA_PAGATO:
             tot["pagati"] += 1
         elif st == STATO_PAGA_PARZIALE:
@@ -4410,13 +4420,9 @@ async def _calcola_associazioni_bonifici(db, anno: Optional[int] = None, mese: O
             if associato:
                 tot["associati"] += 1
 
-        # Esiste il cedolino per questo periodo? (il PDF non è stato letto qui,
-        # vedi nota sul prefetch sopra — quasi ogni cedolino importato ne ha uno)
-        has_pdf = bool(ced)
+        # Presenza del riferimento all'originale, senza scaricare il PDF.
+        has_pdf = ha_originale(ced)
         cedolino_id = ced.get("id") if ced else None
-
-        if stato and st != stato:
-            continue
 
         tot["buste"] += busta
         tot["bonifici"] += bon
@@ -4468,18 +4474,24 @@ async def _calcola_associazioni_bonifici(db, anno: Optional[int] = None, mese: O
     # una busta da zero euro né un debito inventato.
     da_leggere = []
     for c in cedolini_lista:
-        if c.get("netto") is not None:
+        if c.get("netto") is not None or not ha_originale(c):
             continue
         if anno and c.get("anno") != int(anno):
             continue
-        if mese and c.get("mese") != int(mese):
+        if stato and stato != "da_verificare":
+            continue
+        try:
+            mese_cedolino = _mese_registro(c)
+        except (KeyError, TypeError, ValueError):
+            continue
+        if mese and mese_cedolino != int(mese):
             continue
         dip = dip_map.get(c.get("dipendente_id")) or {}
         da_leggere.append({
             "cedolino_id": c.get("id"), "dipendente_id": c.get("dipendente_id"),
             "dipendente": f"{dip.get('cognome', '')} {dip.get('nome', '')}".strip()
                 or c.get("nome_dipendente") or "Dipendente da associare",
-            "anno": c.get("anno"), "mese": c.get("mese"),
+            "anno": c.get("anno"), "mese": mese_cedolino,
         })
     return {"righe": righe, "totali": tot, "count": len(righe), "cedolini_da_verificare": da_leggere}
 
@@ -4487,71 +4499,12 @@ async def _calcola_associazioni_bonifici(db, anno: Optional[int] = None, mese: O
 @router.get("/paghe/associazioni-bonifici/export-excel")
 async def associazioni_bonifici_export_excel(anno: Optional[int] = None, mese: Optional[int] = None,
                                               stato: Optional[str] = None):
-    """Esporta in Excel la stessa vista di /paghe/associazioni-bonifici: una riga per
-    dipendente/periodo con dipendente, periodo cedolino, importo cedolino, importo bonifico
-    e stato dell'associazione. Stessa fonte dati (nessun sistema parallelo)."""
-    import openpyxl
-    from openpyxl.styles import Font, PatternFill, Alignment
+    """Esporta documenti, pagamenti, PDF mancanti e mesi riconciliati separatamente."""
     from fastapi.responses import StreamingResponse
-    from app.services.conti_pos import data_italiana
+    from app.hr.services.export_paghe import workbook_paghe
 
     dati = await _calcola_associazioni_bonifici(get_db(), anno, mese, stato)
-    mesi = ["Gennaio", "Febbraio", "Marzo", "Aprile", "Maggio", "Giugno", "Luglio",
-            "Agosto", "Settembre", "Ottobre", "Novembre", "Dicembre"]
-
-    wb = openpyxl.Workbook()
-    ws = wb.active
-    ws.title = "Cedolini e Bonifici"
-    intestazioni = ["Dipendente", "Periodo", "Dovuto del periodo", "Importo Bonifico",
-                    "Acconti", "Erogato", "Saldo", "Stato", "Qualità match", "Fonte",
-                    "N. Bonifici", "Data ultimo bonifico", "CRO / riferimento bonifici", "PDF Cedolino",
-                    "Netto stampato", "Recupero acconto"]
-    ws.append(intestazioni)
-    header_font = Font(bold=True, color="FFFFFF")
-    header_fill = PatternFill(start_color="5B7A6B", end_color="5B7A6B", fill_type="solid")
-    for cell in ws[1]:
-        cell.font = header_font
-        cell.fill = header_fill
-        cell.alignment = Alignment(horizontal="center")
-
-    stati_lbl = {"pagato": "Pagato", "parziale": "Parziale", "da_pagare": "Da pagare",
-                 "da_verificare": "Da verificare", STATO_PAGA_IN_ATTESA_BUSTA: "In attesa della busta"}
-    qualita_lbl = {"esatto": "Match esatto", "per_importo": "Match per importo",
-                   "aggregato": "Più bonifici", "da_verificare": "Da verificare"}
-    for r in dati["righe"]:
-        periodo = f"{mesi[r['mese'] - 1]} {r['anno']}" if r.get("mese") and 1 <= r["mese"] <= 12 else f"{r.get('mese')}/{r.get('anno')}"
-        # "Data ultimo bonifico": paghe_mensili.bonifico_data non viene mai
-        # popolato dagli import via pagamenti_esiti (CSV, Drive, ponte storico) —
-        # la data vera sta sui singoli pagamenti (r["bonifici"], già ordinati per
-        # data), non sul campo aggregato della busta.
-        date_bonifici = [b.get("data") for b in (r.get("bonifici") or []) if b.get("data")]
-        data_ultimo = max(date_bonifici) if date_bonifici else (r.get("bonifico_data") or "")
-        # Il CRO sta accanto al bonifico: e' quello che si cerca sull'estratto conto.
-        riferimenti = ", ".join(dict.fromkeys(
-            str(b.get("riferimento")) for b in (r.get("bonifici") or []) if b.get("riferimento")))
-        ws.append([
-            r.get("dipendente"), periodo,
-            r.get("busta"), r.get("bonifico") or 0, r.get("acconti") or 0,
-            r.get("erogato") or 0, r.get("saldo"),
-            stati_lbl.get(r.get("stato"), r.get("stato")),
-            qualita_lbl.get(r.get("qualita"), r.get("qualita") or ""),
-            r.get("fonte") or "", r.get("n_bonifici") or 0,
-            data_italiana(data_ultimo) if data_ultimo else "", riferimenti,
-            "Sì" if r.get("cedolino_pdf") else "No",
-            r.get("netto_stampato"), r.get("acconto_recuperato"),
-        ])
-    # Importi in euro all'italiana, incolonnati a destra (colonne C..G).
-    for riga in ws.iter_rows(min_row=2, min_col=3, max_col=7):
-        for cella in riga:
-            cella.number_format = '#,##0.00 "€"'
-            cella.alignment = Alignment(horizontal="right")
-    for riga in ws.iter_rows(min_row=2, min_col=15, max_col=16):
-        for cella in riga:
-            cella.number_format = '#,##0.00 "€"'
-    for col in ws.columns:
-        larghezza = max((len(str(c.value)) if c.value is not None else 0) for c in col) + 2
-        ws.column_dimensions[col[0].column_letter].width = min(max(larghezza, 10), 40)
-
+    wb = workbook_paghe(dati)
     buf = io.BytesIO()
     wb.save(buf)
     buf.seek(0)
