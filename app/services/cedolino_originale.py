@@ -1,7 +1,7 @@
 """Accesso puntuale all'originale di un cedolino.
 
-Il resolver mantiene compatibilità con i documenti storici incorporati e usa
-Drive come archivio canonico per i nuovi import.
+Il resolver legge gli originali ricevuti da Drive, il deposito protetto degli
+upload manuali e i documenti storici incorporati.
 """
 from __future__ import annotations
 

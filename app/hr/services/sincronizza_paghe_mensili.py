@@ -24,6 +24,7 @@ Un bonifico arrivato **prima** della busta lascia il mese `in_attesa_busta`
 qui, all'arrivo del cedolino, la riga riceve la busta e i pagamenti gia'
 depositati (`pagamenti_esiti`, acconti) la chiudono da soli: pagato o parziale.
 """
+import asyncio
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
@@ -62,7 +63,17 @@ def _mese_registro(c: Dict[str, Any]) -> int:
     return int(c["mese"])
 
 
+_SYNC_LOCK = asyncio.Lock()
+
+
 async def sincronizza(db, anno: int = None) -> Dict[str, Any]:
+    # Drive e upload manuale possono terminare insieme: non creare due righe
+    # per lo stesso mese mentre entrambi vedono ancora il registro precedente.
+    async with _SYNC_LOCK:
+        return await _sincronizza(db, anno)
+
+
+async def _sincronizza(db, anno: int = None) -> Dict[str, Any]:
     from app.hr.db_supabase import SupabaseDatabase
 
     if isinstance(db, SupabaseDatabase):
