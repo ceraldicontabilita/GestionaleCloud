@@ -8,8 +8,9 @@ import { Input } from '../../components/ui/input';
 import { Button } from '../../components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../components/ui/select';
 import { toast } from '../../hooks/use-toast';
+import { avviaPollingVisibile } from '../../utils/visiblePolling';
 
-const BACKEND_URL = process.env.REACT_APP_MENU_BACKEND_URL;
+import { MENU_BACKEND_URL as BACKEND_URL } from '@/lib/backend';
 
 const priceToNumber = (price) => parseFloat(String(price).replace('€', '').trim().replace(',', '.')) || 0;
 
@@ -87,8 +88,7 @@ const CounterPage = () => {
   useEffect(() => {
     if (!authorized) return;
     loadUnpaid();
-    const interval = setInterval(loadUnpaid, 8000);
-    return () => clearInterval(interval);
+    return avviaPollingVisibile(loadUnpaid, 8000);
   }, [authorized, loadUnpaid]);
 
   const submitCounterOrder = async (paymentMethod) => {

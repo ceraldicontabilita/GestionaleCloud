@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 
 async def avvio(*, avvia_scheduler: bool = True):
-    """Startup originale (DB, scheduler scadenze, seed TFR, scheduler paghe, fix avvio).
+    """Avvio del DB e dei soli scheduler operativi.
 
     Estratto dal lifespan cosi' che l'app ospite (GestionaleCloud, che monta
     questa app a /hr) possa richiamarlo dal proprio lifespan: Starlette NON
@@ -28,22 +28,12 @@ async def avvio(*, avvia_scheduler: bool = True):
             start_scheduler()
         except Exception as e:
             logger.warning(f"Scadenzario non avviato: {e}")
-    try:
-        from .services.tfr_seed import seed_tfr_periodi
-        await seed_tfr_periodi()
-    except Exception as e:
-        logger.warning(f"Seed TFR non avviato: {e}")
     if avvia_scheduler:
         try:
             from .services.paghe_scheduler import start_scheduler as start_paghe_scheduler
             start_paghe_scheduler()
         except Exception as e:
             logger.warning(f"Sincronizzazione paghe periodica non avviata: {e}")
-    try:
-        from .services.startup_fixes import applica_fix_avvio
-        await applica_fix_avvio()
-    except Exception as e:
-        logger.warning(f"Fix avvio non eseguiti: {e}")
 
 
 async def arresto():

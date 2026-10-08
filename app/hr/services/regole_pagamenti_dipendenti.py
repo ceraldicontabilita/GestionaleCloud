@@ -176,7 +176,8 @@ async def bonifica_storico(db, *, dry_run: bool = True, force: bool = False) -> 
                                       "data_cessazione_rapporto": fine,
                                       "associazione_certa_at": ora}},
                         )
-        certi_per_key[key] = certo
+        from app.constants.stati_associazione_bonifico import ha_riscontro_bancario
+        certi_per_key[key] = certo and ha_riscontro_bancario(esito)
         try:
             periodo = (esito.get("dipendente_id"), int(esito.get("anno")), int(esito.get("mese")))
         except (TypeError, ValueError):

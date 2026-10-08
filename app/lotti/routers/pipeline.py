@@ -406,7 +406,10 @@ async def esegui_pipeline_post_import(motivo: str = "manuale"):
             log["manuale_haccp_aggiornato"] = False
             log["manuale_haccp_errore"] = str(e_m)
         log["durata_s"] = round((datetime.now(timezone.utc) - start).total_seconds(), 1)
-        log["esito"] = "OK"
+        falliti = [step for step in ("prodotti_master", "manuale_haccp")
+                   if log.get(f"{step}_errore")]
+        log["step_falliti"] = falliti
+        log["esito"] = "PARZIALE" if falliti else "OK"
     except Exception as e:
         log["esito"] = "ERRORE"
         log["errore"] = str(e)

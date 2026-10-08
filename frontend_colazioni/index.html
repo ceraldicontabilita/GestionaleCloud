@@ -209,7 +209,7 @@ function scioperiHtml(E){
 let sess=JSON.parse(sessionStorage.getItem("sess")||"null");
 const setSess=x=>{sess=x;sessionStorage.setItem("sess",JSON.stringify(x))};
 const go=h=>{if(location.hash===h)render();else location.hash=h};
-const esci=()=>{const c=sess&&sess.c,r=sess&&sess.r,p=sess&&sess.p;if(r==="alb"&&p)rpc("bb_alb_logout",{p}).catch(()=>{});setSess(null);go(c?"#/hotel/"+c:r==="tit"?"#/titolare":"#/")};
+const esci=()=>{const c=sess&&sess.c,r=sess&&sess.r,p=sess&&sess.p;if(p&&(r==="alb"||r==="tit"))rpc(r==="alb"?"bb_alb_logout":"bb_tit_logout",{p}).catch(()=>{});setSess(null);go(c?"#/hotel/"+c:r==="tit"?"#/titolare":"#/")};
 const loading=()=>{app.innerHTML=`<p class="mute" style="text-align:center;margin-top:40px">Caricamento…</p>`};
 addEventListener("hashchange",render);
 async function render(){

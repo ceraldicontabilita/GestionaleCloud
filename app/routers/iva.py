@@ -117,8 +117,8 @@ def _arricchisci_fattura_iva(doc: Dict[str, Any]) -> Dict[str, Any]:
     return riga
 
 
-def _utente_autenticato(current_user: Any, legacy_utente: Optional[str] = None) -> str:
-    """Usa l'identita JWT; il parametro legacy non puo sovrascriverla."""
+def _utente_autenticato(current_user: Any) -> str:
+    """Usa esclusivamente l'identita autenticata."""
     if isinstance(current_user, dict):
         return str(
             current_user.get("user_id")
@@ -126,7 +126,7 @@ def _utente_autenticato(current_user: Any, legacy_utente: Optional[str] = None) 
             or current_user.get("name")
             or "utente_autenticato"
         )
-    return str(legacy_utente or "sistema")
+    return "sistema"
 
 
 def _iva_corrispettivo(doc: Dict[str, Any]) -> float:
@@ -175,7 +175,6 @@ _PROJ_RICALCOLO = {
 @router.post("/ricalcola-attribuzione")
 async def ricalcola_attribuzione(
     anno: Optional[int] = Query(None, description="Limita al singolo anno (opzionale). Vuoto = TUTTE le fatture"),
-    utente: Optional[str] = Query(None, deprecated=True),
     current_user: Optional[Dict[str, Any]] = Depends(get_current_user),
 ) -> Dict[str, Any]:
     """Calcola il PREGRESSO: rilegge DAVVERO tutte le fatture di acquisto (o di
@@ -225,7 +224,7 @@ async def ricalcola_attribuzione(
     report = {
         "id": str(uuid.uuid4()),
         "eseguito_il": datetime.now(timezone.utc).isoformat(),
-        "eseguito_da": _utente_autenticato(current_user, utente),
+        "eseguito_da": _utente_autenticato(current_user),
         "filtro_anno": anno,
         "lette": lette,
         "modificate": modificate,
@@ -508,7 +507,6 @@ async def calcola_liquidazione(
 @router.post("/liquidazioni/{liq_id}/conferma")
 async def conferma_liquidazione(
     liq_id: str,
-    utente: Optional[str] = Query(None, deprecated=True),
     current_user: Optional[Dict[str, Any]] = Depends(get_current_user),
 ) -> Dict[str, Any]:
     """Conferma la liquidazione: marca l'IVA delle fatture incluse come
@@ -530,7 +528,7 @@ async def conferma_liquidazione(
         )
 
     periodo = doc["periodo"]
-    actor = _utente_autenticato(current_user, utente)
+    actor = _utente_autenticato(current_user)
     ora = datetime.now(timezone.utc).isoformat()
     fatture_incluse = [f for f in doc.get("fatture_incluse", []) if f.get("id")]
     ids = [f["id"] for f in fatture_incluse]
@@ -674,7 +672,6 @@ async def conferma_liquidazione(
 @router.post("/liquidazioni/{liq_id}/riapri")
 async def riapri_liquidazione(
     liq_id: str,
-    utente: Optional[str] = Query(None, deprecated=True),
     motivo: str = Query("Riapertura", description="Motivazione obbligatoria (§19)"),
     current_user: Optional[Dict[str, Any]] = Depends(get_current_user),
 ) -> Dict[str, Any]:
@@ -687,7 +684,7 @@ async def riapri_liquidazione(
     if doc.get("stato") not in (liq.CONFERMATA, liq.TRASMESSA):
         raise HTTPException(status_code=409, detail="Solo una liquidazione confermata può essere riaperta")
 
-    actor = _utente_autenticato(current_user, utente)
+    actor = _utente_autenticato(current_user)
     if not motivo or not motivo.strip():
         raise HTTPException(status_code=422, detail="La motivazione della riapertura e obbligatoria")
     liberate = await _libera_fatture(db, liq_id, doc["periodo"], actor, motivo.strip())
@@ -737,7 +734,6 @@ async def _libera_fatture(db, liq_id: str, periodo: str, utente: str, motivo: st
 @router.post("/liquidazioni/{liq_id}/rettifica")
 async def rettifica_liquidazione(
     liq_id: str,
-    utente: Optional[str] = Query(None, deprecated=True),
     motivo: str = Query(..., description="Motivazione obbligatoria della rettifica (§19)"),
     iva_vendite: Optional[float] = Query(None),
     current_user: Optional[Dict[str, Any]] = Depends(get_current_user),
@@ -752,7 +748,7 @@ async def rettifica_liquidazione(
         raise HTTPException(status_code=409, detail="Solo una liquidazione confermata può essere rettificata")
 
     periodo = doc["periodo"]
-    actor = _utente_autenticato(current_user, utente)
+    actor = _utente_autenticato(current_user)
     if not motivo or not motivo.strip():
         raise HTTPException(status_code=422, detail="La motivazione della rettifica e obbligatoria")
     await _libera_fatture(db, liq_id, periodo, actor, motivo.strip())
@@ -1035,67 +1031,67 @@ async def _azione_stato_fattura(
 
 @router.post("/fatture/{fid}/escludi")
 async def escludi_fattura(
-    fid: str, motivo: str = Query(...), utente: Optional[str] = Query(None, deprecated=True),
+    fid: str, motivo: str = Query(...),
     current_user: Optional[Dict[str, Any]] = Depends(get_current_user),
 ):
     """Esclude manualmente l'IVA della fattura dal calcolo (§19)."""
     return await _azione_stato_fattura(
-        fid, "ESCLUSA", liq.MOV_ESCLUSIONE, motivo, _utente_autenticato(current_user, utente),
+        fid, "ESCLUSA", liq.MOV_ESCLUSIONE, motivo, _utente_autenticato(current_user),
         extra_set={"disponibile_per_nuovo_calcolo": False, "motivo_esclusione": motivo},
     )
 
 
 @router.post("/fatture/{fid}/includi")
 async def includi_fattura(
-    fid: str, motivo: str = Query("Reinclusa manualmente"), utente: Optional[str] = Query(None, deprecated=True),
+    fid: str, motivo: str = Query("Reinclusa manualmente"),
     current_user: Optional[Dict[str, Any]] = Depends(get_current_user),
 ):
     """Reinserisce nel calcolo una fattura esclusa/rinviata (§19)."""
     return await _azione_stato_fattura(
-        fid, "DA_INSERIRE", liq.MOV_ATTRIBUZIONE, motivo, _utente_autenticato(current_user, utente),
+        fid, "DA_INSERIRE", liq.MOV_ATTRIBUZIONE, motivo, _utente_autenticato(current_user),
         extra_set={"disponibile_per_nuovo_calcolo": True, "motivo_esclusione": None},
     )
 
 
 @router.post("/fatture/{fid}/rinvia")
 async def rinvia_fattura(
-    fid: str, motivo: str = Query(...), utente: Optional[str] = Query(None, deprecated=True),
+    fid: str, motivo: str = Query(...),
     current_user: Optional[Dict[str, Any]] = Depends(get_current_user),
 ):
     """Rinvia l'IVA a un periodo successivo (§19)."""
     return await _azione_stato_fattura(
-        fid, "RINVIATA", liq.MOV_ESCLUSIONE, motivo, _utente_autenticato(current_user, utente),
+        fid, "RINVIATA", liq.MOV_ESCLUSIONE, motivo, _utente_autenticato(current_user),
         extra_set={"disponibile_per_nuovo_calcolo": True},
     )
 
 
 @router.post("/fatture/{fid}/indetraibile")
 async def indetraibile_fattura(
-    fid: str, motivo: str = Query(...), utente: Optional[str] = Query(None, deprecated=True),
+    fid: str, motivo: str = Query(...),
     current_user: Optional[Dict[str, Any]] = Depends(get_current_user),
 ):
     """Segna l'IVA come indetraibile per natura/limitazione (§19)."""
     return await _azione_stato_fattura(
-        fid, "INDETRAIBILE", liq.MOV_RETTIFICA, motivo, _utente_autenticato(current_user, utente),
+        fid, "INDETRAIBILE", liq.MOV_RETTIFICA, motivo, _utente_autenticato(current_user),
         extra_set={"disponibile_per_nuovo_calcolo": False},
     )
 
 
 @router.post("/fatture/{fid}/recupero-annuale")
 async def recupero_annuale_fattura(
-    fid: str, motivo: str = Query(...), utente: Optional[str] = Query(None, deprecated=True),
+    fid: str, motivo: str = Query(...),
     current_user: Optional[Dict[str, Any]] = Depends(get_current_user),
 ):
     """Segna l'IVA come recuperata nella dichiarazione annuale (§19)."""
     return await _azione_stato_fattura(
-        fid, "RECUPERATA_IN_DICHIARAZIONE_ANNUALE", liq.MOV_RECUPERO_ANNUALE, motivo, _utente_autenticato(current_user, utente),
+        fid, "RECUPERATA_IN_DICHIARAZIONE_ANNUALE", liq.MOV_RECUPERO_ANNUALE, motivo, _utente_autenticato(current_user),
     )
 
 
 @router.post("/fatture/{fid}/correggi-periodo")
 async def correggi_periodo_fattura(
     fid: str, periodo: str = Query(..., description="Nuovo periodo 'YYYY-MM'"),
-    motivo: str = Query(...), utente: Optional[str] = Query(None, deprecated=True),
+    motivo: str = Query(...),
     current_user: Optional[Dict[str, Any]] = Depends(get_current_user),
 ):
     """Corregge manualmente il periodo IVA attribuito (§19)."""
@@ -1104,7 +1100,7 @@ async def correggi_periodo_fattura(
     except (TypeError, ValueError) as exc:
         raise HTTPException(status_code=422, detail="Periodo non valido: usare YYYY-MM") from exc
     return await _azione_stato_fattura(
-        fid, "DA_INSERIRE", liq.MOV_RETTIFICA, motivo, _utente_autenticato(current_user, utente),
+        fid, "DA_INSERIRE", liq.MOV_RETTIFICA, motivo, _utente_autenticato(current_user),
         extra_set={"periodo_iva_attribuito": periodo, "regola_iva_applicata": "CORREZIONE_MANUALE"},
     )
 

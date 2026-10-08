@@ -45,7 +45,7 @@ async def lista_stampanti():
     """Lista le stampanti configurate. Se vuota, semina le 4 predefinite (IP vuoto)."""
     docs = await COLL.find({}, {"_id": 0}).to_list(100)
     if not docs:
-        clean = [Stampante(**d).dict() for d in DEFAULT]
+        clean = [Stampante(**d).model_dump() for d in DEFAULT]
         await COLL.insert_many([dict(c) for c in clean])  # le copie ricevono _id, non clean
         docs = clean
     return docs
@@ -61,7 +61,7 @@ async def stampante_per_categoria(categoria: str, reparto: str = ""):
 
 @router.post("")
 async def crea_stampante(s: Stampante, _admin=Depends(require_admin)):
-    d = s.dict()
+    d = s.model_dump()
     await COLL.insert_one(dict(d))
     return d
 
@@ -139,7 +139,7 @@ async def accoda_stampa(job: JobStampa, request: Request):
     Se la stampante è di rete (IP configurato) e il documento è un'etichetta lotto,
     l'instradamento passa automaticamente a ESC/POS diretto (socket :9100)."""
     st = await _stampante_per_categoria(job.categoria, job.reparto)
-    d = job.dict()
+    d = job.model_dump()
     d["url"] = _senza_token(d["url"])
     if d["url"].startswith("/"):
         # Dentro il gestionale il frontend usa URL relativi (/lotti/api/...):

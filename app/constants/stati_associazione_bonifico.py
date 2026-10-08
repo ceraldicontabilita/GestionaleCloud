@@ -66,6 +66,26 @@ def e_confermato_manuale(riga) -> bool:
     return bool(riga) and riga.get(CAMPO_CONFERMATO) is True
 
 
+def ha_riscontro_bancario(esito) -> bool:
+    """Una disposizione PDF prova l'ordine, non l'addebito sul conto.
+
+    Il deposito canonico conserva l'id del movimento anche quando arricchisce
+    un esito nato dal PDF. Identità certa e CRO non sono riscontri bancari.
+    """
+    return bool(esito) and bool(
+        esito.get("gestionale_movimento_id")
+        or esito.get("origine") == "gestionale-estratto-conto"
+    )
+
+
+def esiti_riconciliati(esiti) -> bool:
+    """Tutti gli importi devono avere sia identità certa sia riscontro banca."""
+    return bool(esiti) and all(
+        e.get("associazione_certa") is True and ha_riscontro_bancario(e)
+        for e in esiti
+    )
+
+
 # ── candidati della coda ─────────────────────────────────────────────────────
 MAX_CANDIDATI = 10
 #: Cambia quando cambia il modo di calcolarli: le righe salvate con un'altra

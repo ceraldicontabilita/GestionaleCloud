@@ -15,6 +15,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import axios from "axios";
 import { toast } from "sonner";
+import { avviaPollingVisibile } from "../../utils/visiblePolling";
 import { Search, RefreshCw, Package, ChevronRight, Home, Download, Tag, LayoutGrid, List, ExternalLink, Check, Plus, Trash2, X, Info, ZoomIn, ShoppingCart } from "lucide-react";
 import { API } from "../../utils/constants";
 import PrezzoFornitoreEditor from "./PrezzoFornitoreEditor";
@@ -605,11 +606,10 @@ export const CatalogoFornitoreView = ({ fornitore, nome, logoUrl }) => {
 
   useEffect(() => {
     if (statoScraping?.stato !== "in_corso") return undefined;
-    const timer = window.setInterval(async () => {
+    return avviaPollingVisibile(async () => {
       await Promise.all([caricaStato(), caricaCategorie()]);
       if (categoriaAttiva || search) caricaProdotti(categoriaAttiva, search);
     }, 7000);
-    return () => window.clearInterval(timer);
   }, [statoScraping?.stato, caricaStato, caricaCategorie, caricaProdotti, categoriaAttiva, search]);
 
   const togglePreferitoColazione = async (prodotto) => {

@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 
 import { API } from "../../utils/constants";
+import { avviaPollingVisibile } from "../../utils/visiblePolling";
 
 const COLORI_PRIORITA = {
   critica: { bg: "bg-red-50",     border: "border-red-400",   text: "text-red-700",   badge: "bg-red-500",     icon: AlertTriangle },
@@ -55,8 +56,7 @@ export function SupervisoreBadge({ onNavigate }) {
   // Carica all'avvio e ogni 5 minuti
   useEffect(() => {
     carica();
-    const timer = setInterval(carica, 5 * 60 * 1000);
-    return () => clearInterval(timer);
+    return avviaPollingVisibile(carica, 5 * 60 * 1000);
   }, [carica]);
 
   // Aggiornamento automatico quando un lotto viene eliminato/smaltito

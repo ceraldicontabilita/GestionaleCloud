@@ -20,7 +20,6 @@ from app.routers.prima_nota_module.common import (
     aggrega_saldo_prima_nota,
     entra_in_prima_nota,
 )
-from app.routers.prima_nota_module.sync import costruisci_campi_movimento_fattura
 from app.services.scritture_contabili import scrivi_movimento
 from app.services.bank_evidence import EVIDENZA_UFFICIALE, campi_evidenza
 from app.services.categorizzazione_movimenti import categorizza_movimento_bancario
@@ -32,18 +31,9 @@ from app.services.estratto_conto_bnl_parser import (
     movimenti_per_archivio as movimenti_per_archivio_bnl,
 )
 from app.services.regole_riconoscimento_banca import carica_regole as _carica_regole_riconoscimento
-from app.services.stato_pagamento_fattura import FILTRO_NON_PAGATE
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
-
-# Fase 0 (15/09/2026, PROMPT_CLAUDE_CODE_FASE_0.md punto 11): disattiva il
-# "Motore C" (riconciliazione automatica fatture provvisorie durante
-# l'import estratto conto, righe 942-1025 nell'audit) — un motore parallelo
-# di riconciliazione fatture con proprie tolleranze/regole, separato dallo
-# scrittore canonico persist_bank_invoice_allocations. Rimuovere in Fase 3.
-FASE0_DISATTIVATO = True
-
 
 @asynccontextmanager
 async def _write_batch(db):
@@ -1152,90 +1142,6 @@ async def import_estratto_conto(file: UploadFile = File(...)) -> Dict[str, Any]:
     except Exception as e:
         logger.error(f"Errore riconciliazione paghe: {e}")
     
-    # ===== RICONCILIAZIONE FATTURE PROVVISORIE =====
-    # Cerca pagamenti nell'EC per fatture non ancora pagate.
-    # Il match e la registrazione passano dall'helper condiviso (stessa logica
-    # dell'import fatture): segno importo tollerato, finestra date, movimento
-    # EC consumato (riconciliato=True), flag fattura coerenti.
-    provvisori_riconciliati = 0
-    try:
-        from app.routers.invoices.fatture_upload import find_ec_match_for_invoice
-        provvisori = await db["invoices"].find({
-            "total_amount": {"$gt": 0},
-            # "sospesa" = bloccata manualmente in Prima Nota Provvisoria:
-            # esclusa dal matching automatico, come in riconciliazione_bancaria.
-            "stato_pagamento": {"$nin": ["pagata", "paid", "sospesa"]},
-            **FILTRO_NON_PAGATE,
-            "$or": [{"prima_nota_id": None}, {"prima_nota_id": {"$exists": False}}, {"prima_nota_id": ""}]
-        }, {"_id": 0, "id": 1, "supplier_name": 1, "supplier_vat": 1, "total_amount": 1,
-            "invoice_date": 1, "invoice_number": 1, "tipo_documento": 1}).to_list(500)
-
-        for f in provvisori if (not FASE0_DISATTIVATO and fonte_ufficiale and has_material_changes) else []:
-            importo = float(f.get("total_amount", 0))
-            match = await find_ec_match_for_invoice(
-                db, importo, f.get("supplier_name", ""), f.get("invoice_date", ""),
-                f.get("invoice_number", ""),
-            )
-            if match:
-                # Dedup: se esiste già un movimento prima nota per questa fattura, non duplicare
-                rif = f"FATT-{f['id']}"
-                existing_pn = await db["prima_nota_banca"].find_one({
-                    "$or": [{"riferimento": rif}, {"fattura_id": f["id"]}],
-                    "status": {"$nin": ["deleted", "archived"]},
-                })
-                if existing_pn:
-                    pn_id = existing_pn.get("id")
-                else:
-                    pn_id = str(_uuid.uuid4())
-                    # Nota di credito (TD04/TD08) NON è un pagamento a
-                    # fornitore in uscita: stessa regola già applicata in
-                    # prima_nota_module/sync.py (bug segnalato dall'utente
-                    # 14/07/2026, qui era hardcoded "uscita"/"Fatture").
-                    await scrivi_movimento(db, "banca", {
-                        "id": pn_id, "data": match.get("data") or match.get("data_contabile") or f.get("invoice_date", ""),
-                        **costruisci_campi_movimento_fattura(f, importo),
-                        "fattura_id": f["id"],
-                        "riferimento": rif,
-                        "fornitore_piva": f.get("supplier_vat", ""),
-                        "estratto_conto_id": match.get("id"),
-                        "source": "riconciliazione_ec_auto",
-                        "created_at": datetime.now(timezone.utc).isoformat(),
-                    })
-                await db["invoices"].update_one({"id": f["id"]}, {"$set": {
-                    "prima_nota_id": pn_id, "prima_nota_tipo": "banca", "prima_nota_banca_id": pn_id,
-                    "stato_pagamento": "pagata", "pagato": True, "paid": True,
-                    "data_pagamento": match.get("data") or match.get("data_contabile") or f.get("invoice_date"),
-                    "riconciliato_con_ec": match.get("id"),
-                }})
-                await db["estratto_conto_movimenti"].update_one(
-                    {"id": match.get("id")},
-                    {"$set": {
-                        "riconciliato": True,
-                        "tipo_riconciliazione": "fattura_provvisoria",
-                        "dettagli_riconciliazione": {"fattura_id": f["id"], "prima_nota_id": pn_id},
-                    }}
-                )
-                provvisori_riconciliati += 1
-
-                # --- EVENT BUS: propaga FATTURA_PAGATA (riconciliazione provvisori EC) ---
-                try:
-                    from app.services.event_bus import propagate_event, EventTypes
-                    await propagate_event(EventTypes.FATTURA_PAGATA, {
-                        "fattura_id": f["id"],
-                        "metodo_pagamento": "banca",
-                        "data_pagamento": match.get("data") or match.get("data_contabile") or f.get("invoice_date"),
-                        "movimento_id": match.get("id"),
-                        "importo": importo,
-                    }, db, source_module="ec_riconciliazione_provvisori")
-                except Exception:
-                    logger.exception("Errore propagazione fattura.pagata (riconcilia provvisori EC)")
-
-        if provvisori_riconciliati > 0:
-            logger.info(f"[EC Import] Riconciliate {provvisori_riconciliati} fatture provvisorie con EC")
-    except Exception as e:
-        logger.error(f"Errore riconciliazione provvisori: {e}")
-        riconciliazione_paghe = {"error": str(e)}
-
     # ===== SYNC ASSEGNI DA ESTRATTO CONTO =====
     # Prima era un bottone manuale nella pagina Assegni ("Sync da E/C"):
     # ora scatta automaticamente subito dopo ogni import dell'estratto conto.
@@ -1524,7 +1430,6 @@ async def import_estratto_conto(file: UploadFile = File(...)) -> Dict[str, Any]:
         "riconciliazione_operativa": riconciliazione_operativa,
         "riconciliazione_summary": (riconciliazione_results or {}).get("summary"),
         "riconciliazione_paghe": riconciliazione_paghe,
-        "provvisori_riconciliati": provvisori_riconciliati,
         "assegni_sync": assegni_sync,
         "sync_prima_nota": sync_generico,
         "recupero_pos_storico": pos_storico,

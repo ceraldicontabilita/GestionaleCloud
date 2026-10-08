@@ -4,6 +4,7 @@
 // La navigazione vive in config/ + hooks/useAppNavigation, il layout in
 // layouts/, le pagine in router/pages.jsx, il kiosk in layouts/KioskLayout.
 import { EVENTO_RICERCA_LOTTI } from "./utils/apriLotti";
+import { avviaPollingVisibile } from "./utils/visiblePolling";
 import { useState, useEffect } from "react";
 import axios from "axios";
 import "@/App.css";
@@ -92,11 +93,11 @@ function App() {
     const API_URL = process.env.REACT_APP_LOTTI_BACKEND_URL + "/api";
     const fetch_count = () => axios.get(`${API_URL}/ordini-fornitori/count-pendenti`).then(r => setOrdiniPendenti(r.data.count || 0)).catch(() => {});
     fetch_count();
-    const timer = setInterval(fetch_count, 30000);
+    const fermaPolling = avviaPollingVisibile(fetch_count, 30000);
     // Aggiornamento immediato su eventi ordine
     const onOrdineUpdate = () => fetch_count();
     window.addEventListener("ordini_pendenti_update", onOrdineUpdate);
-    return () => { clearInterval(timer); window.removeEventListener("ordini_pendenti_update", onOrdineUpdate); };
+    return () => { fermaPolling(); window.removeEventListener("ordini_pendenti_update", onOrdineUpdate); };
   }, []);
 
   // Caricamento iniziale — mostra SUBITO l'app, i dati arrivano in background

@@ -7,13 +7,10 @@ Espone:
   - /api/shifts/assegnazioni        POST                  upsert assegnazione (turno_id None -> rimozione)
   - /api/shifts/assegnazioni/{ass_id} DELETE              elimina singola assegnazione
 
-Schema dati (Mongo):
+Schema dati:
   shifts_tipi:       { id, nome, orario_inizio, orario_fine, colore, created_at }
   shifts_assegnazioni: { id, dipendente_id, giorno, turno_id, created_at }
                       giorno in {"Lun","Mar","Mer","Gio","Ven","Sab","Dom"}
-
-Compatibilità: manteniamo anche i vecchi endpoint /schedule (GET/POST) che scrivevano
-su collezione "shifts" e che non venivano usati dal frontend.
 """
 from fastapi import APIRouter, Body, Depends, HTTPException, status
 from typing import Dict, Any, List
@@ -190,32 +187,3 @@ async def delete_assegnazione(
     if res.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Assegnazione non trovata")
     return {"message": "Assegnazione eliminata"}
-
-
-# =========================================================================
-# LEGACY (mantenuti per compatibilità — non usati dal frontend attuale)
-# =========================================================================
-
-@router.get("/schedule", summary="[legacy] Get shift schedule")
-async def get_schedule(
-    current_user: Dict[str, Any] = Depends(get_current_user),
-) -> List[Dict[str, Any]]:
-    db = Database.get_db()
-    shifts = await db["shifts"].find({}, {"_id": 0}).sort("date", -1).to_list(500)
-    return shifts
-
-
-@router.post(
-    "/schedule",
-    status_code=status.HTTP_201_CREATED,
-    summary="[legacy] Create shift schedule",
-)
-async def create_schedule(
-    data: Dict[str, Any] = Body(...),
-    current_user: Dict[str, Any] = Depends(get_current_user),
-) -> Dict[str, str]:
-    db = Database.get_db()
-    data["id"] = str(uuid4())
-    data["created_at"] = datetime.now(timezone.utc)
-    await db["shifts"].insert_one(data.copy())
-    return {"message": "Schedule created", "id": data["id"]}

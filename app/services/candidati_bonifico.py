@@ -168,8 +168,10 @@ def calcola_candidati(
     elif periodo_scritto and importo_c is not None:
         # Nessun nome nella causale: l'importo vale solo dentro il periodo che
         # la causale scrive, mai fra periodi diversi.
-        dip_per_id = {d["id"]: d for d in (indici.get("cf") or {}).values()}
+        dip_per_id = {d["id"]: d for d in (indici.get("cf") or {}).values() if d}
         for d in (indici.get("nome") or {}).values():
+            if not d:
+                continue
             dip_per_id.setdefault(d["id"], d)
         for lista in (indici.get("cogn") or {}).values():
             for d in lista:

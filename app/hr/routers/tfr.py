@@ -165,7 +165,10 @@ async def get_situazione_tfr(dipendente_id: str) -> Dict[str, Any]:
         "quota_da_buste_disponibile": bool(buste.get("disponibile")),
         "quota_da_buste_motivo": buste.get("motivo"),
         "accantonamenti_buste": buste.get("righe") or [],
-        "tfr_disponibile": (round(tfr_accantonato - totale_liquidato, 2)
+        # La liquidazione aggiorna già il fondo manuale: non sottrarla due
+        # volte. Le quote documentali invece sono maturazione lorda storica.
+        "tfr_disponibile": (round(tfr_accantonato - (
+                                totale_liquidato if scelta["tfr_fonte"] == "buste" else 0), 2)
                             if tfr_accantonato is not None else None),
         "totale_liquidato": round(totale_liquidato, 2),
         "num_accantonamenti": len(accantonamenti),
@@ -522,10 +525,14 @@ async def get_riepilogo_tfr_aziendale(anno: int = Query(None)) -> Dict[str, Any]
     if not anno:
         anno = datetime.now().year
     
-    # Dipendenti attivi
+    # Anagrafica canonica HR; supporta l'alias status senza escludere i record
+    # attivi scritti con il campo italiano stato.
     dipendenti = await db["dipendenti"].find(
-        {"status": {"$in": ["attivo", "active"]}},
-        {"_id": 0, "id": 1, "nome_completo": 1, "tfr_accantonato": 1}
+        {"$or": [{"stato": {"$in": ["attivo", "active"]}},
+                 {"status": {"$in": ["attivo", "active"]}}],
+         "merged_into": {"$exists": False}},
+        {"_id": 0, "id": 1, "nome_completo": 1, "codice_fiscale": 1,
+         "tfr_accantonato": 1, "progressivi": 1}
     ).to_list(1000)
     
     # Accantonamenti dell'anno
@@ -552,28 +559,58 @@ async def get_riepilogo_tfr_aziendale(anno: int = Query(None)) -> Dict[str, Any]
         }}
     ]).to_list(1)
     
-    # Totale fondo TFR
-    totale_fondo = sum(float(d.get("tfr_accantonato", 0)) for d in dipendenti)
-    
-    # Dettaglio per dipendente
-    dettaglio_dipendenti = [
-        {
-            "dipendente_id": d["id"],
-            "nome": d.get("nome_completo", ""),
-            "tfr_accantonato": round(float(d.get("tfr_accantonato", 0)), 2)
-        }
-        for d in dipendenti
-        if float(d.get("tfr_accantonato", 0)) > 0
-    ]
+    # Stessa scelta di fonte del dettaglio, con un prefetch invece di N query
+    # per dipendente. Una busta nel gestionale non diventa un secondo fondo.
+    from app.services.tfr_quote_buste import quote_tfr_da_buste, tfr_con_fonte
+    from decimal import Decimal
+
+    counts = {}
+    async for record in db["tfr_accantonamenti"].find({}, {"_id": 0, "dipendente_id": 1}):
+        eid = record.get("dipendente_id")
+        counts[eid] = counts.get(eid, 0) + 1
+    gestionale, anagrafiche, quote = None, [], []
+    try:
+        gestionale = _db_giornale()
+        anagrafiche = [record async for record in gestionale["dipendenti"].find(
+            {}, {"_id": 0, "id": 1, "codice_fiscale": 1})]
+        quote = [record async for record in gestionale["tfr_accantonamenti"].find(
+            {"mese": {"$exists": True}}, {"_id": 0})]
+    except Exception:
+        logger.exception("[TFR] Prefetch quote da buste non disponibile")
+        gestionale = None
+    dettaglio_dipendenti = []
+    quote_anno_buste = []
+    for d in dipendenti:
+        buste = await quote_tfr_da_buste(
+            gestionale, codice_fiscale=d.get("codice_fiscale"), dipendente_id=d["id"],
+            anagrafiche=anagrafiche, quote=quote,
+        )
+        scelta = tfr_con_fonte(
+            float(d.get("tfr_accantonato") or 0),
+            float((d.get("progressivi") or {}).get("tfr_accantonato") or 0),
+            counts.get(d["id"], 0), buste,
+        )
+        if scelta["tfr_fonte"] == "buste":
+            quote_anno_buste.extend(r for r in buste["righe"] if int(r.get("anno") or 0) == anno)
+        dettaglio_dipendenti.append({"dipendente_id": d["id"],
+                                    "nome": d.get("nome_completo", ""), **scelta})
+    mancanti = sum(d["tfr_accantonato"] is None for d in dettaglio_dipendenti)
+    totale_noto = sum((Decimal(str(d["tfr_accantonato"])) for d in dettaglio_dipendenti
+                       if d["tfr_accantonato"] is not None), Decimal("0"))
+    quota_buste_anno = sum((Decimal(str(r["quota"])) for r in quote_anno_buste), Decimal("0"))
     
     return {
         "anno": anno,
-        "totale_fondo_tfr": round(totale_fondo, 2),
+        "totale_fondo_tfr": float(totale_noto) if not mancanti else None,
+        "totale_fondo_noto": float(totale_noto),
+        "dipendenti_senza_dato": mancanti,
         "num_dipendenti_attivi": len(dipendenti),
         "accantonamenti_anno": {
-            "totale_quota": round(accantonamenti_anno[0]["totale_quota"], 2) if accantonamenti_anno else 0,
+            "totale_quota": round(float(quota_buste_anno) + (
+                accantonamenti_anno[0]["totale_quota"] if accantonamenti_anno else 0), 2),
             "totale_rivalutazione": round(accantonamenti_anno[0]["totale_rivalutazione"], 2) if accantonamenti_anno else 0,
-            "totale_accantonato": round(accantonamenti_anno[0]["totale_accantonato"], 2) if accantonamenti_anno else 0,
+            "totale_accantonato": round(float(quota_buste_anno) + (
+                accantonamenti_anno[0]["totale_accantonato"] if accantonamenti_anno else 0), 2),
             "num_dipendenti": accantonamenti_anno[0]["num_dipendenti"] if accantonamenti_anno else 0
         },
         "liquidazioni_anno": {
@@ -582,7 +619,8 @@ async def get_riepilogo_tfr_aziendale(anno: int = Query(None)) -> Dict[str, Any]
             "totale_netto": round(liquidazioni_anno[0]["totale_netto"], 2) if liquidazioni_anno else 0,
             "num_liquidazioni": liquidazioni_anno[0]["num_liquidazioni"] if liquidazioni_anno else 0
         },
-        "dettaglio_dipendenti": sorted(dettaglio_dipendenti, key=lambda x: x["tfr_accantonato"], reverse=True)
+        "dettaglio_dipendenti": sorted(dettaglio_dipendenti,
+                                      key=lambda x: x["tfr_accantonato"] or 0, reverse=True)
     }
 
 

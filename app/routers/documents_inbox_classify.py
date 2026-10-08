@@ -25,6 +25,7 @@ from fastapi import APIRouter, Query
 from app.database import Database
 from app.services.mittenti import sender_matches_trusted_rules, trusted_sender_rules
 from app.services.operational_learning_engine import OperationalLearningEngine
+from app.services.pdf_drive_only import _pdf_bytes, hydrate_document
 from app.utils.error_handler import handle_errors
 
 
@@ -57,7 +58,7 @@ PATTERNS: List[Tuple[str, re.Pattern]] = [
 
 
 def classify_by_text(filename: str, subject: str = "", sender: str = "") -> Optional[str]:
-    """Classifica un documento basandosi su filename + subject + sender."""
+    """Restituisce una proposta da metadati; non e' una prova documentale."""
     haystack = f"{filename or ''} {subject or ''} {sender or ''}".lower()
     for category, pat in PATTERNS:
         if pat.search(haystack):
@@ -171,6 +172,8 @@ async def auto_classify(
             {"categoria": None},
             {"categoria": {"$exists": False}},
             {"categoria": ""},
+            {"categoria": "altro"},
+            {"categoria": "auto"},
         ]}
 
     docs = await db["documents_inbox"].find(query, {"_id": 0}).to_list(10000)
@@ -188,6 +191,7 @@ async def auto_classify(
         "cedolini_associati": 0,
         "f24_creati": 0,
         "nessuna_categoria": 0,
+        "proposte_da_verificare": 0,
         "errori": 0,
         "observations_recorded": 0,
         "observation_errors": 0,
@@ -199,29 +203,48 @@ async def auto_classify(
         subject = d.get("subject") or ""
         sender = d.get("sender") or d.get("from") or ""
 
-        categoria = classify_by_text(filename, subject, sender)
+        # Il contenuto e' la fonte. Nome, oggetto e mittente producono soltanto
+        # una proposta quando l'originale non e' leggibile.
+        text = ""
+        try:
+            await hydrate_document("documents_inbox", d)
+        except Exception:  # noqa: BLE001 - resta da verificare, non si inventa il tipo
+            report["errori"] += 1
+        pdf_data = _pdf_bytes(d.get("pdf_data") or d.get("content"))
+        if pdf_data:
+            text = _extract_pdf_text(pdf_data)
+        if not text and d.get("text"):
+            text = str(d.get("text") or "")
+
+        categoria = classify_by_text("", text, "") if text.strip() else None
+        proposta = classify_by_text(filename, subject, sender)
         if not categoria:
             report["nessuna_categoria"] += 1
+            if proposta:
+                report["proposte_da_verificare"] += 1
+                if not dry_run:
+                    await db["documents_inbox"].update_one(
+                        {"id": d.get("id")} if d.get("id") else {"filename": filename},
+                        {"$set": {
+                            "categoria_proposta": proposta,
+                            "classificazione_fonte": "metadati_non_probatori",
+                            "stato_elaborazione": "da_verificare",
+                        }},
+                    )
             continue
 
         report["classificati"][categoria] = report["classificati"].get(categoria, 0) + 1
 
-        # Try extract text from PDF
-        text = ""
-        pdf_data = d.get("pdf_data") or d.get("content")
-        if pdf_data and isinstance(pdf_data, bytes):
-            text = _extract_pdf_text(pdf_data)
-        elif d.get("text"):
-            text = d.get("text", "")
-
         update_fields: Dict[str, Any] = {
             "categoria": categoria,
+            "classificazione_fonte": "contenuto_documento",
+            "stato_elaborazione": "classificato",
             "auto_classified_at": datetime.now(timezone.utc).isoformat(),
         }
 
         # Auto-associazione per tipologia
         if categoria in ("cedolino", "cu"):
-            emp = _extract_dipendente(employees, filename, text)
+            emp = _extract_dipendente(employees, "", text)
             if emp:
                 update_fields["dipendente_id"] = emp.get("id")
                 update_fields["dipendente_nominativo"] = f"{emp.get('cognome','')} {emp.get('nome','')}".strip()
@@ -229,7 +252,7 @@ async def auto_classify(
                 report["cedolini_associati"] += 1
             else:
                 # Tenta lettura CF anche quando il dipendente non è nel DB HR
-                cf = _extract_codice_fiscale(filename, text)
+                cf = _extract_codice_fiscale("", text)
                 if cf:
                     update_fields["codice_fiscale"] = cf
 
@@ -333,102 +356,6 @@ async def inbox_statistics() -> Dict[str, Any]:
         "non_classificati": senza_cat,
         "per_categoria": per_cat,
         "cedolini_associati_dipendente": cedolini_associati,
-    }
-
-
-@router.post("/import-dipendenti-from-cu")
-@handle_errors
-async def import_dipendenti_from_cu(
-    dry_run: bool = Query(False, description="Preview senza scrivere"),
-) -> Dict[str, Any]:
-    """
-    Popola la collection `dipendenti` dall'anagrafica contenuta nei filename
-    delle Certificazioni Uniche (CU).
-
-    Pattern filename supportato:
-      '<CodiceFiscale> - <Anno> - <COGNOME NOME> (<CF>-<Progressivo>).pdf'
-    Esempio: 'CLETTV65E05F839N - 2025 - CELIO OTTAVIO (CLETTV65E05F839N-0300022).pdf'
-    """
-    import uuid as _uuid
-    db = Database.get_db()
-
-    cu_docs = await db["documents_inbox"].find(
-        {"categoria": "cu"}, {"_id": 0, "filename": 1}
-    ).to_list(5000)
-
-    # Indicizza dipendenti esistenti per CF
-    existing = await db["dipendenti"].find({}, {"_id": 0, "id": 1, "codice_fiscale": 1}).to_list(5000)
-    cf_set = {(e.get("codice_fiscale") or "").upper() for e in existing if e.get("codice_fiscale")}
-
-    # Pattern di estrazione
-    cu_pattern = re.compile(
-        r"([A-Z]{6}\d{2}[A-Z]\d{2}[A-Z]\d{3}[A-Z])\s*-\s*(\d{4})\s*-\s*([A-Z][A-Z\s']+?)\s*\(",
-        re.IGNORECASE,
-    )
-
-    nuovi: List[Dict[str, Any]] = []
-    gia_presenti = 0
-    non_riconosciuti: List[str] = []
-
-    for d in cu_docs:
-        fn = (d.get("filename") or "").replace("\n", " ").strip()
-        m = cu_pattern.search(fn)
-        if not m:
-            non_riconosciuti.append(fn[:80])
-            continue
-        cf = m.group(1).upper()
-        nome_completo_raw = m.group(3).strip()
-        # Split cognome/nome: per codici fiscali italiani, in filename il cognome viene sempre prima
-        # Gestione di cognomi composti: prendiamo la prima parola come cognome, il resto come nome
-        # (approccio prudente — l'utente potrà correggere)
-        parts = nome_completo_raw.split()
-        if len(parts) >= 2:
-            # Nomi composti: se la stringa è molto lunga (come "SANKAPALA ARACHCHILAGE JANANIE AYACHANA DISSANAYAKA"),
-            # prendiamo la prima metà come cognome e la seconda come nome
-            if len(parts) > 3:
-                mid = len(parts) // 2
-                cognome = " ".join(parts[:mid]).title()
-                nome = " ".join(parts[mid:]).title()
-            else:
-                cognome = parts[0].title()
-                nome = " ".join(parts[1:]).title()
-        else:
-            cognome = nome_completo_raw.title()
-            nome = ""
-
-        if cf in cf_set:
-            gia_presenti += 1
-            continue
-
-        nuovi.append({
-            "id": str(_uuid.uuid4()),
-            "codice_fiscale": cf,
-            "cognome": cognome,
-            "nome": nome,
-            "nome_completo": nome_completo_raw.title(),
-            "stato": "attivo",
-            "attivo": True,
-            "fonte": "cu_auto_import",
-            "anno_cu": int(m.group(2)),
-            "created_at": datetime.now(timezone.utc).isoformat(),
-        })
-        cf_set.add(cf)
-
-    if not dry_run and nuovi:
-        await db["dipendenti"].insert_many([n.copy() for n in nuovi])
-
-    return {
-        "success": True,
-        "dry_run": dry_run,
-        "cu_analizzate": len(cu_docs),
-        "dipendenti_creati": len(nuovi),
-        "gia_presenti": gia_presenti,
-        "non_riconosciuti": len(non_riconosciuti),
-        "nuovi_preview": [
-            {"codice_fiscale": n["codice_fiscale"], "nominativo": f"{n['cognome']} {n['nome']}"}
-            for n in nuovi[:30]
-        ],
-        "filename_non_riconosciuti": non_riconosciuti[:10],
     }
 
 

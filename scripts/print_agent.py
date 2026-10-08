@@ -95,6 +95,10 @@ class TokenRifiutato(Exception):
     """Il backend ha risposto 401/403: serve un nuovo login."""
 
 
+class PinRifiutato(Exception):
+    """Il PIN dell'agente non e' valido: non va ritentato in ciclo."""
+
+
 class Sessione:
     """Login col PIN e chiamate autenticate, token solo nell'intestazione."""
 
@@ -105,11 +109,22 @@ class Sessione:
         self.token = ""
 
     def login(self) -> None:
-        res = self._richiesta("POST", f"{self.backend}/api/tablet-operatori/login", body={"pin": self.pin},
-                              autenticata=False)
+        try:
+            res = self._richiesta(
+                "POST",
+                f"{self.backend}/api/tablet-operatori/login",
+                body={"pin": self.pin},
+                autenticata=False,
+            )
+        except urllib.error.HTTPError as e:
+            if e.code in (401, 403, 429):
+                raise PinRifiutato(
+                    "PIN errato, operatore non abilitato o accesso temporaneamente bloccato"
+                ) from e
+            raise
         dati = json.loads(res.decode() or "{}")
         if not dati.get("token"):
-            raise RuntimeError("Login fallito: PIN errato o operatore non abilitato")
+            raise PinRifiutato("PIN errato o operatore non abilitato")
         self.token = dati["token"]
         print(f"[OK] Login come {dati.get('operatore', {}).get('nome', '?')}")
 
@@ -258,10 +273,21 @@ def main() -> None:
     chrome = trova_chrome()
     print(f"[AVVIO] Agente di stampa Lotti — {sessione.backend}, reparto '{cfg.get('reparto') or 'tutti'}', "
           f"ogni {intervallo}s")
-    sessione.login()
+    try:
+        sessione.login()
+    except PinRifiutato as e:
+        raise SystemExit(
+            f"[ERRORE] {e}. L'agente si arresta per non bloccare gli accessi: "
+            f"correggi {VARIABILE_PIN} e riavvialo."
+        ) from e
     while True:
         try:
             giro(sessione, cfg, chrome)
+        except PinRifiutato as e:
+            raise SystemExit(
+                f"[ERRORE] {e}. L'agente si arresta per non ripetere il PIN: "
+                f"correggi {VARIABILE_PIN} e riavvialo."
+            ) from e
         except urllib.error.HTTPError as e:
             print(f"[HTTP {e.code}] {e}")
         except Exception as e:

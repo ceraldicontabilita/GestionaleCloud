@@ -11,7 +11,7 @@ import {
 } from 'lucide-react';
 import axios from 'axios';
 
-const BACKEND_URL = process.env.REACT_APP_MENU_BACKEND_URL;
+import { MENU_BACKEND_URL as BACKEND_URL } from '@/lib/backend';
 
 // Palette del gruppo Ceraldi (CLAUDE.md): salvia su crema, semantici caldi.
 const SALVIA = '#5b7a6b';

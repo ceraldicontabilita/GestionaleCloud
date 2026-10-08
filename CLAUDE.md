@@ -32,7 +32,7 @@ Contiene:
 
 Il `README.md` è soltanto una guida d'ingresso.
 
-Il codice, i test, le migrazioni realmente applicate e la configurazione live vincono sempre sulla documentazione.
+Il codice, le migrazioni realmente applicate e la configurazione live vincono sempre sulla documentazione.
 
 Se codice e questo file non concordano:
 
@@ -215,7 +215,7 @@ Aggiungere solo i file pertinenti.
 - Procedere per micro-tranche verificabili.
 - Non riscrivere l'intero sistema in una volta.
 - Prima di eliminare un percorso controllare import statici e dinamici, route, frontend, job, API e dati persistiti.
-- Un test che cita un modulo non dimostra che il modulo sia raggiungibile in produzione.
+- Un riferimento statico a un modulo non dimostra che il modulo sia raggiungibile in produzione.
 - Una risposta HTTP 200 non dimostra che il flusso funzioni.
 - Testare dati, relazioni, deduplica e stato finale.
 - Quando serve una scelta del titolare, proporre opzioni e mettere per prima quella consigliata.
@@ -275,9 +275,9 @@ Una modifica dello schema può invalidare temporaneamente la cache PostgREST.
 
 ## APERTO
 
-Esistono strutture/migrazioni Cassa e Catalogo applicate al database che devono ancora essere esportate correttamente nel repository.
+L'audit dell'08/10/2026 ha recuperato 11 migrazioni strutturali Cassa/Catalogo dal registro reale e allineato 36 nomi/versioni locali. Gli export non ripopolano prodotti, vecchie stampanti, sale o tavoli operativi.
 
-Questa incoerenza va eliminata.
+Restano 39 voci del registro non rappresentate da un file locale con lo stesso nome/versione. La ricostruzione completa da zero NON è ancora verificata: parsing SQL riuscito non equivale a replay completo, e le dipendenze iniziali HR/B&B devono essere recuperate prima di dichiararla chiusa.
 
 ---
 
@@ -1606,11 +1606,11 @@ Serve il registro applicativo.
 
 Il Message-ID dell'email si conferma solo dopo il salvataggio degli allegati: un guasto deve consentire un nuovo tentativo senza duplicare quelli già acquisiti.
 
-## APERTO
+## PRODUZIONE
 
-Esistono ancora classificazioni che consultano nome file o percorso prima del contenuto.
-
-Devono essere eliminate una alla volta.
+La categoria operativa nasce dal contenuto del documento. Nome file, percorso,
+oggetto e mittente possono produrre soltanto una proposta da verificare e non
+creano fatti contabili, fiscali o HR. I file illeggibili restano da verificare.
 
 ---
 
@@ -1723,7 +1723,7 @@ Una riga entra quando possiede significato contabile sufficiente.
 
 Il libro giornale è **spento** per decisione del titolare (07/10/2026): non gli serve. Il registro operativo è la Prima Nota cassa/banca (§23).
 
-Interruttore unico nel motore: `LIBRO_GIORNALE_ATTIVO` (difetto spento). Con l'interruttore spento `registra_fattura`, `registra_corrispettivo`, `registra_scrittura_semplice`, storni, pregresso e job rispondono `stato = disattivato` e non scrivono nulla; `_scrivi_movimento` rifiuta comunque (`GiornaleDisattivato`). Le letture delle scritture già esistenti non cambiano. I test accendono l'interruttore per collaudare il motore.
+Interruttore unico nel motore: `LIBRO_GIORNALE_ATTIVO` (difetto spento). Con l'interruttore spento `registra_fattura`, `registra_corrispettivo`, `registra_scrittura_semplice`, storni, pregresso e job rispondono `stato = disattivato` e non scrivono nulla; `_scrivi_movimento` rifiuta comunque (`GiornaleDisattivato`). Le letture delle scritture già esistenti non cambiano.
 
 Non riaccenderlo senza decisione del titolare. Le regole che seguono valgono quando è acceso.
 
@@ -3484,11 +3484,11 @@ Due copie dello stesso modulo non si mantengono manualmente.
 
 ## PRODUZIONE
 
-Il router TFR è uno solo: `app/hr/routers/tfr.py` (montato su `/hr/api/tfr`). `app/routers/tfr.py` espone soltanto due letture del fondo sull'archivio del gestionale per Gestione Cespiti e re-esporta il resto; non scrive.
+Il router TFR è uno solo: `app/hr/routers/tfr.py` (montato su `/hr/api/tfr`). `app/routers/tfr.py` espone due alias di lettura verso le stesse funzioni HR per Gestione Cespiti; non mantiene un secondo calcolo né scrive.
 
 ## APERTO
 
-Fork di logica residui fra `app/` e `app/hr/` (stesso sottopercorso, nessun re-export; `tests/runtime/test_fork_app_hr.py` ne impedisce la crescita): `routers/employees/dipendenti.py`, `routers/pin_login.py`, `utils/dependencies.py`. Il fondo TFR letto dal gestionale (`gestionale.dipendenti.tfr_maturato`) non deriva ancora dall'anagrafica canonica HR.
+Fork di logica residui fra `app/` e `app/hr/` (stesso sottopercorso, nessun re-export): `routers/employees/dipendenti.py`, `routers/pin_login.py`, `utils/dependencies.py`. Il fondo TFR riepilogativo ora usa l'anagrafica HR e le quote documentate; liquidazione e tassazione richiedono ancora verifica specifica (vedi §108).
 
 Ogni modifica a quei tre file deve controllare il gemello finché non viene consolidato.
 
@@ -4975,13 +4975,11 @@ Non crearne altri.
 
 # 104. Ricerca web Lotti
 
-Un solo motore finale.
+## PRODUZIONE
 
-## APERTO
+Il motore automatico unico è `app/lotti/servizi/lettura_articoli_ai.py::identifica_col_web`, eseguito dal solo job `lotti_identifica_col_web`. Usa il dizionario prodotti, un tetto giornaliero e una finestra di ripetizione.
 
-Esistono ancora due code/giri.
-
-Fonderli.
+`POST /api/schede-tecniche/ricerca-web` resta un comando manuale puntuale protetto da ruolo amministratore; non mantiene una seconda coda.
 
 ---
 
@@ -5023,211 +5021,92 @@ eliminare lo schema.
 
 # 107. Stato produzione verificato
 
-Questa sezione contiene solo ciò che serve a capire il comportamento corrente.
+Verificato il 08/10/2026 sul progetto Supabase `lohczjdiawjryuopncwc`.
 
-Non è un diario.
+## Dati operativi
 
-## Servizio
+Il database Gestionale è intenzionalmente vergine: non contiene fatture, movimenti bancari, Prima Nota, F24, documenti o dati payroll da riparare. Restano soltanto configurazioni necessarie (`mittenti_email`, `piano_tributi`, `sistema_stato`, `system_config`).
 
-- Render serve `main`.
-- Supabase è backend dati.
-- cartella Drive unica attiva.
-- scheduler attivo.
-- protocollo incrementale attivo.
-- protocollo completo spento per memoria.
+Conseguenze obbligatorie:
 
-## Fatture
+- il nuovo popolamento parte dagli originali portati nelle cartelle `DA ELABORARE`;
+- nessun job deve ricostruire o scartare file usando una memoria del vecchio popolamento;
+- nessuna bonifica storica deve inventare fatture, pagamenti, relazioni, dipendenti o movimenti assenti;
+- gli ID nuovi sono generati dai writer canonici; gli helper per ID misti restano soltanto ai confini di importazione.
 
-Il 06/10/2026 (02:14–03:18 UTC) le collezioni contabili `invoices`, `corrispettivi`, `movimenti_contabili`, `prima_nota_cassa` e `prima_nota_banca` sono state azzerate e ricreate da zero; la causa non è nel log applicativo. Al 07/10 `invoices` ha 21 fatture, il report AdE 2026 (`fatture_report_ae`) ne conta 902, di cui 795 con `invoice_id` che non esiste più e 888 con pagamento dichiarato dal titolare. Gli XML sono su Drive in `ELABORATE`: la ricostruzione passa da `POST /api/admin/documenti/rimetti-in-coda` (dry-run, poi reale) e dal giro della cartella unica; i pagamenti dichiarati si applicano da soli all'arrivo di ogni fattura. Non creare un secondo importatore.
+HR non contiene dati operativi pregressi. Lotti contiene soltanto i cataloghi correnti e lo stato tecnico necessario; non contiene ricette o foto legacy. B&B contiene le due strutture reali, senza dati demo.
 
-Persistono ID storici misti testo/numero.
+## Runtime e job
 
-Il pregresso non è completamente normalizzato.
+- Render serve un solo servizio `main`.
+- Supabase è il backend dati; Drive conserva gli originali documentali.
+- La cartella unica Drive e il protocollo incrementale sono attivi.
+- Il protocollo completo resta spento per memoria.
+- Esiste un solo job email Verbali, tramite `scan_verbali_email_task`.
+- Esiste un solo giro automatico di ricerca web Lotti, `lotti_identifica_col_web`.
+- I job di migrazione foto Drive/`foto_files` sono eliminati: le nuove immagini nascono direttamente su Supabase Storage.
+- Non esistono job keep-warm o self-ping.
 
-Esistono partite e relazioni da riallineare.
+## Sicurezza database
 
-## Banca
+- tutte le tabelle applicative hanno RLS attiva; quelle senza policy sono volutamente fail-closed e si usano tramite RPC protette;
+- le funzioni applicative hanno `search_path` fissato;
+- nessuna funzione B&B concede `EXECUTE` a `PUBLIC`;
+- le RPC esposte ad `anon` sono soltanto ingressi applicativi intenzionali e applicano sessione, voucher, capability o segreto runtime;
+- le chiavi `service_role` e i segreti runtime non vanno mai nel browser.
 
-Banco BPM è collegato via Enable Banking (consenso PSD2 fino al 25/12/2026): il giro automatico delle 07:15 e 09:00 (Europe/Rome) legge gli ultimi `ENABLE_BANKING_GIORNI_GIRO` giorni (difetto 7) e importa solo i movimenti certamente nuovi; `ENABLE_BANKING_DAL=AAAA-MM-GG` fa rileggere da quella data una volta sola (usato dopo l'azzeramento del 06/10/2026 per il 2026 intero). La fonte API resta provvisoria finché non arriva l'estratto conto ufficiale.
+**Rettifica dell'audit più critico:** RLS attiva non prova accessi protetti. Dieci tabelle Menu e il bucket `menu-images` avevano policy `ALL TO anon` senza controllo del backend; una vista aggiuntiva non era `security_invoker`. La chiave pubblica poteva quindi aggirare l'autenticazione applicativa. La correzione locale è `20261008074231_secure_menu_runtime_access.sql`, con header backend `x-gc-api-key` e verifica server-side; validata in PostgreSQL isolato, NON applicata in produzione in questa revisione. Occorre prima pubblicare il backend aggiornato, poi applicare la migrazione e verificare PostgREST/Storage reali. Le immagini pubbliche restano leggibili per il menu clienti, non scrivibili senza il segreto.
 
-Persistono:
+## Verifiche che richiedono dati reali
 
-- movimenti senza categoria;
-- relazioni incomplete;
-- fatture con stato di riconciliazione incoerente.
+Con archivio vergine non esistono arretrati da riallineare. Dopo il nuovo import controllare, senza correggere per supposizione:
 
-## Contabilità
+1. documenti non classificabili dal contenuto;
+2. associazioni bancarie o fiscali ambigue;
+3. unità Lotti non convertibili e mapping da confermare;
+4. dati HR mancanti nei documenti originali;
+5. quadrature contabili e IVA prodotte dal nuovo popolamento.
 
-Persistono scritture storiche non quadrate.
+## Attività esterne non risolvibili dal codice
 
-Il pagamento non chiude ancora tutti i debiti nel giornale.
-
-Il bilancio non usa ancora la competenza in tutti i percorsi.
-
-## HR
-
-Persistono:
-
-- bonifici da associare;
-- riferimenti cedolino orfani;
-- moduli duplicati.
-
-## Menu / prodotto unico
-
-Non considerare completata l'unificazione finché le migrazioni non risultano applicate e collaudate sul database reale.
-
-## Drive
-
-L'incrementale non vede tutte le eliminazioni/spostamenti.
-
-## AI
-
-Client unico raggiunto.
-
-Pipeline duplicate ancora presenti.
-
-## Flotta / verbali
-
-Lo storico dei veicoli e degli utilizzatori deve essere completato e consolidato nel gestionale.
-
-Le assegnazioni storiche documentate sono la base per individuare il conducente alla data del verbale.
-
-Le presenze non sono oggi una fonte per decidere il conducente.
+- attivazione produzione A-Cube/Cassetto fiscale con il fornitore;
+- eventuale rotazione dei segreti esistiti nella cronologia Git;
+- verifica completa periodica di eliminazioni e spostamenti Drive quando sarà sostenibile in memoria.
 
 ---
 
-# 108. Aperto — priorità critica
+# 108. Audit critico del monorepo — revisione 08/10/2026
 
-## P1 — Contabilità
+Il perimetro è il gestionale ERP, HR, Lotti/HACCP, Menu/Cassa e Convenzioni B&B, non la sola anteprima `frontend_colazioni/index.html`. `CODEX.md` non esiste in questo checkout: le regole confrontate sono quelle di questo documento. Le modifiche sono nel working tree, non pubblicate. Il database reale non è stato ripopolato durante le verifiche.
 
-Libro giornale spento dal 07/10/2026 (§24): i punti 1, 4 e 5 restano fermi finché il titolare non lo riaccende; la priorità operativa è la Prima Nota cassa/banca alimentata dalle fatture (§29) e dai pagamenti dichiarati.
+## Difetti dimostrati e correzioni
 
-1. Fare in modo che ogni pagamento chiuda il debito nel libro giornale (sospeso: giornale spento).
-2. Correggere il bilancio affinché usi `data_competenza`.
-3. Ricostruire debiti/crediti alla data di chiusura.
-4. Rettificare note di credito storiche errate (sospeso: giornale spento).
-5. Analizzare scritture non quadrate (sospeso: giornale spento).
+| Pagina o flusso | Difetto verificato | Stato e limite della correzione |
+| --- | --- | --- |
+| ERP Importa / Email / Archivio | Allegati validi scartati perché senza classificazione riconosciuta; categoria fattura imposta dal nome; IMAP sincrono nell'event loop | Acquisizione degli allegati ammessi, categoria `altro`/da verificare conservata, classificazione dal contenuto, IMAP in thread. Da verificare ingestione reale dei tre file Drive segnalati: nessuna conferma di malware deriva da questi controlli locali. |
+| ERP Documenti da classificare | Il giro dei soli non classificati saltava i documenti già marcati `altro` | `altro` e `auto` inclusi nel giro; errori di classificazione non cancellano l'originale. |
+| ERP Cespiti / Fondo TFR | Secondo fondo letto da dipendenti ERP anziché HR; totale sconosciuto rappresentato come zero | Alias delle letture HR; `totale_fondo` ignoto se mancano dati, `totale_fondo_noto` separato. Verifica in memoria riuscita, non certificazione fiscale. |
+| HR TFR / Riepilogo | Fonti diverse fra riepilogo e dettaglio, query ripetute per dipendente, liquidazioni sottratte due volte alla fonte manuale netta | Prefetch delle quote, calcolo canonico, distinzione fondo lordo documentale/manuale già netto. Resta aperta la liquidazione: aliquota approssimata e lettura del solo campo piatto non sono ancora una liquidazione fiscalmente verificata. |
+| HR Importa paghe / Documenti | Primo omonimo scelto automaticamente; anno/mese dedotti dalla data o dall'importo; PDF disposizione segnato riconciliato | Alias ambigui non assegnati; deposito senza competenza esplicita va in verifica; PDF nel deposito canonico, non conferma automatica. Errore di registrazione import non silenziato. |
+| HR Paghe / Associazioni bonifici | Identità certa scambiata per prova di addebito; esiti PDF etichettati banca; riscontro bancario successivo non ricalcolava il periodo; due pagamenti uguali a date vicine fusi | Criterio unico: identità certa + movimento/estratto bancario per conferma automatica. PDF solo → `da_verificare`; arricchimento con banca ricalcola. Dedup tra fonti richiede hash/chiave/riferimento comune, non solo importo e data. Conferma manuale esplicita preservata. Diagnostica in memoria riuscita. |
+| HR Cedolini / Portale documenti | Ricerca cedolino per solo cognome; `/regolamento/file` intercettato da `/{doc_id}/file`; `/simulazione-f24` da `/{cedolino_id}` | Nessun cedolino di altro dipendente per omonimia; route statiche precedono quelle dinamiche. Verificato matching delle route senza avviare job. |
+| HR Turni | Route disponibilità/preferenze intercettate dal parametro settimana | Handler generico dopo le route statiche; matching corretto. Restano da verificare permessi e calendario con dati reali. |
+| HR Avvio / Scadenze / Paghe | Vecchi seed TFR e fix nominativi potevano alterare il nuovo archivio; bonifica storica automatica; scheduler senza lease condivisa | Eliminati i due moduli legacy e i richiami all'avvio; rimossa bonifica automatica; scheduler con lease. Non disabilitati i job operativi necessari al nuovo import. |
+| Lotti Anomalie / Report | Report per intervallo intercettato da `/{anomalia_id}` | Route generica spostata alla fine. |
+| Lotti Pipeline / Manuale HACCP | Rebuild catalogo/manuale fallito ma esito generale `OK` | Esito `PARZIALE` e step falliti espliciti. Errore simulato riprodotto senza scritture reali. |
+| Lotti / Menu Magazzino bar | Menu chiamava `public.lotti_documents` obsoleta e manteneva movimenti separati | Stesso archivio e motore stock Lotti; movimenti e rettifiche condivisi. Risposte consentono stock negativo reale senza errore 500; stock iniziale negativo e numeri non finiti respinti. |
+| Menu Carta / Login / Admin / Ordini / Cassa / Cucina / Sale | API dipendenti da variabile ambiente, altrimenti URL `undefined`; seed demo ancora montato | Base API canonica `/menu`; router seed non chiamato eliminato. Build Menu riuscita; stampa, ordini e cassa reali non verificati dal solo build. |
+| Menu Prodotti / Immagini / Ponte Lotti | Policy anonime consentivano modifica diretta del catalogo e Storage | Patch RLS con segreto runtime e vista invoker, verificata localmente. **Produzione ancora da aggiornare**, prerequisito backend con header; non dichiarare vulnerabilità chiusa live. |
+| Convenzioni B&B / Cassa condivisa | Migrazioni strutturali live assenti o con versioni non corrispondenti nel repository | Recuperati 11 export strutturali e 36 nomi reali; niente reimport dei dati legacy. Base completa ancora incompleta (§10), flusso voucher/portafoglio reale da verificare. |
+| Build / CI / Job ERP | ERP compilava le sotto-app due volte; job cedolini supplementare ad ogni riavvio; configurazione runner test rimasta dopo rimozione suite | Build ERP separata dal ciclo app, eliminato avvio cedolini duplicato e residui runner/fallback di test. Nessuna suite permanente ricreata. |
 
----
+## Cosa non è dimostrato
 
-# 109. Aperto — fatture e banca
+La revisione ha controllato codice e dispatch di route, non ha eseguito ogni pagina nel browser autenticato né ogni operazione economica. Il vecchio conteggio di pagine non va usato come prova di copertura completa: i registri di navigazione ERP, HR, Lotti e Menu hanno viste e sottoschede ulteriori.
 
-1. Riallineare fatture riconciliate senza prova coerente.
-2. Riparare relazioni senza `fattura_id`.
-3. Recuperare fatture senza partita.
-4. Ridurre stati pagamento duplicati.
-5. Uniformare gli ID futuri.
-6. Classificare movimenti senza categoria.
+Restano da completare: matrice esaustiva pagina → chiamate → endpoint → writer, riconciliazione universale (§119A), fork PIN/identità (§65), liquidazione TFR, ricostruzione completa delle migrazioni, controlli end-to-end su documenti reali nel nuovo archivio. I conteggi di `except`, cancellazioni o endpoint dell'analizzatore sono indicatori da esaminare, non automaticamente bug né prova di correttezza.
 
----
-
-# 110. Aperto — documenti
-
-1. Eliminare decisioni basate sul nome file.
-2. Completare backfill relazioni.
-3. Bonificare collegamenti protocollo.
-4. Verificare blob non referenziati.
-5. Non creare nuovi endpoint originali paralleli.
-
----
-
-# 111. Aperto — HR
-
-1. Eliminare fork residui.
-2. Riparare bonifici con cedolino orfano.
-3. Ridurre coda bonifici.
-4. Verificare doppio conteggio acconto.
-5. Portare tutti gli ingressi cedolino sul motore unico.
-
----
-
-# 112. Aperto — Menu / B&B / Cassa
-
-1. Applicare migrazioni prodotto unico.
-2. Verificare registro migrazioni.
-3. Verificare `public.menu_products`.
-4. Verificare `bb_prodotti`.
-5. Verificare codice PRD.
-6. Provare voucher.
-7. Provare ordine hotel.
-8. Ripubblicare Menu da Lotti.
-9. Collegare ricette senza doppioni.
-10. Esportare migrazioni Cassa/Catalogo mancanti.
-
----
-
-# 113. Aperto — IVA / LIPE
-
-1. Completare 6013.
-2. Completare 6099.
-3. Credito annuale.
-4. Compensazione orizzontale.
-5. Conguaglio dicembre.
-6. Unificare credito precedente.
-7. Implementare confronto LIPE con soglia di piccolo scostamento configurata.
-8. Evidenziare le componenti dello scarto.
-9. Creare attese tributo da LIPE quando F24 manca.
-10. Collegare quietanza con protocollo alle attese LIPE senza creare F24 fittizi.
-
----
-
-# 114. Aperto — F24
-
-1. Consolidare F24 ↔ banca.
-2. Eliminare matching duplicati.
-3. Gestire modelli senza data/saldo.
-4. Completare riscontro contributi.
-5. Correggere parser storici solo con PDF reali.
-6. Mai forzare F24 non quadrato.
-
----
-
-# 115. Aperto — Drive
-
-1. Rendere sostenibile una verifica completa periodica.
-2. Continuare bonifica relazioni.
-3. Collegare originali HR quando determinabili.
-4. Eliminare vecchi sync non canonici.
-
----
-
-# 116. Aperto — Lotti
-
-1. Smaltire arretrato.
-2. Consolidare ricerca web.
-3. Risolvere unità non convertibili.
-4. Confermare mapping.
-5. Migrare foto residue a Storage.
-6. Non inventare scadenze o lotti.
-
----
-
-# 117. Aperto — Flotta e verbali
-
-1. Popolare l'anagrafica veicoli con i contratti documentati.
-2. Registrare lo storico assegnazioni con `dal/al`.
-3. Marcare `GW980EP` come targa corretta e non creare `QW980EP`.
-4. Tenere `GG473WT` da verificare perché compare in un verbale ma non nella flotta nota.
-5. Escludere i verbali personali `DW730ZF`.
-6. Confermare le date non provate, in particolare GA304TA e FR788JG.
-7. Collegare le fatture del noleggiatore ai relativi verbali quando documentato.
-8. Conservare separate sanzione e spesa gestione/rinotifica.
-9. Generare proposta trattenuta soltanto dopo pagamento documentato e conducente certo.
-10. Inviare al consulente la nota nel mese successivo al pagamento.
-11. Valutare in futuro un controllo presenze come alert, mai come assegnazione automatica del conducente.
-
----
-
-# 118. Aperto — B&B
-
-1. Attivare SumUp solo con chiave configurata.
-2. Chiudere SQL obsolete quando possibile.
-3. Logout sessione titolare DB.
-4. Configurare URL recensioni.
-5. Configurare WhatsApp solo per recensioni.
-6. Completare varianti.
-7. Rivedere prezzi extra tavolo.
-8. Rimuovere demo al lancio.
+La chiusura di ogni voce richiede una prova pertinente: build per compilazione, dispatch per route, diagnostica per la logica, controllo live per RLS/Storage, quadratura documentata per contabilità. Nessun HTTP 200 o schermata vuota certifica queste ultime.
 
 ---
 
@@ -5266,20 +5145,19 @@ Riscrivere Git non revoca le credenziali.
 
 Per ogni modifica pertinente:
 
-1. test mirati;
-2. suite backend quando necessaria;
-3. test frontend;
-4. build;
-5. `git diff --check`;
-6. revisione avversariale;
-7. commit dei soli file pertinenti;
-8. push branch;
-9. PR finale;
-10. merge su `main`;
-11. verifica CI;
-12. verifica health;
-13. verifica commit pubblicato;
-14. controllo live del flusso.
+1. compilazione Python;
+2. analisi statica;
+3. build frontend;
+4. `git diff --check`;
+5. revisione avversariale;
+6. commit dei soli file pertinenti;
+7. push branch;
+8. PR finale;
+9. merge su `main`;
+10. verifica CI;
+11. verifica health;
+12. verifica commit pubblicato;
+13. controllo live del flusso.
 
 ---
 
@@ -5319,7 +5197,7 @@ il flusso è difettoso.
 Non dichiarare completato perché:
 
 - compila;
-- test verdi;
+- build verde;
 - HTTP 200;
 - pagina visibile.
 

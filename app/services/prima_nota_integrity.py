@@ -7,7 +7,7 @@ devono quindi usare la stessa regola, altrimenti una fattura puo' restare
 """
 
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 
 COLLEZIONI_PRIMA_NOTA = ("prima_nota_banca", "prima_nota_cassa")

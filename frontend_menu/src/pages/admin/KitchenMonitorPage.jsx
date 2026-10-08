@@ -2,8 +2,9 @@ import React, { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
 import { Clock, Hash, CheckCircle2, ChefHat, Loader2 } from 'lucide-react';
 import { useAdminAuth } from '../../hooks/useAdminAuth';
+import { avviaPollingVisibile } from '../../utils/visiblePolling';
 
-const BACKEND_URL = process.env.REACT_APP_MENU_BACKEND_URL;
+import { MENU_BACKEND_URL as BACKEND_URL } from '@/lib/backend';
 
 const elapsedMinutes = (iso) => {
   try {
@@ -76,10 +77,10 @@ const KitchenMonitorPage = () => {
   useEffect(() => {
     if (!authorized) return;
     loadOrders();
-    const interval = setInterval(loadOrders, 5000);
+    const fermaPolling = avviaPollingVisibile(loadOrders, 5000);
     const clock = setInterval(() => setNow(Date.now()), 30000);
     return () => {
-      clearInterval(interval);
+      fermaPolling();
       clearInterval(clock);
     };
   }, [authorized, loadOrders]);
