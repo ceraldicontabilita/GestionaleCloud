@@ -285,6 +285,12 @@
       const loaded = await originalLoad(true);
       const note = document.getElementById('ceraldiConnectionNote');
       if (note && !loaded) note.textContent = 'Sessione valida · sincronizzazione dati non completata. Riprova con Sincronizza.';
+      if (note && loaded) {
+        const rows = typeof fatture !== 'undefined' && Array.isArray(fatture) ? fatture : [];
+        const missing = rows.filter(row => row.importo === null || row.importo === undefined || row.importo === '' || !Number.isFinite(Number(row.importo))).length;
+        note.textContent = note.textContent.replace(/ · Totali parziali:.*$/, '');
+        if (missing) note.textContent += ' · Totali parziali: manca l’importo di ' + missing + (missing === 1 ? ' documento.' : ' documenti.');
+      }
       return loaded;
     };
 

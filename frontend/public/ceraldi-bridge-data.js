@@ -59,6 +59,20 @@
     if (matches(['da_pagare', 'non_pagata', 'non_pagato', 'unpaid', 'aperta'])) return 'da_pagare';
     return 'da_verificare';
   }
+  function documentPresent(o) {
+    // Lists omit original bodies. Keep an explicit server answer, including
+    // null (unknown), and otherwise use original-document metadata only.
+    if (own(o, 'has_allegata')) {
+      if (o.has_allegata === true || o.has_allegata === false || o.has_allegata === null) return o.has_allegata;
+    }
+    const text = value => typeof value === 'string' && value.trim() !== '';
+    const fields = ['fattura_allegata', 'xml_content', 'xml_originale', 'xml_raw', 'file_base64', 'pdf_base64', 'fattura_allegata_name', 'xml_filename', 'filename', 'source_document_id', 'drive_file_id', 'documents_inbox_id'];
+    if (fields.some(field => text(o[field]))) return true;
+    const reference = o.document_original_ref;
+    if (text(reference) || reference && typeof reference === 'object' && Object.values(reference).some(text)) return true;
+    if (Array.isArray(o.source_documents) && o.source_documents.some(source => source && ['drive_file_id', 'source_document_id', 'filename'].some(field => text(source[field])))) return true;
+    return null;
+  }
   function invoice(o) {
     const state = paymentState(o);
     const td = String(first(o, ['tipo_documento', 'document_type']) || '');
@@ -88,8 +102,9 @@
       totale_imponibile: number(first(o, ['total_imponibile', 'taxable_amount', 'imponibile'])),
       totale_imposta: number(first(o, ['total_iva', 'vat_amount', 'iva'])),
       note: first(o, ['notes', 'note']),
-      fattura_allegata: first(o, ['xml_content', 'xml_originale', 'xml_raw']),
-      fattura_allegata_name: first(o, ['xml_filename', 'filename']),
+      fattura_allegata: first(o, ['fattura_allegata', 'xml_content', 'xml_originale', 'xml_raw']),
+      fattura_allegata_name: first(o, ['fattura_allegata_name', 'xml_filename', 'filename']),
+      has_allegata: documentPresent(o),
       foto: first(o, ['foto', 'image_base64']),
       assegno: first(o, ['check_number', 'numero_assegno']),
       ts: timestamp(o), deleted_at: o.deleted_at || null,

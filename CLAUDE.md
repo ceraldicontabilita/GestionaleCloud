@@ -5305,6 +5305,10 @@ i moduli canonici disponibili, oppure adattare il motore esistente prima di
 abilitare un comando. Le elaborazioni HR massive e la fiscalità avanzata si
 aprono nei rispettivi moduli canonici. Le relazioni NC nel pannello di stato
 sono limitate alle ultime 100 fatture, con perimetro esplicito.
+I riepiloghi originali sommano soltanto importi disponibili: se mancano
+importi documentali, la pagina segnala che i totali sono parziali e il valore
+del documento rimane assente. Per una quadratura definitiva completare gli
+originali e verificare i prospetti del dominio contabile canonico.
 
 ---
 

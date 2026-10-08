@@ -84,6 +84,66 @@ async function loadSemanticActions(routes, records = []) {
   return { actions: window.CeraldiBridgeActions, window, calls: fixture.calls, fields, messages, bankReloads: () => bankReloads };
 }
 
+// Read actual inline declarations rather than duplicating their implementation.
+// Native parsing finds the first balanced function body, including braces in
+// comments, regexes and templates, without introducing a parser dependency.
+function inlineFunction(html, name) {
+  const declaration = new RegExp('^(?:async\\s+)?function\\s+' + name + '\\s*\\(', 'm').exec(html);
+  assert.ok(declaration, 'missing original UI function: ' + name);
+  const tail = html.slice(declaration.index);
+  for (const end of tail.matchAll(/}/g)) {
+    const source = tail.slice(0, end.index + 1);
+    try { new vm.Script(source); return source; } catch (error) {
+      if (!(error instanceof SyntaxError)) throw error;
+    }
+  }
+  assert.fail('unbalanced original UI function: ' + name);
+}
+
+function decodeHtmlAttribute(value) {
+  return value.replace(/&(quot|apos|amp|lt|gt|#\d+|#x[0-9a-f]+);/gi, (_match, entity) => {
+    if (entity[0] === '#') return String.fromCodePoint(parseInt(entity.slice(entity[1].toLowerCase() === 'x' ? 2 : 1), entity[1].toLowerCase() === 'x' ? 16 : 10));
+    return { quot: '"', apos: "'", amp: '&', lt: '<', gt: '>' }[entity.toLowerCase()];
+  });
+}
+
+async function loadOriginalInvoiceUi(routes) {
+  const html = await fs.readFile(path.join(publicDir, 'primanota-ceraldi.html'), 'utf8');
+  const fixture = apiFixture(routes), savedRows = [], rendered = [], opened = [], scheduled = [], messages = [], requests = [];
+  const elements = new Map(['fattMo', 'fattMoBody', 'fattMoTitle', 'fattMoSub', 'fattMoElimina'].map(id => [id, { style: {}, innerHTML: '', textContent: '' }]));
+  const context = vm.createContext({
+    window: {}, Response, Request, Headers, URL, URLSearchParams, atob,
+    fatture: [], fornitori: [], _fattMoDdtId: null,
+    location: { hash: '', pathname: '/primanota-ceraldi.html', search: '' },
+    history: { replaceState() {} }, document: { getElementById: id => elements.get(id) || null },
+    setTimeout: (fn, delay) => { scheduled.push({ fn, delay }); }, toast: text => messages.push(text),
+    console: { log() {}, warn() {}, error() {} },
+    _loadCache: () => null, _cacheMaxTs: () => 0, _saveCache: rows => savedRows.push(rows), cacheSet() {},
+    renderFatturaXML: (xml, invoice) => { rendered.push({ xml, id: invoice.id }); return '<rendered-document>'; }, autoEstraiPrezzi() {},
+  });
+  vm.runInContext(await fs.readFile(path.join(publicDir, 'ceraldi-bridge-data.js'), 'utf8'), context, { filename: 'ceraldi-bridge-data.js' });
+  context.sbFetch = async (resource, opts = {}) => {
+    requests.push(resource);
+    if (resource.startsWith('impostazioni?')) return [];
+    const response = await context.window.CeraldiBridgeData.request(resource, opts, fixture.api);
+    assert.equal(response.status, 200, 'original UI read failed: ' + resource);
+    return response.json();
+  };
+  const slim = html.match(/^const SLIM_COLS_FATTURE\s*=\s*'[^']*';/m)?.[0];
+  assert.ok(slim, 'the original loadAll list projection must be exercised');
+  vm.runInContext(slim, context);
+  for (const name of ['_numeroDbFacoltativo', 'dbToApp', 'sbFetchAll', 'loadAll', '_arricchisciConFlagAllegati', 'fetchAllegataSingola', 'esc', 'fmt', '_haXml', '_btnXml', 'pnIdJs', 'pnModifica', 'pnStorico', '_apriFatturaDaLink', 'aprifatturaAllegata', '_mostraFatturaDataUrl']) {
+    vm.runInContext(inlineFunction(html, name), context, { filename: 'primanota-ceraldi.html:' + name });
+  }
+  const actualOpen = context.aprifatturaAllegata;
+  context.aprifatturaAllegata = id => {
+    const pending = actualOpen(id);
+    opened.push({ id, pending });
+    return pending;
+  };
+  return { context, calls: fixture.calls, savedRows, rendered, opened, scheduled, messages, requests, elements };
+}
+
 test('login returns to the Ceraldi page and rejects external or disguised destinations', async () => {
   const login = await fs.readFile(path.join(repo, 'frontend/src/pages/Login.jsx'), 'utf8');
   const source = login.match(/export function destinazioneDopoLogin\([^]*?\n\}/)?.[0];
@@ -170,6 +230,115 @@ test('an invoice opened by exact ID reads its XML from the canonical detail endp
   assert.deepEqual(await response.json(), [{ id: 'historic-text-id', fattura_allegata: xml }]);
   assert.equal(calls.length, 1);
   assert.equal(calls[0].url, '/api/invoices/historic-text-id');
+});
+
+test('invoice list metadata marks original documents without downloading their bodies and preserves unknown answers', async () => {
+  const bridge = await loadDataAdapter();
+  const originals = [
+    { id: 'filename-xml', filename: 'fattura.xml' },
+    { id: 'filename-pdf', fattura_allegata_name: 'fattura.pdf' },
+    { id: 'document-reference', document_original_ref: { drive_file_id: 'drive-document' } },
+    { id: 'source-reference', source_document_id: 'source-document' },
+    { id: 'server-no-document', filename: 'historic-name.xml', has_allegata: false },
+    { id: 'server-unknown', filename: 'historic-name.xml', has_allegata: null },
+    { id: 'no-evidence' },
+  ];
+  const { api } = apiFixture({ '/api/invoices': originals });
+  const response = await bridge.request('fatture?select=id,has_allegata,fattura_allegata&order=id.asc', {}, api);
+  assert.equal(response.status, 200);
+  const rows = await response.json();
+  for (const row of rows) {
+    const expected = ['server-unknown', 'no-evidence'].includes(row.id) ? null : row.id !== 'server-no-document';
+    assert.equal(row.has_allegata, expected, row.id);
+    assert.equal(row.fattura_allegata, null, 'list metadata must not become a fabricated document body');
+  }
+});
+
+test('the original list, document buttons and lazy viewer preserve canonical document metadata and text IDs', async () => {
+  const identifiers = ['550e8400-e29b-41d4-a716-446655440000', '000042', '9007199254740993'];
+  const invoices = identifiers.map((id, i) => ({ id, invoice_number: 'XML/' + i, invoice_date: '2026-10-08', supplier_name: 'Fornitore Uno', filename: id + '.xml', total_amount: 100 }));
+  invoices.push(
+    { id: 'explicit-false', invoice_date: '2026-10-08', filename: 'historic.xml', source: 'aruba', has_allegata: false },
+    { id: 'explicit-null', invoice_date: '2026-10-08', filename: 'historic.xml', has_allegata: null },
+    { id: 'pdf-original', invoice_date: '2026-10-08', fattura_allegata_name: 'originale.pdf' },
+    { id: 'source-original', invoice_date: '2026-10-08', source_document_id: 'document-id' },
+  );
+  const routes = { '/api/invoices': invoices, '/api/suppliers': [] };
+  for (const id of identifiers) routes['/api/invoices/' + encodeURIComponent(id)] = { ...invoices.find(invoice => invoice.id === id), xml_content: '<FatturaElettronica><Numero>' + id + '</Numero></FatturaElettronica>' };
+  const current = await loadOriginalInvoiceUi(routes);
+  assert.equal(await current.context.loadAll(true), true);
+  const loaded = current.context.fatture;
+  assert.equal(loaded.length, invoices.length);
+  assert.equal(current.savedRows.length, 1);
+  for (const id of [...identifiers, 'pdf-original', 'source-original']) {
+    assert.equal(current.savedRows[0].find(row => row.id === id).has_allegata, true, 'enrichment must preserve canonical list evidence for ' + id);
+    assert.equal(loaded.find(row => row.id === id).hasAllegata, true, 'dbToApp must retain the document flag for ' + id);
+  }
+  assert.equal(current.savedRows[0].find(row => row.id === 'explicit-false').has_allegata, false);
+  assert.equal(current.savedRows[0].find(row => row.id === 'explicit-null').has_allegata, null);
+  assert.equal(current.context._btnXml(loaded.find(row => row.id === 'explicit-false')), '');
+  assert.equal(current.context._btnXml(loaded.find(row => row.id === 'explicit-null')), '');
+  assert.ok(current.requests.some(resource => resource.includes('has_allegata')), 'the actual slim projection/enrichment must request attachment metadata');
+  assert.ok(current.requests.every(resource => !/[?&](?:foto|fattura_allegata)=/.test(resource)), 'list enrichment must not query an omitted original body');
+  assert.equal(current.rendered.length, 0);
+  assert.ok(loaded.every(invoice => !invoice.fatturaAllegata), 'the list leaves original XML for lazy loading');
+  for (const id of identifiers) {
+    const invoice = loaded.find(row => row.id === id);
+    const button = current.context._btnXml(invoice, 'mini');
+    const dataset = decodeHtmlAttribute(button.match(/\bdata-fx="([^"]*)"/)?.[1] || '');
+    const handler = decodeHtmlAttribute(button.match(/\bonclick="([^"]*)"/)?.[1] || '');
+    assert.equal(dataset, id);
+    assert.ok(handler, 'the rendered original document button must have a click handler');
+    const click = vm.runInContext('(function(event){' + handler + '})', current.context);
+    let propagationStopped = false;
+    click.call({ dataset: { fx: dataset } }, { stopPropagation() { propagationStopped = true; } });
+    assert.equal(propagationStopped, true);
+    assert.equal(current.opened.at(-1).id, id, 'rendered button must retain ID type and value');
+    await current.opened.at(-1).pending;
+    assert.equal(current.context._fattMoDdtId, id);
+    assert.deepEqual(current.rendered.at(-1), { xml: routes['/api/invoices/' + encodeURIComponent(id)].xml_content, id });
+    assert.equal(invoice.fatturaAllegata, current.rendered.at(-1).xml);
+  }
+  const detailCalls = current.calls.filter(call => new URL(call.url, 'https://gestionale.example').pathname.startsWith('/api/invoices/'));
+  assert.deepEqual(detailCalls.map(call => call.url), identifiers.map(id => '/api/invoices/' + encodeURIComponent(id)));
+});
+
+test('original ID expressions and invoice links preserve zeroes, unsafe integer text and encoded identifiers', async () => {
+  const identifiers = ['550e8400-e29b-41d4-a716-446655440000', '000042', '9007199254740993', 'quoted\'"/identity'];
+  const current = await loadOriginalInvoiceUi({});
+  const opened = [];
+  const edited = [], histories = [];
+  current.context.aprifatturaAllegata = id => { opened.push(id); };
+  current.context.openEdit = id => { edited.push(id); };
+  current.context.editId = 'prior-editor';
+  current.context._stApri = () => { histories.push(current.context.editId); };
+  current.context.fatture = identifiers.map(id => ({ id }));
+  for (const id of identifiers) {
+    const expression = decodeHtmlAttribute(current.context.pnIdJs(id));
+    assert.equal(vm.runInContext(expression, current.context), id, 'pnIdJs must round-trip a text ID through its rendered HTML');
+    vm.runInContext('pnModifica(' + expression + ');pnStorico(' + expression + ')', current.context);
+    assert.equal(edited.at(-1), id);
+    assert.equal(histories.at(-1), id);
+    assert.equal(current.context.editId, 'prior-editor');
+    current.context.location.hash = '#fattura=' + encodeURIComponent(id);
+    current.context._apriFatturaDaLink();
+    assert.equal(opened.at(-1), id, 'hash link must open the exact canonical record');
+  }
+  assert.equal(current.scheduled.length, 0, 'loaded records must be found immediately without numeric coercion');
+});
+
+test('the original invoice conversion and display distinguish missing monetary values from confirmed zero', async () => {
+  const current = await loadOriginalInvoiceUi({});
+  for (const unknown of [null, undefined, '', '  ', 'invalid', false]) {
+    const invoice = current.context.dbToApp({ id: 'unknown-money', importo: unknown, iva: unknown, totale_imponibile: unknown, totale_imposta: unknown });
+    for (const field of ['importo', 'iva', 'totaleImponibile', 'totaleImposta']) assert.equal(invoice[field], null, field);
+    assert.equal(current.context.fmt(unknown), '—', 'an unknown amount must not display as a confirmed zero');
+  }
+  for (const zero of [0, '0', '0.00']) {
+    const invoice = current.context.dbToApp({ id: 'zero-money', importo: zero, iva: zero, totale_imponibile: zero, totale_imposta: zero });
+    for (const field of ['importo', 'iva', 'totaleImponibile', 'totaleImposta']) assert.equal(invoice[field], 0, field);
+    assert.equal(current.context.fmt(zero), '€ 0,00');
+  }
 });
 
 test('manual bank rows use the canonical writer and preserve the pending bank state', async () => {
