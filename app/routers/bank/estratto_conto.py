@@ -7,6 +7,7 @@ from app.utils.dependencies import get_current_admin_user
 from typing import Dict, Any, List, Optional
 from datetime import datetime, date, timezone
 import logging
+import asyncio
 import math
 import io
 import re
@@ -545,13 +546,13 @@ async def import_estratto_conto(file: UploadFile = File(...), dry_run: bool = Fa
     movimenti = []
     segno_da_controllare = False
     
-    if filename.endswith('.pdf') and e_estratto_bnl_pdf(contents):
+    if filename.endswith('.pdf') and await asyncio.to_thread(e_estratto_bnl_pdf, contents):
         # Conto BNL 4500/3192 (chiuso): il PDF si riconosce dal contenuto, il
         # lettore prende il verso dalla colonna e rifiuta l'estratto se i saldi
         # non tornano. Nessun ripiego sugli altri lettori: importerebbero
         # righe col verso indovinato.
         try:
-            estratto_bnl = leggi_estratto_bnl(contents)
+            estratto_bnl = await asyncio.to_thread(leggi_estratto_bnl, contents)
         except EstrattoBNLNonValido as exc:
             raise HTTPException(
                 status_code=422, detail=f"Estratto conto BNL non importato: {exc}",
@@ -582,7 +583,10 @@ async def import_estratto_conto(file: UploadFile = File(...), dry_run: bool = Fa
             ("Nexi", EstrattoContoNexiParser().parse_pdf),
         ):
             try:
-                attempts.append(parser(contents))
+                candidate = await asyncio.to_thread(parser, contents)
+                attempts.append(candidate)
+                if candidate.get("success") and candidate.get("transazioni"):
+                    break
             except Exception as exc:
                 # Un formato non riconosciuto da un parser non deve impedire
                 # agli altri parser di esaminare lo stesso PDF.
