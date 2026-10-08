@@ -372,6 +372,10 @@ async def _fattura(db, ident: str, indice: int) -> Originale:
     fattura, xml = await _trova_fattura_e_xml_originale(ident)
     if fattura is None:
         raise DocumentoNonTrovato("Fattura non trovata", {"id": ident})
+    if not xml and fattura.get("documento_inbox_id"):
+        doc = await db["documents_inbox"].find_one({"id": fattura["documento_inbox_id"]})
+        if doc:
+            return await _da_record(doc, predefinito="fattura.pdf", tipo="fattura", ident=ident)
     if not xml:
         raise OriginaleNonDisponibile("Originale non disponibile", {
             "tipo": "fattura", "id": ident, "provato": ["xml_file_path", "xml_raw", "xml_content"]})

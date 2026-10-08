@@ -2,6 +2,7 @@ import React, { useState, useCallback, useRef } from 'react';
 import { toast } from 'sonner';
 import { COLORS, SHADOWS, BORDER_RADIUS } from '../lib/utils';
 import api from '../api';
+import { useAnnoGlobale } from '../contexts/AnnoContext';
 import { PageLayout } from '../components/PageLayout';
 import { useConfirm } from '../components/ui/ConfirmDialog';
 import { Button, Badge, Card, RowActionButton } from '../components/ds';
@@ -31,19 +32,17 @@ export function classificaEsitoUpload(data = {}) {
   const duplicate =
     data?.action === 'duplicate' ||
     data?.duplicate === true ||
-    (data?.imported === 0 && /duplicat/i.test(message));
+    (data?.imported === 0 && Number(data?.duplicates) > 0);
   const partial = data?.partial === true;
+  const skipped = !partial && (data?.action === 'skipped' || Number(data?.skipped_altro_anno) > 0
+    || (data?.success !== false && data?.imported === 0 && !duplicate && !data?.accounting_repaired && data?.action !== 'updated'));
   const failed = data?.success === false && !duplicate && !partial;
 
   return {
-    status: duplicate ? 'duplicate' : partial ? 'partial' : failed ? 'error' : 'success',
-    message: duplicate
+    status: partial ? 'partial' : skipped ? 'skipped' : duplicate ? 'duplicate' : failed ? 'error' : 'success',
+    message: partial ? message || 'Import parziale: controllare gli errori' : skipped ? message || 'Nessun documento importato' : duplicate
       ? message || 'Documento duplicato ignorato'
-      : failed
-        ? message || 'Import non riuscito'
-        : partial
-          ? message || 'Import parziale: controllare gli errori'
-          : message || 'Importato',
+      : failed ? message || 'Import non riuscito' : message || 'Importato',
   };
 }
 
@@ -136,6 +135,7 @@ export function statoArchivio(preview) {
 
 export default function ImportDocumenti() {
   const confirm = useConfirm();
+  const { setAnno } = useAnnoGlobale();
   const [files, setFiles] = useState([]);
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState({ current: 0, total: 0, filename: '' });
@@ -381,6 +381,7 @@ export default function ImportDocumenti() {
   const duplicateCount = results.filter(r => r.status === 'duplicate').length;
   const errorCount = results.filter(r => r.status === 'error').length;
   const partialCount = results.filter(r => r.status === 'partial').length;
+  const skippedCount = results.filter(r => r.status === 'skipped').length;
 
   // Variante Badge per tipo rilevato (mappata sui token del design system)
   const getTipoVariant = tipo => {
@@ -388,6 +389,7 @@ export default function ImportDocumenti() {
       f24: 'danger',
       cedolino: 'accent',
       fattura: 'danger',
+      fattura_estera_pdf: 'warning',
       estratto_conto: 'success',
       estratto_conto_pdf: 'success',
       bonifici: 'info',
@@ -421,7 +423,8 @@ export default function ImportDocumenti() {
     const labels = {
       f24: 'F24',
       cedolino: 'Libro Unico',
-      fattura: 'Fattura XML',
+      fattura: 'Fattura',
+      fattura_estera_pdf: 'Fattura estera da verificare',
       estratto_conto: 'Estratto Conto',
       estratto_conto_pdf: 'Estratto PDF',
       bonifici: 'Bonifici',
@@ -503,7 +506,7 @@ export default function ImportDocumenti() {
             ref={fileInputRef}
             type="file"
             multiple
-            accept=".pdf,.xlsx,.xls,.xml,.csv,.zip"
+            accept=".pdf,.xlsx,.xls,.xml,.p7m,.csv,.zip"
             onChange={handleFileSelect}
             style={{ display: 'none' }}
             data-testid="file-input"
@@ -531,7 +534,7 @@ export default function ImportDocumenti() {
         >
           <DriveFattureImportCard />
           <AnnoImportazioneCard />
-          <EstrattiContoOriginali />
+          <EstrattiContoOriginali key={results.length} />
         </div>
 
         <h2 style={TITOLO_ORIGINE}>Dalla posta</h2>
@@ -620,7 +623,7 @@ export default function ImportDocumenti() {
                 {files.length} file in coda
               </div>
               <div style={{ display: 'flex', gap: 8 }}>
-                <Button variant="danger" size="sm" onClick={handleReset} data-testid="reset-btn">
+                <Button variant="danger" size="sm" onClick={handleReset} disabled={uploading} data-testid="reset-btn">
                   Svuota
                 </Button>
                 <Button
@@ -640,7 +643,7 @@ export default function ImportDocumenti() {
                   {uploading
                     ? 'Elaborazione...'
                     : canConfirm
-                      ? '2. Importa ora in Prima Nota'
+                      ? '2. Conferma importazione'
                       : '1. Controlla e prepara importazione'}
                 </Button>
               </div>
@@ -708,7 +711,7 @@ export default function ImportDocumenti() {
                         ? COLORS.successLight
                         : f.status === 'preview'
                           ? COLORS.infoLight
-                        : f.status === 'duplicate' || f.status === 'partial'
+                        : ['duplicate', 'partial', 'skipped'].includes(f.status)
                           ? COLORS.warningLight
                           : f.status === 'error'
                             ? COLORS.dangerLight
@@ -725,7 +728,7 @@ export default function ImportDocumenti() {
                           ? COLORS.successLight
                           : f.status === 'preview'
                             ? COLORS.infoLight
-                          : f.status === 'duplicate' || f.status === 'partial'
+                          : ['duplicate', 'partial', 'skipped'].includes(f.status)
                             ? COLORS.warningLight
                             : f.status === 'error'
                               ? COLORS.dangerLight
@@ -746,7 +749,7 @@ export default function ImportDocumenti() {
                       <CheckCircle size={16} color={COLORS.success} />
                     ) : f.status === 'preview' ? (
                       <CheckCircle size={16} color={COLORS.info} />
-                    ) : f.status === 'duplicate' || f.status === 'partial' ? (
+                    ) : ['duplicate', 'partial', 'skipped'].includes(f.status) ? (
                       <AlertCircle size={16} color={COLORS.warning} />
                     ) : f.status === 'error' ? (
                       <AlertCircle size={16} color={COLORS.danger} />
@@ -784,6 +787,14 @@ export default function ImportDocumenti() {
                           ? ' | Quadratura verificata'
                           : ''}
                         {` | ${statoArchivio(f.preview)}`}
+                        {(f.preview.parsed?.fatture || []).map((invoice, invoiceIndex) => (
+                          <div key={invoiceIndex}>
+                            Fattura {invoice.invoice_number} · {invoice.invoice_date} · {invoice.supplier_name}
+                            {invoice.total_amount != null ? ` · € ${invoice.total_amount}` : ''}
+                          </div>
+                        ))}
+                        {f.preview.parsed?.destinazione && <div>Destinazione: {f.preview.parsed.destinazione}</div>}
+                        {Number.isInteger(f.preview.parsed?.movimenti_letti) && <div>Movimenti letti: {f.preview.parsed.movimenti_letti}</div>}
                       </div>
                     )}
                   </div>
@@ -814,7 +825,8 @@ export default function ImportDocumenti() {
             }}
           >
             <strong>Controllo completato: i file sono pronti.</strong>{' '}
-            Premi ora "2. Importa ora in Prima Nota" per salvare corrispettivi e scritture contabili.
+            Premi "2. Conferma importazione" per salvare i documenti nelle rispettive sezioni.
+            Le fatture caricate dal computer mantengono l’anno indicato nel documento.
           </div>
         )}
 
@@ -847,7 +859,7 @@ export default function ImportDocumenti() {
               }}
             >
               <div style={{ fontWeight: 700, fontSize: 15, color: COLORS.gray[700] }}>
-                {partialCount > 0
+                {skippedCount === results.length ? 'Nessun documento importato' : partialCount > 0 || skippedCount > 0
                   ? 'Import parziale: controllare i dettagli'
                   : duplicateCount === results.length
                   ? 'Nessun nuovo documento: duplicati ignorati'
@@ -861,7 +873,7 @@ export default function ImportDocumenti() {
               </div>
               <div style={{ display: 'flex', gap: 12, fontSize: 13 }}>
                 <span style={{ color: COLORS.success, display: 'inline-flex', alignItems: 'center', gap: 4 }}><CheckCircle size={14} aria-hidden /> Importati: {successCount}</span>
-                <span style={{ color: COLORS.warning, display: 'inline-flex', alignItems: 'center', gap: 4 }}><AlertCircle size={14} aria-hidden /> Duplicati o parziali: {duplicateCount + partialCount}</span>
+                <span style={{ color: COLORS.warning, display: 'inline-flex', alignItems: 'center', gap: 4 }}><AlertCircle size={14} aria-hidden /> Duplicati, parziali o saltati: {duplicateCount + partialCount + skippedCount}</span>
                 <span style={{ color: COLORS.danger, display: 'inline-flex', alignItems: 'center', gap: 4 }}><XCircle size={14} aria-hidden /> Errori: {errorCount}</span>
               </div>
             </div>
@@ -874,7 +886,7 @@ export default function ImportDocumenti() {
                     background:
                       r.status === 'success'
                         ? COLORS.successLight
-                        : r.status === 'duplicate' || r.status === 'partial'
+                        : ['duplicate', 'partial', 'skipped'].includes(r.status)
                           ? COLORS.warningLight
                           : COLORS.dangerLight,
                     borderRadius: BORDER_RADIUS.md,
@@ -886,7 +898,7 @@ export default function ImportDocumenti() {
                 >
                   {r.status === 'success' ? (
                     <CheckCircle size={18} color={COLORS.success} />
-                  ) : r.status === 'duplicate' || r.status === 'partial' ? (
+                  ) : ['duplicate', 'partial', 'skipped'].includes(r.status) ? (
                     <AlertCircle size={18} color={COLORS.warning} />
                   ) : (
                     <AlertCircle size={18} color={COLORS.danger} />
@@ -913,7 +925,7 @@ export default function ImportDocumenti() {
                         color:
                           r.status === 'success'
                             ? COLORS.success
-                            : r.status === 'duplicate' || r.status === 'partial'
+                            : ['duplicate', 'partial', 'skipped'].includes(r.status)
                               ? COLORS.warning
                               : COLORS.danger,
                       }}
@@ -925,7 +937,24 @@ export default function ImportDocumenti() {
                         {r.evidenceSummary}
                       </div>
                     )}
-                    {r.tipo === 'fattura_estera_pdf' && r.status === 'success' && (
+                    {r.details?.fattura_id && (
+                      <a
+                        href={`/fatture?invoice_id=${encodeURIComponent(r.details.fattura_id)}`}
+                        onClick={() => {
+                          const year = Number(String(r.details.invoice_date || '').slice(0, 4));
+                          if (year >= 2018 && year <= new Date().getFullYear() + 5) setAnno(year);
+                        }}
+                        style={{ display: 'inline-flex', alignItems: 'center', minHeight: 44, fontWeight: 600 }}
+                      >
+                        Apri fattura{r.details.invoice_date ? ` del ${r.details.invoice_date.slice(0, 4)}` : ''}
+                      </a>
+                    )}
+                    {r.details?.doc_id && (
+                      <a href="/documenti" style={{ display: 'inline-flex', alignItems: 'center', minHeight: 44, fontWeight: 600 }}>
+                        Apri archivio documenti
+                      </a>
+                    )}
+                    {r.tipo === 'fattura_estera_pdf' && ['success', 'duplicate'].includes(r.status) && (
                       // I dati letti dall'AI li conferma il titolare: senza un
                       // collegamento qui la coda restava introvabile.
                       <a

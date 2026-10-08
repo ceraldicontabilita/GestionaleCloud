@@ -170,6 +170,9 @@ class RicettaCreate(BaseModel):
     menu_pubblico: Optional[bool] = None
     menu_bb: Optional[bool] = None
     visibile_tablet: Optional[bool] = None
+    fornitore_partita_iva: Optional[str] = Field(default=None, max_length=32)
+    codice_articolo_fornitore: Optional[str] = Field(default=None, max_length=100)
+    confezione: Optional[str] = Field(default=None, max_length=300)
 
     @field_validator("prezzo_vendita", "prezzo_tavolo")
     @classmethod
@@ -1663,7 +1666,8 @@ class VisibilitaTabletRicetta(BaseModel):
 
 
 CATEGORIE_RAPIDE_RICETTA = {
-    "colazioni", "dolci_secchi", "ricorrenze", "natale", "pasqua", "rosticceria_giorno", "pasticceria_classica",
+    "colazioni", "dolci_secchi", "ricorrenze", "natale", "pasqua", "rosticceria_giorno", "pasticceria_classica", "semilavorati",
+    "bagne", "panini", "insalate", "primi_piatti", "contorni",
 }
 
 
@@ -1708,6 +1712,17 @@ async def imposta_categorie_rapide_ricetta(
     profilo = {**(_admin if isinstance(_admin, dict) else {}), "ruolo": "amministratore"}
     esito = await aggiorna_campo_ricetta(ricetta_id, {"categorie_rapide": richiesta.categorie}, profilo)
     return {"id": ricetta_id, **esito["aggiornato"], "menu_sync": esito["menu_sync"]}
+
+
+@router.get("/ricette/{ricetta_id}/fatture-acquisto")
+async def get_fatture_acquisto_ricetta(
+    ricetta_id: str, anno: int = Query(..., ge=2000, le=2100), _admin=Depends(require_admin),
+):
+    from app.lotti.servizi.acquisti_semilavorati import fatture_acquisto
+    item = await db.ricette.find_one({"id": ricetta_id}, {"_id": 0})
+    if not item:
+        raise HTTPException(404, "Ricetta non trovata")
+    return await fatture_acquisto(item, anno)
 
 
 @router.get("/ricette/{ricetta_id}", response_model=Ricetta)
@@ -1805,6 +1820,9 @@ async def update_ricetta(ricetta_id: str, item: RicettaCreate, _ruolo=Depends(re
         verifica_reparto(_ruolo, item.reparto)
 
     payload = item.model_dump()
+    for campo_acquisto in ("fornitore_partita_iva", "codice_articolo_fornitore", "confezione"):
+        if campo_acquisto not in item.model_fields_set:
+            payload.pop(campo_acquisto, None)
     payload.pop("descrizione_origine", None)
     payload.pop("allergeni_confermati", None)
     # Provenienza del procedimento: la decide il server, mai il client.

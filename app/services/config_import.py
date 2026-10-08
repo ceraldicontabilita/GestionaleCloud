@@ -3,11 +3,11 @@
 l'anno che voglio importare?", un solo selettore condiviso, non uno per
 canale).
 
-Governa il filtro anno applicato all'import di fatture e corrispettivi
-(upload e cartella unica Drive passano dallo stesso smistatore): i documenti con
-data nell'anno attivo entrano nel flusso contabile attivo (Prima Nota,
-scadenzario, alert, magazzino); gli altri anni vengono archiviati per
-sola consultazione. Non tocca l'upload manuale via UI, né AnnoContext.jsx
+Governa il filtro anno applicato all'import automatico di fatture e
+corrispettivi da Drive/Render: i documenti con data nell'anno attivo
+entrano nel flusso contabile (Prima Nota, scadenzario, alert, magazzino);
+gli altri restano su Drive, salvo le parcelle con ritenuta.
+Non tocca l'upload manuale via UI (anche ZIP), né AnnoContext.jsx
 (che è solo un filtro di visualizzazione lato frontend, indipendente).
 
 Persistito in `sistema_stato` (stessa collection già usata per lo stato
