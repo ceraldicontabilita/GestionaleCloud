@@ -45,8 +45,7 @@ PROIEZIONE = {
     "prezzo_vendita": 1, "prezzo_tavolo": 1, "descrizione": 1,
     "allergeni": 1, "allergeni_auto": 1, "foto_url": 1,
     "menu_pubblico": 1, "foto_storage_path": 1, "foto_id": 1,
-    "foto_content_type": 1, "foto_sha256": 1, "foto_drive_id": 1,
-    "foto_drive_folder_id": 1, "descrizione_origine": 1,
+    "foto_content_type": 1, "foto_sha256": 1, "descrizione_origine": 1,
     "ingredienti": 1, "ingredienti_dettaglio": 1,
 }
 

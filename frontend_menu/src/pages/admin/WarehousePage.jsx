@@ -12,7 +12,7 @@ import {
 } from '../../components/ui/dialog';
 import { toast } from '../../hooks/use-toast';
 
-const BACKEND_URL = process.env.REACT_APP_MENU_BACKEND_URL;
+import { MENU_BACKEND_URL as BACKEND_URL } from '@/lib/backend';
 
 const NewItemDialog = ({ onCreated, authHeader }) => {
   const [open, setOpen] = useState(false);

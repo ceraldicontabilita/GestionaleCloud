@@ -19,7 +19,6 @@ import {
   Upload,
   Sparkles,
   Mail,
-  Users,
   XCircle,
 } from 'lucide-react';
 
@@ -602,30 +601,6 @@ export default function ImportDocumenti() {
             F24 dalla posta
           </Button>
 
-          <Button
-            type="button"
-            variant="secondary"
-            size="sm"
-            iconLeft={<Users size={14} />}
-            onClick={async () => {
-              const r = await previewAndApply({
-                previewUrl: '/api/documenti-inbox/import-dipendenti-from-cu?dry_run=true',
-                applyUrl: '/api/documenti-inbox/import-dipendenti-from-cu?dry_run=false',
-                title: 'Conferma proposte dipendenti da CU',
-                describe: p => `Analizzate ${p.cu_analizzate || 0} CU; ${p.dipendenti_creati || 0} nuove anagrafiche proposte, ${p.gia_presenti || 0} già presenti. Nessuna anagrafica è stata ancora creata.`,
-              });
-              if (r) {
-                toast.success('Import dipendenti da CU completato', {
-                  description:
-                    `CU analizzate: ${r.cu_analizzate} • Dipendenti creati: ${r.dipendenti_creati} • ` +
-                    `Già presenti: ${r.gia_presenti} • Filename non riconosciuti: ${r.non_riconosciuti}`,
-                });
-              }
-            }}
-            data-testid="import-dipendenti-cu-btn"
-          >
-            Dipendenti dalle CU
-          </Button>
         </div>
 
         {/* Lista File in coda */}

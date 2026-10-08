@@ -143,6 +143,7 @@ export function adattaTabella(tabella, finestra = window.innerWidth) {
 }
 
 function tabelleDi(nodo) {
+  if (nodo?.nodeType === Node.TEXT_NODE) nodo = nodo.parentElement;
   if (!(nodo instanceof Element)) return [];
   const trovate = [...nodo.querySelectorAll('table')];
   const sopra = nodo.closest('table');
@@ -155,25 +156,50 @@ export function avviaTabelleCard(radice = document.body) {
   let coda = new Set();
   let programmato = false;
   let attesaRidimensione = null;
+  let fermato = false;
+  const contenitori = new Map();
+  const osservaDimensioni = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(entries => {
+    for (const { target } of entries) {
+      const larghezza = target.clientWidth;
+      if (contenitori.get(target) === larghezza) continue;
+      contenitori.set(target, larghezza);
+      target.querySelectorAll('table[data-card="si"]').forEach(t => coda.add(t));
+    }
+    if (coda.size) pianifica();
+  });
 
   const svuota = () => {
     programmato = false;
+    if (fermato) return;
     const tabelle = coda;
     coda = new Set();
     tabelle.forEach(etichettaTabella);
     // Prima tutte le etichette, poi tutte le misure: una misura per tabella,
     // senza rimbalzare fra scrittura e lettura del layout.
-    tabelle.forEach(t => adattaTabella(t));
+    tabelle.forEach(t => {
+      adattaTabella(t);
+      const contenitore = t.parentElement;
+      if (osservaDimensioni && t.dataset.card === 'si' && contenitore && !contenitori.has(contenitore)) {
+        contenitori.set(contenitore, contenitore.clientWidth);
+        osservaDimensioni.observe(contenitore);
+      }
+    });
   };
   const pianifica = () => {
-    if (programmato) return;
+    if (programmato || fermato) return;
     programmato = true;
     window.requestAnimationFrame(svuota);
   };
   const ascolta = records => {
     for (const r of records) {
       r.addedNodes.forEach(n => tabelleDi(n).forEach(t => coda.add(t)));
-      if (r.type === 'childList') tabelleDi(r.target).forEach(t => coda.add(t));
+      tabelleDi(r.target).forEach(t => coda.add(t));
+    }
+    for (const contenitore of contenitori.keys()) {
+      if (!contenitore.isConnected) {
+        osservaDimensioni?.unobserve(contenitore);
+        contenitori.delete(contenitore);
+      }
     }
     if (coda.size) pianifica();
   };
@@ -181,18 +207,22 @@ export function avviaTabelleCard(radice = document.body) {
     if (attesaRidimensione) clearTimeout(attesaRidimensione);
     attesaRidimensione = setTimeout(() => {
       attesaRidimensione = null;
-      document.querySelectorAll('table[data-card="si"]').forEach(t => coda.add(t));
+      radice.querySelectorAll('table[data-card="si"]').forEach(t => coda.add(t));
       if (coda.size) pianifica();
     }, 120);
   };
 
-  document.querySelectorAll('table').forEach(t => coda.add(t));
+  radice.querySelectorAll('table').forEach(t => coda.add(t));
   pianifica();
   const osservatore = new MutationObserver(ascolta);
-  osservatore.observe(radice, { childList: true, subtree: true });
+  osservatore.observe(radice, { childList: true, characterData: true, subtree: true });
   window.addEventListener('resize', ridimensiona);
   return () => {
+    fermato = true;
     osservatore.disconnect();
+    osservaDimensioni?.disconnect();
+    contenitori.clear();
+    coda.clear();
     window.removeEventListener('resize', ridimensiona);
     if (attesaRidimensione) clearTimeout(attesaRidimensione);
   };

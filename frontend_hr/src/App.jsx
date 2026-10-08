@@ -117,6 +117,25 @@ const Avatar = ({ nome, cognome, size = "md" }) => {
   );
 };
 
+// Ogni schermata carica soltanto le collezioni che usa. In precedenza anche
+// Diagnostica o Impostazioni scaricavano anagrafica, ferie, turni, missioni,
+// documenti e statistiche a ogni apertura.
+const PAGE_DATA = {
+  dashboard: ["dipendenti", "ferie", "missioni", "stats"],
+  anagrafica: ["dipendenti"],
+  presenze: ["dipendenti", "ordine"],
+  "ferie-permessi": ["dipendenti", "ferie", "ordine"],
+  turni: ["dipendenti", "turni", "ordine"],
+  timbrature: ["dipendenti"],
+  "paghe-bonifici": ["dipendenti", "ordine"],
+  "bonifici-da-associare": ["dipendenti"],
+  "posizione-dipendente": ["dipendenti"],
+  tfr: ["dipendenti", "ordine"],
+  missioni: ["dipendenti", "missioni", "ordine"],
+  documenti: ["dipendenti", "documenti"],
+  assunzione: ["dipendenti"],
+};
+
 // Main App Component with Router
 export default function DipendentiCloudApp({ page: pageProp }) {
   const { page: pageParam } = useParams();
@@ -144,39 +163,26 @@ export default function DipendentiCloudApp({ page: pageProp }) {
   const loadData = useCallback(async () => {
     try {
       setLoading(true);
-      if (soloTurni) {
-        const [dipRes, turRes, ordRes] = await Promise.all([
-          axios.get(`${API}/dipendenti`),
-          axios.get(`${API}/turni`),
-          axios.get(`${API}/ordine-dipendenti`),
-        ]);
-        setDipendenti(dipRes.data || []);
-        setTurni(turRes.data || []);
-        setOrdineDip(ordRes.data?.ordine || []);
-        return;
-      }
-      const [dipRes, ferRes, turRes, missRes, docRes, statsRes, ordRes] = await Promise.all([
-        axios.get(`${API}/dipendenti`),
-        axios.get(`${API}/ferie`),
-        axios.get(`${API}/turni`),
-        axios.get(`${API}/missioni`),
-        axios.get(`${API}/documenti`),
-        axios.get(`${API}/dashboard/stats`),
-        axios.get(`${API}/ordine-dipendenti`).catch(() => ({ data: { ordine: [] } })),
-      ]);
-      setDipendenti(dipRes.data || []);
-      setFerie(ferRes.data || []);
-      setTurni(turRes.data || []);
-      setMissioni(missRes.data || []);
-      setDocumenti(docRes.data || []);
-      setStats(statsRes.data || {});
-      setOrdineDip((ordRes.data || {}).ordine || []);
+      const richiesti = new Set(soloTurni ? PAGE_DATA.turni : (PAGE_DATA[currentPage] || []));
+      const loaders = {
+        dipendenti: async () => setDipendenti((await axios.get(`${API}/dipendenti`)).data || []),
+        ferie: async () => setFerie((await axios.get(`${API}/ferie`)).data || []),
+        turni: async () => setTurni((await axios.get(`${API}/turni`)).data || []),
+        missioni: async () => setMissioni((await axios.get(`${API}/missioni`)).data || []),
+        documenti: async () => setDocumenti((await axios.get(`${API}/documenti`)).data || []),
+        stats: async () => setStats((await axios.get(`${API}/dashboard/stats`)).data || {}),
+        ordine: async () => {
+          const risposta = await axios.get(`${API}/ordine-dipendenti`).catch(() => ({ data: { ordine: [] } }));
+          setOrdineDip((risposta.data || {}).ordine || []);
+        },
+      };
+      await Promise.all([...richiesti].map((chiave) => loaders[chiave]()));
     } catch (error) {
       console.error("Error loading data:", error);
     } finally {
       setLoading(false);
     }
-  }, [soloTurni]);
+  }, [currentPage, soloTurni]);
 
   useEffect(() => { loadData(); }, [loadData]);
 
@@ -208,6 +214,7 @@ export default function DipendentiCloudApp({ page: pageProp }) {
     { id: "presenze", label: "Presenze", icon: Calendar, section: "DIPENDENTI" },
     { id: "ferie-permessi", label: "Ferie & Permessi", icon: Calendar, section: "DIPENDENTI" },
     { id: "turni", label: "Turni", icon: Grid3X3, section: "DIPENDENTI" },
+    { id: "missioni", label: "Missioni", icon: MapPin, section: "DIPENDENTI" },
     { id: "timbrature", label: "Timbrature", icon: Clock, section: "DIPENDENTI" },
     { id: "paghe-bonifici", label: "Archivio paghe", icon: Link2, section: "DIPENDENTI" },
     { id: "bonifici-da-associare", label: "Bonifici da associare", icon: Inbox, section: "DIPENDENTI" },
@@ -229,7 +236,6 @@ export default function DipendentiCloudApp({ page: pageProp }) {
     timbrature: "Timbrature",
     "paghe-bonifici": "Archivio paghe",
     "bonifici-da-associare": "Bonifici da associare",
-    "distinte-da-associare": "Bonifici da associare",
     "posizione-dipendente": "Posizione dipendente",
     "mensilita-aggiuntive": "13ª e 14ª",
     tfr: "TFR",
@@ -265,10 +271,8 @@ export default function DipendentiCloudApp({ page: pageProp }) {
         return <TurniPage dipendenti={activeDipendenti} turni={turni} reload={loadData} />;
       case "timbrature":
         return <TimbraturePage dipendenti={dipendenti} getDipendente={getDipendente} />;
-      case "buste-paga":  // vecchio indirizzo (pagina unificata il 14/09/2026)
       case "paghe-bonifici":
         return <PagheBonificiPage dipendenti={activeDipendenti} />;
-      case "distinte-da-associare":  // vecchio indirizzo: stessa pagina e stessa coda
       case "bonifici-da-associare":
         return <BonificiDaAssociarePage dipendenti={dipendenti} />;
       case "posizione-dipendente":
@@ -288,7 +292,15 @@ export default function DipendentiCloudApp({ page: pageProp }) {
       case "impostazioni":
         return <ImpostazioniPage />;
       default:
-        return <DashboardPage stats={stats} dipendenti={dipendenti} ferie={ferie} missioni={missioni} getDipendente={getDipendente} />;
+        return (
+          <div className="dc-page">
+            <div className="dc-card" role="alert">
+              <h1>Pagina non trovata</h1>
+              <p>La sezione richiesta non esiste o è stata rimossa.</p>
+              <Link className="dc-btn dc-btn-primary" to="/dipendenti">Torna al pannello di controllo</Link>
+            </div>
+          </div>
+        );
     }
   };
 

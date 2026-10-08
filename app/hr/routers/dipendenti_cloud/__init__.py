@@ -699,10 +699,12 @@ async def _ricalcola_stato_paga(db, dip, anno, mese):
     # bonifico arrivato prima della busta resta «in attesa della busta».
     from app.services import posizione_dipendente as pos
 
-    tot_esiti, n_esiti = pos.ZERO, 0
-    async for e in db.pagamenti_esiti.find({"dipendente_id": dip, "mese": mese, "anno": anno}, {"_id": 0, "importo": 1}):
+    from app.constants.stati_associazione_bonifico import esiti_riconciliati, ha_riscontro_bancario
+    tot_esiti, n_esiti, esiti = pos.ZERO, 0, []
+    async for e in db.pagamenti_esiti.find({"dipendente_id": dip, "mese": mese, "anno": anno}, {"_id": 0, "pdf_data": 0}):
         tot_esiti += pos.importo(e.get("importo")) or pos.ZERO
         n_esiti += 1
+        esiti.append(e)
     bonifico = tot_esiti if n_esiti else (pos.importo(p.get("bonifico_importo")) or pos.ZERO)
     busta = pos.importo(p.get("importo_busta"))
     from app.hr.services.regole_pagamenti_dipendenti import filtra_acconti_contanti
@@ -725,12 +727,17 @@ async def _ricalcola_stato_paga(db, dip, anno, mese):
     acc += pos.acconti_registro_del_mese(acconti_registro, anno, mese, p.get("acconti") or [])
     erogato = bonifico + acc
     stato = stato_paga_mese(busta, erogato)
+    automatico = esiti_riconciliati(esiti)
+    riconciliato = p.get("bonifico_riconciliato") is True or automatico
+    if bonifico > 0 and busta is not None and not riconciliato:
+        stato = "da_verificare"
     upd = {"stato_pagamento": stato,
            "saldo": float(busta - erogato) if busta is not None else None,
            "updated_at": now_iso()}
     if n_esiti:
         upd["bonifico_importo"] = float(bonifico)
-        upd["bonifico_ricevuto"] = bonifico > 0
+        upd["bonifico_ricevuto"] = bonifico > 0 and all(ha_riscontro_bancario(e) for e in esiti)
+        upd["bonifico_riconciliato_auto"] = automatico
     await db.paghe_mensili.update_one({"dipendente_id": dip, "anno": anno, "mese": mese}, {"$set": upd})
     return stato
 
@@ -1117,13 +1124,14 @@ async def importa_excel_salari(file: UploadFile = File(...)):
     ws = wb.active
 
     dips = await get_db().dipendenti.find({}, {"_id": 0}).to_list(1000)
-    anag = {}
+    from app.hr.services.identita_dipendente import indicizza_alias_univoci
+    aliases = []
     for d in dips:
         cg = (d.get("cognome") or "").upper().strip()
         nm = (d.get("nome") or "").upper().strip()
         if cg or nm:
-            anag[f"{cg} {nm}".strip()] = d   # Cognome Nome
-            anag[f"{nm} {cg}".strip()] = d   # Nome Cognome (ordine invertito)
+            aliases.extend([(f"{cg} {nm}".strip(), d), (f"{nm} {cg}".strip(), d)])
+    anag = indicizza_alias_univoci(aliases)
 
     try:
         await get_db().paghe_mensili.create_index(
@@ -1454,14 +1462,15 @@ async def _importa_documenti(pdf_items, errori_iniziali=None, forza=False):
     file o da posta elettronica), li classifica e li importa in paghe_mensili / prestiti.
     L'anti-duplicazione per hash evita di re-importare gli stessi documenti."""
     dips = await get_db().dipendenti.find({}, {"_id": 0}).to_list(1000)
-    by_cf = {(d.get("codice_fiscale") or "").upper(): d for d in dips if d.get("codice_fiscale")}
-    by_nome = {}
+    from app.hr.services.identita_dipendente import indicizza_alias_univoci, dipendente_unico
+    by_cf = indicizza_alias_univoci((d.get("codice_fiscale"), d) for d in dips)
+    aliases = []
     for d in dips:
         cg = (d.get("cognome") or "").upper().strip()
         nm = (d.get("nome") or "").upper().strip()
         if cg or nm:
-            by_nome[f"{cg} {nm}".strip()] = d
-            by_nome[f"{nm} {cg}".strip()] = d
+            aliases.extend([(f"{cg} {nm}".strip(), d), (f"{nm} {cg}".strip(), d)])
+    by_nome = indicizza_alias_univoci(aliases)
 
     # Vincolo: una sola busta per (dipendente, anno, mese) — i duplicati diventano impossibili
     try:
@@ -1477,51 +1486,20 @@ async def _importa_documenti(pdf_items, errori_iniziali=None, forza=False):
         pass
 
     async def _registra_doc(h, tipo, chiave, origine):
-        try:
-            await get_db().documenti_importati.update_one(
-                {"hash": h},
-                {"$set": {"hash": h, "tipo": tipo, "chiave": chiave, "file": origine,
-                          "imported_at": now_iso()}}, upsert=True)
-        except Exception:
-            pass
+        await get_db().documenti_importati.update_one(
+            {"hash": h},
+            {"$set": {"hash": h, "tipo": tipo, "chiave": chiave, "file": origine,
+                      "imported_at": now_iso()}}, upsert=True)
 
     async def _imputa_competenza(dip_id, b):
-        """Determina (mese, anno, fonte) di competenza del bonifico secondo le regole:
-        1) mese esplicito in causale; 2) match per importo con la busta (acconto=busta o
-        somma cumulativa=busta) nella finestra mese precedente→mese stesso; 3) ripiego sul
-        mese precedente. Sfondamento d'anno (gen→dic anno prima) solo dal 2024 (2023 blindato)."""
+        """Solo la competenza esplicita autorizza l'imputazione automatica.
+
+        Importi uguali o una data di disposizione non provano il mese della
+        retribuzione: il documento resta da verificare, senza scegliere una busta.
+        """
         if b["esplicita"] and b["mese_causale"]:
-            anno = b["anno_causale"] or (int(b["data"][:4]) if b.get("data") else None)
-            return b["mese_causale"], anno, "causale"
-        data = b.get("data")
-        if not data:
-            return None, None, "data assente"
-        y, mo = int(data[:4]), int(data[5:7])
-        pm, py = (mo - 1, y) if mo > 1 else (12, y - 1)
-        finestra = []
-        if not (mo == 1 and py < 2023):   # 2023 blindato: gennaio 2023 non sfonda a dic 2022
-            finestra.append((py, pm))     # mese precedente (priorità)
-        finestra.append((y, mo))          # mese stesso
-        for (a, m) in finestra:
-            rec = await get_db().paghe_mensili.find_one(
-                {"dipendente_id": dip_id, "anno": a, "mese": m})
-            if not rec:
-                continue
-            busta = rec.get("importo_busta") or rec.get("netto_atteso")
-            if busta:
-                if abs(busta - b["importo"]) <= 1:
-                    return m, a, "importo (= busta)"
-                # acconto già dato nel mese (rilevato nel cedolino o bonifico precedente):
-                # acconto + questo bonifico = busta  ->  saldo che chiude la busta
-                gia = (rec.get("bonifico_importo") or 0) + (rec.get("acconto_cedolino") or 0)
-                if abs((gia + b["importo"]) - busta) <= 1:
-                    return m, a, "importo (acconto+saldo = busta)"
-                # il bonifico copre esattamente il saldo residuo dopo l'acconto
-                residuo = rec.get("saldo_residuo")
-                if residuo and abs(residuo - b["importo"]) <= 1:
-                    return m, a, "importo (= saldo dopo acconto)"
-        a, m = finestra[0]
-        return m, a, "mese precedente (dedotta)"
+            return b["mese_causale"], b["anno_causale"], "causale"
+        return None, None, "competenza non esplicita"
 
     async def _processa_pdf(pdfbytes, origine):
         with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
@@ -1547,18 +1525,22 @@ async def _importa_documenti(pdf_items, errori_iniziali=None, forza=False):
                 b = _parse_bonifico(text)
                 # match dipendente: "COGNOME NOME" presente nel testo; fallback cognome nella causale
                 T = text.upper()
-                dip = None
+                candidati = []
                 for cand in dips:
                     cg = (cand.get("cognome") or "").upper().strip()
                     nm = (cand.get("nome") or "").upper().strip()
-                    if cg and nm and f"{cg} {nm}" in T:
-                        dip = cand; break
-                if not dip:
+                    if cg and nm and any(re.search(r"\b" + re.escape(nome) + r"\b", T)
+                                         for nome in (f"{cg} {nm}", f"{nm} {cg}")):
+                        candidati.append(cand)
+                dip = dipendente_unico(candidati)
+                if not candidati:
                     cau = (b.get("causale") or "").upper()
+                    candidati = []
                     for cand in dips:
                         cg = (cand.get("cognome") or "").upper().strip()
-                        if cg and cg in cau:
-                            dip = cand; break
+                        if cg and re.search(r"\b" + re.escape(cg) + r"\b", cau):
+                            candidati.append(cand)
+                    dip = dipendente_unico(candidati)
                 manca = []
                 if not dip: manca.append("dipendente non riconosciuto")
                 if not b.get("importo"): manca.append("importo")
@@ -1620,23 +1602,27 @@ async def _importa_documenti(pdf_items, errori_iniziali=None, forza=False):
                             tfr.append({"dipendente": f"{dip.get('cognome')} {dip.get('nome')}".strip(),
                                         "importo": b["importo"], "mese": mese, "anno": anno, "data": b.get("data")})
                         else:
-                            esist = await get_db().paghe_mensili.find_one(
-                                {"dipendente_id": dip["id"], "anno": anno, "mese": mese}, {"erogato_atteso": 1})
-                            atteso = (esist or {}).get("erogato_atteso")
-                            discrep = atteso if (atteso is not None and abs(atteso - b["importo"]) > 1) else None
-                            set_doc = {"dipendente_id": dip["id"], "anno": anno, "mese": mese,
-                                       "bonifico_importo": b["importo"], "bonifico_data": b.get("data"),
-                                       "bonifico_ricevuto": True, "bonifico_causale": b.get("causale"),
-                                       "bonifico_cro": cro, "bonifico_pdf": origine,
-                                       "bonifico_riconciliato": True, "updated_at": now_iso()}
-                            await get_db().paghe_mensili.update_one(
-                                {"dipendente_id": dip["id"], "anno": anno, "mese": mese},
-                                {"$set": set_doc, "$setOnInsert": {"busta_riconciliata": False}}, upsert=True)
+                            from app.services.hr_pagamenti_deposito import (
+                                ORIGINE_PDF, _deposita, _ricalcola_periodi, carica_contesto_hr,
+                            )
+                            ctx = await carica_contesto_hr()
+                            if ctx is None:
+                                raise HTTPException(503, "Archivio pagamenti HR non disponibile")
+                            marca = await _deposita(
+                                ctx, key=f"gc:{h}", testo=text, data=b.get("data"),
+                                importo=b["importo"], hash_pdf=h, cro=cro,
+                                causale=b.get("causale") or "", pdf_filename=origine,
+                                pdf_data=base64.b64encode(pdfbytes).decode(), origine=ORIGINE_PDF,
+                                mese_dichiarato=mese, anno_dichiarato=anno,
+                                riferimento={}, dry_run=False,
+                            )
+                            await _ricalcola_periodi(ctx)
                             await _registra_doc(h, "bonifico", f"cro:{cro}" if cro else f"bon:{dip['id']}:{anno}:{mese}", origine)
                             bon.append({"dipendente": f"{dip.get('cognome')} {dip.get('nome')}".strip(),
                                         "importo": b["importo"], "mese": mese, "anno": anno,
                                         "causale": b.get("causale"), "data": b.get("data"),
-                                        "riconciliato": True, "discrepanza": discrep, "fonte": fonte})
+                                        "riconciliato": False, "esito_deposito": marca["esito"],
+                                        "discrepanza": None, "fonte": fonte})
                 return ass, dac, bon, pres, dup, tfr, prestiti
 
             # ---- FOGLIO PRESENZE (ore/timbrature, non è una busta) ----
@@ -1658,7 +1644,7 @@ async def _importa_documenti(pdf_items, errori_iniziali=None, forza=False):
             for cf, info in ced.items():
                 dip = by_cf.get(cf)
                 metodo = "codice fiscale"
-                if not dip:
+                if not dip and cf not in by_cf:
                     dip = by_nome.get((info.get("nome") or "").upper())
                     metodo = "nome (CF non combacia)"
                 netto = _to_float(info.get("netto"))
@@ -2672,7 +2658,7 @@ def _pdf_riepilogo_periodi(anno, mese, giorni, righe):
     pagine A4 verticali (si estende da sola se i periodi sono tanti)."""
     import fitz
     W, H = 595, 842  # A4 verticale
-    mL, _mR, mT, mB = 32, 32, 70, 40
+    mL, mT, mB = 32, 70, 40
     pdf = fitz.open()
     page = pdf.new_page(width=W, height=H)
     y = [mT]
@@ -2915,7 +2901,7 @@ async def invia_presenze_commercialista(data: dict = Body(...)):
             invia_email, dest, f"Presenze {periodo} — Ceraldi Group S.r.l.",
             f"In allegato il riepilogo presenze di {periodo} (PDF + CSV).\n\n"
             + (blocco_note + "\n\n" if blocco_note else "")
-            + f"Messaggio generato automaticamente dal gestionale Ceraldi Group.",
+            + "Messaggio generato automaticamente dal gestionale Ceraldi Group.",
             allegati)
     except Exception as e:
         # Log con traceback completo: l'errore esatto (auth Gmail, porta SMTP
@@ -4297,11 +4283,8 @@ async def _calcola_associazioni_bonifici(db, anno: Optional[int] = None, mese: O
         c = ced_by_periodo.get((dip_id, mese_p, anno_p))
         if c:
             return c
-        if cognome:
-            cg = cognome.lower()
-            for cand in cedolini_lista:
-                if cand.get("mese") == mese_p and cand.get("anno") == anno_p and cg in (cand.get("nome_dipendente") or "").lower():
-                    return cand
+        # Non collegare un PDF tramite il solo cognome: l'omonimia rischia di
+        # mostrare il cedolino di un'altra persona. Serve l'id canonico.
         return None
 
     righe = []
@@ -4351,8 +4334,10 @@ async def _calcola_associazioni_bonifici(db, anno: Optional[int] = None, mese: O
         senza_busta = stato_importo == STATO_PAGA_IN_ATTESA_BUSTA
 
         # Fonte del bonifico
-        if esiti:
-            fonte = "banca"
+        from app.constants.stati_associazione_bonifico import esiti_riconciliati, ha_riscontro_bancario
+        prove = esiti_idx.get((dip_id, p.get("mese"), p.get("anno")), [])
+        if prove:
+            fonte = "banca" if all(ha_riscontro_bancario(e) for e in prove) else "documento_da_verificare"
         elif p.get("bonifico_da_prima_nota"):
             fonte = "prima_nota"
         elif bon > 0:
@@ -4365,7 +4350,7 @@ async def _calcola_associazioni_bonifici(db, anno: Optional[int] = None, mese: O
         # confermano da soli il collegamento. Solo la conferma esplicita e
         # reversibile ``bonifico_riconciliato`` trasforma il candidato in un
         # legame verificato.
-        riconciliato = bool(p.get("bonifico_riconciliato") or p.get("bonifico_riconciliato_auto"))
+        riconciliato = p.get("bonifico_riconciliato") is True or esiti_riconciliati(prove)
         # Lo stato contabile effettivo non può derivare dal solo quadramento
         # numerico. Conserviamo quel calcolo come candidato, ma finché manca
         # una conferma reversibile della prova bancaria/assegno esponiamo
@@ -4714,7 +4699,7 @@ async def approva_missione(missione_id: str):
     # Rimborso missione → partita aperta (tracciamento finanziario)
     if rimborso > 0 and dip_id:
         try:
-            from app.hr.services.partite_aperte_engine import crea_partita, TipoPartita
+            from app.services.partite_aperte_engine import crea_partita, TipoPartita
             await crea_partita(
                 tipo=TipoPartita.ALTRO, documento_id=missione_id,
                 documento_collection="missioni_cloud", controparte_id=dip_id,
@@ -4824,10 +4809,12 @@ CATEGORIE_DOC = ["UNILAV", "CERTIFICAZIONE_UNICA", "CONTRATTO", "RIDUZIONE_ORARI
 
 
 def classifica_documento(text: str, filename: str = "") -> str:
-    """Riconosce il tipo di documento dal testo e, in fallback, dal nome del file
-    (utile per le scansioni-immagine senza testo). Diciture standard italiane."""
+    """Riconosce il tipo soltanto dal contenuto estratto.
+
+    Il nome file non costituisce prova; una scansione senza testo resta ALTRO
+    e richiede verifica invece di essere instradata per supposizione.
+    """
     t = (text or "").lower()
-    fn = (filename or "").lower()
 
     def H(s, *ks):
         return any(k in s for k in ks)
@@ -4851,28 +4838,7 @@ def classifica_documento(text: str, filename: str = "") -> str:
         return "CARTA_IDENTITA"
     if H(t, "riduzione orario", "riduzione dell'orario", "riduzione dell orario", "trasformazione part-time", "riduzione part time"):
         return "RIDUZIONE_ORARIO"
-    # 2) Nome FILE (per scansioni senza testo)
-    if H(fn, "riduzione"):
-        return "RIDUZIONE_ORARIO"
-    if H(fn, "dimission", "recesso"):
-        return "DIMISSIONI"
-    if H(fn, "licenziament"):
-        return "LICENZIAMENTO"
-    if H(fn, "unilav"):
-        return "UNILAV"
-    if H(fn, "certificazione_unica", "certificazione unica", "_cu_", "cud"):
-        return "CERTIFICAZIONE_UNICA"
-    if H(fn, "contratto"):
-        return "CONTRATTO"
-    if H(fn, "bonific"):
-        return "BONIFICO"
-    if H(fn, "carta_di_identit", "carta d'identit", "carta identit", "carta_identit"):
-        return "CARTA_IDENTITA"
-    if H(fn, "codice_fiscale", "codice fiscale", "tessera_sanitaria", "tessera sanitaria"):
-        return "CODICE_FISCALE"
-    if H(fn, "busta", "cedolino"):
-        return "BUSTA_PAGA"
-    # 3) Segnale debole dal testo
+    # Segnale debole dal testo
     if H(t, "tessera sanitaria", "servizio sanitario nazionale"):
         return "CODICE_FISCALE"
     return "ALTRO"
@@ -4894,18 +4860,21 @@ def indici_da_dipendenti(dips):
     """Gli stessi indici da un elenco gia' letto (la banca lo carica da se')."""
     def norm(s):
         return re.sub(r"\s+", " ", str(s or "").strip()).lower()
-    by_cf, by_nome, by_cogn = {}, {}, {}
+    coppie_cf, coppie_nome, by_cogn = [], [], {}
     for d in dips:
         cf = (d.get("codice_fiscale") or "").upper().strip()
         if cf:
-            by_cf[cf] = d
+            coppie_cf.append((cf, d))
         n, c = norm(d.get("nome")), norm(d.get("cognome"))
         for v in {norm(d.get("nome_completo")), f"{c} {n}".strip(), f"{n} {c}".strip()}:
             if v and len(v) > 6:
-                by_nome[v] = d
+                coppie_nome.append((v, d))
         if len(c) >= 4:
             by_cogn.setdefault(c, []).append(d)
-    return {"cf": by_cf, "nome": by_nome, "cogn": by_cogn}
+    from app.hr.services.identita_dipendente import indicizza_alias_univoci
+    return {"cf": indicizza_alias_univoci(coppie_cf),
+            "nome": {k.lower(): v for k, v in indicizza_alias_univoci(coppie_nome).items()},
+            "cogn": by_cogn}
 
 
 async def _archivia_documento_cloud(db, filename, raw, contesto="", indici=None, origine="upload_massivo"):
@@ -4931,33 +4900,11 @@ async def _archivia_documento_cloud(db, filename, raw, contesto="", indici=None,
             text = ""
     if indici is None:
         indici = await _indici_dipendenti(db)
-    by_cf, by_nome, by_cogn = indici["cf"], indici["nome"], indici["cogn"]
-
-    def norm(s):
-        return re.sub(r"\s+", " ", str(s or "").strip()).lower()
-    categoria = classifica_documento(text, f"{contesto} {filename}".strip())
-    d = None
-    for cf in _CF_DOC_RE.findall((text or "").upper()):
-        if cf in by_cf:
-            d = by_cf[cf]
-            break
-    if not d:
-        tl = norm(text)
-        for nome_n, dd in by_nome.items():
-            if nome_n in tl:
-                d = dd
-                break
-    if not d:
-        fn_norm = norm(f"{contesto} {filename}".replace("_", " ").replace("-", " "))
-        for nome_n, dd in by_nome.items():
-            if nome_n in fn_norm:
-                d = dd
-                break
-        if not d:
-            for cogn, lst in by_cogn.items():
-                if cogn in fn_norm and len(lst) == 1:
-                    d = lst[0]
-                    break
+    categoria = classifica_documento(text)
+    from app.services.hr_pagamenti_deposito import risolvi_dipendente
+    d, livello = risolvi_dipendente(indici, text)
+    if livello not in {"cf", "nome"}:
+        d = None
     doc = {"id": generate_id(),
            "dipendente_id": (d or {}).get("id"),
            "dipendente_nome": (f"{d.get('cognome','')} {d.get('nome','')}".strip() if d else None),

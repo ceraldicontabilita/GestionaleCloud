@@ -50,7 +50,7 @@ const ImpostazioniAI = lazy(() => import("./pages/ImpostazioniAI.jsx"));
 const MappaGestionale = lazy(() => import("./pages/MappaGestionale.jsx"));
 const AgentiPage = lazy(() => import("./pages/Agenti.jsx"));
 const LearningMachine = lazy(() => import("./pages/LearningMachine.jsx"));
-const LegacyRouteResolver = lazy(() => import("./pages/LegacyRouteResolver.jsx"));
+const PaginaNonTrovata = lazy(() => import("./pages/PaginaNonTrovata.jsx"));
 const GestioneIVA = lazy(() => import("./pages/GestioneIVA.jsx"));
 const FattureEstereVerifica = lazy(() => import("./pages/FattureEstereVerifica.jsx"));
 const SituazioneFiscale = lazy(() => import("./pages/SituazioneFiscale.jsx"));
@@ -117,8 +117,7 @@ const router = createBrowserRouter([
       { path: "mappa-gestionale", element: <LazyPage><MappaGestionale /></LazyPage> },
       { path: "iva/*", element: <LazyPage><GestioneIVA /></LazyPage> },
       { path: "situazione-fiscale/*", element: <RequireAdmin><LazyPage><SituazioneFiscale /></LazyPage></RequireAdmin> },
-      // Viste per id: indirizzi stabili, aprono anche da un link condiviso. I vecchi
-      // indirizzi (`/f24/:id`, `/tributi/:codice`, `/cedolini/:id`) li rimanda LegacyRouteResolver.
+      // Viste per id: indirizzi canonici e stabili, aprono anche da un link condiviso.
       { path: "fiscale/f24/:id", element: <RequireAdmin><LazyPage><F24Scheda /></LazyPage></RequireAdmin> },
       { path: "fiscale/tributi/:codice", element: <RequireAdmin><LazyPage><TributoCodice /></LazyPage></RequireAdmin> },
       { path: "personale/cedolini/:id", element: <RequireAdmin><LazyPage><CedolinoScheda /></LazyPage></RequireAdmin> },
@@ -126,8 +125,7 @@ const router = createBrowserRouter([
       { path: "protocollo/:anno/:progressivo", element: <RequireAdmin><LazyPage><ProtocolloScheda /></LazyPage></RequireAdmin> },
       { path: "fatture-estere-verifica", element: <LazyPage><FattureEstereVerifica /></LazyPage> },
 
-      // Un solo punto di compatibilità per vecchi preferiti; altrimenti 404 reale.
-      { path: "*", element: <LazyPage><LegacyRouteResolver /></LazyPage> },
+      { path: "*", element: <LazyPage><PaginaNonTrovata /></LazyPage> },
     ]
   }
 ]);

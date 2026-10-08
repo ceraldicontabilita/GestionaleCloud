@@ -43,9 +43,9 @@ class Settings(BaseSettings):
     # dal nome di un file o di una cartella Drive.
     FISCAL_COMPANY_ID: str = "04523831214"
     ADER_MICRO_RESIDUAL_THRESHOLD_CENTS: int = 500
-    # I processi periodici devono poter essere esclusi nelle istanze locali o
-    # dedicate al solo frontend. In produzione restano attivi per default.
-    ENABLE_SCHEDULER: bool = True
+    # I processi periodici sono spenti per default. Si riattivano soltanto con
+    # una scelta esplicita nell'ambiente dopo aver verificato il singolo job.
+    ENABLE_SCHEDULER: bool = False
     SCHEDULER_LEASE_SECONDS: int = 21600
 
     # Security

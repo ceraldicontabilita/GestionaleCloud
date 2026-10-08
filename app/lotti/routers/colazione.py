@@ -325,7 +325,7 @@ async def get_colazione(nome: Optional[str] = None):
 @router.put("")
 async def salva_colazione(template: ColazioneTemplate, _admin=Depends(require_admin)):
     now = datetime.now(timezone.utc).isoformat()
-    doc = template.dict()
+    doc = template.model_dump()
     doc["ultima_modifica"] = now
     await db.colazione_template.update_one(
         {"nome": template.nome}, {"$set": doc}, upsert=True

@@ -196,9 +196,6 @@ export default function Documenti() {
           <Link
             to="/documenti/import"
             style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              minHeight: 38,
               padding: '0 14px',
               borderRadius: BORDER_RADIUS.md,
               background: COLORS.primary,

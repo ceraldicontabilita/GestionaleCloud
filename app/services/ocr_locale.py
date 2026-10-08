@@ -17,7 +17,6 @@ Regole:
 from __future__ import annotations
 
 import contextlib
-import gc
 import logging
 import threading
 from typing import Iterator

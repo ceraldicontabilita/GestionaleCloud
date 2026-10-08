@@ -17,7 +17,6 @@ Due segnali, entrambi solo *suggerimenti*, mai scritture:
 from __future__ import annotations
 
 import re
-from datetime import date
 from typing import Any, Dict, List, Optional
 
 _DISTINTA = re.compile(r"BENEFICIARI\s+(VARI|DIVERSI)", re.I)

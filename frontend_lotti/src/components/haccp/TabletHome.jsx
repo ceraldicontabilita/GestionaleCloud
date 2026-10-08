@@ -6,6 +6,7 @@ import { LayoutDashboard, Lock, LogOut, Thermometer, CalendarClock, ShieldCheck 
 import { cambiaOperatore } from "./tablet/BarraReparto";
 import { apiError } from "../../utils/apiError";
 import { allineaSessioneTitolare, getTabletSession, moveTabletSessionTo, repartiAmmessi, saveTabletSession, sessioneTitolareAttiva } from "../../utils/tabletSession";
+import { avviaPollingVisibile } from "../../utils/visiblePolling";
 
 const API = process.env.REACT_APP_LOTTI_BACKEND_URL + "/api";
 
@@ -51,8 +52,8 @@ function StatoGiorno({ attivo }) {
       });
     };
     leggi();
-    const t = setInterval(leggi, 5 * 60 * 1000);
-    return () => { vivo = false; clearInterval(t); };
+    const fermaPolling = avviaPollingVisibile(leggi, 5 * 60 * 1000);
+    return () => { vivo = false; fermaPolling(); };
   }, [attivo]);
   if (!attivo || !stato) return null;
   const nd = "dato non disponibile";
@@ -92,42 +93,22 @@ function PinKeypad({ titolo, sottotitolo, colore = "#5b7a6b", onSuccess, onCance
     setAvvio("");
     const pin = digits;
 
-    const start = Date.now();
-    const MAX_WAIT = 150000; // copre anche un risveglio lento di Render
-    let tentativo = 0;
-    while (true) {
-      tentativo += 1;
-      try {
-        const res = await axios.post(`${API}/tablet-operatori/login`, { pin }, { timeout: 15000 });
-        const op = res.data?.operatore;
-        if (!op) throw new Error("Operatore non valido");
-        if (res.data?.token) saveToken(res.data.token);
-        buzz(20);
-        setOkNome(op?.nome || "");
-        setTimeout(() => onSuccess(op), 180);
-        return;
-      } catch (err) {
-        const status = err?.response?.status;
-        if (status === 401 || status === 403) {
-          buzz([40, 60, 40]);
-          setErrore(apiError(err, "PIN non riconosciuto"));
-          setDigits("");
-          setLoading(false);
-          return;
-        }
-        const retryable = !err?.response || [502, 503, 504].includes(status) || err?.code === "ECONNABORTED";
-        if (retryable && Date.now() - start < MAX_WAIT) {
-          const secs = Math.round((Date.now() - start) / 1000);
-          setAvvio(`Avvio del server in corso… l'accesso parte da solo, attendi (${secs}s)`);
-          await new Promise((r) => setTimeout(r, 2500));
-          continue;
-        }
-        buzz([40, 60, 40]);
-        setAvvio("");
-        setErrore(apiError(err, "Server non raggiungibile, riprova tra poco"));
-        setLoading(false);
-        return;
-      }
+    try {
+      const res = await axios.post(`${API}/tablet-operatori/login`, { pin }, { timeout: 15000 });
+      const op = res.data?.operatore;
+      if (!op) throw new Error("Operatore non valido");
+      if (res.data?.token) saveToken(res.data.token);
+      buzz(20);
+      setOkNome(op?.nome || "");
+      setTimeout(() => onSuccess(op), 180);
+    } catch (err) {
+      buzz([40, 60, 40]);
+      setAvvio("");
+      setErrore(apiError(err, err?.code === "ECONNABORTED"
+        ? "Verifica scaduta dopo 15 secondi: controlla la connessione e riprova"
+        : "PIN non riconosciuto"));
+      setDigits("");
+      setLoading(false);
     }
   };
 
@@ -239,8 +220,8 @@ export default function TabletHome({ onEntra, preselectReparto, hashRichiesto = 
       } catch { /* il badge si aggiorna alla prossima lettura */ }
     };
     aggiorna();
-    const timer = setInterval(aggiorna, 15000);
-    return () => { attivo = false; clearInterval(timer); };
+    const fermaPolling = avviaPollingVisibile(aggiorna, 15000);
+    return () => { attivo = false; fermaPolling(); };
   }, [sessione?.ruolo]);
 
   // Il ruolo di Lotti (HACCP, caporeparto) si rilegge dal server a ogni

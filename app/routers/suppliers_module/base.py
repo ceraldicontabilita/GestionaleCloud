@@ -13,7 +13,7 @@ from app.database import Database, Collections
 from app.utils.dependencies import get_current_admin_user
 from app.middleware.performance import cache
 from .common import (
-    PAYMENT_METHODS, PAYMENT_TERMS, SUPPLIERS_CACHE_KEY, SUPPLIERS_CACHE_TTL,
+    PAYMENT_METHODS, SUPPLIERS_CACHE_KEY, SUPPLIERS_CACHE_TTL,
     logger
 )
 from app.services.magazzino_fornitore import (

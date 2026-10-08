@@ -1,12 +1,15 @@
-import React, { useEffect, useState } from 'react'
+import React, { Suspense, lazy, useEffect, useState } from 'react'
 import ReactDOM from 'react-dom/client'
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom'
-import App from './App.jsx'
-import PortaleDipendente from './PortaleDipendente.jsx'
-import Landing from './Landing.jsx'
 import { entraDalGestionale, loginGestionale } from './sessioneGruppo.js'
 import './index.css'
 import { avviaTabelleCard } from '../../frontend_shared/tabelleCard'
+
+const App = lazy(() => import('./App.jsx'))
+const PortaleDipendente = lazy(() => import('./PortaleDipendente.jsx'))
+const Landing = lazy(() => import('./Landing.jsx'))
+
+const caricamento = <div className="muted" role="status" style={{ padding: 24, textAlign: 'center' }}>Caricamento…</div>
 
 // Legge la scadenza (exp) dal JWT senza verificarne la firma (la verifica vera
 // è lato server). Serve solo a riportare al PIN quando la sessione è scaduta.
@@ -65,15 +68,17 @@ function RequireRole({ children, roles }) {
 }
 
 ReactDOM.createRoot(document.getElementById('root')).render(
-  <BrowserRouter basename="/hr">
-    <Routes>
-      <Route path="/" element={<Landing />} />
-      <Route path="/portale" element={<PortaleDipendente />} />
-      <Route path="/dipendenti/turni" element={<RequireRole roles={['admin','responsabile_turni']}><App page="turni" /></RequireRole>} />
-      <Route path="/dipendenti" element={<RequireRole roles={['admin']}><App page="dashboard" /></RequireRole>} />
-      <Route path="/dipendenti/:page" element={<RequireRole roles={['admin']}><App /></RequireRole>} />
-    </Routes>
-  </BrowserRouter>
+  <Suspense fallback={caricamento}>
+    <BrowserRouter basename="/hr">
+      <Routes>
+        <Route path="/" element={<Landing />} />
+        <Route path="/portale" element={<PortaleDipendente />} />
+        <Route path="/dipendenti/turni" element={<RequireRole roles={['admin','responsabile_turni']}><App page="turni" /></RequireRole>} />
+        <Route path="/dipendenti" element={<RequireRole roles={['admin']}><App page="dashboard" /></RequireRole>} />
+        <Route path="/dipendenti/:page" element={<RequireRole roles={['admin']}><App /></RequireRole>} />
+      </Routes>
+    </BrowserRouter>
+  </Suspense>
 )
 
 avviaTabelleCard()

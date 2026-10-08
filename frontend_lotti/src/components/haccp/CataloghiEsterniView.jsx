@@ -16,6 +16,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { conferma } from "../../utils/conferma";
 import axios from "axios";
+import { avviaPollingVisibile } from "../../utils/visiblePolling";
 import { toast } from "sonner";
 import { apiError } from "../../utils/apiError";
 import { API } from "../../utils/constants";
@@ -91,8 +92,7 @@ export default function CataloghiEsterniView() {
   // Mentre una fonte è "in_corso" ricontrolla ogni 4s finché non si conclude.
   useEffect(() => {
     if (!fonti.some(f => f.stato === "in_corso")) return;
-    const t = setInterval(carica, 4000);
-    return () => clearInterval(t);
+    return avviaPollingVisibile(carica, 4000);
   }, [fonti, carica]);
 
   const aggiungi = async () => {

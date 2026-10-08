@@ -4,8 +4,9 @@ import { Clock, User, Hash, X, ArrowRight, Loader2 } from 'lucide-react';
 import AdminPageHeader from '../../components/admin/AdminPageHeader';
 import { useAdminAuth } from '../../hooks/useAdminAuth';
 import { toast } from '../../hooks/use-toast';
+import { avviaPollingVisibile } from '../../utils/visiblePolling';
 
-const BACKEND_URL = process.env.REACT_APP_MENU_BACKEND_URL;
+import { MENU_BACKEND_URL as BACKEND_URL } from '@/lib/backend';
 
 const COLUMNS = [
   { status: 'nuovo', label: 'Nuovi', color: 'bg-[#e2efe8] border-[#a9cbbb]' },
@@ -105,8 +106,7 @@ const OrdersPage = () => {
   useEffect(() => {
     if (!authorized) return;
     loadOrders();
-    const interval = setInterval(loadOrders, 5000);
-    return () => clearInterval(interval);
+    return avviaPollingVisibile(loadOrders, 5000);
   }, [authorized, loadOrders]);
 
   const handleAdvance = async (id, status) => {

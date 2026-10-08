@@ -17,7 +17,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from app.lotti.auth import require_admin
 from app.lotti.db import database as db
 from app.lotti.servizi import menu_bridge
-from app.menu.qr_prodotto import CANALI, codice_valido, url_prodotto
+from app.menu.qr_prodotto import codice_valido, url_prodotto
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["Scheda prodotto"])

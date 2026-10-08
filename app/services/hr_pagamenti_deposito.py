@@ -47,12 +47,11 @@ Regole comuni (le stesse dell'importatore Drive dell'app HR):
   nemmeno in coda, **anche quando la causale contiene un nome di dipendente
   riconosciuto**: la causale che dice chiaramente "e' un'altra cosa" vince
   sempre sul nome;
-* competenza: periodo scritto in causale/nome file, altrimenti la regola del
-  giorno 25 del gestionale (``stipendi_bonifici.competenza_bonifico_stipendio``);
-* dedup: stesso hash del PDF o stessa chiave -> gia' presente; stesso
-  dipendente + stesso importo + data entro 3 giorni -> e' lo STESSO pagamento
-  visto da un'altra fonte (PDF vs riga banca vs CSV): l'esito esistente viene
-  solo arricchito (cro, hash, PDF) e mai duplicato.
+* competenza: periodo dichiarato dal documento o dall'operatore; la regola
+  del giorno 25 può suggerire una competenza, mai applicarla nel deposito;
+* dedup: hash, chiave o riferimento dell'operazione identico. Dipendente,
+  importo e date vicine non provano che due disposizioni siano la stessa;
+  senza riferimento comune non si fondono automaticamente.
 
 Ogni documento sorgente del gestionale riceve il marcatore ``hr_deposito``
 (``esito``, ``key``, ``dipendente_id``, ``at``): il job periodico
@@ -80,8 +79,6 @@ PREFISSO_KEY_PDF = "gc"
 PREFISSO_KEY_BANCA = "ecm"
 ORIGINE_PDF = "gestionale-bonifico-pdf"
 ORIGINE_BANCA = "gestionale-estratto-conto"
-TOLLERANZA_GIORNI = 3
-TOLLERANZA_IMPORTO = 0.01
 
 ESITO_DEPOSITATO = "depositato"
 ESITO_ARRICCHITO = "arricchito"
@@ -204,15 +201,6 @@ def _data_iso(valore: Any) -> Optional[str]:
     return None
 
 
-def _giorni_tra(a: Optional[str], b: Optional[str]) -> Optional[int]:
-    try:
-        da = datetime.strptime(str(a)[:10], "%Y-%m-%d")
-        db_ = datetime.strptime(str(b)[:10], "%Y-%m-%d")
-    except (TypeError, ValueError):
-        return None
-    return abs((da - db_).days)
-
-
 def _nome_dipendente(dip: Dict[str, Any]) -> str:
     return (
         dip.get("nome_completo")
@@ -235,7 +223,10 @@ def dipendenti_citati(indici: Dict[str, Any], testo: str) -> Tuple[str, List[Dic
     by_cf = indici.get("cf") or {}
     trovati_cf = {}
     for m in _CF_RE.finditer(str(testo or "")):
-        dip = by_cf.get(m.group(1).upper())
+        cf = m.group(1).upper()
+        dip = by_cf.get(cf)
+        if cf in by_cf and dip is None:
+            return "ambiguo", []
         if dip:
             trovati_cf[dip["id"]] = dip
     if trovati_cf:
@@ -243,7 +234,9 @@ def dipendenti_citati(indici: Dict[str, Any], testo: str) -> Tuple[str, List[Dic
 
     per_nome = {}
     for nome_n, dip in (indici.get("nome") or {}).items():
-        if nome_n and nome_n in haystack:
+        if nome_n and re.search(r"(?<!\w)" + re.escape(nome_n) + r"(?!\w)", haystack):
+            if dip is None:
+                return "ambiguo", []
             per_nome[dip["id"]] = dip
     if per_nome:
         return "nome", list(per_nome.values())
@@ -268,7 +261,7 @@ def risolvi_dipendente(indici: Dict[str, Any], testo: str) -> Tuple[Optional[Dic
     """
     livello, trovati = dipendenti_citati(indici, testo)
     if not trovati:
-        return None, "nessuno"
+        return None, "ambiguo" if livello == "ambiguo" else "nessuno"
     if len(trovati) == 1:
         return trovati[0], livello
     return None, "ambiguo"
@@ -303,38 +296,15 @@ def _periodo(mese: Any, anno: Any) -> Optional[Tuple[int, int]]:
     return (m, a) if 1 <= m <= 14 and a >= 2000 else None
 
 
-def _anno_per_mese(mese: int, data: Optional[str]) -> Optional[int]:
-    """Anno di competenza quando la causale dice solo il mese: quello del
-    bonifico, salvo dicembre pagato a gennaio."""
-    if not data:
-        return None
-    anno, mese_pag = int(data[:4]), int(data[5:7])
-    if mese == 12 and mese_pag == 1:
-        return anno - 1
-    return anno
-
-
 def periodo_bonifico(testo: str, data: Optional[str],
                      mese_dichiarato: Any = None, anno_dichiarato: Any = None) -> Optional[Tuple[int, int]]:
-    """Competenza ``(mese, anno)``: campi gia' estratti dal parser, poi la
-    causale/nome file, infine la regola del giorno 25 sulla data del bonifico."""
-    from app.services.stipendi_bonifici import estrai_periodo_causale, competenza_bonifico_stipendio
+    """La data del bonifico non prova mese e anno della retribuzione."""
+    from app.services.stipendi_bonifici import estrai_periodo_causale
 
     esplicito = _periodo(mese_dichiarato, anno_dichiarato)
     if esplicito:
         return esplicito
-    try:
-        mese_solo = int(mese_dichiarato or 0)
-    except (TypeError, ValueError):
-        mese_solo = 0
-    if 1 <= mese_solo <= 14:
-        anno = _anno_per_mese(mese_solo, data)
-        if anno:
-            return mese_solo, anno
-    dalla_causale = estrai_periodo_causale(testo or "")
-    if dalla_causale:
-        return dalla_causale
-    return competenza_bonifico_stipendio(data) if data else None
+    return estrai_periodo_causale(testo or "")
 
 
 def _cro_da_descrizione(descrizione: str) -> Optional[str]:
@@ -387,21 +357,22 @@ class ContestoHR:
             self.per_dipendente.setdefault(str(esito["dipendente_id"]), []).append(esito)
 
     def esito_equivalente(self, dipendente_id: str, importo: float, data: Optional[str],
-                          hash_pdf: Optional[str], key: str) -> Tuple[Optional[Dict[str, Any]], str]:
+                          hash_pdf: Optional[str], key: str, *, cro: Optional[str] = None,
+                          riferimento: Optional[Dict[str, Any]] = None) -> Tuple[Optional[Dict[str, Any]], str]:
         if hash_pdf and hash_pdf in self.per_hash:
             return self.per_hash[hash_pdf], "hash"
         if key in self.per_key:
             return self.per_key[key], "key"
+        from app.services.posizione_dipendente import importo as dec
+        riferimento = riferimento or {}
         for e in self.per_dipendente.get(str(dipendente_id), []):
-            try:
-                stesso_importo = abs(float(e.get("importo") or 0) - importo) <= TOLLERANZA_IMPORTO
-            except (TypeError, ValueError):
+            if dec(e.get("importo")) != dec(importo):
                 continue
-            if not stesso_importo:
-                continue
-            giorni = _giorni_tra(e.get("data"), data)
-            if giorni is not None and giorni <= TOLLERANZA_GIORNI:
-                return e, "vicino"
+            for campo in ("gestionale_movimento_id", "gestionale_transfer_id"):
+                if riferimento.get(campo) and riferimento[campo] == e.get(campo):
+                    return e, campo
+            if cro and e.get("cro") and str(cro).strip().upper() == str(e["cro"]).strip().upper():
+                return e, "cro"
         return None, ""
 
 
@@ -498,6 +469,7 @@ async def _arricchisci_esito(ctx: ContestoHR, esistente: Dict[str, Any],
     esistente.update({k: v for k, v in aggiunte.items() if k != "pdf_data"})
     if aggiunte.get("hash"):
         ctx.per_hash[aggiunte["hash"]] = esistente
+    ctx.periodi_toccati.add((esistente["dipendente_id"], int(esistente["anno"]), int(esistente["mese"])))
     return sorted(aggiunte)
 
 
@@ -552,19 +524,20 @@ async def _ricalcola_periodi(ctx: ContestoHR) -> None:
 
     while ctx.periodi_toccati:
         dip, anno, mese = ctx.periodi_toccati.pop()
-        tot = 0.0
-        tutti_certi = True
-        n_esiti = 0
+        from app.constants.stati_associazione_bonifico import esiti_riconciliati, ha_riscontro_bancario
+        from app.services.posizione_dipendente import ZERO, importo
+        esiti = []
+        tot = ZERO
         async for e in ctx.db.pagamenti_esiti.find(
                 {"dipendente_id": dip, "mese": mese, "anno": anno},
-                {"_id": 0, "importo": 1, "associazione_certa": 1}):
-            tot += float(e.get("importo") or 0)
-            tutti_certi = tutti_certi and bool(e.get("associazione_certa"))
-            n_esiti += 1
+                {"_id": 0, "pdf_data": 0}):
+            tot += importo(e.get("importo")) or ZERO
+            esiti.append(e)
         await ctx.db.paghe_mensili.update_one(
             {"dipendente_id": dip, "anno": anno, "mese": mese},
-            {"$set": {"bonifico_importo": round(tot, 2), "bonifico_ricevuto": tot > 0,
-                      "bonifico_riconciliato_auto": bool(n_esiti and tutti_certi),
+            {"$set": {"bonifico_importo": float(tot),
+                      "bonifico_ricevuto": tot > 0 and all(ha_riscontro_bancario(e) for e in esiti),
+                      "bonifico_riconciliato_auto": esiti_riconciliati(esiti),
                       "bonifico_da_esiti": True, "updated_at": _now_iso()}})
         await _ricalcola_stato_paga(ctx.db, dip, anno, mese)
 
@@ -643,7 +616,8 @@ async def _deposita(
                           motivo=motivo if dip is None else "periodo_sconosciuto")
 
     mese, anno = periodo
-    esistente, come = ctx.esito_equivalente(dip["id"], importo, data, hash_pdf, key)
+    esistente, come = ctx.esito_equivalente(dip["id"], importo, data, hash_pdf, key,
+                                          cro=cro, riferimento=riferimento)
     from app.hr.services.regole_pagamenti_dipendenti import data_cessazione
 
     nuovo = {

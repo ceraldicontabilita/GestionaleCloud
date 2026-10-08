@@ -88,14 +88,17 @@ async def diagnostica() -> Dict[str, Any]:
     # ---- FLUSSI / MOTORI ----
     # 1) Turni → Presenze
     try:
-        from app.hr.routers.dipendenti_cloud import consolida_presenze_da_turni  # noqa: F401
+        from app.hr.routers import dipendenti_cloud
+        getattr(dipendenti_cloud, "consolida_presenze_da_turni")
         add("Flussi", "Motore Turni→Presenze", "ok", "Consolidamento disponibile")
     except Exception as e:
         add("Flussi", "Motore Turni→Presenze", "err", str(e)[:160])
 
     # 2) Gmail → Documenti dipendente
     try:
-        from app.hr.routers.dipendenti_cloud import _archivia_documento_cloud, _indici_dipendenti  # noqa: F401
+        from app.hr.routers import dipendenti_cloud
+        getattr(dipendenti_cloud, "_archivia_documento_cloud")
+        getattr(dipendenti_cloud, "_indici_dipendenti")
         imap_ok = all(os.getenv(v) for v in ("IMAP_HOST", "IMAP_USER", "IMAP_PASSWORD"))
         if imap_ok:
             add("Flussi", "Gmail→Documenti", "ok", "Motore pronto e casella collegata")
@@ -106,7 +109,8 @@ async def diagnostica() -> Dict[str, Any]:
 
     # 3) Associazione cedolino ↔ bonifico
     try:
-        from app.hr.routers.dipendenti_cloud import associazioni_bonifici  # noqa: F401
+        from app.hr.routers import dipendenti_cloud
+        getattr(dipendenti_cloud, "associazioni_bonifici")
         add("Flussi", "Associazione cedolino↔bonifico", "ok", "Vista disponibile")
     except Exception as e:
         add("Flussi", "Associazione cedolino↔bonifico", "err", str(e)[:160])

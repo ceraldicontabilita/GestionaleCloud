@@ -32,8 +32,8 @@ async def get_sala(sala_id: str):
 # Protetti: gestione sale riservata allo staff
 @router.post("/", response_model=Sala)
 async def create_sala(payload: SalaCreate, username: str = Depends(verify_token)):
-    sala = Sala(**payload.dict())
-    doc = sala.dict()
+    sala = Sala(**payload.model_dump())
+    doc = sala.model_dump()
     doc['created_at'] = _iso(doc['created_at'])
     doc['updated_at'] = _iso(doc['updated_at'])
     supabase.table("menu_sale").insert(doc).execute()
@@ -42,7 +42,7 @@ async def create_sala(payload: SalaCreate, username: str = Depends(verify_token)
 
 @router.put("/{sala_id}", response_model=Sala)
 async def update_sala(sala_id: str, payload: SalaUpdate, username: str = Depends(verify_token)):
-    update_data = {k: v for k, v in payload.dict().items() if v is not None}
+    update_data = {k: v for k, v in payload.model_dump().items() if v is not None}
     update_data["updated_at"] = _iso(datetime.utcnow())
     result = supabase.table("menu_sale").update(update_data).eq("id", sala_id).execute()
     if not result.data:

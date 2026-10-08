@@ -557,69 +557,6 @@ async def _download_email_batch(db, email_user: str, email_password: str, imap_h
     )
 
 
-async def ricategorizza_documenti(db) -> Dict[str, Any]:
-    """
-    Ricategorizza i documenti in base al nome file.
-    Sposta documenti dalla categoria errata a quella corretta.
-    """
-    # Trova documenti in "altro" che potrebbero essere categorizzati meglio
-    docs = await db["documents_inbox"].find(
-        {"category": "altro"},
-        {"_id": 0, "id": 1, "filename": 1}
-    ).to_list(1000)
-
-    ricategorizzati = 0
-
-    for doc in docs:
-        filename = doc.get("filename", "").lower()
-        new_category = None
-
-        # Regole di categorizzazione — stessa lista di
-        # email_document_downloader.py::categorize_document() (usata
-        # all'import), qui riapplicata ai documenti che ci erano finiti
-        # PRIMA che quelle regole includessero satispay/inps/certificazione
-        # unica, e restavano bloccati in "altro" per sempre.
-        if "bnl" in filename:
-            new_category = "estratto_conto"
-        elif "nexi" in filename:
-            new_category = "estratto_conto"
-        elif "paypal" in filename:
-            new_category = "estratto_conto"
-        elif "estratto" in filename or "conto" in filename:
-            new_category = "estratto_conto"
-        elif "paga" in filename or "cedolino" in filename or "lul" in filename:
-            new_category = "busta_paga"
-        elif "f24" in filename:
-            new_category = "f24"
-        elif "cartella" in filename or "esattor" in filename or "ader" in filename or "equitalia" in filename:
-            new_category = "cartella_esattoriale"
-        elif "satispay" in filename:
-            new_category = "satispay"
-        elif "inps" in filename or "dm10" in filename or "uniemens" in filename:
-            new_category = "contributi_inps"
-        elif "cud" in filename or "certificazione unica" in filename:
-            new_category = "certificazione_unica"
-        else:
-            from app.services.email_document_downloader import _CF_ANNO_PATTERN
-            if _CF_ANNO_PATTERN.search(doc.get("filename", "")):
-                new_category = "certificazione_unica"
-
-        if new_category:
-            await db["documents_inbox"].update_one(
-                {"id": doc["id"]},
-                {"$set": {
-                    "category": new_category,
-                    "ricategorizzato_at": datetime.now(timezone.utc).isoformat()
-                }}
-            )
-            ricategorizzati += 1
-
-    if ricategorizzati > 0:
-        logger.info(f"📂 Ricategorizzati {ricategorizzati} documenti")
-
-    return {"ricategorizzati": ricategorizzati}
-
-
 async def allinea_status_documenti_processati(db) -> int:
     """Allinea il badge operativo con i flag di processamento effettivi.
 
@@ -922,13 +859,12 @@ async def run_full_sync(db) -> Dict[str, Any]:
 
     IMPORTANTE: I duplicati vengono SEMPRE saltati (controllo hash file)
     """
-    global _last_sync, _sync_stats
+    global _last_sync
 
     results = {
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "email_sync": None,
         "f24_sync": None,
-        "ricategorizzazione": None,
         "processamento": None,
     }
 
@@ -960,10 +896,7 @@ async def run_full_sync(db) -> Dict[str, Any]:
             logger.warning(f"F24 sync automatico non eseguito: {e}")
             results["f24_sync"] = {"success": False, "error": str(e)}
 
-        # 4. Ricategorizza
-        results["ricategorizzazione"] = await ricategorizza_documenti(db)
-
-        # 5. Processa documenti
+        # 4. Processa i documenti gia' classificati dal contenuto.
         results["processamento"] = await processa_nuovi_documenti(db)
 
         # Step 7 (I): Alert fatture scadute

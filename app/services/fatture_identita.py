@@ -138,7 +138,7 @@ def patch_identita_da_xml(doc: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     if not xml:
         return None
     from app.parsers.fattura_elettronica_parser import parse_fattura_xml
-    from app.routers.invoices.fatture_upload import generate_invoice_key
+    from app.services.fatture_canonico import invoice_key
 
     parsed = parse_fattura_xml(xml)
     if parsed.get("error") or not parsed.get("invoice_number") or not parsed.get("supplier_vat"):
@@ -174,7 +174,7 @@ def patch_identita_da_xml(doc: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     metti("content_hash", hashlib.sha256(xml.encode("utf-8")).hexdigest())
     if not ha_impronta_corrente(doc):
         patch["content_hash_canonico"] = impronta_contenuto_fattura(xml)
-    chiave = generate_invoice_key(
+    chiave = invoice_key(
         doc.get("invoice_number") or parsed.get("invoice_number", ""),
         doc.get("supplier_vat") or parsed.get("supplier_vat", ""),
         doc.get("invoice_date") or parsed.get("invoice_date", ""),

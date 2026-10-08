@@ -36,9 +36,7 @@ from app.utils.error_handler import handle_errors
 from app.constants.stati_verbale import e_chiuso
 from app.services.noleggio.processors import FILTRO_FATTURA_ATTIVA
 from app.services.verbali_evidence import data_violazione_verbale
-from app.services.verbali_collegamento_fattura import (
-    campi_da_fattura, fattura_id_del_verbale, fattura_numero_del_verbale,
-)
+from app.services.verbali_collegamento_fattura import fattura_id_del_verbale, fattura_numero_del_verbale
 from app.services.stato_pagamento_fattura import FILTRO_NON_PAGATE
 
 router = APIRouter()

@@ -14,7 +14,6 @@ from app.menu.routes.admin_routes import router as admin_router
 from app.menu.routes.allergeni_routes import router as allergeni_router
 from app.menu.routes.backup_routes import router as backup_router
 from app.menu.routes.menu_routes import router as menu_router
-from app.menu.routes.seed_routes import router as seed_router
 from app.menu.routes.order_routes import router as order_router
 from app.menu.routes.warehouse_routes import router as warehouse_router
 from app.menu.routes.sale_routes import router as sale_router
@@ -46,7 +45,6 @@ app.include_router(admin_router)
 app.include_router(allergeni_router)
 app.include_router(backup_router)
 app.include_router(menu_router)
-app.include_router(seed_router)
 app.include_router(order_router)
 app.include_router(warehouse_router)
 app.include_router(sale_router)
@@ -65,7 +63,8 @@ _probe_storage = ProbeUnica("storage Menu")
 
 
 def _supabase_configurato() -> bool:
-    return bool(_leggi_env("MENU_SUPABASE_URL") and _leggi_env("MENU_SUPABASE_KEY"))
+    return bool(_leggi_env("MENU_SUPABASE_URL") and _leggi_env("MENU_SUPABASE_KEY")
+                and settings.SUPABASE_RUNTIME_SECRET)
 
 
 async def _ping_database() -> None:
