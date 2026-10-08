@@ -548,7 +548,7 @@ function DiagnosticaPage() {
     setLoading(true); setErroreBE(null);
     // 1) Diagnostica backend
     try {
-      const r = await axios.get(`/hr/api/diagnostica`);
+      const r = await axios.get(`/hr/api/diagnostica`, { timeout: 30000 });
       setChecks(r.data.checks || []);
       setRiepilogo(r.data.riepilogo || null);
     } catch (e) {
@@ -559,7 +559,10 @@ function DiagnosticaPage() {
     const res = await Promise.all(PAGINE.map(async p => {
       const t0 = performance.now();
       try {
-        await axios.get(p.url);
+        const risposta = await axios.get(p.url, { timeout: 20000 });
+        if (!risposta.data || typeof risposta.data !== 'object' || risposta.data.success === false) {
+          throw new Error('Risposta non valida: i dati della pagina non sono disponibili');
+        }
         return { ...p, stato: "ok", ms: Math.round(performance.now() - t0) };
       } catch (e) {
         const s = e?.response?.status;
@@ -571,8 +574,8 @@ function DiagnosticaPage() {
   };
   useEffect(() => { run(); }, []);
 
-  const COL = { ok: "#3d8168", warn: "#a6724a", err: "#b04a3a" };
-  const ICON = { ok: "✓", warn: "▲", err: "✗" };
+  const COL = { ok: "#3d8168", warn: "#a6724a", err: "#b04a3a", info: "#6c7e87" };
+  const ICON = { ok: "✓", warn: "▲", err: "✗", info: "i" };
   const pill = (stato) => (
     <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 22, height: 22, borderRadius: "50%", background: COL[stato] || "#9aa593", color: "#fff", fontWeight: 800, fontSize: 13, flexShrink: 0 }}>{ICON[stato] || "?"}</span>
   );
@@ -586,7 +589,7 @@ function DiagnosticaPage() {
       <div className="dc-page-header">
         <div>
           <h1>Diagnostica</h1>
-          <p>Controlli dal vivo dell'app: se qualcosa è rosso, segnalalo e si sistema.</p>
+          <p>Verifica le letture dei dati e la configurazione. Non importa file, non invia messaggi e non prova i salvataggi.</p>
         </div>
         <div className="dc-page-actions">
           <button onClick={run} disabled={loading} className="dc-btn dc-btn-primary">
@@ -610,7 +613,7 @@ function DiagnosticaPage() {
 
       {/* Pagine (ping dal vivo) */}
       <div className="dc-card" style={{ marginBottom: 16 }}>
-        <h3>Pagine dell'app</h3>
+        <h3>Lettura dati delle pagine</h3>
         {!pagine ? <p className="dc-muted">Controllo…</p> : (
           <div className="dc-list">
             {pagine.map((p, i) => (
@@ -838,6 +841,7 @@ const FORM_DIP_VUOTO = {
   codice_fiscale_azienda: "", sesso: "", regione_residenza: "", provincia_residenza: "", comune_residenza: "",
   regione_domicilio: "", provincia_domicilio: "", comune_domicilio: "", cittadinanza: "", titolo_studio: "",
   ore_settimanali: "", lotti_operatore: true,
+  gruppo: "", luogo_lavoro: "", note: "",
 };
 const CAMPI_FORM_DIP = Object.keys(FORM_DIP_VUOTO);
 
@@ -865,7 +869,7 @@ function AnagraficaPage({ dipendenti, reload, onDipendente }) {
     setAnagBusy(true);
     try {
       const fd = new FormData(); fd.append("file", fl);
-      const r = await axios.post(`${API}/dipendenti/importa-anagrafica?applica=false`, fd, { headers: { "Content-Type": "multipart/form-data" } });
+      const r = await axios.post(`${API}/dipendenti/importa-anagrafica?applica=false&crea_mancanti=true`, fd, { headers: { "Content-Type": "multipart/form-data" } });
       setAnagFile(fl);
       setAnagPreview(r.data);
     } catch (err) {
@@ -884,8 +888,14 @@ function AnagraficaPage({ dipendenti, reload, onDipendente }) {
     try {
       const fd = new FormData(); fd.append("file", anagFile);
       const hash = encodeURIComponent(anagPreview.hash_sha256);
-      const r = await axios.post(`${API}/dipendenti/importa-anagrafica?applica=true&conferma_hash=${hash}`, fd, { headers: { "Content-Type": "multipart/form-data" } });
-      toast(`Anagrafica aggiornata: ${r.data.aggiornati} schede. Nessun nuovo dipendente creato.`);
+      const r = await axios.post(`${API}/dipendenti/importa-anagrafica?applica=true&crea_mancanti=true&conferma_hash=${hash}`, fd, { headers: { "Content-Type": "multipart/form-data" } });
+      const esclusi = (r.data.conteggi?.da_verificare || 0) + (r.data.conteggi?.conflitto || 0);
+      toast(`Anagrafiche: ${r.data.creati || 0} create, ${r.data.aggiornati || 0} aggiornate, ${r.data.conteggi?.invariato || 0} invariate.${esclusi ? ` ${esclusi} righe da verificare.` : ''}`);
+      if (esclusi) {
+        setAnagPreview(r.data);
+        reload && reload();
+        return;
+      }
       setAnagPreview(null); setAnagFile(null);
       reload && reload();
     } catch (err) { toast(err?.response?.data?.detail || "Errore aggiornamento anagrafica", "err"); }
@@ -1052,7 +1062,7 @@ function AnagraficaPage({ dipendenti, reload, onDipendente }) {
           </select>
           <input ref={anagRef} type="file" accept=".xlsx" onChange={handleImportAnagrafica} style={{ display: "none" }} />
           <button onClick={() => anagRef.current?.click()} disabled={anagBusy} className="dc-btn" title="Verifica l'Excel e mostra l'anteprima prima di aggiornare l'anagrafica">
-            <ShieldCheck size={16} /> {anagBusy ? "Verifico…" : "Verifica anagrafica Excel"}
+            <ShieldCheck size={16} /> {anagBusy ? "Verifico…" : "Importa anagrafiche Excel"}
           </button>
           <button onClick={apriRid} className="dc-btn" title="Riduzione oraria collettiva: ore/giorno, paga oraria e scadenza sorvegliata">
             ⏱️ Riduzione orario
@@ -1109,13 +1119,14 @@ function AnagraficaPage({ dipendenti, reload, onDipendente }) {
       </div>
 
       {anagPreview && (
-        <Modal wide title="Anteprima aggiornamento anagrafica" onClose={chiudiAnteprimaAnagrafica}>
+        <Modal wide title={anagPreview.dry_run ? "Anteprima importazione anagrafiche" : "Esito importazione anagrafiche"} onClose={chiudiAnteprimaAnagrafica}>
           <div className="dc-modal-body">
             <p style={{ marginTop: 0 }}>
               Foglio <b>{anagPreview.foglio}</b>, riga intestazioni {anagPreview.riga_intestazioni}.
-              Nessun dato è stato modificato: questa è una verifica.
+              {anagPreview.dry_run ? " Nessun dato è stato modificato: conferma per importare." : ` Salvate ${anagPreview.creati || 0} nuove schede e ${anagPreview.aggiornati || 0} aggiornamenti. Controlla le righe segnalate.`}
             </p>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
+              <Badge variant="success">{anagPreview.conteggi?.creabile || 0} nuove</Badge>
               <Badge variant="success">{anagPreview.conteggi?.aggiornabile || 0} aggiornabili</Badge>
               <Badge variant="default">{anagPreview.conteggi?.invariato || 0} invariati</Badge>
               <Badge variant="warning">{anagPreview.conteggi?.da_verificare || 0} da verificare</Badge>
@@ -1138,15 +1149,17 @@ function AnagraficaPage({ dipendenti, reload, onDipendente }) {
                       <td data-label="Riga">{r.riga}</td>
                       <td data-label="Dipendente">{r.nome || r.codice_fiscale || "—"}</td>
                       <td data-label="Esito">
-                        <Badge variant={r.stato === "aggiornabile" ? "success" : r.stato === "invariato" ? "default" : r.stato === "conflitto" ? "danger" : "warning"}>
-                          {r.stato.replaceAll("_", " ")}
+                        <Badge variant={['creabile', 'aggiornabile'].includes(r.stato) ? "success" : r.stato === "invariato" ? "default" : r.stato === "conflitto" ? "danger" : "warning"}>
+                          {r.stato === 'creabile' ? (anagPreview.dry_run ? 'nuova scheda' : 'creata') : r.stato.replaceAll("_", " ")}
                         </Badge>
+                        {typeof r.attivo === 'boolean' && <div className="dc-muted">{r.attivo ? 'In forza' : 'Non in forza'}</div>}
                       </td>
                       <td data-label="Campi / motivo">
                         {(r.campi || []).length > 0 ? `Compila: ${r.campi.join(", ")}` : ""}
                         {(r.campi || []).length > 0 && (r.conflitti || r.motivi || []).length > 0 ? " · " : ""}
                         {(r.conflitti || []).length > 0 ? `Non sovrascrive: ${r.conflitti.join(", ")}` : (!(r.campi || []).length ? (r.motivi || []).join(", ") : "")}
                         {!(r.campi || []).length && !(r.conflitti || r.motivi || []).length ? "—" : ""}
+                        {(r.avvisi || []).length > 0 && <div className="dc-muted">{r.avvisi.join('. ')}</div>}
                       </td>
                     </tr>
                   ))}
@@ -1154,13 +1167,13 @@ function AnagraficaPage({ dipendenti, reload, onDipendente }) {
               </table>
             </div>
             <p className="dc-muted" style={{ fontSize: 12 }}>
-              L'aggiornamento usa soltanto il codice fiscale esatto, non crea nuovi dipendenti e compila solo campi HR vuoti. I valori già presenti e diversi restano invariati e sono segnalati come conflitti.
+              Le nuove schede richiedono nome, cognome, codice fiscale e stato Attivo nel file. Le schede esistenti sono riconosciute dal codice fiscale: compila solo i campi vuoti, conserva i valori diversi e lo stato del rapporto. PIN, paga e contratto non vengono inventati.
             </p>
             <div className="dc-modal-footer">
               <button type="button" className="dc-btn" onClick={chiudiAnteprimaAnagrafica} disabled={anagBusy}>Annulla</button>
               <button type="button" className="dc-btn dc-btn-primary" onClick={confermaImportAnagrafica}
-                disabled={anagBusy || !(anagPreview.conteggi?.aggiornabile > 0)}>
-                {anagBusy ? "Aggiorno…" : `Aggiorna ${anagPreview.conteggi?.aggiornabile || 0} schede`}
+                disabled={anagBusy || !anagPreview.dry_run || !((anagPreview.conteggi?.aggiornabile || 0) + (anagPreview.conteggi?.creabile || 0))}>
+                {anagBusy ? "Importo…" : `Conferma: ${anagPreview.conteggi?.creabile || 0} nuove, ${anagPreview.conteggi?.aggiornabile || 0} aggiornamenti`}
               </button>
             </div>
           </div>
@@ -1198,6 +1211,9 @@ function AnagraficaPage({ dipendenti, reload, onDipendente }) {
                   <span className="dc-label">Matricola</span>
                   <input value={formData.matricola} onChange={(e) => setFormData({...formData, matricola: e.target.value})} />
                 </label>
+                <label className="dc-form-group"><span className="dc-label">Gruppo / reparto</span><input value={formData.gruppo} onChange={(e) => setFormData({...formData, gruppo: e.target.value})} /></label>
+                <label className="dc-form-group"><span className="dc-label">Luogo di lavoro</span><input value={formData.luogo_lavoro} onChange={(e) => setFormData({...formData, luogo_lavoro: e.target.value})} /></label>
+                <label className="dc-form-group"><span className="dc-label">Note</span><textarea value={formData.note} onChange={(e) => setFormData({...formData, note: e.target.value})} /></label>
                 <label className="dc-form-group">
                   <span className="dc-label">Data di nascita</span>
                   <input type="date" value={formData.data_nascita} onChange={(e) => setFormData({...formData, data_nascita: e.target.value})} />

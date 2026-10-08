@@ -5212,6 +5212,7 @@ nel database reale; le prove di errore e dei collegamenti usano memoria isolata.
 |---|---|---|
 | Importa → XML 2025 `IT0526289001425121_9OV5Y.xml` | Log Render delle 15:35 UTC: anteprima e conferma HTTP 200, nessuna fattura persistita. Il writer manuale applicava l'anno automatico 2026 e rispondeva successo con zero importati. Eliminato il filtro dai caricamenti manuali, anche ZIP; rimane sui canali automatici. | Il contenuto di quello specifico XML non è stato recuperato da Drive: non dichiararlo ripristinato. Routing 2025/2026 e ZIP verificato in memoria. Il risultato XML collega la fattura e imposta il suo anno globale. |
 | Importa → SumUp `1000492833`, 22/09/2026, €454 | Clic reali anteprima/conferma, writer locale con database reale: fattura `157d5e6f-fa05-4be3-9f7c-8805896fbc77`. Corretto riconoscimento PDF estero; conservati hash e collegamento all'originale Drive. | Visibile nella coda Fatture estere da verificare. La lettura AI non è una conferma del titolare o una prova bancaria. Le nuove fatture AI attendono conferma prima dei derivati contabili. |
+| Importa → Any Lamp `2025230802`, 07/10/2025, €364,29 | Clic anteprima/conferma sul writer pubblicato dopo PR #1166: fattura `fceac0a0-7ad7-4807-9cbb-d9377fad8fd2`; anno, totale e collegamento all'originale verificati in Supabase. | Il nome del file contiene 2026, ma il contenuto è del 2025. Disponibile nella coda estere da verificare, senza derivati contabili o pagamento inventati. |
 | Importa → bonifico 07/01/2025 €1.500 | Clic e writer pubblicato: transfer `149e5fd8-2bff-4e39-ba93-651d95cd7083`, data/importo verificati in Supabase. Il writer rifiuta esiti di archiviazione falliti; il reimport riusa l'inbox del transfer senza creare/eliminare copie provvisorie. | Beneficiario/associazione HR da verificare; non riconciliato in banca. Commissione €1,10 distinta dall'importo. |
 | Importa → `Dettaglio_Movimenti_04523831214_20260923.xlsx` | Writer pubblicato iniziale: 0 letti, falso successo. Lettore corretto per intestazioni ripetute, importo EUR, data e segno esplicito dell'export Carta Business. Clic anteprima/conferma con coda canonica locale: 1 movimento reale €527,40 del 10/08/2026; job completato, originale conservato. | `EC-2026-08-10-527.40-08f2cdcc964f`, tipo carta_credito, evidenza provvisoria, non riconciliato. Le spese carta non generano anche uscite sul conto corrente; rimborsi mantengono segno opposto. |
 | Importa → secondo caricamento / coda | La coda riusava il vecchio risultato «1 importato», anche senza nuovi inserimenti. Ora dichiara duplicato e zero nuovi; un vecchio job completato con errore, parziale o zero letti è riprovabile. | Nessuna cancellazione delle prove conservate. Restano separati tentativo corrente e primo risultato persistito. |
@@ -5219,8 +5220,8 @@ nel database reale; le prove di errore e dei collegamenti usano memoria isolata.
 | Importa → PDF Ayvens FIR0133977, 22/12/2025 | Numero `FIR0133977` erroneamente compatibile col vecchio riconoscitore di P.IVA finlandese. Regex per formati nazionali corretta; anteprima blocca la copia PDF italiana e richiede XML/P7M. | Nessuna fattura artificiale derivata dalla copia di cortesia. |
 | Importa → dimissioni del 2023 | Clic e writer pubblicato: originale `upload_dimissioni_telematiche_84a981c86e0a04ea` conservato, CF estratto; HR risponde dipendente_non_trovato. Corretto esito UI: documento archiviato ma collegamento HR parziale, con motivo. | Nessuna nuova anagrafica inventata. L'attuale motore scadenze può creare una scadenza arretrata per persona non presente: caso da riesaminare, non attestazione di un adempimento ancora dovuto. |
 | Importa → Ceraldi Valerio, LUL giugno 2022 | Clic e writer pubblicato: cedolino ERP `7b0a59e5-0fd8-4a81-9cd6-1aa91d15b62b`, proiezione HR `5c72d369-597e-437d-91db-31b8b9d3272b`; netto €902 e periodo 06/2022 verificati contro il PDF e le due basi dati. | Nessuna Prima Nota salari creata e nessun pagamento dedotto dal cedolino; l'anagrafica HR non è ancora collegata. |
-| Importa → PagoPA €124,60 del 23/08/2026 | Il writer pubblicato archiviava soltanto un documento non riconosciuto. Corretto riconoscimento del riepilogo checkout e lettore deterministico: €123,10 ente + €1,50 commissione = €124,60; codice avviso, data e transazione letti dal contenuto. | Originale iniziale conservato. Il parsing deve quadrare al centesimo; non crea una prova bancaria. Conferma del writer corretto da verificare dopo rilascio. |
-| Importa → `DetF24Sel_04523831214 (4).pdf` | Anteprima pubblicata bloccata: nessuna riga tributo, differenza −€2.153. È la stampa Cassetto sulla griglia F24: il lettore quietanza ora riusa il lettore canonico della griglia, con stesso CF e quadratura obbligatori. | Verifica locale: una riga 3931, anno 2019, €2.153; pagamento 14/11/2019 distinto dalla stampa 16/01/2025. Conferma del writer corretto da verificare dopo rilascio. |
+| Importa → PagoPA €124,60 del 23/08/2026 | Prima archiviato come non riconosciuto. Dopo PR #1166, clic e writer pubblicato: ricevuta `479b0c64-50a0-43ba-9edd-1fb2fd88b3e5`, €123,10 ente + €1,50 commissione = €124,60 verificati in Supabase. | Originale iniziale conservato e collegato alla ricevuta; non è più «Da classificare». `banca_verificata=false`. Il risultato collega la pagina Ricevute di pagamento. |
+| Importa → `DetF24Sel_04523831214 (4).pdf` | Anteprima iniziale bloccata: zero tributi, differenza −€2.153. Il lettore quietanza ora riusa la griglia canonica con stesso CF e quadratura obbligatori. Dopo PR #1166, clic e writer pubblicato: quietanza `c10a48d8-b4ed-4cd0-b22b-9655ab175f2d`, una riga 3931/2019, €2.153, pagamento 14/11/2019; stampa 16/01/2025. | Modello F24 e riscontro bancario mancanti; proposta contabile bloccata per revisione del codice tributo. Il messaggio «importata e riconciliata» era falso: sostituito con acquisizione, avviso del modello mancante e collegamento alla pagina F24. |
 | Importa → `estratto_conto_unico_aggiornato.xlsx` | Il contenuto è un riepilogo fornitore di canoni/contratti/NC, non un estratto bancario. | Non importato come movimenti bancari. Manca un flusso guidato dedicato alla riconciliazione di questo riepilogo. |
 | Lotti → Ricette → categorie / scheda | 12 categorie verificate nel browser, assegnazione/rimozione/reload, richieste concorrenti, errori remoti, scheda e tre flag indipendenti. Semilavorati conserva fornitore, foto, confezione, P.IVA e codice articolo. | Prove su API simulate e writer in memoria: nessuna ricetta di prova inserita nel catalogo reale. |
 | ERP ↔ Lotti → Acquisti semilavorato | Nuova lettura amministratore delle fatture canoniche nell'anno globale ERP, con P.IVA e codice articolo esatti. Escluse cancellate, archiviate, collisioni, DDT, emesse e AI da verificare anche dal feed ERP→Lotti. | Non associa per marchio o somiglianza del nome; senza identità esplicita mostra i campi da completare. Non è una prova di pagamento o giacenza. |
@@ -5230,6 +5231,37 @@ La matrice rimane aperta per gli altri layout F24/quietanze/PagoPA e LUL,
 corrispettivi, export POS, posta e giro Drive completo con dati reali. Non avviare un giro
 massivo che sposta/elimina file per chiamarlo «test di ogni pulsante».
 Registrare per ogni prova originale, writer, destinazione, esito e limiti.
+
+### Segnalazioni successive: anagrafiche, diagnostica HR e vista fattura
+
+- `/hr/dipendenti/anagrafica`: il precedente import compilava solo schede
+  esistenti; con archivio vuoto rifiutava tutte le persone. Il titolare ha
+  richiesto l'import di `Lista dipendenti Ceraldi_Group_SRL.xlsx`: 30 righe,
+  16 attive e 14 non attive. L'opzione esplicita `crea_mancanti` consente
+  nuove schede dopo anteprima e conferma dello stesso SHA-256, con CF, nome,
+  cognome e stato leggibili. Writer condiviso con la creazione manuale,
+  identità deterministica per CF. Matricola, gruppo, mansione, sede e note
+  sono conservati. I record già presenti mantengono stato e valori diversi;
+  i conflitti restano visibili. Non si inventano PIN, contratto, paga o data
+  di cessazione. Prove browser e handler sul file originale in archivio
+  isolato: 30 create, 16/14, secondo import 30 invariate, filtri, scheda,
+  annulla e schermo mobile verificati. **Queste 30 anagrafiche non sono state
+  inserite nel Supabase reale dalla prova isolata.**
+- `/hr/dipendenti/diagnostica`: `db.command("ping")` apparteneva al vecchio
+  adattatore e generava «SupabaseCollection object is not callable» pur con
+  tabelle leggibili. Usa ora il `ping()` Postgres effettivo con timeout.
+  Il conteggio in forza usa la stessa regola della pagina anagrafica.
+  IMAP considera gli alias effettivi; la conversione PDF considera anche
+  LibreOffice. Servizi opzionali assenti e funzioni soltanto presenti nel
+  codice sono informazioni, configurazioni parziali sono avvisi. Non
+  dichiarare un flusso funzionante perché esiste una funzione Python.
+- `/fatture` → Vedi: gli XML vengono trasformati dal foglio
+  `FoglioStileAssoSoftware.xsl`; i PDF esteri aprono il proprio originale
+  attraverso il reader unico. Rimosso il ripiego con riepilogo incompleto.
+  XML non renderizzabile e originale mancante producono un errore visibile.
+  Il download mantiene il nome e il formato reali del file, senza chiamare
+  XML un PDF. Il reimport per hash può ripristinare il collegamento
+  all'originale senza ripetere l'estrazione AI o creare una seconda fattura.
 
 
 ### Verifica mirata TFR dell'08/10/2026

@@ -10,12 +10,8 @@ import { urlOriginale } from '../lib/vista';
  * aprire nuove schede del browser. Wrapper sottile sul motore condiviso
  * DocumentViewerModal: stesso aspetto e stessi data-testid di sempre.
  *
- * Include sempre il pulsante "Scarica" per l'XML FatturaPA ORIGINALE
- * (richiesta utente 19/07/2026: "io ho bisogno di vedere sempre
- * l'originale la fattura così come arriva" — la vista principale può
- * mostrare un riepilogo ricostruito quando l'XML non è disponibile o non
- * è renderizzabile via XSLT, ma l'originale grezzo deve restare sempre
- * scaricabile per il controllo).
+ * XML con foglio AssoSoftware; per le fatture estere apre il PDF originale.
+ * Il download mantiene formato e nome dichiarati dal reader canonico.
  *
  * Props:
  *  - fatturaId: id della fattura da visualizzare
@@ -57,15 +53,14 @@ export default function ModalFattura({ fatturaId, numero, onClose }) {
 
   if (!fatturaId) return null;
 
-  const scaricaXmlOriginale = async () => {
+  const scaricaFatturaOriginale = async () => {
     try {
       await scaricaOriginale(
         urlOriginale({ tipo: 'fattura', id: fatturaId }),
-        `fattura_${numero || fatturaId}.xml`,
-        'application/xml',
+        `fattura_${numero || fatturaId}`,
       );
     } catch (error) {
-      toast.error('XML originale non disponibile', {
+      toast.error('Originale non disponibile', {
         description: await messaggioErroreOriginale(error, error.message),
       });
     }
@@ -79,10 +74,10 @@ export default function ModalFattura({ fatturaId, numero, onClose }) {
       subtitle={pagamentoSelezionato && !pagamentoSelezionato.allegato
         ? `${pagamentoSelezionato.data || ''} · € ${Number(pagamentoSelezionato.importo || 0).toLocaleString('it-IT', { minimumFractionDigits: 2 })}`
         : undefined}
-      src={pagamentoSelezionato ? undefined : `/api/fatture-ricevute/fattura/${fatturaId}/view-assoinvoice`}
-      fetchUrl={pagamentoSelezionato?.view_url}
+      key={`${fatturaId}:${pagamentoSelezionato?.id || 'fattura'}`}
+      fetchUrl={pagamentoSelezionato?.view_url || `/api/fatture-ricevute/fattura/${fatturaId}/view-assoinvoice`}
       onClose={onClose}
-      onDownload={pagamentoSelezionato ? undefined : scaricaXmlOriginale}
+      onDownload={pagamentoSelezionato ? undefined : scaricaFatturaOriginale}
       extraActions={pagamentoSelezionato ? (
         <button type="button" onClick={() => setPagamentoSelezionato(null)}
           aria-label="Torna alla fattura" title="Torna alla fattura"

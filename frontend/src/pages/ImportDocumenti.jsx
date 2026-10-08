@@ -959,6 +959,11 @@ export default function ImportDocumenti() {
                         Apri ricevute di pagamento
                       </a>
                     )}
+                    {r.details?.data?.quietanza_id && (
+                      <a href="/riconciliazione/f24" style={{ display: 'inline-flex', alignItems: 'center', minHeight: 44, fontWeight: 600 }}>
+                        Apri F24 e quietanze
+                      </a>
+                    )}
                     {r.tipo === 'fattura_estera_pdf' && ['success', 'duplicate'].includes(r.status) && (
                       // I dati letti dall'AI li conferma il titolare: senza un
                       // collegamento qui la coda restava introvabile.

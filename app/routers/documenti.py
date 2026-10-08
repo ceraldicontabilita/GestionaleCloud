@@ -3115,8 +3115,12 @@ async def upload_documento_automatico(
                 result["message"] = (
                     "Quietanza F24 già importata"
                     if quietanza.get("duplicate")
-                    else "Quietanza F24 importata e riconciliata"
+                    else "Quietanza F24 acquisita"
                 )
+                if quietanza.get("warning"):
+                    result["partial"] = True
+                    result["message"] += f". {quietanza['warning']}"
+                result["message"] += " Il riscontro bancario è separato dall'acquisizione del documento."
             else:
                 result["success"] = False
                 result["imported"] = 0

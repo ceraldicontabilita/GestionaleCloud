@@ -105,6 +105,8 @@ class DipendenteCloud(BaseModel):
     indirizzo: Optional[str] = None
     ruolo: Optional[str] = None
     luogo_lavoro: Optional[str] = None
+    gruppo: Optional[str] = None
+    note: Optional[str] = None
     contratto: str = "Indeterminato"
     data_assunzione: Optional[str] = None
     data_fine_contratto: Optional[str] = None
@@ -221,6 +223,8 @@ def _vista_dipendente(d: dict) -> dict:
         "data_fine_contratto": d.get("data_fine_contratto") or "",
         "data_cessazione": st["data_fine_rapporto"] or "",
         "luogo_lavoro": d.get("luogo_lavoro", ""),
+        "gruppo": d.get("gruppo") or "",
+        "note": d.get("note") or "",
         "importo_stipendio": d.get("importo_stipendio", 0),
         "livello": d.get("livello", ""),
         "ore_settimanali": d.get("ore_settimanali"),
@@ -302,17 +306,29 @@ def _campi_anagrafici(dip: DipendenteCloud, esclusi=("stato",)) -> dict:
     return dati
 
 
-@router.post("/dipendenti")
-async def create_dipendente(dip: DipendenteCloud):
-    dip_dict = _campi_anagrafici(dip)
+async def _crea_anagrafica(dati: Dict[str, Any], *, attivo: bool = True):
+    """Writer unico per scheda manuale e nuove persone confermate da Excel."""
+    dip_dict = dict(dati)
     if not dip_dict.get("nome") and not dip_dict.get("cognome"):
         raise HTTPException(status_code=400, detail="Nome e cognome obbligatori")
+    cf = re.sub(r"\s+", "", str(dip_dict.get("codice_fiscale") or "")).upper()
+    if cf:
+        dip_dict["codice_fiscale"] = cf
+        if await get_db().dipendenti.find_one({"codice_fiscale": cf}):
+            raise HTTPException(409, "Codice fiscale già presente in anagrafica: aggiorna la scheda esistente")
     dip_dict["nome_completo"] = f"{dip_dict.get('cognome', '')} {dip_dict.get('nome', '')}".strip()
-    dip_dict.update({"id": generate_id(), "created_at": now_iso(), "stato": "attivo", "attivo": True,
-                     "in_carico": True, "ruolo_app": "dipendente"})
+    ident = str(uuid.uuid5(uuid.NAMESPACE_URL, f"GestionaleCloud:HR:dipendente:{cf}")) if cf else generate_id()
+    dip_dict.update({"id": ident, "created_at": now_iso(),
+                     "stato": "attivo" if attivo else "cessato", "attivo": attivo,
+                     "in_carico": attivo, "ruolo_app": "dipendente"})
     dip_dict.setdefault("lotti_operatore", True)
     await get_db().dipendenti.insert_one(dict(dip_dict))
     return _vista_dipendente(dip_dict)
+
+
+@router.post("/dipendenti")
+async def create_dipendente(dip: DipendenteCloud):
+    return await _crea_anagrafica(_campi_anagrafici(dip))
 
 @router.put("/dipendenti/{dipendente_id}")
 async def update_dipendente(dipendente_id: str, dip: DipendenteCloud):
@@ -3698,6 +3714,11 @@ _ANAGRAFICA_HEADER = {
     "cittadinanza": {"cittadinanza"},
     "titolo_studio": {"titolo studio", "titolo di studio"},
     "mansione": {"mansione", "ruolo"},
+    "matricola": {"matricola", "codice dipendente"},
+    "gruppo": {"gruppo", "reparto"},
+    "luogo_lavoro": {"luogo di lavoro", "luogo lavoro", "sede"},
+    "note": {"note"},
+    "attivo": {"attivo", "in forza"},
     "telefono": {"telefono", "cellulare", "cell"},
     "email": {"email", "e mail", "mail"},
     "indirizzo": {"indirizzo", "residenza"},
@@ -3710,6 +3731,7 @@ _ANAGRAFICA_CAMPI_SCRIVIBILI = (
     "codice_fiscale_azienda", "sesso", "regione_residenza", "provincia_residenza",
     "comune_residenza", "regione_domicilio", "provincia_domicilio", "comune_domicilio",
     "cittadinanza", "titolo_studio",
+    "matricola", "gruppo", "luogo_lavoro", "note", "attivo",
 )
 
 
@@ -3742,6 +3764,9 @@ def _trova_foglio_anagrafica(wb):
     preferiti = [ws for ws in wb.worksheets if _testo_header(ws.title) == "anagrafiche dipendenti"]
     candidati = preferiti or list(wb.worksheets)
     for ws in candidati:
+        # Alcuni esportatori dichiarano erroneamente una sola cella nel file.
+        if hasattr(ws, "reset_dimensions"):
+            ws.reset_dimensions()
         for numero, row in enumerate(ws.iter_rows(min_row=1, max_row=12, values_only=True), start=1):
             mappa = _mappa_header_anagrafica(row)
             if "codice_fiscale" not in mappa:
@@ -3822,6 +3847,15 @@ def _normalizza_riga_anagrafica(row: tuple, mappa: Dict[str, int]) -> tuple[Dict
             valore = re.sub(r"\s+", "", str(valore)).upper()
             if not re.fullmatch(r"(?:\d{11}|[A-Z0-9]{16})", valore):
                 errori.append("codice fiscale azienda non valido")
+        elif campo == "attivo":
+            normalizzato = _testo_header(str(valore))
+            if normalizzato in {"true", "1", "si", "vero", "attivo"}:
+                valore = True
+            elif normalizzato in {"false", "0", "no", "falso", "inattivo", "cessato"}:
+                valore = False
+            else:
+                errori.append("Attivo non valido: usare vero/falso, sì/no o 1/0")
+                continue
         else:
             valore = str(valore).strip()
         if valore not in (None, ""):
@@ -3852,12 +3886,13 @@ def _valori_anagrafici_equivalenti(campo: str, corrente: Any, nuovo: Any) -> boo
 @router.post("/dipendenti/importa-anagrafica")
 async def importa_anagrafica(
     file: UploadFile = File(...), applica: bool = False, conferma_hash: Optional[str] = None,
+    crea_mancanti: bool = False,
 ):
     """Anteprima per difetto; applica soltanto aggiornamenti confermati allo stesso file.
 
     Identita' = codice fiscale esatto. Nomi, importi o posizione nel foglio non
-    creano mai un'associazione. Righe senza CF, CF duplicati e dipendenti non
-    presenti restano da verificare e non vengono creati automaticamente.
+    creano mai un'associazione. Le persone nuove richiedono l'opzione esplicita
+    crea_mancanti, nome/cognome, CF e stato Attivo leggibile nell'originale.
     """
     import openpyxl
     raw = await file.read()
@@ -3899,6 +3934,7 @@ async def importa_anagrafica(
         if cf:
             occorrenze_cf.setdefault(cf, []).append(numero)
 
+    wb.close()
     for numero, dati, errori, nominativo in righe_sorgente:
         cf = dati.get("codice_fiscale")
         if not cf:
@@ -3913,6 +3949,25 @@ async def importa_anagrafica(
             righe.append({"riga": numero, "codice_fiscale": cf, "stato": "da_verificare", "motivi": errori})
             continue
         candidati = per_cf.get(cf, [])
+        if not candidati and crea_mancanti:
+            mancanti = [campo for campo in ("nome", "cognome", "attivo") if campo not in dati]
+            if mancanti:
+                righe.append({"riga": numero, "codice_fiscale": cf, "stato": "da_verificare",
+                              "motivi": ["Nuova scheda: completare " + ", ".join(mancanti)]})
+                continue
+            voce = {"riga": numero, "codice_fiscale": cf,
+                    "nome": f"{dati['cognome']} {dati['nome']}", "stato": "creabile",
+                    "campi": sorted(dati), "attivo": dati["attivo"]}
+            if not dati["attivo"]:
+                voce["avvisi"] = ["Non in forza; data e motivo della cessazione non presenti nel file"]
+            if applica:
+                nuova = await _crea_anagrafica(
+                    {**dati, "import_anagrafica_hash": impronta, "import_anagrafica_riga": numero},
+                    attivo=dati["attivo"],
+                )
+                voce["dipendente_id"] = nuova["id"]
+            righe.append(voce)
+            continue
         if len(candidati) != 1:
             motivo = "dipendente non presente in anagrafica" if not candidati else "codice fiscale duplicato in anagrafica"
             righe.append({"riga": numero, "codice_fiscale": cf, "stato": "da_verificare", "motivi": [motivo]})
@@ -3922,6 +3977,11 @@ async def importa_anagrafica(
         conflitti_campo: List[str] = []
         for campo, valore in dati.items():
             if campo == "codice_fiscale":
+                continue
+            if campo == "attivo":
+                # Un foglio non puo' riattivare o cessare un rapporto esistente.
+                if stato_rapporto.e_in_forza(dip) != valore:
+                    conflitti_campo.append("attivo")
                 continue
             corrente = dip.get(campo)
             if _valore_anagrafico_vuoto(corrente):
@@ -3951,14 +4011,16 @@ async def importa_anagrafica(
             )
 
     conteggi = {stato: sum(1 for r in righe if r["stato"] == stato)
-                for stato in ("aggiornabile", "invariato", "da_verificare")}
+                for stato in ("creabile", "aggiornabile", "invariato", "da_verificare")}
     conteggi["conflitto"] = sum(
         1 for r in righe if r["stato"] == "conflitto" or r.get("conflitti")
     )
     return {
         "dry_run": not applica, "hash_sha256": impronta, "foglio": ws.title,
+        "crea_mancanti": crea_mancanti,
         "riga_intestazioni": header_row, "righe_lette": len(righe),
         "aggiornati": conteggi["aggiornabile"] if applica else 0,
+        "creati": conteggi["creabile"] if applica else 0,
         "conteggi": conteggi, "righe": righe, "colonne_ignorate": colonne_ignorate,
     }
 
