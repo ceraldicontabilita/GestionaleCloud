@@ -10,12 +10,22 @@ import asyncio
 import os
 import logging
 import starlette.formparsers as _fp
+from contextlib import asynccontextmanager
 
 # Il caricamento del .env e' di GestionaleCloud (app/config.py): qui nessun
 # load_dotenv. Le variabili di Lotti sono prefissate LOTTI_ (vedi db.py).
 from app.lotti.db import database as db, close_database, DB_NAME, STORAGE
 
-app = FastAPI(title="HACCP Ceraldi API", version="2.0")
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    await startup_event()
+    try:
+        yield
+    finally:
+        await shutdown_db_client()
+
+
+app = FastAPI(title="HACCP Ceraldi API", version="2.0", lifespan=lifespan)
 _startup_background_tasks: set[asyncio.Task] = set()
 
 _fp.MultiPartParser.max_file_size = 1024 * 1024 * 100
@@ -179,7 +189,6 @@ async def health():
     }
 
 
-@app.on_event("startup")
 async def startup_event(avvia_scheduler: bool = True):
     logging.info(f"[STARTUP] DB: {DB_NAME} ({STORAGE})")
     from app.lotti.eventi import registra_handlers
@@ -223,8 +232,7 @@ async def startup_event(avvia_scheduler: bool = True):
         nomi_collezioni = await db.list_collection_names()
         priorita = ["dizionario_ingredienti", "dizionario_prodotti"]
         da_precaricare = priorita + sorted(
-            nome for nome in nomi_collezioni
-            if nome not in set(priorita) | {"foto_files"}
+            nome for nome in nomi_collezioni if nome not in set(priorita)
         )
         documenti_pronti = 0
         for nome in da_precaricare:
@@ -246,28 +254,6 @@ async def startup_event(avvia_scheduler: bool = True):
     except Exception as e:
         logging.warning(f"[STARTUP] Errore creazione indici: {e}")
 
-    # Porta su Supabase Storage le foto del cestino ancora nel vecchio archivio
-    # ``foto_files``. Non blocca la salute del servizio; ogni gruppo si salva
-    # subito dopo l'upload, e a lavoro finito il giro trova zero voci ed esce.
-    try:
-        from app.lotti.routers.ricette import completa_migrazione_foto_cestino
-
-        async def _migra_foto_cestino_rilascio():
-            try:
-                esito = await completa_migrazione_foto_cestino()
-                logging.info("[STARTUP] migrazione foto cestino completata: %s", esito)
-            except Exception:
-                logging.exception("[STARTUP] migrazione foto cestino fallita")
-
-        task = asyncio.create_task(
-            _migra_foto_cestino_rilascio(),
-            name="rst-0508an-migrazione-foto-cestino",
-        )
-        _startup_background_tasks.add(task)
-        task.add_done_callback(_startup_background_tasks.discard)
-    except Exception as e:
-        logging.warning(f"[STARTUP] avvio migrazione foto cestino: {e}")
-
     # Completa in background le schede prodotto usando esclusivamente le pagine
     # ufficiali dei fornitori. Il worker e' idempotente: ad ogni deploy riprende
     # soltanto i documenti che non hanno ancora la versione corrente.
@@ -287,6 +273,5 @@ async def startup_event(avvia_scheduler: bool = True):
         logging.warning(f"[STARTUP] avvio arricchimento cataloghi: {e}")
 
 
-@app.on_event("shutdown")
 async def shutdown_db_client():
     await close_database()

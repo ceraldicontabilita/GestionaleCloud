@@ -5,7 +5,7 @@ esterno) viene migrata qui e il dedup runtime a due sorgenti viene rimosso.
 Fornisce:
 - `COLL` = "invoices";
 - `invoice_key(numero, piva, data)`: chiave stabile (numero+P.IVA+data), identica
-  a `generate_invoice_key` usata dalla pipeline di import;
+  usata da tutte le pipeline di import;
 - `mappa_fattura_passiva(doc)`: converte lo schema legacy/ponte
   (numero/fornitore_denominazione/importo_totale/…) nello schema canonico
   (invoice_number/supplier_name/total_amount/…);
@@ -20,7 +20,7 @@ COLL = "invoices"
 
 
 def invoice_key(numero: str, piva: str, data: str) -> str:
-    """Chiave univoca fattura: numero_piva_data (identica a generate_invoice_key)."""
+    """Chiave univoca fattura: numero_piva_data, definita in un solo posto."""
     key = f"{numero}_{piva}_{data}"
     return key.replace(" ", "").replace("/", "-").upper()
 

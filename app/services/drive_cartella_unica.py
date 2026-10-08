@@ -925,7 +925,12 @@ async def _giro(db) -> Dict[str, Any]:
             esito["dettagli"].append({"file": nome, "tipo": risultato.get("tipo_rilevato"),
                                       "esito": destinazione, "motivo": motivo or None})
         except Exception as exc:
-            motivo = f"{type(exc).__name__}: {exc}"[:500]
+            if "cannotDownloadAbusiveFile" in str(exc):
+                motivo = ("Google Drive ha bloccato il file come malware o spam: "
+                          "non scaricato ne' importato; riscaricare il documento "
+                          "dalla fonte ufficiale e caricare una copia verificata")
+            else:
+                motivo = f"{type(exc).__name__}: {exc}"[:500]
             if e_guasto_transitorio(motivo):
                 try:
                     if await rinvia_per_guasto(f, nome, motivo):

@@ -34,7 +34,9 @@ def _cents(valore: Any) -> Optional[int]:
 
 
 async def quote_tfr_da_buste(db_gest, *, codice_fiscale: Optional[str],
-                             dipendente_id: Optional[str]) -> Dict[str, Any]:
+                             dipendente_id: Optional[str],
+                             anagrafiche: Optional[List[dict]] = None,
+                             quote: Optional[List[dict]] = None) -> Dict[str, Any]:
     """Le quote mensili di ``tfr_accantonamenti`` del gestionale per un dipendente.
 
     Restituisce ``disponibile`` (la lettura e' riuscita), ``totale`` (``None`` se
@@ -54,13 +56,22 @@ async def quote_tfr_da_buste(db_gest, *, codice_fiscale: Optional[str],
         if not filtro["$or"]:
             esito.update(disponibile=True, motivo="dipendente senza codice fiscale ne' id")
             return esito
-        anagrafiche = await db_gest["dipendenti"].find(filtro, {"_id": 0, "id": 1, "codice_fiscale": 1}).to_list(50)
-        ids = sorted({str(d.get("id")) for d in anagrafiche if d.get("id")})
+        if anagrafiche is None:
+            corrispondenti = await db_gest["dipendenti"].find(
+                filtro, {"_id": 0, "id": 1, "codice_fiscale": 1}).to_list(50)
+        else:
+            corrispondenti = [d for d in anagrafiche if
+                              (dipendente_id and str(d.get("id")) == str(dipendente_id)) or
+                              (cf and str(d.get("codice_fiscale") or "").strip().upper() == cf)]
+        ids = sorted({str(d.get("id")) for d in corrispondenti if d.get("id")})
         # anche le righe scritte direttamente con l'id HR (stesso id nei due archivi)
         if dipendente_id and dipendente_id not in ids:
             ids.append(dipendente_id)
-        righe = await db_gest["tfr_accantonamenti"].find(
-            {"dipendente_id": {"$in": ids}}, {"_id": 0}).to_list(1000)
+        if quote is None:
+            righe = await db_gest["tfr_accantonamenti"].find(
+                {"dipendente_id": {"$in": ids}}, {"_id": 0}).to_list(1000)
+        else:
+            righe = [r for r in quote if str(r.get("dipendente_id")) in ids]
     except Exception as exc:  # noqa: BLE001 - la pagina dice che il dato manca, non inventa zero
         logger.warning("[TFR] quote da buste non lette per %s: %s: %s", cf or dipendente_id,
                        type(exc).__name__, exc)

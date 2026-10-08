@@ -34,9 +34,9 @@ services:
       yarn --cwd frontend install --frozen-lockfile --production=false &&
       yarn --cwd frontend build
     # Due interpreti Python completi duplicano la cache dell'archivio in
-    # memoria e superano il limite di RAM del piano. FastAPI e
-    # APScheduler vivono quindi nello stesso processo; PROCESS_ROLE=combined
-    # mantiene attive le automazioni senza una seconda copia del database.
+    # memoria e superano il limite di RAM del piano. FastAPI resta quindi in
+    # un solo processo; i job periodici sono spenti finche' non vengono
+    # riabilitati singolarmente dopo verifica.
     startCommand: python -m uvicorn app.main:app --host 0.0.0.0 --port $PORT
     healthCheckPath: /api/health
     envVars:
@@ -95,7 +95,7 @@ services:
       # --- App Lotti (HACCP), montata a /lotti. Le variabili namespaced
       # puntano allo stesso archivio Supabase del gruppo; il segreto JWT resta
       # separato per limitare l'ambito dei token. Senza LOTTI_SUPABASE_URL
-      # l'archivio di Lotti resta in memoria (non persistente).
+      # l'avvio fallisce: non è ammesso un archivio non persistente.
       - key: LOTTI_SUPABASE_URL
         sync: false
       - key: LOTTI_SUPABASE_ANON_KEY
@@ -165,7 +165,15 @@ services:
       - key: PROCESS_ROLE
         value: "combined"
       - key: ENABLE_SCHEDULER
-        value: "true"
+        value: "false"
+      # Nessuna migrazione, semina o riparazione dati implicita al riavvio:
+      # il database operativo resta vergine finche' il titolare non importa.
+      - key: RUN_STARTUP_DATA_REPAIRS
+        value: "false"
+      - key: RUN_STARTUP_INDEX_MIGRATIONS
+        value: "false"
+      - key: RUN_STARTUP_SEED_DATA
+        value: "false"
       - key: GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON
         sync: false
       - key: CREDENTIALS_ENCRYPTION_KEY

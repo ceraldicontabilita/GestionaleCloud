@@ -10,7 +10,7 @@ import './SituazioneFiscale.css';
 
 // Le schede che erano pagine a se' (Piano tributi, Tributi per codice, Ritenute): qui si
 // mostrano con la loro stessa vista, senza una seconda copia. I vecchi indirizzi
-// (/piano-tributi, /tributi, /ritenute) rimandano a queste schede (LegacyRouteResolver).
+// Le sottosezioni fiscali vivono esclusivamente sotto /situazione-fiscale/.
 const PianoTributi = lazy(() => import('./PianoTributi'));
 const Tributi = lazy(() => import('./Tributi'));
 const Ritenute = lazy(() => import('./Ritenute'));
@@ -545,7 +545,7 @@ function ElenchiFiscali() {
                   </div>}
                   {managementRows.length > 0 && <div className="fiscal-f24-table-wrap" style={{ marginTop: 10 }}><table className="fiscal-f24-table">
                     <thead><tr><th>Periodo</th><th>Campo</th><th>Dichiarazione</th><th>Gestionale</th><th>Esito</th></tr></thead>
-                    <tbody>{managementRows.map(row => <tr key={row.id}><td>{row.period}</td><td>{row.field || row.tax_code || '—'}</td><td>{euro(row.declared_cents == null ? null : row.declared_cents / 100)}</td><td>{euro(row.management_cents == null ? null : row.management_cents / 100)}</td><td><Badge variant={row.status === 'CONCORDANTE' ? 'success' : 'warning'}>{row.status.replaceAll('_', ' ')}</Badge></td></tr>)}</tbody>
+                    <tbody>{managementRows.map((row, rowIndex) => <tr key={row.id || `${declaration.document_id}-${row.period || 'periodo'}-${row.field || row.tax_code || rowIndex}`}><td>{row.period}</td><td>{row.field || row.tax_code || '—'}</td><td>{euro(row.declared_cents == null ? null : row.declared_cents / 100)}</td><td>{euro(row.management_cents == null ? null : row.management_cents / 100)}</td><td><Badge variant={row.status === 'CONCORDANTE' ? 'success' : 'warning'}>{row.status.replaceAll('_', ' ')}</Badge></td></tr>)}</tbody>
                   </table></div>}
                   {check.management_warning && <div className="fiscal-muted" style={{ marginTop: 8 }}>Dati gestionali non confrontabili: {check.management_warning}</div>}
                 </div>}

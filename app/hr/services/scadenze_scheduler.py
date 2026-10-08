@@ -91,7 +91,7 @@ def start_scheduler():
     if _scheduler:
         return _scheduler
     try:
-        from apscheduler.schedulers.asyncio import AsyncIOScheduler
+        from app.scheduler import SchedulerConLease
     except Exception as e:
         logger.warning(f"APScheduler non disponibile, scadenzario disattivato: {e}")
         return None
@@ -103,9 +103,9 @@ def start_scheduler():
         except Exception as e:
             logger.error(f"Job scadenze fallito: {e}")
 
-    sched = AsyncIOScheduler(timezone="Europe/Rome")
+    sched = SchedulerConLease(timezone="Europe/Rome")
     sched.add_job(_job, "interval", hours=24, id="scadenze",
-                  next_run_time=datetime.now() + timedelta(seconds=45),
+                  next_run_time=datetime.now(sched.timezone) + timedelta(seconds=45),
                   replace_existing=True)
     sched.start()
     _scheduler = sched

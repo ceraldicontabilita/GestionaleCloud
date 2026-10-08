@@ -23,16 +23,10 @@ async def sincronizza_paghe_periodico():
     try:
         from app.hr.routers.dipendenti_cloud import (
             sincronizza_paghe_da_cedolini, sincronizza_bonifici_storici)
-        from app.hr.database import Database
-        from app.hr.services.regole_pagamenti_dipendenti import bonifica_storico
         r1 = await sincronizza_paghe_da_cedolini()
         r2 = await sincronizza_bonifici_storici()
-        # Idempotente e marcata in sistema_stato: al primo giro dopo il deploy
-        # corregge lo storico; nei giri successivi e' un no-op. Le nuove
-        # scritture sono gia' protette dagli endpoint e dal ponte banca/PDF.
-        r3 = await bonifica_storico(Database.get_db(), dry_run=False)
-        logger.info(f"Sincronizzazione paghe periodica: cedolini={r1} bonifici_storici={r2} "
-                    f"bonifica_regole={r3}")
+        # Archivio vergine: nessuna bonifica dello storico a ogni giro.
+        logger.info("Sincronizzazione paghe periodica: cedolini=%s bonifici=%s", r1, r2)
     except Exception as e:
         logger.error(f"Sincronizzazione paghe periodica fallita: {e}")
 
@@ -43,12 +37,12 @@ def start_scheduler():
     if _scheduler:
         return _scheduler
     try:
-        from apscheduler.schedulers.asyncio import AsyncIOScheduler
+        from app.scheduler import SchedulerConLease
     except Exception as e:
         logger.warning(f"APScheduler non disponibile, sincronizzazione paghe disattivata: {e}")
         return None
 
-    sched = AsyncIOScheduler(timezone="Europe/Rome")
+    sched = SchedulerConLease(timezone="Europe/Rome")
     # Il primo giro e' a 6 ore dall'avvio, come tutti gli altri: NON a 60
     # secondi. Un giro tocca 1.222 cedolini (collection da 165 MB) e 648
     # bonifici, e l'esito misurato in produzione il 20/09/2026 era sempre

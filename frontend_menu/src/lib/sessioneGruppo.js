@@ -5,7 +5,7 @@ import { esciDalGruppo } from '../../../frontend_shared/SessioneGruppo';
 // (PIN piu' MFA) e da li' apre il Menu senza un secondo PIN. Il backend legge
 // il cookie del Gestionale e restituisce un token del Menu, mai quello
 // dell'ERP (`app/services/group_session.py`).
-const BACKEND_URL = process.env.REACT_APP_MENU_BACKEND_URL;
+import { MENU_BACKEND_URL as BACKEND_URL } from '@/lib/backend';
 
 export const DESTINAZIONE_ADMIN = '/menu/admin';
 

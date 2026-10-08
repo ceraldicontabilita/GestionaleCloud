@@ -13,7 +13,6 @@ from pathlib import Path
 import asyncio
 import re
 from decimal import Decimal, InvalidOperation
-import base64
 import hashlib
 import uuid
 
@@ -1492,270 +1491,6 @@ async def sync_estratti_bnl() -> Dict[str, Any]:
     }
 
 
-@router.post("/ricategorizza-documenti")
-@handle_errors
-async def ricategorizza_documenti() -> Dict[str, Any]:
-    """
-    Ricategorizza automaticamente i documenti nella categoria 'altro'
-    che possono essere riconosciuti come altri tipi.
-    """
-    db = Database.get_db()
-
-    # Trova documenti in "altro" non processati
-    docs = await db["documents_inbox"].find(
-        {"category": "altro", "processed": {"$ne": True}},
-        {"_id": 0}
-    ).to_list(500)
-
-    if not docs:
-        return {
-            "success": True,
-            "message": "Nessun documento da ricategorizzare",
-            "ricategorizzati": 0
-        }
-
-    ricategorizzati = []
-
-    for doc in docs:
-        filename = doc.get("filename", "").lower()
-        new_category = None
-
-        # Riconosci BNL
-        if "bnl" in filename:
-            new_category = "estratto_conto"
-        # Riconosci estratti conto
-        elif "estratto" in filename or "conto" in filename:
-            new_category = "estratto_conto"
-        # Riconosci buste paga
-        elif "paga" in filename or "cedolino" in filename or "lul" in filename:
-            new_category = "busta_paga"
-        # Riconosci F24
-        elif "f24" in filename:
-            new_category = "f24"
-        # Riconosci PayPal
-        elif "paypal" in filename:
-            new_category = "estratto_conto"
-
-        if new_category:
-            await db["documents_inbox"].update_one(
-                {"id": doc["id"]},
-                {"$set": {
-                    "category": new_category,
-                    "category_label": {
-                        "estratto_conto": "Estratti Conto",
-                        "busta_paga": "Buste Paga",
-                        "f24": "F24",
-                        "fattura": "Fatture"
-                    }.get(new_category, new_category.replace("_", " ").title()),
-                    "ricategorizzato_at": datetime.now(timezone.utc).isoformat()
-                }}
-            )
-            ricategorizzati.append({
-                "file": doc.get("filename"),
-                "da": "altro",
-                "a": new_category
-            })
-
-    return {
-        "success": True,
-        "ricategorizzati": len(ricategorizzati),
-        "dettagli": ricategorizzati
-    }
-
-
-@router.post("/processa-tutti")
-@handle_errors
-async def processa_tutti_documenti() -> Dict[str, Any]:
-    """
-    Endpoint combinato che:
-    1. Ricategorizza i documenti
-    2. Processa estratti conto Nexi
-    3. Processa estratti conto BNL
-
-    NOTA (audit-codice 04/09/2026): il passo "buste paga" chiamava una
-    funzione `sync_buste_paga()` mai definita in questo file (NameError
-    sempre catturato dal try/except, quindi l'endpoint "riusciva" ma non
-    processava mai nulla). I cedolini hanno un solo sistema di ingestione
-    canonico (cartella unica Drive / email_download -> cedolini_manager ->
-    salari_unificati_v2, vedi CLAUDE.md "Cedolini: un solo sistema"): questo
-    endpoint combinato non deve duplicarlo con una chiamata inventata.
-    """
-    risultati = {
-        "ricategorizzazione": None,
-        "estratti_nexi": None,
-        "estratti_bnl": None
-    }
-
-    try:
-        # 1. Ricategorizza
-        risultati["ricategorizzazione"] = await ricategorizza_documenti()
-    except Exception as e:
-        risultati["ricategorizzazione"] = {"error": str(e)}
-
-    try:
-        # 2. Estratti Nexi
-        risultati["estratti_nexi"] = await sync_estratti_conto()
-    except Exception as e:
-        risultati["estratti_nexi"] = {"error": str(e)}
-
-    try:
-        # 3. Estratti BNL
-        risultati["estratti_bnl"] = await sync_estratti_bnl()
-    except Exception as e:
-        risultati["estratti_bnl"] = {"error": str(e)}
-
-    return {
-        "success": True,
-        "risultati": risultati,
-        "sommario": {
-            "ricategorizzati": risultati.get("ricategorizzazione", {}).get("ricategorizzati", 0),
-            "estratti_nexi_processati": risultati.get("estratti_nexi", {}).get("processati", 0),
-            "estratti_bnl_processati": risultati.get("estratti_bnl", {}).get("processati", 0)
-        }
-    }
-
-
-
-@router.post("/reimporta-da-filesystem")
-@handle_errors
-async def reimporta_documenti_da_filesystem(
-    force: bool = Query(False, description="Forza reimportazione anche se esistenti nel DB"),
-    _admin: Dict[str, Any] = Depends(get_current_admin_user),
-) -> Dict[str, Any]:
-    """
-    Scansiona la cartella /app/documents e reimporta tutti i documenti nel database.
-    Utile quando il database è stato resettato ma i file sono ancora su disco.
-    """
-    import uuid
-
-    db = Database.get_db()
-
-    # DEPRECATO: Questo endpoint è per migrazione legacy.
-    # Architettura Drive/Supabase: legge file da disco e li salva come Base64 in Drive/Supabase.
-
-    # Categorie e sottocartelle
-    category_dirs = {
-        "Buste Paga": "busta_paga",
-        "Estratti Conto": "estratto_conto",
-        "F24": "f24",
-        "Fatture": "fattura",
-        "Altri": "altro"
-    }
-
-    importati = []
-    saltati = []
-    errori = []
-
-    base_path = Path("/tmp/documents")
-
-    for dir_name, category in category_dirs.items():
-        dir_path = base_path / dir_name
-        if not dir_path.exists():
-            continue
-
-        for file_path in dir_path.iterdir():
-            if not file_path.is_file():
-                continue
-
-            # Salta file di sistema
-            if file_path.name.startswith('.'):
-                continue
-
-            filename = file_path.name
-            filepath = str(file_path)
-
-            # Architettura Drive/Supabase: leggi file e codifica in Base64
-            try:
-                with open(filepath, 'rb') as f:
-                    file_content = f.read()
-                    file_hash = hashlib.md5(file_content).hexdigest()
-                    pdf_base64 = base64.b64encode(file_content).decode('utf-8')
-            except Exception as e:
-                errori.append({"file": filename, "errore": f"Impossibile leggere file: {e}"})
-                continue
-
-            # Controlla se già esiste nel DB
-            existing = await db["documents_inbox"].find_one({
-                "$or": [
-                    {"filename": filename, "file_hash": file_hash},
-                    {"file_hash": file_hash}
-                ]
-            })
-
-            if existing and not force:
-                saltati.append(filename)
-                continue
-
-            # Ricategorizza automaticamente in base al nome
-            final_category = category
-            filename_lower = filename.lower()
-
-            if "bnl" in filename_lower:
-                final_category = "estratto_conto"
-            elif "nexi" in filename_lower:
-                final_category = "estratto_conto"
-            elif "paypal" in filename_lower:
-                final_category = "estratto_conto"
-            elif "paga" in filename_lower or "cedolino" in filename_lower:
-                final_category = "busta_paga"
-            elif "f24" in filename_lower:
-                final_category = "f24"
-
-            # Crea record documento con pdf_data (Drive/Supabase)
-            doc_record = {
-                "id": str(uuid.uuid4()),
-                "filename": filename,
-                "pdf_data": pdf_base64,  # Architettura Drive/Supabase
-                "category": final_category,
-                "category_label": {
-                    "estratto_conto": "Estratti Conto",
-                    "busta_paga": "Buste Paga",
-                    "f24": "F24",
-                    "fattura": "Fatture",
-                    "altro": "Altri"
-                }.get(final_category, "Altri"),
-                "status": "nuovo",
-                "processed": False,
-                "file_hash": file_hash,
-                "file_size": len(file_content),
-                "downloaded_at": datetime.now(timezone.utc).isoformat(),
-                "source": "filesystem_import_migrated"
-            }
-
-            try:
-                if existing and force:
-                    await db["documents_inbox"].update_one(
-                        {"_id": existing["_id"]},
-                        {"$set": doc_record}
-                    )
-                else:
-                    await db["documents_inbox"].insert_one(dict(doc_record).copy())
-
-                importati.append({
-                    "file": filename,
-                    "categoria": final_category
-                })
-            except Exception as e:
-                errori.append({"file": filename, "errore": str(e)})
-
-    # Statistiche per categoria
-    by_category = {}
-    for doc in importati:
-        cat = doc["categoria"]
-        by_category[cat] = by_category.get(cat, 0) + 1
-
-    return {
-        "success": True,
-        "importati": len(importati),
-        "saltati": len(saltati),
-        "errori_count": len(errori),
-        "per_categoria": by_category,
-        "dettagli": importati[:50] if len(importati) > 50 else importati,
-        "errori": errori if errori else None,
-        "messaggio": f"Importati {len(importati)} documenti dal filesystem"
-    }
-
-
 # ============================================================
 # UPLOAD AUTOMATICO CON RICONOSCIMENTO TIPO
 # ============================================================
@@ -1919,23 +1654,11 @@ def detect_document_type(filename: str, file_content: bytes) -> str:
         # parser fatture con un falso positivo.
         return "auto"
 
-    if lower.endswith(".pdf"):
-        if "identita" in lower or "identity_card" in lower:
-            return "documento_identita"
-        if "visura" in lower:
-            return "visura_camerale"
-        if "tari" in lower and any(marker in lower for marker in (
-            "istanza", "rimborso", "compensazione",
-        )):
-            return "tari_istanza_compensazione"
-
     # Prima del nome file prevale la natura probatoria del contenuto. Una
     # nota INPS puo citare il modello F24 senza essere un F24; un avviso
     # PagoPA contiene IUV/CBILL ma non dimostra alcun pagamento.
     pdf_text = _pdf_text_for_detection(file_content).upper() if lower.endswith(".pdf") else ""
-    if len(pdf_text.strip()) < 80 and any(clue in lower for clue in (
-        "istanza", "identita", "carta", "visura", "ant_",
-    )):
+    if lower.endswith(".pdf") and len(pdf_text.strip()) < 80:
         try:
             from app.services.pagopa_receipts import _extract_receipt_text
 
@@ -2121,49 +1844,6 @@ def detect_document_type(filename: str, file_content: bytes) -> str:
     ):
         return "fattura"
 
-    # Segnali espliciti nel nome, dal piu specifico al piu generico.
-    if "identita" in lower or "identity_card" in lower:
-        return "documento_identita"
-    if "visura" in lower:
-        return "visura_camerale"
-    if "tari" in lower and any(marker in lower for marker in ("istanza", "rimborso", "compensazione")):
-        return "tari_istanza_compensazione"
-    if any(keyword in lower for keyword in ("ricevutatelematica", "ricevuta_pagopa", "ricevuta-pagopa")):
-        return "ricevuta_pagopa"
-    if any(keyword in lower for keyword in (
-        "quietanza_cbill", "quietanza-cbill", "ricevuta_cbill", "ricevuta-cbill",
-    )):
-        return "ricevuta_pagopa"
-    if any(keyword in lower for keyword in ("avvisodigitale", "avviso_pagopa", "avviso-pagopa")):
-        return "avviso_pagopa"
-    if any(keyword in lower for keyword in ("rettifica", "dmra")) and "inps" in compact_pdf_text:
-        return "nota_rettifica_inps"
-    if (
-        any(keyword in lower for keyword in ("cbill", "pagopa", "pago_pa", "pago-pa"))
-        and any(keyword in lower for keyword in ("quietanza", "ricevuta", "pagamento", "eseguito"))
-    ):
-        return "ricevuta_pagopa"
-    if any(keyword in lower for keyword in ("cbill", "pagopa", "pago_pa", "pago-pa")):
-        # Dal solo nome non e' possibile affermare che il pagamento sia
-        # avvenuto: il default sicuro e' avviso/obbligazione.
-        return "avviso_pagopa"
-    if any(keyword in lower for keyword in (
-        "quietanza", "ricevuta_f24", "ricevuta-f24", "pagamento_f24",
-    )):
-        return "quietanza_f24"
-    if re.search(r"(^|[^a-z0-9])f24([^a-z0-9]|$)", lower) or "delega_f24" in lower:
-        return "f24"
-    if lower.endswith(".pdf") and any(keyword in lower for keyword in (
-        "cedolin", "busta_paga", "busta paga", "libro_unico", "libro unico", "lul",
-        "tredicesima", "quattordicesima",
-    )):
-        # Solo un PDF: «Indice_Cedolini_Gestionale.xlsx» non e' una busta paga.
-        return "cedolino"
-    if any(keyword in lower for keyword in ("bonifico", "bonifici", "sepa", "transfer")):
-        return "bonifici"
-    if any(keyword in lower for keyword in ("fattura", "invoice", "ft_")):
-        return "fattura"
-
     if lower.endswith(".pdf"):
         # L'area Estratti conto contiene PDF dal nome generico
         # ``Estratto_Conto (N).pdf``. Prima di appiattirli sul conto corrente
@@ -2171,7 +1851,7 @@ def detect_document_type(filename: str, file_content: bytes) -> str:
         # PayPal e mutui hanno registri e regole contabili distinti.
         from app.services.classificazione_estratti import classifica
 
-        statement_route, _reason = classifica(filename, file_content)
+        statement_route, _reason = classifica("documento.pdf", file_content)
         routed_type = {
             "nexi": "estratto_conto_nexi",
             "paypal": "estratto_conto_paypal",
@@ -2239,8 +1919,7 @@ def detect_document_type(filename: str, file_content: bytes) -> str:
         if all(marker in content_str for marker in MARCATORI_REPORT_CLIENTI):
             return "anagrafica_clienti"
         if (
-            any(keyword in lower for keyword in ("distint", "stipend", "elenco"))
-            and "BENEFICIARIO" in content_str
+            "BENEFICIARIO" in content_str
             and ("IMPORTO" in content_str or "IBAN" in content_str)
         ):
             return "distinte_bpm"
@@ -2249,22 +1928,19 @@ def detect_document_type(filename: str, file_content: bytes) -> str:
         # estratti bancari e non devono essere archiviati come generici AUTO.
         from app.services.classificazione_estratti import classifica
 
-        statement_route, _reason = classifica(filename, file_content)
+        statement_route, _reason = classifica(f"documento{Path(lower).suffix}", file_content)
         if statement_route == "pos":
             return "pos_terminal"
         if statement_route == "sumup":
             return "estratto_conto_sumup"
         if statement_route == "bank":
             return "estratto_conto"
-        bank_name = any(keyword in lower for keyword in (
-            "estratto", "movimenti", "bpm", "banco", "bank_statement",
-        ))
         bank_headers = (
             ("DATA" in content_str or "VALUTA" in content_str)
             and ("CAUSALE" in content_str or "DESCRIZIONE" in content_str)
             and ("IMPORTO" in content_str or "DARE" in content_str or "AVERE" in content_str)
         )
-        return "estratto_conto" if bank_name or bank_headers else "auto"
+        return "estratto_conto" if bank_headers else "auto"
 
     return "auto"
 
@@ -2848,9 +2524,9 @@ async def _riferimenti_fattura_gia_presente(db, parsed: Optional[Dict[str, Any]]
     XML rifiutato come doppione; ``{}`` se non si trova (nessun id inventato)."""
     if not parsed:
         return {}
-    from app.routers.invoices.fatture_upload import generate_invoice_key
+    from app.services.fatture_canonico import invoice_key
 
-    chiave = generate_invoice_key(
+    chiave = invoice_key(
         parsed.get("invoice_number", ""), parsed.get("supplier_vat", ""),
         parsed.get("invoice_date", ""),
     )

@@ -110,7 +110,7 @@ export function DriveFattureImportCard() {
         <p style={{ fontSize: 12, color: COLORS.textMuted, marginBottom: 16 }}>
           Fatture XML, F24, quietanze, cedolini, estratti conto, corrispettivi: il gestionale
           riconosce ogni file lasciato nella cartella e lo sposta in ELABORATE. Il giro automatico
-          ne prende un lotto ogni 15 minuti; il pulsante li importa tutti adesso.
+          è disattivato: usa «Importa tutto da Drive» per avviare consapevolmente un giro completo.
         </p>
 
         <div

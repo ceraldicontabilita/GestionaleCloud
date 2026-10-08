@@ -85,14 +85,6 @@ MAPPA_ALLERGENI_MENU = {
     "arachidi": "peanuts",
 }
 
-ESTENSIONE_DA_MIME = {
-    "image/jpeg": "jpg",
-    "image/jpg": "jpg",
-    "image/png": "png",
-    "image/webp": "webp",
-}
-
-
 def menu_configurato() -> bool:
     return bool(os.environ.get("MENU_SUPABASE_URL", "").strip().strip('"').strip("'"))
 
@@ -194,23 +186,8 @@ def _sottocategoria_per_reparto(reparto: Any) -> tuple[str, str]:
     return SOTTOCATEGORIE_REPARTO.get(str(reparto or "").strip().casefold(), SOTTOCATEGORIA_ALTRO)
 
 
-def _estensione(mime: str) -> str:
-    return ESTENSIONE_DA_MIME.get((mime or "").split(";", 1)[0].strip().casefold(), "jpg")
-
-
-def _foto_id_da_url(foto_url: Any) -> Optional[str]:
-    """Id foto dagli URL interni di Lotti ``/api/foto/<id>[?v=...]``."""
-    if not foto_url:
-        return None
-    path = str(foto_url).split("?", 1)[0].rstrip("/")
-    marker = "/api/foto/"
-    if marker not in path:
-        return None
-    return path.split(marker, 1)[1] or None
-
-
 def percorso_storage(foto_id: str, mime: str) -> str:
-    return f"{STORAGE_PREFIX}/{foto_id}.{_estensione(mime)}"
+    return f"{STORAGE_PREFIX}/{foto_id}.webp"
 
 
 def _descrizione(ricetta: dict) -> Optional[str]:
@@ -353,10 +330,13 @@ def _riga_agganciata(ricetta: dict, lotti_ref: str) -> Optional[dict]:
 
 def _carica_immagine(foto: dict) -> str:
     """Copia i byte della foto Lotti nel bucket del Menu e restituisce l'URL pubblico."""
-    mime = str(foto.get("mime") or "image/jpeg")
-    percorso = percorso_storage(str(foto["_id"]), mime)
+    from app.menu.image_optimizer import ottimizza_immagine_web
+
+    percorso = percorso_storage(str(foto["_id"]), "image/webp")
+    contenuto = ottimizza_immagine_web(bytes(foto["data"]))
     supabase.storage.from_(STORAGE_BUCKET).upload(
-        percorso, bytes(foto["data"]), {"content-type": mime, "upsert": "true"}
+        percorso, contenuto,
+        {"content-type": "image/webp", "cache-control": "31536000", "upsert": "true"},
     )
     return supabase.storage.from_(STORAGE_BUCKET).get_public_url(percorso)
 
@@ -519,20 +499,7 @@ async def _foto_ricetta(ricetta: dict, db: Any) -> Optional[dict]:
             "sha256": ricetta.get("foto_sha256"),
             "storage_path": storage_path,
         }
-    drive_id = str(ricetta.get("foto_drive_id") or "").strip()
-    if drive_id:
-        from app.lotti.servizi import drive_foto_ricette
-        contenuto, mime, _ = await asyncio.to_thread(
-            drive_foto_ricette.leggi,
-            drive_id,
-            folder_id=str(ricetta.get("foto_drive_folder_id") or ""),
-        )
-        return {"_id": drive_id, "mime": mime, "data": contenuto,
-                "sha256": ricetta.get("foto_sha256")}
-    foto_id = _foto_id_da_url(ricetta.get("foto_url"))
-    if not foto_id or db is None:
-        return None
-    return await db.foto_files.find_one({"_id": foto_id})
+    return None
 
 
 async def pubblica_prodotto_nel_menu(ricetta: dict, *, visibile: bool, db: Any = None) -> dict:

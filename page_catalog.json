@@ -15,7 +15,6 @@
       "access": "public",
       "audit_status": "unverified",
       "module": "accesso",
-      "documentation_file": "memoria/pagine/login.json",
       "component_status": "reachable_from_router",
       "route_kind": "page"
     },
@@ -28,7 +27,6 @@
       "access": "reserved",
       "audit_status": "unverified",
       "module": "accesso",
-      "documentation_file": "memoria/pagine/gestione-riservata.json",
       "component_status": "reachable_from_router",
       "route_kind": "page"
     },
@@ -41,7 +39,6 @@
       "access": "authenticated",
       "audit_status": "unverified",
       "module": "dashboard",
-      "documentation_file": "memoria/pagine/dashboard.json",
       "component_status": "reachable_from_router",
       "route_kind": "tab"
     },
@@ -54,7 +51,6 @@
       "access": "authenticated",
       "audit_status": "unverified",
       "module": "dashboard",
-      "documentation_file": "memoria/pagine/inserimento-rapido.json",
       "component_status": "reachable_from_router",
       "route_kind": "page"
     },
@@ -67,7 +63,6 @@
       "access": "authenticated",
       "audit_status": "unverified",
       "module": "fatture",
-      "documentation_file": "memoria/pagine/fatture.json",
       "component_status": "reachable_from_router",
       "route_kind": "tab"
     },
@@ -80,7 +75,6 @@
       "access": "authenticated",
       "audit_status": "unverified",
       "module": "fatture",
-      "documentation_file": "memoria/pagine/corrispettivi.json",
       "component_status": "reachable_from_router",
       "route_kind": "tab"
     },
@@ -93,7 +87,6 @@
       "access": "authenticated",
       "audit_status": "unverified",
       "module": "fornitori",
-      "documentation_file": "memoria/pagine/fornitori.json",
       "component_status": "reachable_from_router",
       "route_kind": "tab"
     },
@@ -106,7 +99,6 @@
       "access": "authenticated",
       "audit_status": "in_review",
       "module": "prima-nota",
-      "documentation_file": "memoria/pagine/prima-nota.json",
       "component_status": "reachable_from_router",
       "route_kind": "tab"
     },
@@ -119,7 +111,6 @@
       "access": "authenticated",
       "audit_status": "unverified",
       "module": "prima-nota",
-      "documentation_file": "memoria/pagine/prima-nota-pulizia.json",
       "component_status": "reachable_from_router",
       "route_kind": "tab"
     },
@@ -132,7 +123,6 @@
       "access": "authenticated",
       "audit_status": "unverified",
       "module": "noleggio",
-      "documentation_file": "memoria/pagine/noleggio-flotta.json",
       "component_status": "reachable_from_router",
       "route_kind": "tab"
     },
@@ -145,7 +135,6 @@
       "access": "authenticated",
       "audit_status": "in_review",
       "module": "noleggio",
-      "documentation_file": "memoria/pagine/noleggio-verbali.json",
       "component_status": "reachable_from_router",
       "route_kind": "tab"
     },
@@ -158,7 +147,6 @@
       "access": "authenticated",
       "audit_status": "in_review",
       "module": "noleggio",
-      "documentation_file": "memoria/pagine/noleggio-costi.json",
       "component_status": "reachable_from_router",
       "route_kind": "tab"
     },
@@ -175,7 +163,6 @@
         404
       ],
       "module": "noleggio",
-      "documentation_file": "memoria/pagine/dettaglio-verbale.json",
       "component_status": "reachable_from_router",
       "route_kind": "detail"
     },
@@ -188,7 +175,6 @@
       "access": "authenticated",
       "audit_status": "verified",
       "module": "contabilita",
-      "documentation_file": "memoria/pagine/contabilita-piano-conti.json",
       "component_status": "reachable_from_router",
       "route_kind": "tab"
     },
@@ -201,7 +187,6 @@
       "access": "authenticated",
       "audit_status": "in_review",
       "module": "contabilita",
-      "documentation_file": "memoria/pagine/contabilita-bilancio.json",
       "component_status": "reachable_from_router",
       "route_kind": "tab"
     },
@@ -214,7 +199,6 @@
       "access": "authenticated",
       "audit_status": "in_review",
       "module": "contabilita",
-      "documentation_file": "memoria/pagine/contabilita-verifica.json",
       "component_status": "reachable_from_router",
       "route_kind": "tab"
     },
@@ -227,7 +211,6 @@
       "access": "authenticated",
       "audit_status": "in_review",
       "module": "contabilita",
-      "documentation_file": "memoria/pagine/contabilita-giornale.json",
       "component_status": "reachable_from_router",
       "route_kind": "tab"
     },
@@ -240,7 +223,6 @@
       "access": "authenticated",
       "audit_status": "in_review",
       "module": "contabilita",
-      "documentation_file": "memoria/pagine/contabilita-controllo.json",
       "component_status": "reachable_from_router",
       "route_kind": "tab"
     },
@@ -253,7 +235,6 @@
       "access": "authenticated",
       "audit_status": "in_review",
       "module": "contabilita",
-      "documentation_file": "memoria/pagine/contabilita-calendario.json",
       "component_status": "reachable_from_router",
       "route_kind": "tab"
     },
@@ -266,7 +247,6 @@
       "access": "authenticated",
       "audit_status": "in_review",
       "module": "contabilita",
-      "documentation_file": "memoria/pagine/contabilita-cespiti.json",
       "component_status": "reachable_from_router",
       "route_kind": "tab"
     },
@@ -279,7 +259,6 @@
       "access": "authenticated",
       "audit_status": "verified",
       "module": "contabilita",
-      "documentation_file": "memoria/pagine/contabilita-finanziaria.json",
       "component_status": "reachable_from_router",
       "route_kind": "tab"
     },
@@ -292,7 +271,6 @@
       "access": "authenticated",
       "audit_status": "verified",
       "module": "contabilita",
-      "documentation_file": "memoria/pagine/contabilita-chiusura.json",
       "component_status": "reachable_from_router",
       "route_kind": "tab"
     },
@@ -305,7 +283,6 @@
       "access": "authenticated",
       "audit_status": "unverified",
       "module": "contabilita",
-      "documentation_file": "memoria/pagine/contabilita-budget.json",
       "component_status": "reachable_from_router",
       "route_kind": "tab"
     },
@@ -318,7 +295,6 @@
       "access": "authenticated",
       "audit_status": "unverified",
       "module": "contabilita",
-      "documentation_file": "memoria/pagine/contabilita-mutui.json",
       "component_status": "reachable_from_router",
       "route_kind": "tab"
     },
@@ -331,7 +307,6 @@
       "access": "authenticated",
       "audit_status": "unverified",
       "module": "contabilita",
-      "documentation_file": "memoria/pagine/contabilita-avanzata.json",
       "component_status": "reachable_from_router",
       "route_kind": "tab"
     },
@@ -344,7 +319,6 @@
       "access": "authenticated",
       "audit_status": "unverified",
       "module": "contabilita",
-      "documentation_file": "memoria/pagine/contabilita-utile.json",
       "component_status": "reachable_from_router",
       "route_kind": "tab"
     },
@@ -357,7 +331,6 @@
       "access": "authenticated",
       "audit_status": "unverified",
       "module": "contabilita",
-      "documentation_file": "memoria/pagine/contabilita-previsioni-acquisti.json",
       "component_status": "reachable_from_router",
       "route_kind": "tab"
     },
@@ -370,7 +343,6 @@
       "access": "authenticated",
       "audit_status": "unverified",
       "module": "strumenti",
-      "documentation_file": "memoria/pagine/learning-machine.json",
       "component_status": "reachable_from_router",
       "route_kind": "page"
     },
@@ -383,7 +355,6 @@
       "access": "authenticated",
       "audit_status": "unverified",
       "module": "contabilita",
-      "documentation_file": "memoria/pagine/scadenze.json",
       "component_status": "reachable_from_router",
       "route_kind": "page"
     },
@@ -396,7 +367,6 @@
       "access": "admin",
       "audit_status": "unverified",
       "module": "personale",
-      "documentation_file": "memoria/pagine/ritenute.json",
       "component_status": "reachable_from_router",
       "route_kind": "tab"
     },
@@ -409,7 +379,6 @@
       "access": "authenticated",
       "audit_status": "unverified",
       "module": "riconciliazione",
-      "documentation_file": "memoria/pagine/riconciliazione-bancaria.json",
       "component_status": "reachable_from_router",
       "route_kind": "tab"
     },
@@ -422,7 +391,6 @@
       "access": "authenticated",
       "audit_status": "unverified",
       "module": "riconciliazione",
-      "documentation_file": "memoria/pagine/riconciliazione-banca.json",
       "component_status": "reachable_from_router",
       "route_kind": "tab"
     },
@@ -435,7 +403,6 @@
       "access": "authenticated",
       "audit_status": "unverified",
       "module": "riconciliazione",
-      "documentation_file": "memoria/pagine/riconciliazione-f24.json",
       "component_status": "reachable_from_router",
       "route_kind": "tab"
     },
@@ -448,7 +415,6 @@
       "access": "authenticated",
       "audit_status": "unverified",
       "module": "riconciliazione",
-      "documentation_file": "memoria/pagine/riconciliazione-stipendi.json",
       "component_status": "reachable_from_router",
       "route_kind": "tab"
     },
@@ -461,7 +427,6 @@
       "access": "authenticated",
       "audit_status": "unverified",
       "module": "riconciliazione",
-      "documentation_file": "memoria/pagine/riconciliazione-documenti.json",
       "component_status": "reachable_from_router",
       "route_kind": "tab"
     },
@@ -474,7 +439,6 @@
       "access": "authenticated",
       "audit_status": "unverified",
       "module": "riconciliazione",
-      "documentation_file": "memoria/pagine/archivio-bonifici.json",
       "component_status": "reachable_from_router",
       "route_kind": "tab"
     },
@@ -487,7 +451,6 @@
       "access": "authenticated",
       "audit_status": "in_review",
       "module": "riconciliazione",
-      "documentation_file": "memoria/pagine/assegni.json",
       "component_status": "reachable_from_router",
       "route_kind": "tab"
     },
@@ -500,7 +463,6 @@
       "access": "authenticated",
       "audit_status": "in_review",
       "module": "riconciliazione",
-      "documentation_file": "memoria/pagine/riconciliazione-paypal.json",
       "component_status": "reachable_from_router",
       "route_kind": "tab"
     },
@@ -513,7 +475,6 @@
       "access": "authenticated",
       "audit_status": "unverified",
       "module": "riconciliazione",
-      "documentation_file": "memoria/pagine/coerenza-pos.json",
       "component_status": "reachable_from_router",
       "route_kind": "tab"
     },
@@ -526,7 +487,6 @@
       "access": "authenticated",
       "audit_status": "unverified",
       "module": "documenti",
-      "documentation_file": "memoria/pagine/documenti-import.json",
       "component_status": "reachable_from_router",
       "route_kind": "tab"
     },
@@ -539,7 +499,6 @@
       "access": "authenticated",
       "audit_status": "unverified",
       "module": "documenti",
-      "documentation_file": "memoria/pagine/documenti-archivio.json",
       "component_status": "reachable_from_router",
       "route_kind": "tab"
     },
@@ -552,7 +511,6 @@
       "access": "authenticated",
       "audit_status": "unverified",
       "module": "strumenti",
-      "documentation_file": "memoria/pagine/strumenti-verifica.json",
       "component_status": "reachable_from_router",
       "route_kind": "tab"
     },
@@ -565,7 +523,6 @@
       "access": "authenticated",
       "audit_status": "unverified",
       "module": "riconciliazione",
-      "documentation_file": "memoria/pagine/strumenti-movimenti-banca.json",
       "component_status": "reachable_from_router",
       "route_kind": "tab"
     },
@@ -578,7 +535,6 @@
       "access": "authenticated",
       "audit_status": "unverified",
       "module": "strumenti",
-      "documentation_file": "memoria/pagine/strumenti-commercialista.json",
       "component_status": "reachable_from_router",
       "route_kind": "tab"
     },
@@ -591,7 +547,6 @@
       "access": "authenticated",
       "audit_status": "unverified",
       "module": "strumenti",
-      "documentation_file": "memoria/pagine/strumenti-pianificazione.json",
       "component_status": "reachable_from_router",
       "route_kind": "tab"
     },
@@ -604,7 +559,6 @@
       "access": "authenticated",
       "audit_status": "unverified",
       "module": "strumenti",
-      "documentation_file": "memoria/pagine/strumenti-visure.json",
       "component_status": "reachable_from_router",
       "route_kind": "tab"
     },
@@ -617,7 +571,6 @@
       "access": "authenticated",
       "audit_status": "unverified",
       "module": "strumenti",
-      "documentation_file": "memoria/pagine/agenti.json",
       "component_status": "reachable_from_router",
       "route_kind": "page"
     },
@@ -630,7 +583,6 @@
       "access": "authenticated",
       "audit_status": "unverified",
       "module": "integrazioni",
-      "documentation_file": "memoria/pagine/impostazioni-f24-email.json",
       "component_status": "reachable_from_router",
       "route_kind": "page"
     },
@@ -643,7 +595,6 @@
       "access": "admin",
       "audit_status": "unverified",
       "module": "integrazioni",
-      "documentation_file": "memoria/pagine/impostazioni-ai.json",
       "component_status": "reachable_from_router",
       "route_kind": "page"
     },
@@ -656,7 +607,6 @@
       "access": "authenticated",
       "audit_status": "unverified",
       "module": "integrazioni",
-      "documentation_file": "memoria/pagine/integrazioni-openapi.json",
       "component_status": "reachable_from_router",
       "route_kind": "tab"
     },
@@ -669,7 +619,6 @@
       "access": "authenticated",
       "audit_status": "unverified",
       "module": "riconciliazione",
-      "documentation_file": "memoria/pagine/integrazioni-pagopa.json",
       "component_status": "reachable_from_router",
       "route_kind": "tab"
     },
@@ -682,7 +631,6 @@
       "access": "authenticated",
       "audit_status": "verified",
       "module": "integrazioni",
-      "documentation_file": "memoria/pagine/integrazioni-mittenti-email.json",
       "component_status": "reachable_from_router",
       "route_kind": "tab"
     },
@@ -695,7 +643,6 @@
       "access": "admin",
       "audit_status": "unverified",
       "module": "admin",
-      "documentation_file": "memoria/pagine/admin.json",
       "component_status": "reachable_from_router",
       "route_kind": "tab"
     },
@@ -708,7 +655,6 @@
       "access": "admin",
       "audit_status": "unverified",
       "module": "admin",
-      "documentation_file": "memoria/pagine/admin-mfa.json",
       "component_status": "reachable_from_router",
       "route_kind": "tab"
     },
@@ -721,20 +667,6 @@
       "access": "admin",
       "audit_status": "in_review",
       "module": "admin",
-      "documentation_file": "memoria/pagine/admin-batch-reprocessing.json",
-      "component_status": "reachable_from_router",
-      "route_kind": "tab"
-    },
-    {
-      "id": 56,
-      "label": "Elaborazioni legacy",
-      "path": "/admin/batch-processor",
-      "component": "frontend/src/pages/hub/AdminElaborazioni.jsx",
-      "entry": "frontend/src/pages/hub/AdminHub.jsx",
-      "access": "admin",
-      "audit_status": "in_review",
-      "module": "admin",
-      "documentation_file": "memoria/pagine/admin-batch-processor.json",
       "component_status": "reachable_from_router",
       "route_kind": "tab"
     },
@@ -747,7 +679,6 @@
       "access": "admin",
       "audit_status": "unverified",
       "module": "admin",
-      "documentation_file": "memoria/pagine/utenti.json",
       "component_status": "reachable_from_router",
       "route_kind": "page"
     },
@@ -760,7 +691,6 @@
       "access": "authenticated",
       "audit_status": "unverified",
       "module": "strumenti",
-      "documentation_file": "memoria/pagine/mappa-gestionale.json",
       "component_status": "reachable_from_router",
       "route_kind": "page"
     },
@@ -773,7 +703,6 @@
       "access": "authenticated",
       "audit_status": "unverified",
       "module": "contabilita",
-      "documentation_file": "memoria/pagine/iva.json",
       "component_status": "reachable_from_router",
       "route_kind": "page"
     },
@@ -786,7 +715,6 @@
       "access": "authenticated",
       "audit_status": "unverified",
       "module": "fatture",
-      "documentation_file": "memoria/pagine/fatture-estere-verifica.json",
       "component_status": "reachable_from_router",
       "route_kind": "page"
     },
@@ -799,7 +727,6 @@
       "access": "authenticated",
       "audit_status": "in_review",
       "module": "contabilita",
-      "documentation_file": "memoria/pagine/contabilita-dati-isa.json",
       "component_status": "reachable_from_router",
       "route_kind": "tab"
     },
@@ -812,7 +739,6 @@
       "access": "authenticated",
       "audit_status": "in_review",
       "module": "documenti",
-      "documentation_file": "memoria/pagine/documenti-atti.json",
       "component_status": "reachable_from_router",
       "route_kind": "tab"
     },
@@ -828,7 +754,6 @@
         503
       ],
       "module": "contabilita",
-      "documentation_file": "memoria/pagine/situazione-fiscale.json",
       "component_status": "reachable_from_router",
       "route_kind": "page"
     },
@@ -841,7 +766,6 @@
       "access": "authenticated",
       "audit_status": "unverified",
       "module": "riconciliazione",
-      "documentation_file": "memoria/pagine/regole-banca.json",
       "component_status": "reachable_from_router",
       "route_kind": "tab"
     },
@@ -854,7 +778,6 @@
       "access": "authenticated",
       "audit_status": "unverified",
       "module": "noleggio",
-      "documentation_file": "memoria/pagine/noleggio-posizione.json",
       "component_status": "reachable_from_router",
       "route_kind": "tab"
     },
@@ -867,7 +790,6 @@
       "access": "admin",
       "audit_status": "unverified",
       "module": "contabilita",
-      "documentation_file": "memoria/pagine/piano-tributi.json",
       "component_status": "reachable_from_router",
       "route_kind": "tab"
     },
@@ -880,7 +802,6 @@
       "access": "admin",
       "audit_status": "unverified",
       "module": "contabilita",
-      "documentation_file": "memoria/pagine/tributi.json",
       "component_status": "reachable_from_router",
       "route_kind": "tab"
     },
@@ -893,7 +814,6 @@
       "access": "authenticated",
       "audit_status": "unverified",
       "module": "riconciliazione",
-      "documentation_file": "memoria/pagine/distinta-bonifici.json",
       "component_status": "reachable_from_router",
       "route_kind": "page"
     },
@@ -906,7 +826,6 @@
       "access": "authenticated",
       "audit_status": "unverified",
       "module": "fatture",
-      "documentation_file": "memoria/pagine/fatture-emesse.json",
       "component_status": "reachable_from_router",
       "route_kind": "tab"
     },

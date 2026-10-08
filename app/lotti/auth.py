@@ -31,7 +31,6 @@ import hashlib
 import hmac
 from datetime import timedelta
 
-import jwt
 from fastapi import APIRouter, HTTPException, Request
 from app.services.workforce_tokens import create_workforce_token
 

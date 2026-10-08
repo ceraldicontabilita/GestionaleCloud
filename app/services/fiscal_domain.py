@@ -146,15 +146,17 @@ _CLASSIFIERS: tuple[tuple[DocumentType, tuple[str, ...]], ...] = (
 
 
 def classify_document(filename: str, text: str = "") -> dict[str, Any]:
-    haystack = f"{filename} {text[:12000]}".casefold()
+    # Il nome file non è evidenza documentale: può suggerire una categoria in
+    # UI, ma il writer fiscale decide soltanto dal contenuto estratto.
+    haystack = text[:12000].casefold()
     for doc_type, markers in _CLASSIFIERS:
         matched = [marker for marker in markers if marker in haystack]
         if matched:
             return {
                 "document_type": doc_type.value,
-                "confidence": 0.95 if text else 0.65,
+                "confidence": 0.95,
                 "reasons": [f"marker:{marker}" for marker in matched],
-                "requires_review": not bool(text),
+                "requires_review": False,
             }
     return {
         "document_type": DocumentType.ALTRO_FISCALE.value,

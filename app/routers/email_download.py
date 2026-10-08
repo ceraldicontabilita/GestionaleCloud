@@ -50,8 +50,6 @@ async def start_full_download(
     Avvia il download completo di tutte le email con PDF.
     Il processo viene eseguito in background.
     """
-    global download_status
-
     if download_status["in_progress"]:
         raise HTTPException(status_code=400, detail="Download già in corso")
 
@@ -61,7 +59,6 @@ async def start_full_download(
     download_status["error"] = None
 
     async def run_download():
-        global download_status
         try:
             db = Database.get_db()
             downloader = EmailFullDownloader(db)
@@ -613,7 +610,8 @@ async def pulizia_documenti_mittenti_non_attendibili(
     elimina gli alert associati' (es. saveris2.net, pec.kimbo.it,
     legalmail via pec.fatturapa.it mai autorizzati)."""
     from app.services.email_full_download import CATEGORY_COLLECTIONS
-    from app.services.email_document_downloader import FILE_TECNICI_PEC_RE, FILE_FATTURA_SDI_RE
+    from app.services.email_document_downloader import FILE_TECNICI_PEC_RE
+    from email.utils import parseaddr
     from app.services.mittenti import _addr
 
     db = Database.get_db()
@@ -625,14 +623,14 @@ async def pulizia_documenti_mittenti_non_attendibili(
             trusted.add(a.lower())
 
     def mittente_ok(indirizzo: str) -> bool:
-        low = (indirizzo or "").lower()
-        return bool(low) and any(s in low for s in trusted)
+        address = parseaddr(indirizzo or "")[1].strip().lower()
+        return bool(address) and address in trusted
 
     def file_tecnico(nome: str) -> bool:
-        # trasporto PEC/SDI (daticert, metadati MT) e fatture SDI grezze:
-        # le fatture vivono in `invoices`, mai nell'archivio documenti
+        # Solo trasporto PEC/SDI. Un nome FatturaPA non prova che l'originale
+        # sia già importato, e non autorizza a cancellarlo.
         n = (nome or "").strip()
-        return bool(n) and bool(FILE_TECNICI_PEC_RE.search(n) or FILE_FATTURA_SDI_RE.match(n))
+        return bool(n) and bool(FILE_TECNICI_PEC_RE.search(n))
 
     collezioni = sorted(set(CATEGORY_COLLECTIONS.values())) + ["documents_inbox"]
     report: Dict[str, Any] = {}

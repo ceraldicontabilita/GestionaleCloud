@@ -35,6 +35,7 @@ from app.utils.error_handler import handle_errors
 from app.utils.iban import valida_iban
 from app.utils.ruoli import richiedi_admin
 from app.services.supplier_data_quality import apply_supplier_quality
+from app.services.fatture_canonico import invoice_key as generate_invoice_key
 
 logger = logging.getLogger(__name__)
 
@@ -1926,12 +1927,6 @@ async def riconcilia_con_estratto_conto(db, importo: float, data_fattura: str, f
     except Exception as e:
         logger.error(f"Errore riconciliazione estratto conto: {e}")
         return result
-
-
-def generate_invoice_key(invoice_number: str, supplier_vat: str, invoice_date: str) -> str:
-    """Genera chiave univoca per fattura: numero_piva_data"""
-    key = f"{invoice_number}_{supplier_vat}_{invoice_date}"
-    return key.replace(" ", "").replace("/", "-").upper()
 
 
 def extract_xml_from_zip(zip_content: bytes, zip_filename: str = "archive.zip") -> List[Dict[str, Any]]:

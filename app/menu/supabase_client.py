@@ -11,7 +11,7 @@ Menu; in quel caso la prima chiamata solleva un RuntimeError esplicito.
 import os
 from pathlib import Path
 from dotenv import load_dotenv
-from supabase import create_client, Client
+from supabase import create_client, Client, ClientOptions
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -34,7 +34,17 @@ def get_supabase() -> Client:
             raise RuntimeError(
                 "Menu: variabili d'ambiente MENU_SUPABASE_URL / MENU_SUPABASE_KEY non impostate"
             )
-        _client = create_client(url, key)
+        from app.config import settings
+
+        secret = _leggi_env('SUPABASE_RUNTIME_SECRET') or settings.SUPABASE_RUNTIME_SECRET
+        if not secret or len(secret) < 32:
+            raise RuntimeError("Menu: SUPABASE_RUNTIME_SECRET server non configurato")
+        # Il browser usa il gateway Menu; il segreto resta esclusivamente sul
+        # server. ClientOptions propaga gli header a PostgREST e Storage.
+        _client = create_client(
+            url, key,
+            options=ClientOptions(headers={"x-gc-api-key": secret}),
+        )
     return _client
 
 

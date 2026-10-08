@@ -129,9 +129,9 @@ async def _registra_ferie_cloud(db, req: Dict[str, Any], richiesta_id: str):
 @router.post("", summary="Crea una richiesta (dipendente)")
 async def crea_richiesta(
     background_tasks: BackgroundTasks,
-    payload: Dict[str, Any] = Body(..., example={"tipo": "ferie_programmate",
-                                                 "dettaglio": "Ferie estive",
-                                                 "dati": {"dal": "2026-08-01", "al": "2026-08-10"}}),
+    payload: Dict[str, Any] = Body(..., examples=[{"tipo": "ferie_programmate",
+                                                  "dettaglio": "Ferie estive",
+                                                  "dati": {"dal": "2026-08-01", "al": "2026-08-10"}}]),
     identity: Dict[str, Any] = Depends(get_identity),
 ):
     tipo = str(payload.get("tipo", "")).strip()
@@ -224,7 +224,7 @@ async def lista_richieste(
 @router.post("/{richiesta_id}/risolvi", summary="Approva/rifiuta una richiesta")
 async def risolvi_richiesta(
     richiesta_id: str,
-    payload: Dict[str, Any] = Body(..., example={"esito": "approvata", "nota": ""}),
+    payload: Dict[str, Any] = Body(..., examples=[{"esito": "approvata", "nota": ""}]),
     identity: Dict[str, Any] = Depends(require_roles("admin", "responsabile_turni")),
 ):
     esito = str(payload.get("esito", "")).strip()
@@ -289,7 +289,7 @@ async def risolvi_richiesta(
         importo = _to_float(req.get("dati", {}).get("importo"))
         if importo and importo > 0:
             try:
-                from app.hr.services.partite_aperte_engine import crea_partita, TipoPartita
+                from app.services.partite_aperte_engine import crea_partita, TipoPartita
                 await crea_partita(
                     tipo=TipoPartita.ALTRO, documento_id=richiesta_id,
                     documento_collection="richieste", controparte_id=req["dipendente_id"],

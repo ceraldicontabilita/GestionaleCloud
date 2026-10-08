@@ -19,7 +19,9 @@ import logging
 from typing import Dict, Any, List, Optional
 
 from app.constants.canale_documento import canale_obbligatorio
-from app.services.cedolini_motore import PAYROLL_MIN_YEAR  # noqa: F401 (re-export)
+from app.services import cedolini_motore as _cedolini_motore
+
+PAYROLL_MIN_YEAR = _cedolini_motore.PAYROLL_MIN_YEAR
 
 logger = logging.getLogger(__name__)
 

@@ -15,7 +15,7 @@ Job registrati:
 import re
 import asyncio
 from datetime import datetime, timezone, timedelta
-from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from app.scheduler import SchedulerConLease
 from apscheduler.triggers.cron import CronTrigger
 from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel
@@ -28,7 +28,7 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/scheduler", tags=["Scheduler"])
 
-scheduler = AsyncIOScheduler(timezone="Europe/Rome")
+scheduler = SchedulerConLease(timezone="Europe/Rome")
 scheduler_started = False
 
 
@@ -372,51 +372,6 @@ async def job_normalizza_nuovi_prodotti():
         print(f"[Scheduler] Errore normalizzazione: {e}")
 
 
-async def job_ricerca_web_prodotti():
-    """Ogni 20 min (06:00-22:59 Roma). Identifica via ricerca web le righe fattura
-    senza nome canonico: 3 per giro, più frequenti prima. Risultato PERMANENTE
-    (nome_mapping + scheda tecnica con link): ogni prodotto si identifica una
-    volta sola, le righe nuove degli import XML entrano in coda da sole.
-    Richiesta Enzo 02/07/2026."""
-    import os as _os
-    if not _os.environ.get("ANTHROPIC_API_KEY"):
-        return  # ricerca web non configurata: nessun rumore nei log
-    try:
-        from app.lotti.routers.schede_tecniche import esegui_ricerca_web_batch
-        res = await esegui_ricerca_web_batch(limit=3)
-        if res.get("processati"):
-            # dopo nuovi mapping, ricollega gli ingredienti ricetta rimasti orfani
-            if res.get("salvati"):
-                try:
-                    from app.lotti.routers.ricette import collega_ingredienti_canonico
-                    await collega_ingredienti_canonico()
-                except Exception:
-                    logger.debug("[scheduler] collega-ingredienti non bloccante ignorato")
-            await db.scheduler_logs.insert_one(
-                {
-                    "job": "ricerca_web_prodotti",
-                    "timestamp": datetime.now(timezone.utc).isoformat(),
-                    "success": True,
-                    "processati": res.get("processati"),
-                    "salvati": res.get("salvati"),
-                    "in_coda": res.get("in_coda"),
-                }
-            )
-            print(f"[Scheduler] Ricerca web: {res.get('salvati')}/{res.get('processati')} salvati, {res.get('in_coda')} in coda")
-    except Exception as e:
-        await db.scheduler_logs.insert_one(
-            {
-                "job": "ricerca_web_prodotti",
-                "timestamp": datetime.now(timezone.utc).isoformat(),
-                "success": False,
-                "error": str(e),
-            }
-        )
-        print(f"[Scheduler] Errore ricerca web: {e}")
-
-
-
-
 # job_check_scorta_minima RIMOSSO (02/07/2026): faceva da doppione del riordino
 # automatico su un'altra collezione (dizionario_prodotti.scorta_minima) creando
 # una bozza cumulativa parallela senza dedup incrociata. Ora le materie prime
@@ -514,27 +469,6 @@ async def job_sincronizza_operatori_hr():
         logger.warning(f"[scheduler] allineamento operatori HR fallito: {e}")
 
 
-async def job_keep_warm():
-    """Self-ping sull'URL pubblico in orario di lavoro (04:00-22:59 Roma).
-    Il traffico HTTP esterno impedisce a Render free di addormentare il servizio
-    (cold start ~50s percepito dai tablet come 'app rotta'). Fuori orario il job
-    non gira: il servizio dorme e non consuma ore istanza del piano free.
-    La finestra copre TUTTA la fascia del job ricerca_web_prodotti (06-22:40):
-    prima finiva alle 20:59 e l'ultima ora e mezza di ricerche rischiava di
-    saltare per lo sleep di Render. ~19h/giorno ≈ 590h/mese, dentro le 750h free.
-    L'URL arriva da RENDER_EXTERNAL_URL (settato automaticamente da Render)."""
-    import os
-    url = (os.environ.get("RENDER_EXTERNAL_URL") or "").rstrip("/")
-    if not url:
-        return
-    try:
-        import httpx
-        async with httpx.AsyncClient(timeout=20) as client:
-            await client.get(f"{url}/api/health")
-    except Exception as e:
-        logger.warning(f"[KeepWarm] ping fallito: {e}")
-
-
 def setup_scheduler():
     global scheduler_started
     if scheduler_started:
@@ -542,8 +476,6 @@ def setup_scheduler():
 
     TZ = "Europe/Rome"
 
-    # Keep-warm tolto il 02/10/2026: sul piano a pagamento il servizio non va
-    # in pausa e le automazioni girano nel Background Worker.
     scheduler.add_job(
         job_aggiorna_riferimenti_fatture,
         CronTrigger(hour=1, minute=0, timezone=TZ),
@@ -592,16 +524,6 @@ def setup_scheduler():
         CronTrigger(hour=3, minute=0, timezone=TZ),
         id="normalizza_nuovi_prodotti",
         name="Normalizzazione Nuovi Prodotti da Fatture (03:00)",
-        replace_existing=True,
-    )
-
-    # Ricerca web prodotti: identifica le righe fattura senza canonico, 3 per
-    # giro (~200/giorno). Permanente: una riga identificata non si ricerca più.
-    scheduler.add_job(
-        job_ricerca_web_prodotti,
-        CronTrigger(minute=20, hour="6-22/3", timezone=TZ),
-        id="ricerca_web_prodotti",
-        name="Ricerca web prodotti da fatture (ogni 3 ore, 06-22)",
         replace_existing=True,
     )
 

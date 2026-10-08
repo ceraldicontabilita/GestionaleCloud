@@ -150,7 +150,7 @@ async def lifespan(app: FastAPI):
     # 14/09/2026 (R1): gli operatori del tablet Lotti sono l'anagrafica HR.
     # Lotti parte PRIMA di HR (sopra), quindi il suo allineamento all'avvio
     # trovava il database HR non ancora connesso: si ripete qui, a HR pronto
-    # (idempotente; il job Lotti lo rifa' comunque ogni 10 minuti).
+    # (idempotente; il job Lotti lo riallinea comunque ogni giorno).
     if scheduler_attivo and hr_avviata:
         try:
             from app.lotti.routers.tablet_operatori import seed_operatori

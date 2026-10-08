@@ -609,22 +609,6 @@ def start_scheduler():
         except Exception as exc:
             logger.error("[SCHEDULER-AI-COMPLIANCE] errore: %s", exc)
 
-    async def _scan_gmail_verbali_job():
-        from app.config import settings
-        if not getattr(settings, "ENABLE_GMAIL_IMAP", True):
-            logger.info("[SCHEDULER-VERBALI-GMAIL] saltato: Gmail spento")
-            return
-        if not getattr(settings, "ENABLE_EMAIL_VERBALI_SYNC", True):
-            logger.info("[SCHEDULER-VERBALI-GMAIL] saltato: canale verbali spento")
-            return
-        from app.database import Database
-        from app.services.verbali_gmail_scanner import scan_gmail_verbali
-        try:
-            result = await scan_gmail_verbali(Database.get_db(), days_back=5)
-            logger.info(f"[SCHEDULER-VERBALI-GMAIL] {result}")
-        except Exception as e:
-            logger.error(f"[SCHEDULER-VERBALI-GMAIL] errore: {e}")
-
     async def _link_verbali_fatture_job():
         from app.database import Database
         from app.services.verbali_fattura_linker import collega_verbali_a_fatture
@@ -1320,14 +1304,6 @@ def start_scheduler():
         replace_existing=True,
     )
     scheduler.add_job(
-        _scan_gmail_verbali_job,
-        "cron", hour=6, minute=15,
-        misfire_grace_time=300,
-        coalesce=True,
-        id="scan_gmail_verbali", name="Scan Gmail Verbali CdS (ogni giorno 6:15, ultimi 5 giorni)",
-        replace_existing=True,
-    )
-    scheduler.add_job(
         _tesoreria_shadow_job,
         'interval', hours=1,
         next_run_time=avvio + timedelta(minutes=40),
@@ -1665,19 +1641,8 @@ def start_scheduler():
         name="Netti HR riletti dal PDF della busta (un lotto ogni ora, 01-05)",
         replace_existing=True,
     )
-    # Un primo lotto subito dopo l'avvio: le buste piu' recenti (con un eventuale
-    # anticipo TFR) non aspettano la notte. Il giro e' idempotente.
-    # Il trigger «date» interpreta un orario senza fuso nel fuso dello
-    # scheduler (Europe/Rome): con l'orologio del server in UTC il giro
-    # risultava «mancato di due ore» e veniva scartato. Orario con fuso.
-    scheduler.add_job(
-        _cedolini_hr_riverifica_job,
-        'date', run_date=datetime.now(timezone.utc) + timedelta(minutes=7),
-        misfire_grace_time=600,
-        id="cedolini_hr_riverifica_avvio",
-        name="Netti HR riletti dal PDF della busta (primo lotto all'avvio)",
-        replace_existing=True,
-    )
+    # Nessun secondo writer al riavvio: la riverifica mantiene un solo cron
+    # e una sola lease, senza ripartire daccapo a ogni rolling deploy.
 
     scheduler.add_job(
         _cedolini_tipo_dal_pdf_job,
@@ -1725,38 +1690,6 @@ def start_scheduler():
         coalesce=True,
         id="mittenti_email_sync",
         name="Documenti da mittenti email attendibili: fatture estere XML + altri tipi (ogni giorno 6:05, ultimi 5 giorni)",
-        replace_existing=True,
-    )
-
-    _foto_ricette_finite: list = []
-
-    async def _foto_ricette_storage_job():
-        # Foto ricette di Lotti ancora solo su Drive -> Supabase Storage, un
-        # file per volta (RAM bassa). Idempotente: finite quelle da portare,
-        # il giro non fa altro che contarle.
-        # Le foto nuove nascono gia' su Storage: finito l'arretrato il giro si
-        # ferma fino al prossimo avvio, senza rileggere ogni 3 minuti le ricette.
-        if _foto_ricette_finite:
-            return
-        try:
-            from app.lotti.db import database as lotti_db
-            from app.lotti.servizi.foto_ricette_migrazione import migra_lotto
-            esito = await migra_lotto(lotti_db, limite=10)
-            if esito["restano"] == 0 and esito["errori"] == 0:
-                _foto_ricette_finite.append(True)
-            if esito["migrate"] or esito["errori"]:
-                logger.info(f"[SCHEDULER-FOTO-RICETTE] {esito}")
-        except Exception as e:
-            logger.error(f"[SCHEDULER-FOTO-RICETTE] errore: {type(e).__name__}: {e}")
-
-    scheduler.add_job(
-        _foto_ricette_storage_job,
-        "interval", minutes=240,
-        next_run_time=avvio + timedelta(seconds=150),
-        misfire_grace_time=300,
-        coalesce=True,
-        id="foto_ricette_storage",
-        name="Foto ricette Lotti da Drive a Supabase Storage (10 per giro, ogni 4 ore)",
         replace_existing=True,
     )
 

@@ -14,21 +14,21 @@ MOVEMENT_TYPES = ["carico", "scarico", "rettifica"]
 class WarehouseItemBase(BaseModel):
     name: str
     unit: str = "pz"  # pz, kg, l, confezione...
-    quantity: float = 0
-    min_threshold: Optional[float] = None
+    quantity: float = Field(0, allow_inf_nan=False)
+    min_threshold: Optional[float] = Field(None, ge=0, allow_inf_nan=False)
     category: Optional[str] = None
     supplier: Optional[str] = None
     note: Optional[str] = None
 
 
 class WarehouseItemCreate(WarehouseItemBase):
-    pass
+    quantity: float = Field(0, ge=0, allow_inf_nan=False)
 
 
 class WarehouseItemUpdate(BaseModel):
     name: Optional[str] = None
     unit: Optional[str] = None
-    min_threshold: Optional[float] = None
+    min_threshold: Optional[float] = Field(None, ge=0, allow_inf_nan=False)
     category: Optional[str] = None
     supplier: Optional[str] = None
     note: Optional[str] = None
@@ -41,7 +41,7 @@ class WarehouseItem(WarehouseItemBase):
 
 class MovementCreate(BaseModel):
     type: str  # carico / scarico / rettifica
-    quantity: float
+    quantity: float = Field(ge=0, allow_inf_nan=False)
     note: Optional[str] = None
 
 

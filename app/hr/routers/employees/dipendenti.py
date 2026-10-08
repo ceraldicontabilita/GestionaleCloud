@@ -1481,7 +1481,6 @@ async def upload_libro_unico(
                         for j in range(i, min(i+5, len(lines))):
                             next_line = lines[j].strip()
                             # Cerca pattern €1.234,56 o 1234.56
-                            import re
                             amounts = re.findall(r'[\d.,]+', next_line)
                             for amt in amounts:
                                 try:
@@ -1966,30 +1965,6 @@ async def genera_libretti_da_dipendenti() -> Dict[str, Any]:
         "skipped": skipped,
         "message": f"Creati {created} libretti, {skipped} dipendenti avevano già un libretto"
     }
-
-
-# ============== GESTIONE CONTRATTI ==============
-
-@router.get("/contratti")
-@handle_errors
-async def list_contratti(
-    dipendente_id: Optional[str] = Query(None),
-    tipo: Optional[str] = Query(None),
-    stato: Optional[str] = Query(None)
-) -> List[Dict[str, Any]]:
-    """Lista tutti i contratti."""
-    db = Database.get_db()
-    
-    query = {}
-    if dipendente_id:
-        query["dipendente_id"] = dipendente_id
-    if tipo:
-        query["tipo_contratto"] = tipo
-    if stato:
-        query["stato"] = stato
-    
-    contratti = await db["contratti_dipendenti"].find(query, {"_id": 0}).sort("data_inizio", -1).to_list(500)
-    return contratti
 
 
 @router.post("/contratti")

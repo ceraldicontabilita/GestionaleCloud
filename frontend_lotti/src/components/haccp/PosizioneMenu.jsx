@@ -28,7 +28,7 @@ export default function PosizioneMenu({ ricetta, onSaved }) {
   const [nuova, setNuova] = useState("");
   const [salvando, setSalvando] = useState(false);
 
-  const categorie = dati?.categorie || [];
+  const categorie = useMemo(() => dati?.categorie || [], [dati?.categorie]);
   const sottocategorie = useMemo(
     () => categorie.find((c) => c.id === Number(categoria))?.sottocategorie || [],
     [categorie, categoria],
