@@ -25,6 +25,7 @@ Env usate (tutte opzionali, con default sicuri):
 """
 
 import functools
+import math
 import os
 import time
 import hashlib
@@ -499,7 +500,9 @@ async def check_lock(chiave: str):
         rec = await _tentativi().find_one({"_id": k})
         fino = float((rec or {}).get("bloccato_fino") or 0)
         if fino > ora:
-            raise HTTPException(status_code=429, detail=f"Troppi tentativi. Riprova tra {int(fino - ora)}s")
+            secondi = max(1, math.ceil(fino - ora))
+            raise HTTPException(status_code=429, detail=f"Troppi tentativi. Riprova tra {secondi}s",
+                                headers={"Retry-After": str(secondi)})
 
 
 async def register_fail(chiave: str):
@@ -507,7 +510,7 @@ async def register_fail(chiave: str):
     coll = _tentativi()
     k = chiave or CHIAVE_SCONOSCIUTA
     rec = await coll.find_one({"_id": k}) or {}
-    conto = int(rec.get("conto") or 0) + 1
+    conto = (int(rec.get("conto") or 0) if ora - float(rec.get("ultimo") or 0) < FINESTRA_GLOBALE_S else 0) + 1
     fino = float(rec.get("bloccato_fino") or 0)
     if conto >= _max_fails():
         fino, conto = ora + _lock_seconds(), 0
