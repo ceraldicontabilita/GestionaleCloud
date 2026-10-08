@@ -20,6 +20,22 @@ const CHIAVI_SESSIONE_TAB = Object.freeze([
 ]);
 
 export function pulisciSessioneGruppoBrowser() {
+  // Gli import conservano anche File con dati personali: il logout elimina
+  // le copie locali di tutte le schede del browser, senza toccare l'archivio.
+  window.dispatchEvent(new Event('ceraldi-logout'));
+  try {
+    sessionStorage.removeItem('ceraldi-import-tab');
+    const request = indexedDB.open('ceraldi-import-session', 1);
+    request.onupgradeneeded = () => request.result.createObjectStore('sessions');
+    request.onsuccess = () => {
+      const db = request.result;
+      if (db.objectStoreNames.contains('sessions')) {
+        const tx = db.transaction('sessions', 'readwrite');
+        tx.objectStore('sessions').clear();
+        tx.oncomplete = () => db.close();
+      } else db.close();
+    };
+  } catch { /* IndexedDB non disponibile */ }
   for (const chiave of CHIAVI_LOCALI_SESSIONE) {
     try { localStorage.removeItem(chiave); } catch { /* storage non disponibile */ }
   }

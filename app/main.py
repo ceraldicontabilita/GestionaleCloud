@@ -114,10 +114,11 @@ async def lifespan(app: FastAPI):
 
     process_role = os.getenv("PROCESS_ROLE", "combined").strip().lower()
     scheduler_attivo = (
-        settings.ENABLE_SCHEDULER
+        (settings.ENABLE_SCHEDULER or bool(os.getenv("SCHEDULER_JOB_ALLOWLIST", "").strip()))
         and process_role != "web"
         and settings.ENVIRONMENT.lower() not in {"test", "testing"}
     )
+    scheduler_completo = scheduler_attivo and not os.getenv("SCHEDULER_JOB_ALLOWLIST", "").strip()
     # App portate pari pari (Lotti, HR = AppDipendenti, Menu): Starlette non
     # propaga lo startup alle sub-app montate, quindi il loro avvio (seed,
     # scheduler APScheduler propri, cataloghi) va richiamato da qui. Ogni
@@ -128,8 +129,8 @@ async def lifespan(app: FastAPI):
     # solo il suo scheduler segue il ruolo del processo.
     from app.lotti.embed import avvia_lotti
 
-    await avvia_lotti(avvia_scheduler=scheduler_attivo)
-    if scheduler_attivo:
+    await avvia_lotti(avvia_scheduler=scheduler_completo)
+    if scheduler_completo:
         try:
             from app.lotti.db import database as lotti_db
             from app.lotti.servizi.menu_pubblico_default import applica_sicuro as applica_menu_pubblico
@@ -145,13 +146,13 @@ async def lifespan(app: FastAPI):
     # (ruolo web o ENABLE_SCHEDULER=false). Solo i job periodici seguono il flag.
     from app.hr.embed import avvia_hr
 
-    hr_avviata = await avvia_hr(avvia_scheduler=scheduler_attivo)
+    hr_avviata = await avvia_hr(avvia_scheduler=scheduler_completo)
 
     # 14/09/2026 (R1): gli operatori del tablet Lotti sono l'anagrafica HR.
     # Lotti parte PRIMA di HR (sopra), quindi il suo allineamento all'avvio
     # trovava il database HR non ancora connesso: si ripete qui, a HR pronto
     # (idempotente; il job Lotti lo riallinea comunque ogni giorno).
-    if scheduler_attivo and hr_avviata:
+    if scheduler_completo and hr_avviata:
         try:
             from app.lotti.routers.tablet_operatori import seed_operatori
 
@@ -754,7 +755,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
     # Sessione scorrevole: il browser deve poter leggere il token rinnovato
-    expose_headers=["X-Token-Rinnovato"],
+    expose_headers=["X-Token-Rinnovato", "Retry-After", "Content-Disposition"],
 )
 
 try:
@@ -763,7 +764,7 @@ try:
     from slowapi.middleware import SlowAPIMiddleware
     from slowapi.util import get_remote_address
 
-    limiter = Limiter(key_func=get_remote_address, default_limits=["200/minute"])
+    limiter = Limiter(key_func=get_remote_address, default_limits=["200/minute"], headers_enabled=True)
     app.state.limiter = limiter
     app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
     # Audit sicurezza 19/07/2026: il Limiter era istanziato ma senza questo

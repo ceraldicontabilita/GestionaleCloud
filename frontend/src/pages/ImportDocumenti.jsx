@@ -2,6 +2,8 @@ import React, { useState, useCallback, useRef } from 'react';
 import { toast } from 'sonner';
 import { COLORS, SHADOWS, BORDER_RADIUS } from '../lib/utils';
 import api from '../api';
+import { inviaFileImport } from '../lib/importRequests';
+import { createUseImportSession } from '../../../frontend_shared/importSession';
 import { useAnnoGlobale } from '../contexts/AnnoContext';
 import { PageLayout } from '../components/PageLayout';
 import { useConfirm } from '../components/ui/ConfirmDialog';
@@ -100,7 +102,7 @@ export async function attendiImportDocumentale(jobId, maxWaitMs = 15 * 60 * 1000
     });
     const job = response.data || {};
     if (job.status === 'completed') return job.result || {};
-    if (job.status === 'failed') throw new Error(job.error || 'Import non riuscito');
+    if (job.status === 'failed') throw Object.assign(new Error(job.error || 'Import non riuscito'), { jobFailed: true });
     await sleep(2000);
   }
   throw new Error('Import ancora in corso oltre il tempo previsto. Puoi ricaricare la pagina senza duplicare i dati.');
@@ -133,14 +135,19 @@ export function statoArchivio(preview) {
   return 'Già in archivio';
 }
 
+const useImportSession = createUseImportSession(React);
+
 export default function ImportDocumenti() {
   const confirm = useConfirm();
   const { setAnno } = useAnnoGlobale();
-  const [files, setFiles] = useState([]);
-  const [uploading, setUploading] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState({ current: 0, total: 0, filename: '' });
-  const [results, setResults] = useState([]);
-  const [previewComplete, setPreviewComplete] = useState(false);
+  const session = useImportSession('erp-documenti', { files: [], uploading: false, uploadProgress: { current: 0, total: 0, filename: '' }, results: [], previewComplete: false });
+  const { files, uploading, uploadProgress, results, previewComplete } = session.state;
+  const setFiles = value => session.setField('files', value);
+  const setUploading = value => session.setField('uploading', value);
+  const setUploadProgress = value => session.setField('uploadProgress', value);
+  const setResults = value => session.setField('results', value);
+  const setPreviewComplete = value => session.setField('previewComplete', value);
+  const onWait = seconds => session.setField('attesa', seconds);
   const [dragOver, setDragOver] = useState(false);
   const fileInputRef = useRef(null);
 
@@ -172,11 +179,11 @@ export default function ImportDocumenti() {
     setDragOver(false);
   }, []);
 
-  const handleDrop = useCallback(async e => {
+  const handleDrop = async e => {
     e.preventDefault();
     setDragOver(false);
     await processIncomingFiles(Array.from(e.dataTransfer.files));
-  }, []);
+  };
 
   const handleFileSelect = async e => {
     await processIncomingFiles(Array.from(e.target.files));
@@ -184,6 +191,7 @@ export default function ImportDocumenti() {
   };
 
   const processIncomingFiles = async incomingFiles => {
+    if (uploading || !session.ready) return;
     // Gli ZIP vengono inviati interi al backend: soltanto il server puo
     // applicare limiti affidabili anti zip-bomb e di dimensione non compressa.
     const filesWithInfo = incomingFiles.map(file => ({
@@ -198,25 +206,31 @@ export default function ImportDocumenti() {
   };
 
   const removeFile = index => {
+    if (uploading) return;
     setFiles(prev => prev.filter((_, i) => i !== index));
     setPreviewComplete(false);
   };
 
   const handlePreview = async () => {
-    if (files.length === 0) return;
+    if (files.length === 0 || uploading || !session.ready) return;
     setUploading(true);
+    session.setField('interrupted', false);
     setUploadProgress({ current: 0, total: files.length, filename: '' });
     let blocked = false;
     const analyzed = [];
     for (let i = 0; i < files.length; i++) {
       const fileInfo = files[i];
+      if (fileInfo.previewToken && fileInfo.status !== 'error') {
+        analyzed.push(fileInfo);
+        continue;
+      }
       setUploadProgress({ current: i + 1, total: files.length, filename: fileInfo.name });
       try {
         const formData = new FormData();
         formData.append('file', fileInfo.file);
-        const res = await api.post('/api/documenti/upload-auto/preview', formData, {
+        const res = await inviaFileImport('/api/documenti/upload-auto/preview', formData, {
           headers: { 'Content-Type': 'multipart/form-data' },
-        });
+        }, onWait);
         const preview = res.data || {};
         const hasErrors = (preview.blocking_errors || []).length > 0;
         blocked = blocked || hasErrors;
@@ -233,6 +247,7 @@ export default function ImportDocumenti() {
         const rawError = e.response?.data?.detail || e.response?.data?.message || e.message;
         analyzed.push({ ...fileInfo, status: 'error', error: String(rawError) });
       }
+      setFiles([...analyzed, ...files.slice(i + 1)]);
     }
     setFiles(analyzed);
     setPreviewComplete(!blocked && analyzed.length === files.length);
@@ -243,18 +258,18 @@ export default function ImportDocumenti() {
   // scaduto) si rifa' l'anteprima dello stesso file e si riprova una volta,
   // invece di marcare «errore» nove estratti conto buoni (07/10/2026).
   const inviaConAnteprima = async (endpoint, formData, fileInfo) => {
-    const invia = token => api.post(endpoint, formData, {
+    const invia = token => inviaFileImport(endpoint, formData, {
       headers: { 'Content-Type': 'multipart/form-data', 'X-Document-Preview-Token': token },
-    });
+    }, onWait);
     try {
       return await invia(fileInfo.previewToken);
     } catch (e) {
       if (e.response?.status !== 428) throw e;
       const anteprima = new FormData();
       anteprima.append('file', fileInfo.file);
-      const res = await api.post('/api/documenti/upload-auto/preview', anteprima, {
+      const res = await inviaFileImport('/api/documenti/upload-auto/preview', anteprima, {
         headers: { 'Content-Type': 'multipart/form-data' },
-      });
+      }, onWait);
       const nuovoToken = res.data?.confirmation_token;
       if (!nuovoToken || (res.data?.blocking_errors || []).length > 0) throw e;
       return await invia(nuovoToken);
@@ -263,14 +278,16 @@ export default function ImportDocumenti() {
 
   // Upload automatico - il backend rileva tutto
   const handleUpload = async () => {
-    if (files.length === 0) return;
+    if (files.length === 0 || uploading || !session.ready) return;
 
     setUploading(true);
+    session.setField('interrupted', false);
     setUploadProgress({ current: 0, total: files.length, filename: '' });
-    const uploadResults = [];
+    const uploadResults = results.filter(r => ['success', 'duplicate'].includes(r.status));
 
     for (let i = 0; i < files.length; i++) {
       const fileInfo = files[i];
+      if (['success', 'duplicate'].includes(fileInfo.status)) continue;
 
       setUploadProgress({ current: i + 1, total: files.length, filename: fileInfo.name });
       setFiles(prev => prev.map((f, idx) => (idx === i ? { ...f, status: 'uploading' } : f)));
@@ -288,11 +305,14 @@ export default function ImportDocumenti() {
         // superano i 2 minuti del browser e i 5 del proxy: vanno in coda e la
         // pagina ne segue l'esito.
         const tipoInCoda = fileInfo.preview?.tipo_rilevato;
-        const usaCodaLunga = tipoInCoda === 'archivio_zip' || tipoInCoda === 'estratto_conto';
+        const usaCodaLunga = ['archivio_zip', 'estratto_conto', 'cedolino'].includes(tipoInCoda);
         const endpoint = usaCodaPos || usaCodaLunga
           ? '/api/documenti/upload-auto/queue'
           : '/api/documenti/upload-auto';
-        const res = await inviaConAnteprima(endpoint, formData, fileInfo);
+        const res = fileInfo.jobId
+          ? { data: { job_id: fileInfo.jobId, status: 'running' } }
+          : await inviaConAnteprima(endpoint, formData, fileInfo);
+        if (res.data?.job_id) setFiles(prev => prev.map((f, idx) => idx === i ? { ...f, jobId: res.data.job_id } : f));
 
         let importData = res.data || {};
         if (usaCodaLunga && importData.job_id) {
@@ -337,7 +357,7 @@ export default function ImportDocumenti() {
         });
         setFiles(prev =>
           prev.map((f, idx) =>
-            idx === i ? { ...f, status: esito.status, tipo } : f
+            idx === i ? { ...f, status: esito.status, tipo, jobId: ['partial', 'error'].includes(esito.status) ? null : f.jobId } : f
           )
         );
       } catch (e) {
@@ -356,12 +376,12 @@ export default function ImportDocumenti() {
         });
         setFiles(prev =>
           prev.map((f, idx) =>
-            idx === i ? { ...f, status: isDuplicate ? 'duplicate' : 'error', error: errMsg } : f
+            idx === i ? { ...f, jobId: e.jobFailed || e.response?.status === 404 ? null : f.jobId, status: isDuplicate ? 'duplicate' : 'error', error: errMsg } : f
           )
         );
       }
 
-      if (i < files.length - 1) await new Promise(r => setTimeout(r, 100));
+      setResults([...uploadResults]);
     }
 
     setResults(uploadResults);
@@ -369,6 +389,8 @@ export default function ImportDocumenti() {
   };
 
   const handleReset = () => {
+    if (uploading) return;
+    session.setField('interrupted', false);
     setFiles([]);
     setResults([]);
     setPreviewComplete(false);
@@ -630,7 +652,7 @@ export default function ImportDocumenti() {
                   variant="primary"
                   size="sm"
                   onClick={canConfirm ? handleUpload : handlePreview}
-                  disabled={uploading}
+                  disabled={uploading || !session.ready}
                   data-testid="upload-btn"
                   iconLeft={
                     uploading ? (
@@ -650,6 +672,9 @@ export default function ImportDocumenti() {
             </div>
 
             {/* Progress bar */}
+            {session.error && <div role="alert" style={{ padding: 14 }}>{session.error}</div>}
+            {session.state.attesa > 0 && uploading && <div role="status" style={{ padding: 14 }}>Pausa richiesta dal server: riprendo lo stesso file tra {session.state.attesa} secondi. I file restano in coda.</div>}
+            {session.state.interrupted && !uploading && <div role="status" style={{ padding: 14 }}>File e risultati recuperati. Riprendi con il pulsante di importazione; i documenti già acquisiti vengono conservati.</div>}
             {uploading && uploadProgress.total > 0 && (
               <div
                 style={{

@@ -169,11 +169,14 @@ async def scarica_pdf(cedolino_id: str, request: Request,
                                   proj={"_id": 0, "pdf_data": 1, "filename": 1,
                                         "pdf_filename": 1, "mese": 1, "anno": 1,
                                         "drive_file_id": 1,
+                                        "drive_md5": 1, "blob_key": 1, "pdf_source_scope": 1,
+                                        "source_page_start": 1, "source_page_end": 1,
+                                        "source_document_pages": 1,
                                         "netto": 1, "lordo": 1, "dipendente_nome": 1,
                                         "acconto_cedolino": 1, "saldo_residuo": 1})
     pdf_data = doc.get("pdf_data")
     generato = False
-    if pdf_data or doc.get("drive_file_id"):
+    if pdf_data or doc.get("drive_file_id") or doc.get("blob_key"):
         try:
             from app.services.cedolino_originale import carica_originale
             pdf_bytes = await carica_originale(doc)

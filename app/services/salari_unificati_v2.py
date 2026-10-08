@@ -522,7 +522,7 @@ async def processa_cedolino_v2(
             "created_at": (cedolino_esistente or {}).get("created_at") or datetime.now(timezone.utc).isoformat(),
             "updated_at": datetime.now(timezone.utc).isoformat(),
         }
-        for field in ("drive_file_id", "source_file_hash", "canale", "voci", "dati_chiave", "retribuzione"):
+        for field in ("drive_file_id", "drive_md5", "blob_key", "pdf_source_scope", "source_file_hash", "canale", "voci", "dati_chiave", "retribuzione"):
             if cedolino_data.get(field):
                 cedolino_record[field] = cedolino_data[field]
         cedolino_record["stato_netto"] = stato_netto
@@ -546,10 +546,10 @@ async def processa_cedolino_v2(
         # I file Drive restano nell'archivio canonico e vengono letti per ID
         # dall'endpoint autenticato. Solo i canali senza archivio esterno
         # conservano ancora il payload incorporato.
-        if pdf_data and not cedolino_record.get("drive_file_id"):
+        if pdf_data and not (cedolino_record.get("drive_file_id") or cedolino_record.get("blob_key")):
             cedolino_record["pdf_data"] = pdf_data
             cedolino_record["pdf_disponibile"] = True
-        elif cedolino_record.get("drive_file_id"):
+        elif cedolino_record.get("drive_file_id") or cedolino_record.get("blob_key"):
             cedolino_record["pdf_disponibile"] = True
         
         # Upsert per evitare duplicati. Il registro `cedolini` del gestionale

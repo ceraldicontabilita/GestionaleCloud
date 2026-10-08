@@ -18,7 +18,7 @@ from typing import Any, Dict
 import fitz  # PyMuPDF
 
 
-async def dividi_e_registra(db, pdf_bytes: bytes, filename: str = "") -> Dict[str, Any]:
+async def dividi_e_registra(db, pdf_bytes: bytes, filename: str = "", *, drive_file_id: str | None = None) -> Dict[str, Any]:
     """Legge il Libro Unico e scrive ogni busta con lo scrittore unico dei cedolini.
 
     Prima questo modulo scriveva solo in HR: i cedolini di luglio 2026 non sono
@@ -36,7 +36,7 @@ async def dividi_e_registra(db, pdf_bytes: bytes, filename: str = "") -> Dict[st
     esito = await processa_tutti_cedolini_pdf(
         Database.get_db(), base64.b64encode(pdf_bytes).decode("ascii"), filename or "libro_unico.pdf",
         source_path=filename or "", source_file_hash=hashlib.sha256(pdf_bytes).hexdigest(),
-        fonte="caricato",
+        fonte="caricato", drive_file_id=drive_file_id,
     )
 
     def _competenza(busta: Dict[str, Any]) -> str:
@@ -53,7 +53,9 @@ async def dividi_e_registra(db, pdf_bytes: bytes, filename: str = "") -> Dict[st
             "tipo_cedolino": "ordinario" if tipo in ("", "mensile") else tipo,
             "netto": busta.get("netto"),
         })
-    senza_paga = [{"errore": e} for e in esito.get("errori") or []]
+    senza_paga = []
+    if not inseriti and not saltati and not esito.get("errori"):
+        senza_paga.append({"file": filename, "motivo": esito.get("motivo") or "Nessuna busta riconosciuta"})
     senza_anagrafica: list = []
 
     documento = fitz.open(stream=pdf_bytes, filetype="pdf")
@@ -64,6 +66,9 @@ async def dividi_e_registra(db, pdf_bytes: bytes, filename: str = "") -> Dict[st
     cf_documento = {b.get("codice_fiscale") for b in esito.get("dettaglio") or [] if b.get("codice_fiscale")}
 
     return {
+        "success": esito.get("success", False),
+        "partial": esito.get("partial", False),
+        "errori": esito.get("errori") or [],
         "pagine_totali": pagine_totali,
         "dipendenti_nel_documento": len(cf_documento),
         "inseriti": inseriti, "gia_presenti": saltati,
