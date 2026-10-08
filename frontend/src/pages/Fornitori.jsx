@@ -3390,7 +3390,7 @@ export default function Fornitori() {
                                     variant="warning"
                                     style={{ background: COLORS.warning, color: 'white' }}
                                   >
-                                    Da pagare
+                                    {f.in_attesa_riscontro_banca ? 'Attesa estratto conto' : 'Da pagare'}
                                   </Badge>
                                 )}
                               </Td>
@@ -3424,7 +3424,7 @@ export default function Fornitori() {
                                           )
                                             return;
                                           try {
-                                            await api.post('/api/fatture-ricevute/paga-manuale', {
+                                            const { data: result } = await api.post('/api/fatture-ricevute/paga-manuale', {
                                               fattura_id: f.id,
                                               metodo: 'cassa',
                                               importo: f.importo_totale,
@@ -3445,7 +3445,7 @@ export default function Fornitori() {
                                               data: {
                                                 ...prev.data,
                                                 estratto: (prev.data?.estratto || []).map(x =>
-                                                  x.id === f.id
+                                                  x.id === f.id && result.pagamento_confermato === true
                                                     ? {
                                                         ...x,
                                                         pagato: true,
@@ -3455,6 +3455,11 @@ export default function Fornitori() {
                                                 ),
                                               },
                                             }));
+                                            if (result.pagamento_confermato === true) {
+                                              toast.success(result.message || 'Pagamento registrato in cassa');
+                                            } else {
+                                              toast.info(result.message || 'Pagamento in attesa di conferma');
+                                            }
                                           } catch (e) {
                                             toast.error(
                                               'Errore: ' + (e.response?.data?.detail || e.message)
@@ -3472,13 +3477,13 @@ export default function Fornitori() {
                                         onClick={async () => {
                                           if (
                                             !(await confirm({
-                                              title: 'Pagamento in banca',
-                                              message: `Confermi pagamento BANCA di ${euroOppure(f.importo_totale)} per fattura ${f.numero}?`,
+                                              title: 'Dichiarazione bancaria',
+                                              message: `Registri l’attesa BANCA di ${euroOppure(f.importo_totale)} per fattura ${f.numero}? Il pagamento sarà confermato con l’estratto conto ufficiale.`,
                                             }))
                                           )
                                             return;
                                           try {
-                                            await api.post('/api/fatture-ricevute/paga-manuale', {
+                                            const { data: result } = await api.post('/api/fatture-ricevute/paga-manuale', {
                                               fattura_id: f.id,
                                               metodo: 'banca',
                                               importo: f.importo_totale,
@@ -3500,15 +3505,24 @@ export default function Fornitori() {
                                                 ...prev.data,
                                                 estratto: (prev.data?.estratto || []).map(x =>
                                                   x.id === f.id
-                                                    ? {
+                                                    ? result.pagamento_confermato === true ? {
                                                         ...x,
                                                         pagato: true,
                                                         metodo_pagamento: 'banca',
+                                                      } : {
+                                                        ...x,
+                                                        in_attesa_riscontro_banca: true,
+                                                        stato_finanziario: 'in_attesa_estratto_conto',
                                                       }
                                                     : x
                                                 ),
                                               },
                                             }));
+                                            if (result.pagamento_confermato === true) {
+                                              toast.success(result.message || 'Pagamento bancario confermato');
+                                            } else {
+                                              toast.info(result.message || 'Dichiarazione bancaria registrata in attesa dell’estratto conto ufficiale');
+                                            }
                                           } catch (e) {
                                             toast.error(
                                               'Errore: ' + (e.response?.data?.detail || e.message)
@@ -3516,9 +3530,9 @@ export default function Fornitori() {
                                           }
                                         }}
                                         style={{ padding: '3px 8px', fontSize: 10 }}
-                                        title="Segna come pagata con bonifico"
+                                        title="Registra dichiarazione in attesa dell’estratto conto ufficiale"
                                       >
-                                        Banca
+                                        Attesa banca
                                       </Button>
                                     </>
                                   )}

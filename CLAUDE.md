@@ -2,7 +2,7 @@
 
 <!-- gestionalecloud-doc
 status: current
-reviewed_at: 2026-10-07
+reviewed_at: 2026-10-08
 storage_architecture: supabase
 consolidated_source: single-claude-md
 -->
@@ -5247,6 +5247,64 @@ Verificare:
 - prova;
 - scrittura;
 - risultato UI.
+
+---
+
+# 123A. Applicazione Ceraldi collegata al gestionale
+
+## REGOLA
+
+`/primanota-ceraldi.html` conserva l'interfaccia dell'applicazione del titolare
+e usa esclusivamente la sessione e le API del gestionale. I dati strutturati
+rimangono nel Supabase canonico. Nessuna chiave Supabase nel frontend, nessun
+database parallelo, nessuna copia delle vecchie sessioni o cache contabili.
+Fiscale, paghe e menu sono pannelli della stessa applicazione e leggono i
+domini ERP, HR, Lotti e Menu attraverso il relativo handoff autenticato.
+
+Le azioni della pagina devono richiamare i writer esistenti. Un pagamento
+banca manuale resta in attesa di riscontro: solo un movimento effettivo di
+estratto conto può confermare il pagamento. Corrispettivo XML, chiusura POS e
+accredito banca sono prove distinte. Un importo o uno stato assente rimane
+assente; non diventa zero o pagato. Operazioni non collegate espongono un
+errore, senza simulare salvataggi riusciti.
+
+Il pannello Automazioni mostra esiti e log dei motori esistenti, le relative
+anteprime e i comandi disponibili. Non avvia un secondo scheduler o un secondo
+writer nel browser. Aggiornamenti periodici dei pannelli sono solo letture.
+La cancellazione definitiva automatica del vecchio cestino è disabilitata:
+si usano archivio, storno o quarantena canonici.
+
+Il codice utile dell'originale è conservato in
+`reference/ceraldi/automazioni-originali.js` come stringhe con hash del sorgente
+originale, senza credenziali e senza esecuzione/import nella pagina. Serve a
+confrontare e migliorare i motori canonici, non a riattivare il vecchio backend.
+
+L'aggancio note di credito dell'importatore richiede un'unica fattura attiva
+dello stesso fornitore e riferimento XML esplicito. Rispetta `[NC-NO-AUTO]`,
+relazioni manuali già salvate e fatture pagate. Importi decimali documentati,
+senza arrotondamento binario. Quando arriva l'originale, il medesimo motore
+recupera le note precedenti ancora senza collegamento; non crea nuovi fatti
+contabili. Il reader fatture deduplica per prova originale prima di paginare,
+senza il vecchio tetto silenzioso di 5000 righe; i corpi file si aprono dal
+dettaglio e non vengono caricati nell'elenco.
+
+## VERIFICA CODICE
+
+Regressioni dei contratti frontend, sessioni, ruoli, provenienza dei dati,
+aggancio NC e paginazione sono incluse in CI. Nessun test inventa una prova
+bancaria a partire da uno stato legacy. La build ERP include la pagina e i
+moduli statici. La verifica con dati operativi richiede una sessione del
+titolare; non è dimostrata dai soli test con fixture.
+
+## APERTO
+
+Gli storici del vecchio Supabase non sono contenuti nel file HTML recuperato
+e non sono stati migrati. Import JSON generici, AI e integrazioni esterne del
+vecchio progetto non possono passare come scritture REST: usare gli import e
+i moduli canonici disponibili, oppure adattare il motore esistente prima di
+abilitare un comando. Le elaborazioni HR massive e la fiscalità avanzata si
+aprono nei rispettivi moduli canonici. Le relazioni NC nel pannello di stato
+sono limitate alle ultime 100 fatture, con perimetro esplicito.
 
 ---
 

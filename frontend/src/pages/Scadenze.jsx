@@ -90,7 +90,7 @@ export default function Scadenze() {
   const handlePagaScadenza = async (scadenza, metodo) => {
     setProcessing(true);
     try {
-      await api.post('/api/fatture-ricevute/paga-manuale', {
+      const { data: result } = await api.post('/api/fatture-ricevute/paga-manuale', {
         fattura_id: scadenza.fattura_id || scadenza.id,
         scadenza_id: scadenza.id,
         importo: Math.abs(scadenza.importo),
@@ -100,7 +100,12 @@ export default function Scadenze() {
         numero_fattura: scadenza.numero_fattura || '',
       });
       setPagaModal(null);
-      setPaidIds(prev => new Set([...prev, scadenza.id]));
+      if (result.pagamento_confermato === true) {
+        setPaidIds(prev => new Set([...prev, scadenza.id]));
+        toast.success(result.message || 'Pagamento registrato in cassa');
+      } else {
+        toast.info(result.message || 'Dichiarazione bancaria registrata in attesa dell’estratto conto ufficiale');
+      }
       loadData();
     } catch (e) {
       toast.error('Errore pagamento: ' + (e.response?.data?.detail || e.message));
@@ -1001,7 +1006,7 @@ export default function Scadenze() {
                   onClick={() => handlePagaScadenza(pagaModal, 'banca')}
                   style={{ flex: 1 }}
                 >
-                  Paga in BANCA
+                  Registra attesa BANCA
                 </Button>
               </div>
               <Button

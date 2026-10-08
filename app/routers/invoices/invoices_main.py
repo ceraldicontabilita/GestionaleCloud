@@ -153,14 +153,20 @@ def _dedupe_invoices(invoices: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
 
 async def _load_invoices(query: Dict[str, Any], limit: int, skip: int) -> List[Dict[str, Any]]:
     db = Database.get_db()
-    raw_limit = min(max(limit * 10, 1000), 5000)
+    # Deduplica prima di paginare: un tetto sulla testa dell'archivio faceva
+    # sparire silenziosamente le fatture oltre la riga 5000. Il reader
+    # Supabase restituisce lo snapshot; nessun archivio parallelo.
     invoices = await db[Collections.INVOICES].find(query, {
         "_id": 0,
         "fattura_allegata": 0,
         "document_original_ref": 0,
         "xml_raw": 0,
+        "xml_content": 0,
+        "xml_originale": 0,
+        "file_base64": 0,
+        "pdf_base64": 0,
         "foto": 0,
-    }).sort("invoice_date", -1).limit(raw_limit).to_list(raw_limit)
+    }).sort("invoice_date", -1).to_list(None)
     deduped = _dedupe_invoices(invoices)
     return deduped[skip : skip + limit]
 
@@ -171,8 +177,8 @@ async def list_invoices(
     month_year: Optional[str] = Query(None, description="Filter by month (MM-YYYY)"),
     status: Optional[str] = Query(None, description="Filter by status"),
     anno: Optional[int] = Query(None, description="Filter by year (YYYY)"),
-    limit: int = Query(100, description="Limit results", le=1000),
-    skip: int = Query(0, description="Skip results"),
+    limit: int = Query(100, description="Limit results", ge=1, le=1000),
+    skip: int = Query(0, description="Skip results", ge=0),
 ) -> List[Dict[str, Any]]:
     # Le soft-delete non devono mai comparire nell'elenco (bug segnalato
     # 18/07/2026: le fatture 2024 eliminate restavano visibili), a meno che

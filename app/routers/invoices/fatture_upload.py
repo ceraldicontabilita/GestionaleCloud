@@ -14,6 +14,7 @@ stato rimosso: la pulizia duplicati canonica gira già in automatico ogni
 from fastapi import APIRouter, HTTPException, UploadFile, File, Query, Body, Depends
 from typing import Dict, Any, List, Optional
 from datetime import datetime, timedelta, timezone
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 import uuid
 import logging
 import zipfile
@@ -24,6 +25,7 @@ import hashlib
 from app.services.archivio_documenti_memoria import DuplicateRecordError
 
 from app.constants.tipi_documento import TIPI_NOTA_CREDITO
+from app.constants.fattura_attiva import FILTRO_FATTURA_ATTIVA, fattura_attiva
 from app.database import Database, Collections
 from app.utils.id_fattura import filtro_id
 from app.engines.prima_nota_engine import (
@@ -36,6 +38,7 @@ from app.utils.iban import valida_iban
 from app.utils.ruoli import richiedi_admin
 from app.services.supplier_data_quality import apply_supplier_quality
 from app.services.fatture_canonico import invoice_key as generate_invoice_key
+from app.services.stato_pagamento_fattura import e_annullata, e_pagata
 
 logger = logging.getLogger(__name__)
 
@@ -159,52 +162,116 @@ async def _collega_nota_credito(db, invoice: Dict[str, Any], session=None) -> Op
     collegamento automatico, rischio di doppio conteggio nello scadenzario.
     """
     if (invoice.get("tipo_documento") or "").upper() not in NOTE_CREDITO_TIPI_DOCUMENTO:
-        return None
+        # Recupera anche le NC arrivate prima dell'originale attraverso lo
+        # stesso motore, senza un job/writer nel browser. Ogni candidata
+        # deve superare tutte le verifiche del ramo NC qui sotto.
+        if not fattura_attiva(invoice) or not invoice.get("id") or not invoice.get("supplier_vat") or not invoice.get("invoice_number"):
+            return None
+        note_in_attesa = await db[Collections.INVOICES].find({
+            **FILTRO_FATTURA_ATTIVA,
+            "supplier_vat": invoice["supplier_vat"],
+            "tipo_documento": {"$in": list(NOTE_CREDITO_TIPI_DOCUMENTO)},
+            "dati_fatture_collegate": {"$elemMatch": {"id_documento": invoice["invoice_number"]}},
+            "$or": [
+                {"fattura_collegata_id": {"$exists": False}},
+                {"fattura_collegata_id": None},
+                {"fattura_collegata_id": ""},
+            ],
+        }, session=session).to_list(None)
+        recuperate = False
+        for nota in note_in_attesa:
+            if await _collega_nota_credito(db, nota, session=session):
+                recuperate = True
+        if not recuperate:
+            return None
+        originale = await db[Collections.INVOICES].find_one(filtro_id(invoice["id"]), session=session)
+        return {campo: originale[campo] for campo in ("note_credito_collegate", "importo_netto") if campo in originale}
 
     riferimenti = invoice.get("dati_fatture_collegate") or []
     if not riferimenti:
         return None
 
-    supplier_vat = invoice.get("supplier_vat", "")
-    originale = None
+    # Le regole della pagina Ceraldi recuperata valgono nel motore unico:
+    # nessun aggancio ambiguo, nessun ricalcolo automatico di una fattura
+    # gia' pagata e rispetto dell'esclusione manuale [NC-NO-AUTO].
+    note_operatore = "\n".join(str(invoice.get(campo) or "") for campo in ("notes", "note"))
+    if not fattura_attiva(invoice) or "[NC-NO-AUTO]" in note_operatore:
+        return None
+    supplier_vat = str(invoice.get("supplier_vat") or "").strip()
+    if not supplier_vat:
+        return None
+    candidati = {}
     for rif in riferimenti:
+        if not isinstance(rif, dict):
+            continue
         id_doc = (rif or {}).get("id_documento")
         if not id_doc:
             continue
-        originale = await db[Collections.INVOICES].find_one(
+        trovate = await db[Collections.INVOICES].find(
             {
+                **FILTRO_FATTURA_ATTIVA,
                 "invoice_number": id_doc,
                 "supplier_vat": supplier_vat,
                 "tipo_documento": {"$nin": list(NOTE_CREDITO_TIPI_DOCUMENTO)},
             },
             session=session,
-        )
-        if originale:
-            break
+        ).to_list(2)
+        for candidata in trovate:
+            if candidata.get("id") is None:
+                logger.warning("Nota di credito %s: fattura candidata senza identificatore", invoice.get("id"))
+                return None
+            if str(candidata.get("id")) != str(invoice.get("id")):
+                candidati[str(candidata["id"])] = candidata
+        if len(candidati) > 1:
+            logger.warning("Nota di credito %s: riferimento ambiguo, nessun aggancio automatico", invoice.get("id"))
+            return None
 
-    if not originale:
+    if len(candidati) != 1:
+        return None
+    originale = next(iter(candidati.values()))
+    if e_pagata(originale) or e_annullata(originale):
+        return None
+    collegata = invoice.get("fattura_collegata_id")
+    if collegata is not None and str(collegata) != str(originale["id"]):
         return None
 
-    importo_nc = float(invoice.get("total_amount") or 0)
-    importo_originale = float(originale.get("total_amount") or 0)
+    def importo_documentato(documento):
+        valore = documento.get("total_amount")
+        if valore is None or valore == "":
+            raise InvalidOperation("Importo documento mancante")
+        risultato = Decimal(str(valore))
+        if not risultato.is_finite():
+            raise InvalidOperation("Importo documento non finito")
+        return risultato
+
+    try:
+        importo_nc = abs(importo_documentato(invoice))
+        importo_originale = importo_documentato(originale)
+    except (InvalidOperation, ValueError, TypeError):
+        logger.warning("Nota di credito %s: importi non validi, nessun aggancio automatico", invoice.get("id"))
+        return None
     note_credito_collegate = list(originale.get("note_credito_collegate") or [])
-    if invoice["id"] not in note_credito_collegate:
+    if not any(str(nc_id) == str(invoice["id"]) for nc_id in note_credito_collegate):
         note_credito_collegate.append(invoice["id"])
 
     # Somma tutte le NC collegate a questo originale (non solo quella corrente)
     # per calcolare il netto corretto anche con più note di credito parziali.
-    totale_nc = 0.0
+    totale_nc = Decimal("0")
     for nc_id in note_credito_collegate:
-        if nc_id == invoice["id"]:
+        if str(nc_id) == str(invoice["id"]):
             totale_nc += importo_nc
             continue
-        nc_doc = await db[Collections.INVOICES].find_one(
-            {"id": nc_id}, {"total_amount": 1}, session=session
-        )
-        if nc_doc:
-            totale_nc += float(nc_doc.get("total_amount") or 0)
+        nc_doc = await db[Collections.INVOICES].find_one(filtro_id(nc_id), {"total_amount": 1}, session=session)
+        try:
+            if not nc_doc:
+                raise InvalidOperation("Nota di credito collegata assente")
+            totale_nc += abs(importo_documentato(nc_doc))
+        except (InvalidOperation, ValueError, TypeError):
+            logger.warning("Nota di credito %s: importo della nota collegata %s assente o non valido", invoice.get("id"), nc_id)
+            return None
 
-    importo_netto = round(importo_originale - totale_nc, 2)
+    # Stringa decimale al confine JSON: nessun arrotondamento binario.
+    importo_netto = str((importo_originale - totale_nc).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
 
     await db[Collections.INVOICES].update_one(
         {"id": originale["id"]},

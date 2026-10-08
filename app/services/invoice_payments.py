@@ -10,8 +10,10 @@ from fastapi import HTTPException
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from app.services.archivio_documenti_memoria import DuplicateRecordError
 
-from app.services.scritture_contabili import _sessione, _transazione_registro
+from app.services.scritture_contabili import _sessione, _transazione_registro, scrivi_movimento
 from app.services.prima_nota_integrity import totale_pagabile_al_fornitore
+from app.services.stato_pagamento_fattura import e_annullata, e_pagata
+from app.constants.fattura_attiva import fattura_attiva
 from app.utils.id_fattura import filtro_id, varianti_id
 
 
@@ -60,6 +62,9 @@ class ManualInvoicePaymentResponse(BaseModel):
     collection: Optional[str] = None
     message: Optional[str] = None
     idempotent_replay: bool = False
+    stato: Optional[str] = None
+    pagamento_confermato: Optional[bool] = None
+    in_attesa_estratto_ufficiale: bool = False
 
 
 class InvoiceBankReconciliationRequest(BaseModel):
@@ -91,11 +96,12 @@ def _operation_key(req: ManualInvoicePaymentRequest) -> str:
 
 
 async def register_manual_invoice_payment(db, req: ManualInvoicePaymentRequest) -> Dict[str, Any]:
-    """Registra movimento, scadenza e fattura in una singola transazione.
+    """Registra il contante oppure l'attesa di un riscontro bancario.
 
     La collection ``pagamenti_operazioni`` usa ``_id`` come chiave di
     idempotenza: retry HTTP e doppio click non incrementano due volte il
-    pagato. Su Atlas tutte le mutazioni fanno commit o rollback insieme.
+    pagato. La banca manuale e' una dichiarazione: il pagamento effettivo
+    passa soltanto dal motore canonico delle allocazioni dell'estratto conto.
     """
     invoice = (
         await db["invoices"].find_one(filtro_id(req.fattura_id), {"_id": 0})
@@ -139,11 +145,21 @@ async def register_manual_invoice_payment(db, req: ManualInvoicePaymentRequest) 
                 replay["idempotent_replay"] = True
                 return replay
 
+            if req.metodo == "banca" and (
+                not fattura_attiva(invoice) or e_annullata(invoice) or e_pagata(invoice)
+            ):
+                raise HTTPException(
+                    status_code=409,
+                    detail="Fattura gia' pagata, annullata o archiviata: non creare un'altra attesa bancaria",
+                )
+
             total = abs(float(
                 invoice.get("total_amount")
                 or invoice.get("importo_totale")
                 or req.importo
             ))
+            if req.metodo == "banca":
+                total = totale_pagabile_al_fornitore(invoice)
             current_paid = abs(float(invoice.get("importo_pagato") or 0))
             remaining = max(0.0, round(total - current_paid, 2))
             if req.importo > 0 and req.importo - remaining > 0.005:
@@ -168,19 +184,6 @@ async def register_manual_invoice_payment(db, req: ManualInvoicePaymentRequest) 
                     ),
                 )
 
-            try:
-                await db["pagamenti_operazioni"].insert_one({
-                    "_id": operation_id,
-                    "status": "in_progress",
-                    "fattura_id": req.fattura_id,
-                    "scadenza_id": req.scadenza_id,
-                    "created_at": now,
-                }, **skw)
-            except DuplicateRecordError as exc:
-                raise HTTPException(
-                    status_code=409,
-                    detail="Pagamento identico gia' in elaborazione",
-                ) from exc
 
             due = None
             if req.scadenza_id:
@@ -202,9 +205,46 @@ async def register_manual_invoice_payment(db, req: ManualInvoicePaymentRequest) 
                 {"scadenza_id": req.scadenza_id}
                 if req.scadenza_id else {"payment_operation_id": operation_id}
             )
+            if req.metodo == "banca":
+                dedup_query = {
+                    "fattura_id": {"$in": varianti_id(req.fattura_id)},
+                    "scadenza_id": req.scadenza_id,
+                    "status": {"$nin": ["deleted", "archived"]},
+                    "in_attesa_estratto_ufficiale": True,
+                }
             existing_movement = await db[collection_name].find_one(dedup_query, **skw)
+            if existing_movement and req.metodo == "banca":
+                if (
+                    abs(float(existing_movement.get("importo") or 0) - abs(req.importo)) > 0.005
+                    or str(existing_movement.get("data") or "")[:10] != req.data_pagamento
+                ):
+                    raise HTTPException(
+                        status_code=409,
+                        detail="Esiste gia' una dichiarazione bancaria diversa per questa fattura/scadenza",
+                    )
+            try:
+                await db["pagamenti_operazioni"].insert_one({
+                    "_id": operation_id,
+                    "status": "in_progress",
+                    "fattura_id": req.fattura_id,
+                    "scadenza_id": req.scadenza_id,
+                    "created_at": now,
+                }, **skw)
+            except DuplicateRecordError as exc:
+                raise HTTPException(
+                    status_code=409,
+                    detail="Pagamento identico gia' in elaborazione",
+                ) from exc
+
             if existing_movement:
                 movement_id = existing_movement["id"]
+                if req.metodo == "banca":
+                    await db[collection_name].update_one({"id": movement_id}, {"$set": {
+                        "dichiarato_titolare": True,
+                        "stato": "DA_VERIFICARE",
+                        "provvisorio": True,
+                        "updated_at": now,
+                    }}, **skw)
             else:
                 from app.routers.prima_nota_module.sync import costruisci_campi_movimento_fattura
 
@@ -216,7 +256,7 @@ async def register_manual_invoice_payment(db, req: ManualInvoicePaymentRequest) 
                     "cedente_piva": invoice.get("cedente_piva"),
                 }, req.importo)
                 movement_id = str(uuid.uuid4())
-                await db[collection_name].insert_one({
+                movement = {
                     "id": movement_id,
                     "data": req.data_pagamento,
                     "descrizione": fields["descrizione"],
@@ -226,19 +266,63 @@ async def register_manual_invoice_payment(db, req: ManualInvoicePaymentRequest) 
                     "categoria": fields["categoria"],
                     "numero_fattura": fields["numero_fattura"],
                     "tipo_documento": fields["tipo_documento"],
-                    "stato": "confermato",
+                    "stato": "DA_VERIFICARE" if req.metodo == "banca" else "confermato",
                     "fattura_id": req.fattura_id,
                     "scadenza_id": req.scadenza_id,
                     "fattura_collegata": req.fattura_id,
                     "fattura_numero": req.numero_fattura,
                     "fornitore": req.fornitore,
                     "metodo_pagamento": req.metodo,
-                    "provvisorio": False,
+                    "provvisorio": req.metodo == "banca",
                     "riconciliato": False,
                     "created_at": now,
-                    "source": "pagamento_manuale",
+                    "source": (
+                        "manuale_banca_senza_evidenza" if req.metodo == "banca"
+                        else "pagamento_manuale"
+                    ),
+                    "in_attesa_estratto_ufficiale": req.metodo == "banca",
+                    "dichiarato_titolare": req.metodo == "banca",
                     "payment_operation_id": operation_id,
-                }, **skw)
+                }
+                if req.metodo == "banca":
+                    movement_id = await scrivi_movimento(db, "banca", movement, session=session)
+                else:
+                    await db[collection_name].insert_one(movement, **skw)
+
+            if req.metodo == "banca":
+                # Nessun campo "pagato", residuo, scadenza o data effettiva:
+                # la dichiarazione resta fuori dai saldi e viene assorbita
+                # dal writer canonico quando arriva la prova bancaria.
+                await db[COL_FATTURE_RICEVUTE].update_one(
+                    filtro_id(req.fattura_id), {"$set": {
+                        "prima_nota_banca_id": movement_id,
+                        "in_attesa_riscontro_banca": True,
+                        "stato_finanziario": "in_attesa_estratto_conto",
+                        "updated_at": now,
+                    }}, **skw,
+                )
+                result = {
+                    "success": True,
+                    "movimento_id": movement_id,
+                    "metodo": "banca",
+                    "importo": req.importo,
+                    "riconciliato": False,
+                    "collection": collection_name,
+                    "idempotent_replay": False,
+                    "stato": "DA_VERIFICARE",
+                    "pagamento_confermato": False,
+                    "in_attesa_estratto_ufficiale": True,
+                    "message": (
+                        "Dichiarazione bancaria registrata; il pagamento richiede "
+                        "il riscontro con un movimento dell'estratto conto ufficiale"
+                    ),
+                }
+                await db["pagamenti_operazioni"].update_one(
+                    {"_id": operation_id},
+                    {"$set": {"status": "completed", "completed_at": now, "result": result}},
+                    **skw,
+                )
+                return result
 
             if due:
                 installment_amount = float(due.get("importo_rata") or due.get("importo") or abs(req.importo))
@@ -292,6 +376,9 @@ async def register_manual_invoice_payment(db, req: ManualInvoicePaymentRequest) 
                 "riconciliato": False,
                 "collection": collection_name,
                 "idempotent_replay": False,
+                "stato": "confermato",
+                "pagamento_confermato": True,
+                "in_attesa_estratto_ufficiale": False,
             }
             await db["pagamenti_operazioni"].update_one(
                 {"_id": operation_id},
@@ -460,110 +547,93 @@ async def reconcile_invoice_bank_movement(
     nella causale. I pagamenti cumulativi devono usare il motore multi-fattura;
     un override manuale resta possibile, ma richiede una motivazione auditabile.
     """
-    invoice = (
-        await db[COL_FATTURE_RICEVUTE].find_one(filtro_id(req.fattura_id), {"_id": 0})
-        or await db["invoices"].find_one(filtro_id(req.fattura_id), {"_id": 0})
+    from app.services.bank_payment_allocations import (
+        _controparte_incompatibile,
+        persist_bank_invoice_allocations,
+        validate_bank_invoice_allocations,
     )
-    if not invoice:
-        raise HTTPException(status_code=404, detail="Fattura non trovata")
-    movement = await db["estratto_conto_movimenti"].find_one(
-        {"id": req.movimento_id}, {"_id": 0},
-    )
-    if not movement:
-        raise HTTPException(status_code=404, detail="Movimento non trovato")
+    from app.services.riscontro_estratto_prima_nota import evidenza_ufficiale, _escluso
 
-    linked_invoice = movement.get("fattura_id")
-    if linked_invoice == req.fattura_id and movement.get("riconciliato") is True:
-        return {
-            "success": True, "fattura_id": req.fattura_id,
-            "movimento_id": req.movimento_id,
-            "message": "Riconciliazione gia' presente",
-            "idempotent_replay": True,
-        }
-    if linked_invoice and linked_invoice != req.fattura_id:
-        raise HTTPException(status_code=409, detail="Movimento gia' collegato a un'altra fattura")
-
-    residual = _supplier_payable_residual(invoice)
-    bank_amount = abs(float(movement.get("importo") or movement.get("amount") or 0))
-    if residual <= 0 or abs(residual - bank_amount) > 0.005:
-        raise HTTPException(
-            status_code=409,
-            detail=(
-                "Importo non univoco: usa il motore multi-fattura per pagamenti "
-                "cumulativi o parziali"
-            ),
-        )
-
-    invoice_number = (
-        invoice.get("invoice_number") or invoice.get("numero_documento")
-        or invoice.get("numero_fattura") or ""
-    )
-    description = " ".join(str(movement.get(key) or "") for key in (
-        "descrizione_originale", "descrizione", "causale",
-    ))
-    number_matches = bool(_compact(invoice_number)) and _compact(invoice_number) in _compact(description)
-    if not number_matches and not req.override_reason:
-        raise HTTPException(
-            status_code=409,
-            detail="Numero fattura assente dalla causale bancaria: associazione non univoca",
-        )
-
-    now = datetime.now(timezone.utc).isoformat()
-    first_note_id = invoice.get("prima_nota_banca_id")
-    audit = {
-        "id": str(uuid.uuid4()),
-        "azione": "riconciliazione_fattura_banca",
-        "fattura_id": req.fattura_id,
-        "movimento_id": req.movimento_id,
-        "importo": bank_amount,
-        "numero_fattura": invoice_number,
-        "numero_in_causale": number_matches,
-        "override_reason": req.override_reason,
-        "created_at": now,
-    }
     async with _transazione_registro(db) as session:
         skw = _sessione(session)
-        invoice_updates = {
-            "riconciliato": True,
-            "movimento_bancario_id": req.movimento_id,
-            "data_riconciliazione": now,
-            "provvisorio": False,
-            "pagato": True,
-            "status": "paid",
-            "payment_status": "paid",
-            "stato_pagamento": "pagata",
-            "importo_pagato": residual,
-            "importo_residuo": 0,
-            "updated_at": now,
-        }
-        for name in {COL_FATTURE_RICEVUTE, "invoices"}:
-            await db[name].update_one(
-                filtro_id(req.fattura_id), {"$set": invoice_updates}, **skw,
-            )
-        await db["estratto_conto_movimenti"].update_one(
-            {"id": req.movimento_id},
-            {"$set": {
-                "riconciliato": True,
-                "fattura_id": req.fattura_id,
-                "tipo_riconciliazione": "fattura_numero_importo_esatti",
-                "updated_at": now,
-            }}, **skw,
+        invoice = await db[COL_FATTURE_RICEVUTE].find_one(
+            filtro_id(req.fattura_id), {"_id": 0}, **skw,
         )
-        if first_note_id:
-            await db["prima_nota_banca"].update_one(
-                {"id": first_note_id},
-                {"$set": {
-                    "riconciliato": True,
-                    "movimento_bancario_id": req.movimento_id,
-                    "provvisorio": False,
-                    "updated_at": now,
-                }}, **skw,
+        if not invoice:
+            raise HTTPException(status_code=404, detail="Fattura non trovata")
+        movement = await db["estratto_conto_movimenti"].find_one(
+            {"id": req.movimento_id}, {"_id": 0}, **skw,
+        )
+        if not movement:
+            raise HTTPException(status_code=404, detail="Movimento non trovato")
+        if (_escluso(movement) or not evidenza_ufficiale(movement)
+                or movement.get("provvisorio") is True):
+            raise HTTPException(
+                status_code=409,
+                detail="Serve un movimento attivo dell'estratto conto ufficiale, non un export provvisorio",
             )
-        await db["audit_riconciliazioni"].insert_one(audit, **skw)
+
+        linked_invoice = movement.get("fattura_id")
+        if str(linked_invoice or "") == str(invoice.get("id")) and movement.get("riconciliato") is True:
+            return {
+                "success": True, "fattura_id": req.fattura_id,
+                "movimento_id": req.movimento_id,
+                "message": "Riconciliazione gia' presente",
+                "idempotent_replay": True,
+            }
+        if linked_invoice not in (None, "") or movement.get("riconciliato") is True:
+            raise HTTPException(status_code=409, detail="Movimento gia' utilizzato in un'altra riconciliazione")
+
+        residual = _supplier_payable_residual(invoice)
+        bank_amount = abs(float(movement.get("importo") or movement.get("amount") or 0))
+        if residual <= 0 or not math.isfinite(bank_amount) or abs(residual - bank_amount) > 0.005:
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    "Importo non univoco: usa il motore multi-fattura per pagamenti "
+                    "cumulativi o parziali"
+                ),
+            )
+        if _controparte_incompatibile(movement, invoice):
+            raise HTTPException(status_code=409, detail="Beneficiario o IBAN bancario incompatibile con il fornitore")
+
+        invoice_number = (
+            invoice.get("invoice_number") or invoice.get("numero_documento")
+            or invoice.get("numero_fattura") or ""
+        )
+        description = " ".join(str(movement.get(key) or "") for key in (
+            "descrizione_originale", "descrizione", "causale",
+        ))
+        number_matches = bool(_compact(invoice_number)) and _compact(invoice_number) in _compact(description)
+        if not number_matches and not req.override_reason:
+            raise HTTPException(
+                status_code=409,
+                detail="Numero fattura assente dalla causale bancaria: associazione non univoca",
+            )
+
+        # Unico writer bancario: quote, fattura, rate, partita aperta,
+        # relazione, estratto e Prima Nota si aggiornano nello stesso motore.
+        allocations = await validate_bank_invoice_allocations(
+            db, movement, [{"fattura_id": req.fattura_id, "quota": bank_amount}],
+        )
+        await persist_bank_invoice_allocations(
+            db, movement, allocations, actor="manuale_numero_importo",
+        )
+        await db["audit_riconciliazioni"].insert_one({
+            "id": str(uuid.uuid4()),
+            "azione": "riconciliazione_fattura_banca",
+            "fattura_id": req.fattura_id,
+            "movimento_id": req.movimento_id,
+            "importo": bank_amount,
+            "numero_fattura": invoice_number,
+            "numero_in_causale": number_matches,
+            "override_reason": req.override_reason,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        }, **skw)
 
     return {
         "success": True, "fattura_id": req.fattura_id,
         "movimento_id": req.movimento_id,
-        "message": "Riconciliazione completata con prova numero+importo",
+        "message": "Riconciliazione completata con prova bancaria ufficiale",
         "idempotent_replay": False,
     }
