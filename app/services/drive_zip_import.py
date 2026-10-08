@@ -28,7 +28,7 @@ import hashlib
 import io
 import logging
 import zipfile
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Awaitable, Callable, Dict, List, Optional
@@ -50,7 +50,7 @@ MAX_ELENCO = 300
 PREFETCH_FILE = 8
 # I file finiti in errore prima di un miglioramento dei lettori si rileggono una
 # volta sola per versione (un cambio dei lettori F24 alza questo numero).
-VERSIONE_RIPASSO = "2026-10-01-f24-diagnosi-colonne-transitori"
+VERSIONE_RIPASSO = "2026-10-08-originali-cartelle-drive"
 PREFETCH_MAX_BYTE = 8 * 1024 * 1024
 
 _lavoro: Optional[asyncio.Task] = None
@@ -172,6 +172,7 @@ class _Voce:
     motivo: Optional[str]
     leggi: Callable[[], Awaitable[bytes]]
     byte: int = 0
+    source_context: Dict[str, Any] = field(default_factory=dict)
 
 
 CARTELLA_MIME = "application/vnd.google-apps.folder"
@@ -228,7 +229,9 @@ def _voci_da_cartella(file_drive: List[Dict[str, Any]]) -> List[_Voce]:
 
     return [
         _Voce(f["percorso"], f["name"], _motivo_file_drive(f),
-              lettore(f["id"], f.get("md5Checksum")), int(f.get("size") or 0))
+              lettore(f["id"], f.get("md5Checksum")), int(f.get("size") or 0),
+              {"channel": "drive_folder_import", "drive_file_id": f["id"],
+               "drive_path": f["percorso"], "drive_md5": f.get("md5Checksum")})
         for f in file_drive
     ]
 
@@ -387,6 +390,7 @@ async def _un_file(
             "archive_filename": origine, "archive_path": percorso,
             "archive_group": str(Path(percorso).parent).replace("\\", "/"),
             "archive_sha256": impronta,
+            **voce.source_context,
         })
         cartella, perche = esito_del_risultato(risultato)
         if risultato.get("tipo_rilevato") == "non_riconosciuto":
