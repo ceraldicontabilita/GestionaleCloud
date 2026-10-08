@@ -5413,6 +5413,29 @@ La pulizia dei riferimenti Git non garantisce la cancellazione delle copie local
 
 # 120. Verifica delle modifiche
 
+08/10/2026: import importi HR esteso a XLSX, CSV, TSV e tabella incollata,
+con anteprima e conferma in coda persistente. Il documento del titolare
+contiene 623 righe di importi attribuiti dai bonifici: sono confronti da
+verificare, non netti certificati né nuovi pagamenti. Identità ambigue/non
+trovate restano segnalate; dipendente, anno, mese, tipo e importo rendono
+idempotente il caricamento anche cambiando nome o formato al file. Un netto
+esplicito può riempire una casella mancante; un netto esistente non viene
+sovrascritto. Gli scostamenti rimangono accanto alla riga in Archivio paghe,
+con fonte e verifica esplicita; cambiare poi il netto riapre il confronto.
+Importo e saldo sconosciuti rimangono vuoti anche nell'Excel esportato.
+Verifiche isolate sul testo reale e sul suo equivalente XLSX: 555 righe
+associabili, 68 senza identità univoca, secondo import zero nuove scritture;
+nessuna modifica ai netti o ai bonifici presenti nello snapshot.
+Chromium verifica incolla, anteprima, conferma, avviso per riga e permanenza
+del file cambiando pagina/ricaricando. I riepiloghi locali precedenti vengono
+normalizzati solo per il motivo esatto di foglio presenze riconosciuto;
+altri errori e netti illeggibili non vengono nascosti.
+Riletti dieci originali con netto mancante: Capezzuto giugno 2020 stampa
+`0+` nella casella netto; il parser ora riconosce quello zero esplicito.
+Gli altri nove PDF controllati non espongono un valore nella casella:
+non si ricava un netto arbitrario dalle competenze o dal nome del file.
+PR #1170 live dalle 19:02 UTC, commit `321143b`.
+
 08/10/2026, controllo live import: i PDF di Murolo con sola pagina presenze
 venivano riletti 4–5 volte e segnalati come buste fallite. Ora l'import HR
 restituisce `saltati_presenze`, senza errore né importi inventati; riprendere

@@ -150,6 +150,8 @@ async def _enqueue(
     job_id = job_id_for_content(content)
     if document_type == "hr_libro_unico":
         job_id += "-HR"
+    elif document_type == "hr_importi_tabellari":
+        job_id += "-HR-IMPORTI"
     existing = await db[COLLECTION].find_one({"id": job_id}, {"_id": 0})
     active = _ACTIVE_TASKS.get(job_id)
 
@@ -171,6 +173,8 @@ async def _enqueue(
                                **({"movimenti_nuovi": 0, "duplicati_saltati": acquisiti + duplicati}
                                   if "movimenti_nuovi" in precedente else {}),
                                "action": "duplicate", "duplicate": True,
+                               **({"aggiornati": 0, "duplicati": acquisiti + duplicati}
+                                  if document_type == "hr_importi_tabellari" else {}),
                                **({"totale_associati": 0, "associati": [], "duplicati": precedente.get("associati", []) + precedente.get("duplicati", [])}
                                   if document_type == "hr_libro_unico" else {}),
                                "message": "File già elaborato: nessun nuovo dato inserito."}}
@@ -277,7 +281,8 @@ async def enqueue_import(
     upload interrotto si fermava a meta'. ``process`` e' l'elaborazione
     canonica dell'upload (la stessa di sempre), passata dalla rotta per non
     importare il router da qui."""
-    chiave = await _conserva_contenuto(content, "hr:" if document_type == "hr_libro_unico" else "")
+    namespace = "hr:" if document_type == "hr_libro_unico" else "hr-importi:" if document_type == "hr_importi_tabellari" else ""
+    chiave = await _conserva_contenuto(content, namespace)
 
     async def lavora(job_id: str) -> None:
         try:

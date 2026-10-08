@@ -647,7 +647,7 @@ def _parse_teamsystem_layout(page_words) -> Dict[str, float]:
 
 
 _ETICHETTA_NETTO_ZUCCHETTI = re.compile(r"^NETTO(?:sDELsMESE)?$")
-_IMPORTO_CELLA = re.compile(r"^([-+]?)(\d[\d.]*,\d{2})([+-]?)$")
+_IMPORTO_CELLA = re.compile(r"^([-+]?)(\d[\d.]*,\d{2}|0)([+-]?)$")
 
 
 def _netto_dalla_cella(page_words) -> Dict[str, Any]:
