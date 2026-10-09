@@ -4672,11 +4672,51 @@ async def get_missioni(dipendente_id: Optional[str] = None, stato: Optional[str]
 
 @router.post("/missioni")
 async def create_missione(missione: MissioneCloud):
-    miss_dict = missione.model_dump()
+    miss_dict = await _dati_missione(missione)
     miss_dict["id"] = generate_id()
     miss_dict["created_at"] = now_iso()
     await get_db().missioni_cloud.insert_one(miss_dict)
     return serialize_doc(miss_dict)
+
+
+async def _dati_missione(missione: MissioneCloud):
+    from datetime import date
+    import math
+
+    dati = missione.model_dump()
+    try:
+        inizio = date.fromisoformat(dati["data_inizio"])
+        fine = date.fromisoformat(dati["data_fine"])
+    except ValueError as exc:
+        raise HTTPException(400, "Inserisci date valide per la missione") from exc
+    if fine < inizio:
+        raise HTTPException(400, "La data fine non può precedere la data inizio")
+    if not math.isfinite(dati["rimborso"]) or dati["rimborso"] < 0:
+        raise HTTPException(400, "Il rimborso deve essere un importo non negativo")
+    for campo in ("destinazione", "scopo"):
+        dati[campo] = dati[campo].strip()
+        if not dati[campo]:
+            raise HTTPException(400, "Destinazione e scopo sono obbligatori")
+    if not await get_db().dipendenti.find_one({"id": dati["dipendente_id"]}, {"_id": 0, "id": 1}):
+        raise HTTPException(404, "Dipendente non trovato")
+    dati["stato"] = "in_attesa"
+    return dati
+
+
+@router.put("/missioni/{missione_id}")
+async def update_missione(missione_id: str, missione: MissioneCloud):
+    db = get_db()
+    corrente = await db.missioni_cloud.find_one({"id": missione_id}, {"_id": 0})
+    if not corrente:
+        raise HTTPException(404, "Missione non trovata")
+    if corrente.get("stato") != "in_attesa":
+        raise HTTPException(409, "Una missione già approvata non può essere modificata da questa pagina")
+    dati = await _dati_missione(missione)
+    dati["updated_at"] = now_iso()
+    result = await db.missioni_cloud.update_one({"id": missione_id, "stato": "in_attesa"}, {"$set": dati})
+    if not result.matched_count:
+        raise HTTPException(409, "La missione è cambiata: aggiorna la pagina")
+    return {**corrente, **dati}
 
 @router.put("/missioni/{missione_id}/approva")
 async def approva_missione(missione_id: str):
@@ -4720,7 +4760,10 @@ async def approva_missione(missione_id: str):
 
 @router.delete("/missioni/{missione_id}")
 async def delete_missione(missione_id: str):
-    result = await get_db().missioni_cloud.delete_one({"id": missione_id})
+    corrente = await get_db().missioni_cloud.find_one({"id": missione_id}, {"_id": 0})
+    if corrente and corrente.get("stato") != "in_attesa":
+        raise HTTPException(409, "Una missione già approvata non può essere eliminata da questa pagina")
+    result = await get_db().missioni_cloud.delete_one({"id": missione_id, "stato": "in_attesa"})
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Missione non trovata")
     return {"message": "Missione eliminata"}

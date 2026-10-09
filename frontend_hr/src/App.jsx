@@ -10,6 +10,7 @@ import { isIntentionalPaintDrag } from "./presenzeSelection";
 import { buildPresenzePrintHtml } from "./presenzePrint";
 import { buildPresenzeCsv } from "./presenzeCsv";
 import GrigliaPaghe from "./GrigliaPaghe";
+import MissioniPage from "./MissioniPage";
 import { normalizzaEsitoImportPaghe } from "./esitoImportPaghe";
 import { 
   Users, Calendar, Clock, FileText, Briefcase, Home, 
@@ -134,7 +135,7 @@ const PAGE_DATA = {
   "bonifici-da-associare": ["dipendenti"],
   "posizione-dipendente": ["dipendenti"],
   tfr: ["dipendenti", "ordine"],
-  missioni: ["dipendenti", "missioni", "ordine"],
+  missioni: ["dipendenti"],
   documenti: ["dipendenti", "documenti"],
   assunzione: ["dipendenti"],
 };
@@ -285,7 +286,7 @@ export default function DipendentiCloudApp({ page: pageProp }) {
       case "tfr":
         return <TfrPage dipendenti={activeDipendenti} getDipendente={getDipendente} />;
       case "missioni":
-        return <MissioniPage dipendenti={activeDipendenti} missioni={missioni} reload={loadData} getDipendente={getDipendente} />;
+        return <MissioniPage dipendenti={dipendenti} />;
       case "documenti":
         return <DocumentiPage dipendenti={dipendenti} documenti={documenti} reload={loadData} getDipendente={getDipendente} />;
       case "assunzione":
@@ -5838,7 +5839,9 @@ function PagheBonificiPage({ dipendenti = [] }) {
             </button>
             {showImport && (
               <div style={{ position: "absolute", top: "100%", left: 0, marginTop: 6, background: "#fffefb", border: "1px solid #e6e0d4", borderRadius: 10, boxShadow: "0 6px 20px rgba(0,0,0,.12)", zIndex: 30, minWidth: 300, overflow: "hidden" }}>
-                {[["Libro Unico (PDF/ZIP)", () => fileRef.current?.click()],
+                {[["Cedolini / Libro Unico (PDF/ZIP)", () => fileRef.current?.click()],
+                  ["Bonifici (PDF / Excel / CSV)", () => { window.location.href = "/documenti/import?origine=hr-bonifici&documenti=bonifici"; }],
+                  ["Estratti conto (PDF / Excel / CSV)", () => { window.location.href = "/documenti/import?origine=hr-bonifici&documenti=estratti-conto"; }],
                   ["Buste da email", handleImportEmail],
                   ["Importi cedolini (Excel / CSV / testo)", () => excelRef.current?.click()],
                   ["Incolla tabella importi", () => setIncollaImporti(true)],
@@ -7242,59 +7245,60 @@ const CONTAB = "/hr/api/contabilita";
 const eurFmt = (n) => (Number(n) || 0).toLocaleString("it-IT", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 function BonificiContabPage() {
   const [items, setItems] = useState([]);
+  const [totale, setTotale] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [errore, setErrore] = useState("");
   const [categoria, setCategoria] = useState("");
   const [search, setSearch] = useState("");
-
-  const load = useCallback(async () => {
-    try {
-      setLoading(true);
-      const params = {};
-      if (categoria) params.categoria = categoria;
-      if (search) params.search = search;
-      const r = await axios.get(`${CONTAB}/bonifici`, { params });
-      setItems(r.data?.items || []);
-    } catch (e) { console.error(e); } finally { setLoading(false); }
-  }, [categoria, search]);
-  useEffect(() => { const t = setTimeout(load, 300); return () => clearTimeout(t); }, [load]);
-
-  const catBadge = (c) => ({ DIPENDENTE: "info", FORNITORE: "warning", SOCIO: "default", ENTE_PUBBLICO: "danger" }[c] || "default");
-
-  return (
-    <div className="dc-page">
-      <div className="dc-page-header">
-        <h1>Bonifici</h1>
-        <p>Movimenti bancari in uscita. {items.length} risultati.</p>
-      </div>
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", margin: "0 0 16px" }}>
-        <select className="dc-select" value={categoria} onChange={(e) => setCategoria(e.target.value)}>
-          <option value="">Tutte le categorie</option>
-          {["DIPENDENTE", "FORNITORE", "SOCIO", "ENTE_PUBBLICO"].map((c) => <option key={c} value={c}>{c.replace(/_/g, " ")}</option>)}
-        </select>
-        <input className="dc-select" style={{ flex: 1, minWidth: 200 }} placeholder="Cerca beneficiario o causale…"
-          value={search} onChange={(e) => setSearch(e.target.value)} />
-      </div>
-      {loading ? <div className="dc-empty">Caricamento…</div> :
-        items.length === 0 ? <div className="dc-empty">Nessun bonifico.</div> : (
-          <div className="dc-card">
-            <table className="dc-table dc-table--cards">
-              <thead><tr><th>Data</th><th>Competenza</th><th>Beneficiario</th><th>Causale</th><th>Categoria</th><th>Importo</th><th>Stato</th></tr></thead>
-              <tbody>
-                {items.map((b) => (
-                  <tr key={b._id}>
-                    <td data-label="Data">{formatDate(b.data)}</td>
-                    <td data-label="Competenza" className="dc-muted">{b.mese_competenza || "—"}</td>
-                    <td data-label="Beneficiario">{b.beneficiario}</td>
-                    <td data-label="Causale" className="dc-muted">{b.causale}</td>
-                    <td data-label="Categoria"><Badge variant={catBadge(b.categoria)}>{(b.categoria || "").replace(/_/g, " ").toLowerCase()}</Badge></td>
-                    <td data-label="Importo"><b>€ {eurFmt(b.importo)}</b></td>
-                    <td data-label="Stato">{b.fattura_id ? <Badge variant="success">riconciliato</Badge> : <Badge variant="default">—</Badge>}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+  const [offset, setOffset] = useState(0);
+  const [refresh, setRefresh] = useState(0);
+  const limit = 100;
+  useEffect(() => {
+    let current = true;
+    const controller = new AbortController();
+    const t = setTimeout(async () => {
+      setLoading(true); setErrore("");
+      try {
+        const r = await axios.get(`${CONTAB}/bonifici`, { params: { categoria: categoria || undefined, search: search || undefined, offset, limit }, signal: controller.signal });
+        if (current) { setItems(r.data?.items || []); setTotale(r.data?.totale || 0); }
+      } catch (e) { if (current && !axios.isCancel(e)) { setErrore(e.response?.data?.detail || "Impossibile caricare i bonifici. Premi Aggiorna."); setItems([]); setTotale(0); } }
+      finally { if (current) setLoading(false); }
+    }, 300);
+    return () => { current = false; clearTimeout(t); controller.abort(); };
+  }, [categoria, search, offset, refresh]);
+  const catBadge = c => ({ DIPENDENTE: "info", FORNITORE: "warning", SOCIO: "default", ENTE_PUBBLICO: "danger" }[String(c).toUpperCase()] || "default");
+  return <div className="dc-page">
+    <div className="dc-page-header"><h1>Bonifici</h1><p>Bonifici registrati in HR. {totale} risultati.</p></div>
+    <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 }} aria-label="Importazione bancaria">
+      <a className="dc-btn dc-btn-primary" href="/documenti/import?origine=hr-bonifici&documenti=bonifici">Importa bonifici</a>
+      <a className="dc-btn" href="/documenti/import?origine=hr-bonifici&documenti=estratti-conto">Importa estratto conto</a>
+      <Link className="dc-btn" to="/dipendenti/bonifici-da-associare">Bonifici da associare</Link>
+      <a className="dc-btn" href="/riconciliazione/archivio-bonifici">Archivio completo ERP</a>
+      <button className="dc-btn" onClick={() => setRefresh(n => n + 1)} disabled={loading}>Aggiorna</button>
     </div>
-  );
+    <p className="dc-muted">Carica PDF, Excel o CSV in Importa documenti. Dopo l’acquisizione verifica i bonifici da associare; un ordine di bonifico non dimostra da solo l’addebito sul conto.</p>
+    <div style={{ display: "flex", gap: 8, flexWrap: "wrap", margin: "0 0 16px" }}>
+      <select className="dc-select" aria-label="Categoria bonifici" value={categoria} onChange={e => { setCategoria(e.target.value); setOffset(0); }}>
+        <option value="">Tutte le categorie</option>{["DIPENDENTE", "FORNITORE", "SOCIO", "ENTE_PUBBLICO"].map(c => <option key={c} value={c}>{c.replace(/_/g, " ")}</option>)}
+      </select>
+      <input className="dc-select" style={{ flex: 1, minWidth: 200 }} placeholder="Cerca dipendente, beneficiario o causale…" aria-label="Cerca bonifici" value={search} onChange={e => { setSearch(e.target.value); setOffset(0); }} />
+    </div>
+    {errore && <div role="alert" className="dc-card">{errore}</div>}
+    {loading ? <div role="status" className="dc-empty">Caricamento…</div> : !errore && !items.length ? <div className="dc-empty">Nessun bonifico con questi filtri.</div> : <div className="dc-card" style={{ overflowX: "auto" }}>
+      <table className="dc-table dc-table--cards"><thead><tr><th>Data</th><th>Competenza</th><th>Dipendente / beneficiario</th><th>Causale</th><th>Categoria</th><th>Importo</th><th>Riscontro</th></tr></thead>
+        <tbody>{items.map(b => <tr key={b.id || b._id}>
+          <td data-label="Data">{formatDate(b.data)}</td><td data-label="Competenza">{b.mese_competenza || "Da attribuire"}</td>
+          <td data-label="Dipendente / beneficiario">{b.dipendente_nome || b.beneficiario || "Beneficiario da identificare"}{b.dipendente_nome && b.beneficiario && b.beneficiario !== b.dipendente_nome && <small style={{ display: "block" }}>Nella disposizione: {b.beneficiario}</small>}</td>
+          <td data-label="Causale">{b.causale || "Non presente nella fonte"}</td><td data-label="Categoria"><Badge variant={catBadge(b.categoria)}>{(b.categoria || "da classificare").replace(/_/g, " ").toLowerCase()}</Badge></td>
+          <td data-label="Importo"><b>{b.importo == null ? "Da verificare" : `€ ${eurFmt(b.importo)}`}</b></td>
+          <td data-label="Riscontro"><Badge variant={b.riscontro_bancario ? "success" : "warning"}>{b.riscontro_bancario ? "Riscontro conto presente" : "Addebito da verificare"}</Badge></td>
+        </tr>)}</tbody>
+      </table>
+    </div>}
+    {totale > limit && <div style={{ display: "flex", gap: 10, alignItems: "center", marginTop: 12 }}>
+      <button className="dc-btn" disabled={loading || offset === 0} onClick={() => setOffset(n => Math.max(0, n - limit))}>Precedenti</button>
+      <span>{offset + 1}–{Math.min(offset + limit, totale)} di {totale}</span>
+      <button className="dc-btn" disabled={loading || offset + limit >= totale} onClick={() => setOffset(n => n + limit)}>Successivi</button>
+    </div>}
+  </div>;
 }

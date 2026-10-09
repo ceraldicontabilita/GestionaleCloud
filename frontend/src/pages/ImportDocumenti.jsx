@@ -1,4 +1,5 @@
 import React, { useState, useCallback, useRef } from 'react';
+import { useLocation } from 'react-router-dom';
 import { toast } from 'sonner';
 import { COLORS, SHADOWS, BORDER_RADIUS } from '../lib/utils';
 import api from '../api';
@@ -138,6 +139,9 @@ export function statoArchivio(preview) {
 const useImportSession = createUseImportSession(React);
 
 export default function ImportDocumenti() {
+  const location = useLocation();
+  const ingresso = new URLSearchParams(location.search);
+  const tipoBanca = ingresso.get('origine') === 'hr-bonifici' && ['bonifici', 'estratti-conto'].includes(ingresso.get('documenti')) ? ingresso.get('documenti') : null;
   const confirm = useConfirm();
   const { setAnno } = useAnnoGlobale();
   const session = useImportSession('erp-documenti', { files: [], uploading: false, uploadProgress: { current: 0, total: 0, filename: '' }, results: [], previewComplete: false });
@@ -499,8 +503,17 @@ export default function ImportDocumenti() {
   ];
 
   return (
-    <PageLayout title="Importa documenti">
+    <PageLayout title={tipoBanca === "bonifici" ? "Importa bonifici" : tipoBanca ? "Importa estratti conto" : "Importa documenti"}>
       <div style={{ maxWidth: 900, margin: '0 auto' }}>
+        {tipoBanca && <Card style={{ marginBottom: 16 }}>
+          <p>{tipoBanca === 'bonifici' ? 'Carica le ricevute dei bonifici o gli elenchi bancari.' : 'Carica l’estratto conto PDF, Excel o CSV: saranno estratti i movimenti e individuati i bonifici.'} Controlla l’anteprima e conferma l’importazione.</p>
+          <p>Le disposizioni e gli addebiti restano distinti. Dopo l’importazione verifica il dipendente e la competenza nei bonifici da associare.</p>
+          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+            <a href="/hr/dipendenti/bonifici-banca">Torna ai bonifici HR</a>
+            <a href="/hr/dipendenti/bonifici-da-associare">Apri bonifici da associare</a>
+            <a href="/riconciliazione/movimenti-banca">Movimenti estratti dal conto</a>
+          </div>
+        </Card>}
         {/* Una domanda sola: da dove arriva il documento? Tre risposte, non
             otto bottoni di quattro colori. Il riquadro per trascinare i file
             e' l'unica azione piena: e' quella che si usa nove volte su dieci. */}
