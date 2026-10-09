@@ -53,24 +53,6 @@ def _match_key(s: Optional[str]) -> str:
     return _re.sub(r"[^A-Z0-9]", "", s.upper())
 
 
-def mese_competenza(data_iso: Optional[str], soglia_giorno: int = 5) -> Optional[str]:
-    """Mese di competenza di un bonifico: se emesso nei primi giorni del mese
-    (giorno <= soglia) si riferisce alla paga del mese PRECEDENTE.
-    Ritorna 'YYYY-MM' oppure None."""
-    if not data_iso or len(data_iso) < 10:
-        return None
-    try:
-        anno, mese, giorno = int(data_iso[:4]), int(data_iso[5:7]), int(data_iso[8:10])
-    except (ValueError, IndexError):
-        return None
-    if giorno <= soglia_giorno:
-        mese -= 1
-        if mese == 0:
-            mese = 12
-            anno -= 1
-    return f"{anno:04d}-{mese:02d}"
-
-
 async def _emit(event_type: str, payload: dict, db, source: str = "contabilita"):
     """Propaga un evento all'event-bus (handler partite/alert/audit già registrati)."""
     try:
@@ -446,22 +428,36 @@ async def lista_bonifici(
     search: Optional[str] = None,
     non_assegnati: Optional[bool] = None,
     limit: int = Query(300, le=2000),
+    offset: int = Query(0, ge=0),
 ):
     db = Database.get_db()
     q = {}
     if categoria:
-        q["categoria"] = categoria
+        q["categoria"] = {"$regex": "^" + _re.escape(categoria) + "$", "$options": "i"}
     if non_assegnati:
         q["$or"] = [{"fattura_id": None}, {"fattura_id": {"$exists": False}}]
     if search:
-        rx = {"$regex": search, "$options": "i"}
-        q.setdefault("$and", []).append({"$or": [{"beneficiario": rx}, {"causale": rx}]})
-    cursor = db["bonifici"].find(q).sort("data", -1).limit(limit)
+        rx = {"$regex": _re.escape(search), "$options": "i"}
+        dip_ids = [d.get("id") async for d in db.dipendenti.find({}, {"_id": 0})
+                   if _norm(search) in _norm(" ".join(filter(None, [d.get("cognome"), d.get("nome")])))
+                   or _norm(search) in _norm(d.get("nome_completo"))]
+        q.setdefault("$and", []).append({"$or": [{"beneficiario": rx}, {"dipendente_nome": rx},
+                                                   {"causale": rx}, {"dipendente_id": {"$in": dip_ids}}]})
+    totale = await db["bonifici"].count_documents(q)
+    cursor = db["bonifici"].find(q, {"pdf_data": 0, "file_data": 0}).sort("data", -1).skip(offset).limit(limit)
     items = await cursor.to_list(length=limit)
-    # Mese di competenza: bonifico nei primi giorni del mese = paga mese precedente
+    dip_ids = list({b["dipendente_id"] for b in items if b.get("dipendente_id")})
+    dip_map = {d["id"]: d async for d in db.dipendenti.find({"id": {"$in": dip_ids}}, {"_id": 0})} if dip_ids else {}
+    from app.constants.stati_associazione_bonifico import ha_riscontro_bancario
     for b in items:
-        b["mese_competenza"] = mese_competenza(b.get("data"))
-    return {"totale": len(items), "items": items}
+        dip = dip_map.get(b.get("dipendente_id")) or {}
+        b["dipendente_nome"] = dip.get("nome_completo") or " ".join(filter(None, [dip.get("cognome"), dip.get("nome")])) or b.get("dipendente_nome")
+        b["beneficiario"] = b.get("beneficiario") or b.get("dipendente_nome") or "Beneficiario da identificare"
+        b["id"] = b.get("id") or str(b.get("_id") or "")
+        b["mese_competenza"] = b.get("competenza") or b.get("mese_competenza")
+        # Nome e mese associati non equivalgono all'avvenuto addebito.
+        b["riscontro_bancario"] = ha_riscontro_bancario(b)
+    return {"totale": totale, "items": items, "offset": offset, "limit": limit}
 
 
 @router.post("/bonifici/{bonifico_id}/assegna")

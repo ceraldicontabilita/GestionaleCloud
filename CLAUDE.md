@@ -3561,6 +3561,26 @@ il foglio «Cedolini» dell'allegato con i pagamenti del mese successivo è una
 ricostruzione delle attribuzioni, non prova del netto retributivo.
 Un'autorizzazione di distinta non dimostra da sola l'addebito sul conto.
 
+### Bonifici HR e importazione bancaria
+
+La pagina Bonifici mostra il nome dell'anagrafica collegata al movimento,
+conservando separatamente il beneficiario originale quando differente.
+La competenza è quella registrata: non si deduce automaticamente dalla data
+del bonifico. Se manca resta «Da attribuire».
+I pulsanti «Importa bonifici» e «Importa estratto conto», disponibili anche
+nel menu Importa dell'Archivio paghe, aprono il flusso documentale ERP con
+anteprima e conferma. Non usano il parser dei cedolini e non introducono un
+secondo archivio bancario. La pagina consente il ritorno ai bonifici HR,
+alla coda da associare e ai movimenti estratti dal conto.
+
+### Missioni
+
+La pagina permette elenco, inserimento, modifica, approvazione e cancellazione
+delle missioni in attesa. Dipendente esistente, destinazione, scopo, date
+coerenti e rimborso non negativo sono verificati anche dal backend.
+Le missioni già approvate non sono modificabili o eliminabili dalla pagina.
+Gli errori di caricamento sono visibili e non diventano elenchi vuoti.
+
 ## Identità, rapporto e periodo
 
 - Leggere dal PDF datore di lavoro, nome, codice fiscale, matricola,
