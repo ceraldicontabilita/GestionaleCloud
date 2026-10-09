@@ -1,10 +1,13 @@
 """Coda Drive equa e scarti documentali riprodotti senza servizi esterni."""
 import ast
+from datetime import datetime, timezone
+import re
 from pathlib import Path
 import sys
 from types import ModuleType
 import unittest
 from unittest.mock import AsyncMock, Mock, patch
+from types import SimpleNamespace
 
 ROOT = Path(__file__).resolve().parents[1]
 for package in ('app', 'app.services'):
@@ -17,6 +20,7 @@ from app.services.drive_cartella_unica import seleziona_lotto
 from app.services.classificazione_estratti import route_da_testo, BANCA, MUTUO
 from app.services.estratto_conto_bnl_parser import leggi_parole_bnl, EstrattoBNLNonValido
 from app.services import drive_cartella_unica as drive
+from app.services.archivio_documenti_memoria import ArchivioDocumenti
 
 
 class DriveParserTests(unittest.TestCase):
@@ -65,6 +69,40 @@ class DriveParserTests(unittest.TestCase):
 
 
 class EmptyReconciliationTests(unittest.IsolatedAsyncioTestCase):
+    async def test_fattura_corta_non_riesamina_cro_e_numeri_diversi(self):
+        path = ROOT / 'app/routers/invoices/fatture_upload.py'
+        node = next(n for n in ast.parse(path.read_text()).body
+                    if isinstance(n, ast.AsyncFunctionDef)
+                    and n.name == 'riprocessa_estratto_dopo_import_fattura')
+        namespace = dict(datetime=datetime, timezone=timezone, re=re,
+                         normalizza_metodo_pagamento=lambda x: x,
+                         Collections=SimpleNamespace(INVOICES='invoices'))
+        future = ast.parse('from __future__ import annotations').body
+        exec(compile(ast.Module(body=future + [node], type_ignores=[]), str(path), 'exec'), namespace)
+        db = ArchivioDocumenti()
+        invoice = dict(id='invoice', invoice_number='41', total_amount=503.16, metodo_pagamento='banca')
+        await db['invoices'].insert_one(invoice)
+        rows = [('cro', 'CRO 50349041480003400IT', 123),
+                ('diversa', 'Saldo fattura 1410', 300),
+                ('cumulativo', 'Saldo fatture 41 e 42', 900),
+                ('prefisso', 'Saldo FT41', 600),
+                ('suffisso', 'Fattura 41/A', 600),
+                ('importo', 'Pagamento fornitore', 503.16)]
+        await db['estratto_conto_movimenti'].insert_many([
+            dict(id=i, tipo='uscita', riconciliato=False, descrizione=d, importo=a)
+            for i, d, a in rows])
+        supplier = ModuleType('app.services.fornitore_da_fattura_banca')
+        supplier.assegna_alla_fattura_arrivata = AsyncMock()
+        bank = ModuleType('app.services.riconciliazione_bancaria')
+        bank.riconcilia_movimenti_banca = AsyncMock(return_value={'totale_riconciliati': 0})
+        allocations = ModuleType('app.services.bank_payment_allocations')
+        allocations.reconcile_deterministic_invoice_allocations = AsyncMock(return_value={})
+        with patch.dict(sys.modules, {m.__name__: m for m in (supplier, bank, allocations)}):
+            result = await namespace[node.name](db, invoice)
+        self.assertEqual(set(result['movimento_ids']), {'cumulativo', 'prefisso', 'suffisso', 'importo'})
+        self.assertEqual(bank.riconcilia_movimenti_banca.await_args.kwargs['movimento_ids'], result['movimento_ids'])
+        self.assertEqual(invoice['ultima_scansione_estratto_conto_candidati'], 4)
+
     async def test_lista_vuota_non_rilegge_ne_modifica_lo_storico(self):
         # Esegue la funzione di produzione; gli altri motori sono irraggiungibili
         # se il chiamante ha gia' riconciliato tutti i movimenti del proprio lotto.

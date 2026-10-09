@@ -1237,7 +1237,12 @@ async def riprocessa_estratto_dopo_import_fattura(
             {"importo": {"$gte": -importo - 0.004, "$lte": -importo + 0.004}},
         ])
     if numero:
-        numero_regex = re.escape(numero)
+        # "41" dentro un CRO/IBAN o "1410" non e' la fattura 41. La
+        # ricerca per sottostringa faceva ripassare decine di operazioni
+        # estranee per ogni XML, fermando anche i PDF successivi in coda.
+        # Restano validi prefissi FT41, suffissi 41/A e bonifici cumulativi;
+        # il motore canonico verifica comunque identita' e importi.
+        numero_regex = rf"(?<!\d){re.escape(numero)}(?!\d)"
         alternative.extend([
             {"descrizione": {"$regex": numero_regex, "$options": "i"}},
             {"descrizione_originale": {"$regex": numero_regex, "$options": "i"}},
