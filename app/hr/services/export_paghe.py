@@ -46,6 +46,7 @@ def workbook_paghe(dati):
     rec = wb.create_sheet('Mesi riconciliati')
     rec.append(['Dipendente', 'Anno', 'Mese', 'Dovuto EUR', 'Pagamenti EUR', 'Residuo EUR', 'Fonte', 'Riferimenti'])
     keys = set()
+    cumulativi = set()
     for r in dati['righe']:
         key = (r.get('dipendente_id'), r.get('anno'), r.get('mese'))
         keys.add(key)
@@ -66,6 +67,12 @@ def workbook_paghe(dati):
             missing.append(ident + [r.get('busta'), 'Nessun PDF collegato al periodo; disponibilità da verificare. Il pagamento resta nel saldo.'])
         bonifici = r.get('bonifici') or []
         riferimenti = ', '.join(dict.fromkeys(str(b['riferimento']) for b in bonifici if b.get('riferimento')))
+        for p in r.get('pagamenti_copertura') or []:
+            rec.append(ident + [r.get('busta'), None, 0, p['nota'], p.get('cro')])
+            if p['id'] not in cumulativi:
+                cumulativi.add(p['id'])
+                pag.append([r.get('dipendente'), None, 'Più mensilità', p['data'], p['importo'],
+                            'Bonifico cumulativo', p.get('cro'), 'Confermato dal titolare', 'Sì', p.get('causale')])
         for b in bonifici:
             pag.append(ident + [b.get('data'), b.get('importo'), 'Bonifico', b.get('riferimento'), r.get('fonte'),
                                'Sì' if r.get('riconciliato') else 'No', b.get('causale')])

@@ -448,10 +448,14 @@ def componi_movimenti(*, paghe: Iterable[Dict[str, Any]], esiti: Iterable[Dict[s
             continue
         causale = str(e.get("causale") or "").strip()
         descr = f"Bonifico per {_nome_periodo(a, m)}" if comp else "Bonifico — competenza da attribuire"
+        from app.services.pagamenti_mensilita import periodi_saldati
+        coperti = periodi_saldati(e)
+        if coperti:
+            descr = "Stipendi pagati: " + ", ".join(_nome_periodo(a, m) for a, m in coperti)
         registro.append(_mov(data, "bonifico", descr + (f" — {causale[:80]}" if causale else ""),
                              avere=imp, competenza=comp, fonte="pagamenti_esiti",
                              link={"key": e.get("key"), "anno": a, "mese": m},
-                             avviso=None if comp else "Già scalato dal saldo; mese da attribuire"))
+                             avviso=None if comp or coperti else "Già scalato dal saldo; mese da attribuire"))
 
     # Una coda con identità certa e periodo assente è già un pagamento al
     # dipendente. Gli abbinamenti soltanto proposti restano esclusi. La stessa
@@ -993,7 +997,7 @@ def acconti_registro_del_mese(acconti: Iterable[Dict[str, Any]], anno: int, mese
 
 
 async def registra_acconto_da_coda(db, in_coda: Dict[str, Any], dip: Dict[str, Any],
-                                   anno: int, mese: int) -> Dict[str, Any]:
+                                   anno: Optional[int], mese: Optional[int]) -> Dict[str, Any]:
     """Un bonifico della coda che e' un acconto: va nel registro unico degli
     acconti (``acconti_dipendenti``), mai in ``pagamenti_esiti`` — la busta del
     mese lo recupera, e sommarlo li' lo conterebbe due volte."""
@@ -1010,12 +1014,15 @@ async def registra_acconto_da_coda(db, in_coda: Dict[str, Any], dip: Dict[str, A
         "tipo": "stipendio", "importo": float(imp), "data": data,
         "anno": int(data[:4]), "mese": int(data[5:7]), "note": in_coda.get("causale") or "",
         "natura_acconto": "su_futuro", "tipo_bonifico": "standard",
-        "scalato_su_anno_mese": "%04d-%02d" % (int(anno), int(mese)),
+        "scalato_su_anno_mese": "%04d-%02d" % (int(anno), int(mese)) if anno and mese else None,
         "stato": "registrato", "movimento_bancario_id": None, "riconciliato_il": None,
         "cedolino_id": None, "importo_scalato_effettivo": None,
         "source": "bonifici_da_associare", "bonifico_da_associare_id": in_coda["id"],
         "created_at": ora, "updated_at": ora,
     }
+    for key in ("rif_banca", "cro", "hash", "gestionale_movimento_id", "gestionale_transfer_id"):
+        if in_coda.get(key):
+            acconto[key] = in_coda[key]
     await db.acconti_dipendenti.insert_one(dict(acconto))
     return acconto
 

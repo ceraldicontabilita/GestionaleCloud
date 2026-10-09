@@ -116,12 +116,18 @@ async def _sincronizza(db, anno: int = None) -> Dict[str, Any]:
     # sola per (dipendente_id, anno, mese), zero query aggiuntive nel ciclo.
     esiti_idx: Dict[tuple, float] = {}
     prove_idx: Dict[tuple, list] = {}
+    from app.services.pagamenti_mensilita import indice_coperture, stato_copertura, periodi_saldati
+    tutte_prove = []
     async for e in db["pagamenti_esiti"].find({}, {"_id": 0, "pdf_data": 0, "file_data": 0}):
+        tutte_prove.append(e)
+        if periodi_saldati(e):
+            continue
         k = (e.get("dipendente_id"), e.get("anno"), e.get("mese"))
         esiti_idx[k] = round((esiti_idx.get(k) or 0) + (_num(e.get("importo")) or 0), 2)
         prove_idx.setdefault(k, []).append({campo: e.get(campo) for campo in (
             "associazione_certa", "origine", "gestionale_movimento_id")})
 
+    coperture = indice_coperture(tutte_prove)
     # Prefetch di paghe_mensili in blocco: l'adattatore Supabase non ha indici,
     # un find_one per cedolino (fino a 3000) su una tabella che cresce ad ogni
     # giro dentro lo stesso ciclo e' un O(N^2) che porta la sincronizzazione a
@@ -183,6 +189,7 @@ async def _sincronizza(db, anno: int = None) -> Dict[str, Any]:
             "bonifico_ricevuto": bonifico_importo > 0 and bool(prove) and all(ha_riscontro_bancario(e) for e in prove),
             "bonifico_riconciliato_auto": riconciliato_auto,
             "bonifico_importo": bonifico_importo or None,
+            "pagamenti_copertura": [],
             "bonifico_data": bonifico_data,
             "acconti": esistente.get("acconti", []) if esistente else [],
             "giorni_lavorati": (c.get("periodo") or {}).get("giorni_lavorati") or c.get("giorni_lavorati"),
@@ -198,6 +205,8 @@ async def _sincronizza(db, anno: int = None) -> Dict[str, Any]:
                           + float(acconti_registro_del_mese(acconti_per_dip.get(dip, []), anno_c, mese_c, in_busta)))
         doc.update(_stato_e_saldo(importo_dovuto, round(bonifico_importo + acconti_pagati, 2),
                                  bonifico=bonifico_importo, riconciliato=riconciliato))
+        if prove := coperture.get((dip, anno_c, mese_c)):
+            doc.update(stato_copertura(prove))
         doc = {k: v for k, v in doc.items() if v is not None or k in ("acconti",)}
 
         if esistente and all(esistente.get(k) == v for k, v in doc.items() if k != "updated_at"):

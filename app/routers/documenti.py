@@ -1696,6 +1696,13 @@ def detect_document_type(filename: str, file_content: bytes) -> str:
         return "nota_rettifica_inps"
     if _e_cedolino_zucchetti(marker_pdf_text):
         return "cedolino"
+    # La pagina presenze viaggia spesso come «Busta paga ... (1).pdf».
+    # Va allo stesso motore, che restituisce «presenze» senza creare buste
+    # e senza trasformare un documento riconosciuto in un errore d'import.
+    if lower.endswith(".pdf") and all(marker in marker_pdf_text for marker in (
+        "AUTORIZZAZIONEINAILN301DEL15012009", "GIUSTIFICATIVI", "TIMBRATURE",
+    )):
+        return "cedolino"
     # Sentenza, precetto, relata e attestazione di una causa: prova del
     # perche' di bonifici senza fattura (spese di lite), mai un pagamento.
     from app.services.atti_giudiziari import tipo_atto

@@ -583,6 +583,32 @@ def _parse_zucchetti_worked_layout(page_words) -> Dict[str, float]:
     return {}
 
 
+def _parse_zucchetti_totals_layout(page_words) -> Dict[str, float]:
+    """Totali nel riquadro Zucchetti nuovo, sulla riga dell'etichetta.
+
+    Il testo PDF può mettere prima due importi del corpo o l'IRPEF: non
+    sono il totale delle competenze/trattenute. Una cella assente o con
+    più valori resta sconosciuta, senza ricostruirla dal netto.
+    """
+    labels = {"TOTALECOMPETENZE": "lordo", "TOTALETRATTENUTE": "trattenute"}
+    values = {}
+    for words in page_words:
+        for label in words:
+            name = re.sub(r"\s+", "", str(label[4]).replace("s", "")).upper()
+            field = labels.get(name)
+            if not field:
+                continue
+            candidates = {
+                parse_importo(str(w[4])) for w in words
+                if re.fullmatch(r"[-+]?\d[\d.]*,\d{2}", str(w[4]))
+                and 0 < float(w[0]) - float(label[2]) < 120
+                and abs((float(w[1]) + float(w[3]) - float(label[1]) - float(label[3])) / 2) <= 3
+            }
+            if len(candidates) == 1:
+                values[field] = candidates.pop()
+    return values
+
+
 def _parse_teamsystem_layout(page_words) -> Dict[str, float]:
     """Legge i totali TeamSystem dalle celle, non dall'ordine del testo.
 
@@ -1180,6 +1206,13 @@ def parse_busta_paga_multi(pdf_path: str) -> Dict[str, Any]:
         _applica_cella_netto(result, page_words[cedolino_page_idx:])
     elif template == "zucchetti_new":
         result = parse_template_zucchetti_new(cedolino_text)
+        # Solo le celle dei totali: mai una coppia casuale di cifre del corpo.
+        for field in ("lordo", "competenze", "trattenute"):
+            result["totali"].pop(field, None)
+        layout = _parse_zucchetti_totals_layout(page_words[cedolino_page_idx:])
+        result["totali"].update(layout)
+        if "lordo" in layout:
+            result["totali"]["competenze"] = layout["lordo"]
         result["periodo"].update(_parse_zucchetti_worked_layout(page_words[cedolino_page_idx:]))
         _applica_cella_netto(result, page_words[cedolino_page_idx:])
     elif template == "teamsystem":

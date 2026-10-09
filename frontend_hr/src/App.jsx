@@ -10,6 +10,7 @@ import { isIntentionalPaintDrag } from "./presenzeSelection";
 import { buildPresenzePrintHtml } from "./presenzePrint";
 import { buildPresenzeCsv } from "./presenzeCsv";
 import GrigliaPaghe from "./GrigliaPaghe";
+import { sceltaIniziale, sceltaCandidato, propostaIntatta } from "./sceltaBonifico";
 import MissioniPage from "./MissioniPage";
 import { normalizzaEsitoImportPaghe } from "./esitoImportPaghe";
 import { 
@@ -4364,7 +4365,7 @@ function BonificiDaAssociarePage({ dipendenti }) {
   // Che cosa e' il bonifico: decide dove finisce (busta, acconti, conciliazione).
   const TIPI = [
     { id: "stipendio", label: "Stipendio" },
-    { id: "acconto", label: "Acconto" },
+    { id: "acconto", label: "Acconto / pagamento da attribuire" },
     { id: "conciliazione", label: "Conciliazione" },
     { id: "bonus", label: "Bonus conciliazione" },
   ];
@@ -4383,15 +4384,10 @@ function BonificiDaAssociarePage({ dipendenti }) {
     try {
       const r = await axios.get(`${API}/bonifici-da-associare`);
       setRighe(r.data || []);
-      // anno e mese partono da quelli della data del bonifico: si possono cambiare
+      // La competenza parte solo da un periodo documentato, mai dalla data.
       const iniziale = {};
       for (const b of (r.data || [])) {
-        const [a, m] = (b.data || "").split("-");
-        // una proposta (notifica «Info Bonifico» della banca, causale) precompila le scelte
-        iniziale[b.id] = { dipendente_id: b.proposta?.dipendente_id || "", tipo: b.proposta?.tipo || "stipendio",
-                           conciliazione_id: "",
-                           anno: b.proposta?.anno || (a ? Number(a) : new Date().getFullYear()),
-                           mese: b.proposta?.mese || (m ? Number(m) : new Date().getMonth() + 1) };
+        iniziale[b.id] = sceltaIniziale(b);
       }
       setScelte(iniziale);
     } catch (e) { console.error(e); setRighe([]); }
@@ -4420,13 +4416,17 @@ function BonificiDaAssociarePage({ dipendenti }) {
   const associa = async (id, { silenzioso = false, scelta = null } = {}) => {
     const sc = scelta || scelte[id];
     if (!sc?.dipendente_id) { toast("Scegli prima il dipendente", "err"); return false; }
+    if (Boolean(sc.mese) !== Boolean(sc.anno) || (sc.tipo === "stipendio" && !sc.mese)) {
+      toast("Indica mese e anno del cedolino. Se non li conosci, scegli Acconto / pagamento da attribuire e lascia entrambi vuoti.", "err");
+      return false;
+    }
     if ((sc.tipo === "conciliazione" || sc.tipo === "bonus") && !sc.conciliazione_id) {
       toast("Scegli la conciliazione del dipendente", "err"); return false;
     }
     setBusy(id);
     try {
       await axios.post(`${API}/bonifici-da-associare/${id}/associa`, {
-        dipendente_id: sc.dipendente_id, tipo: sc.tipo, mese: sc.mese, anno: sc.anno,
+        dipendente_id: sc.dipendente_id, tipo: sc.tipo, mese: sc.mese || null, anno: sc.anno || null,
         conciliazione_id: sc.conciliazione_id || undefined,
       });
       const dove = { stipendio: "nella busta del mese", acconto: "fra gli acconti del dipendente",
@@ -4447,8 +4447,7 @@ function BonificiDaAssociarePage({ dipendenti }) {
   // chiama lo stesso endpoint `associa` con gli id del candidato (mai testo libero).
   const confermaCandidato = async () => {
     const { b, c } = confermaCand;
-    const sc = { ...(scelte[b.id] || {}), dipendente_id: c.dipendente_id, tipo: "stipendio", conciliazione_id: "",
-                 ...(c.mese && c.anno ? { mese: c.mese, anno: c.anno } : {}) };
+    const sc = sceltaCandidato(b, scelte[b.id], c);
     setScelte(s => ({ ...s, [b.id]: sc }));
     const fatta = await associa(b.id, { scelta: sc });
     if (fatta) setConfermaCand(null);
@@ -4458,15 +4457,13 @@ function BonificiDaAssociarePage({ dipendenti }) {
   // cambiati a mano) si confermano insieme, una alla volta con lo stesso
   // endpoint della conferma singola: nessuna strada parallela.
   const proposteIntatte = righe.filter(b => {
-    const sc = scelte[b.id] || {};
-    return b.proposta?.dipendente_id && sc.dipendente_id === b.proposta.dipendente_id
-      && (sc.tipo === "stipendio" || sc.tipo === "acconto");
+    return propostaIntatta(b, scelte[b.id]);
   });
   const [avanzamento, setAvanzamento] = useState(null);
   const confermaProposte = async () => {
     const elenco = proposteIntatte.map(b => b.id);
     if (!elenco.length) return;
-    if (!window.confirm(`Confermo ${elenco.length} proposte? Ognuna diventa il pagamento del dipendente proposto, nel mese del bonifico. Quelle che hai cambiato a mano restano da confermare una per una.`)) return;
+    if (!window.confirm(`Confermo ${elenco.length} proposte con il tipo e la competenza indicati? Gli acconti senza competenza riducono il saldo alla data del pagamento, senza creare uno stipendio. Le scelte modificate restano da confermare una per una.`)) return;
     let fatte = 0;
     for (const [i, id] of elenco.entries()) {
       setAvanzamento(`${i + 1} di ${elenco.length}`);
@@ -4515,6 +4512,7 @@ function BonificiDaAssociarePage({ dipendenti }) {
         in causale) e, se il bonifico può riguardare più persone, un avviso col motivo. Toccare un candidato apre la
         conferma: niente si assegna da solo. Confronta il bonifico con l'estratto dal <b>CRO</b> e dal <b>riferimento banca</b>.
         Il tipo (stipendio, acconto, conciliazione, bonus) e il periodo si scelgono dalle tendine.
+        Se la competenza non è nota, lascia mese e anno vuoti: l’acconto riduce comunque il saldo alla data del pagamento.
       </div>
 
       {loading ? <div className="dc-card" style={{ padding: 20 }}>Carico…</div> :
@@ -4599,7 +4597,7 @@ function BonificiDaAssociarePage({ dipendenti }) {
                   </td>
                   <td data-label="Tipo">
                     <div style={{ display: "flex", gap: 4, flexWrap: "wrap", justifyContent: "flex-end" }}>
-                      <select className="dc-input" aria-label={`Che cosa paga il bonifico di € ${eur(b.importo)}`} value={sc.tipo || "stipendio"} onChange={e => setScelta(b.id, "tipo", e.target.value)} style={{ minWidth: 130, minHeight: 44 }}>
+                      <select className="dc-input" aria-label={`Che cosa paga il bonifico di € ${eur(b.importo)}`} value={sc.tipo || "acconto"} onChange={e => setScelta(b.id, "tipo", e.target.value)} style={{ minWidth: 130, minHeight: 44 }}>
                         {TIPI.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}
                       </select>
                       {conConc && (
@@ -4612,11 +4610,13 @@ function BonificiDaAssociarePage({ dipendenti }) {
                   </td>
                   <td data-label="Periodo">
                     <div style={{ display: "flex", gap: 4 }}>
-                      <select className="dc-input" aria-label={`Mese di competenza del bonifico di € ${eur(b.importo)}`} value={sc.mese || 1} onChange={e => setScelta(b.id, "mese", Number(e.target.value))} style={{ width: 110, minHeight: 44 }}>
+                      <select className="dc-input" aria-label={`Mese di competenza del bonifico di € ${eur(b.importo)}`} value={sc.mese || ""} onChange={e => setScelta(b.id, "mese", e.target.value ? Number(e.target.value) : "")} style={{ width: 130, minHeight: 44 }}>
+                        <option value="">Da attribuire</option>
                         {mesi.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
+                        <option value={13}>13ª</option><option value={14}>14ª</option>
                       </select>
-                      <input type="number" className="dc-input" aria-label={`Anno di competenza del bonifico di € ${eur(b.importo)}`} value={sc.anno || new Date().getFullYear()}
-                        onChange={e => setScelta(b.id, "anno", Number(e.target.value))} style={{ width: 80, minHeight: 44 }} />
+                      <input type="number" className="dc-input" placeholder="Anno" aria-label={`Anno di competenza del bonifico di € ${eur(b.importo)}`} value={sc.anno || ""}
+                        onChange={e => setScelta(b.id, "anno", e.target.value ? Number(e.target.value) : "")} style={{ width: 80, minHeight: 44 }} />
                     </div>
                   </td>
                   <td data-label="Azioni">
@@ -4641,9 +4641,12 @@ function BonificiDaAssociarePage({ dipendenti }) {
           <div className="dc-modal-body">
             <p style={{ marginTop: 0 }}>
               Il bonifico del <b>{confermaCand.b.data ? confermaCand.b.data.split("-").reverse().join("/") : "?"}</b> di{" "}
-              <b>€ {eur(confermaCand.b.importo)}</b> diventa lo stipendio di <b>{confermaCand.c.nome}</b>
-              {periodoCandidato(confermaCand.c) ? <> per la busta <b>{periodoCandidato(confermaCand.c)}</b></> : <> nel mese del bonifico</>}.
+              <b>€ {eur(confermaCand.b.importo)}</b> viene associato a <b>{confermaCand.c.nome}</b> come{' '}
+              <b>{TIPI.find(t => t.id === scelte[confermaCand.b.id]?.tipo)?.label || "Acconto / pagamento da attribuire"}</b>.
             </p>
+            <p>Competenza: {scelte[confermaCand.b.id]?.mese && scelte[confermaCand.b.id]?.anno
+              ? `${scelte[confermaCand.b.id].mese}/${scelte[confermaCand.b.id].anno}`
+              : "da attribuire"}. Il pagamento riduce il saldo del dipendente alla sua data; non modifica l’importo del cedolino.</p>
             {confermaCand.c.prova_testo && <p className="dc-muted" style={{ fontSize: 13 }}>Prova: {confermaCand.c.prova_testo}.</p>}
             {confermaCand.c.importo_residuo_cents != null && (
               <p className="dc-muted" style={{ fontSize: 13 }}>Residuo della busta: € {eurDaCentesimi(confermaCand.c.importo_residuo_cents)}.</p>
@@ -5617,6 +5620,17 @@ function PagheBonificiPage({ dipendenti = [] }) {
     finally { setExportBusy(false); }
   };
 
+  const apriCopertura = async (prova) => {
+    const finestra = window.open("", "_blank");
+    if (finestra) finestra.opener = null;
+    try {
+      const r = await axios.get(`${API}/bonifici-da-associare/${encodeURIComponent(prova.bonifico_da_associare_id)}/pdf`, { responseType: "blob" });
+      const url = URL.createObjectURL(r.data);
+      if (finestra) finestra.location = url;
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
+    } catch { finestra?.close(); toast("PDF del bonifico non disponibile", "err"); }
+  };
+
   const apriCedolino = async (riga, { scarica = false } = {}) => {
     if (!riga?.cedolino_id) return;
     const chiaveBusy = `cedolino_${keyOf(riga)}`;
@@ -5843,6 +5857,7 @@ function PagheBonificiPage({ dipendenti = [] }) {
   const STATI = {
     vuoto: { label: "Nessun importo da pagare", variant: "default" },
     pagato: { label: "✓ Pagato", variant: "success" },
+    pagato_documentato: { label: "✓ Pagato con bonifico", variant: "success" },
     parziale: { label: "Parziale", variant: "warning" },
     da_verificare: { label: "Da verificare", variant: "warning" },
     da_pagare: { label: "Da pagare", variant: "danger" },
@@ -6175,7 +6190,12 @@ function PagheBonificiPage({ dipendenti = [] }) {
                       <td style={{ ...td, textAlign: "right", color: r.saldo > 0 ? "#b04a3a" : "#3d8168" }}>
                         {r.saldo == null ? <span title="Saldo sconosciuto: la busta non è ancora arrivata">—</span> : r.saldo !== 0 ? `€ ${eur(r.saldo)}` : "✓"}
                       </td>
-                      <td style={td}><Badge variant={stInfo.variant}>{stInfo.label}</Badge></td>
+                      <td style={td}><Badge variant={stInfo.variant}>{stInfo.label}</Badge>
+                        {r.pagamenti_copertura?.map(p => <div key={p.id} style={{ fontSize: 12, marginTop: 4 }}>
+                          {p.nota}<br />Totale bonifico € {eur(p.importo)} per più mensilità
+                          {p.bonifico_da_associare_id && <button className="dc-btn" onClick={() => apriCopertura(p)}>Apri bonifico</button>}
+                        </div>)}
+                      </td>
                       <td style={td}>
                         {r.riconciliato
                           ? <span style={{ display: "inline-flex", alignItems: "center", gap: 4, color: "#234d3d", fontWeight: 700, fontSize: 12 }}><CheckCircle2 size={14} /> {r.riconciliato_auto ? "Certa da riferimento" : "Confermata"}</span>
