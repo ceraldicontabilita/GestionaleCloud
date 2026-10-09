@@ -5594,7 +5594,21 @@ Il BNL verifica 36 movimenti e saldo 640,71 + 7.345,00 - 6.694,79 =
 1.290,92 EUR; il piano di ammortamento autentico resta classificato mutuo.
 Non tutti i formati dei tre ZIP sono gia' supportati: carte BNL, alcuni
 export storici e documenti accessori richiedono ancora verifica dedicata.
-Queste ultime correzioni restano locali fino alla verifica del nuovo deploy.
+PR #1183 live su Render dalle 09:06 UTC, commit `ff7f4587`; health
+Supabase verificato. Primo lotto online 09:08-09:13: 50 file in 287,4 s,
+con 25 PDF e 25 XML; 23 documenti acquisiti, un arretrato e 26 segnalazioni.
+Di queste, 25 sono fatture 2026 escluse dall'anno automatico 2025 scelto
+alle 08:20; l'altra e' un regolamento aziendale preso per cedolino.
+Il riconoscimento di questo documento amministrativo resta da correggere.
+
+Correzione successiva del rinvio per anno: i corpi XML non importati
+conservano i propri anni nel registro e vanno in ARRETRATO, anche negli
+XML con piu' fatture parzialmente importati. Cambiando anno, ritornano
+in coda senza duplicare le fatture gia' presenti. Anche i vecchi falsi
+errori con l'anno documentato nel messaggio vengono ripresi o rinviati.
+Recupero limitato a 25 spostamenti per lotto per non fermare i nuovi PDF;
+62 test di regressione superati. Questa seconda correzione e' locale
+fino alla verifica del relativo deploy.
 
 08/10/2026: recupero acconto collegato al dovuto di Archivio paghe, posizione
 dipendente ed export. Il netto PDF resta distinto: Dias marzo 2023 stampa

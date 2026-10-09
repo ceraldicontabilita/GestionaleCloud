@@ -4,6 +4,7 @@ from pathlib import Path
 import sys
 from types import ModuleType
 import unittest
+from unittest.mock import AsyncMock, Mock, patch
 
 ROOT = Path(__file__).resolve().parents[1]
 for package in ('app', 'app.services'):
@@ -15,6 +16,7 @@ for package in ('app', 'app.services'):
 from app.services.drive_cartella_unica import seleziona_lotto
 from app.services.classificazione_estratti import route_da_testo, BANCA, MUTUO
 from app.services.estratto_conto_bnl_parser import leggi_parole_bnl, EstrattoBNLNonValido
+from app.services import drive_cartella_unica as drive
 
 
 class DriveParserTests(unittest.TestCase):
@@ -78,6 +80,52 @@ class EmptyReconciliationTests(unittest.IsolatedAsyncioTestCase):
                 raise AssertionError('Nessuna lettura del database per un lotto vuoto')
         result = await namespace[node.name](NoDatabaseRead(), movement_ids=[])
         self.assertEqual((result['esaminati'], result['allocati']), (0, 0))
+
+
+class DeferredYearTests(unittest.IsolatedAsyncioTestCase):
+    def test_anno_diverso_non_e_errore_anche_se_xml_parzialmente_importato(self):
+        for success, imported in [(False, 0), (True, 1)]:
+            destination, message = drive.esito_del_risultato(dict(
+                success=success, imported=imported, skipped_altro_anno=1,
+                anni_in_attesa=[2026], anno_import_attivo=2025))
+            self.assertEqual(destination, drive.ARRETRATO)
+            self.assertIn('2026', message)
+        self.assertEqual(drive.esito_del_risultato(dict(success=False, message='XML corrotto')),
+                         (drive.ERRORI, 'XML corrotto'))
+
+    async def test_vecchio_scarto_rinviato_e_ripreso_solo_per_anno_selezionato(self):
+        row = dict(id='originale', cartella=drive.ERRORI, tipo='fattura',
+                   motivo="Fattura del 2026: l'anno attivo e' il 2025, non entra nel gestionale e l'originale resta su Drive")
+        db = Mock()
+        collection = db.__getitem__ = Mock(return_value=Mock())
+        collection.return_value.find.return_value.to_list = AsyncMock(return_value=[row])
+        folders = {key: key for key in (drive.ERRORI, drive.ARRETRATO, drive.INBOX)}
+        with patch.object(drive, '_sposta') as move, patch.object(drive, '_registra', new_callable=AsyncMock) as record:
+            self.assertEqual(await drive.rimetti_in_coda_buste_gia_presenti(
+                db, None, folders, anno_attivo=2025), 1)
+            fields = record.await_args.kwargs
+            self.assertEqual((fields['esito'], fields['cartella'], fields['anni_in_attesa']),
+                             ('arretrato', drive.ARRETRATO, [2026]))
+            row.update(fields)
+            move.reset_mock(); record.reset_mock()
+            self.assertEqual(await drive.rimetti_in_coda_buste_gia_presenti(
+                db, None, folders, anno_attivo=2025), 0)
+            move.assert_not_called(); record.assert_not_awaited()
+            self.assertEqual(await drive.rimetti_in_coda_buste_gia_presenti(
+                db, None, folders, anno_attivo=2026), 1)
+            self.assertEqual(record.await_args.kwargs['cartella'], drive.INBOX)
+            self.assertEqual(record.await_args.kwargs['esito'], 'rimesso_in_coda')
+
+    async def test_recupero_storico_limitato_per_non_bloccare_i_pdf_nuovi(self):
+        rows = [dict(id=str(i), cartella=drive.ARRETRATO, anni_in_attesa=[2026]) for i in range(100)]
+        db = Mock()
+        db.__getitem__ = Mock(return_value=Mock())
+        db.__getitem__.return_value.find.return_value.to_list = AsyncMock(return_value=rows)
+        folders = {key: key for key in (drive.ERRORI, drive.ARRETRATO, drive.INBOX)}
+        with patch.object(drive, '_sposta') as move, patch.object(drive, '_registra', new_callable=AsyncMock):
+            self.assertEqual(await drive.rimetti_in_coda_buste_gia_presenti(
+                db, None, folders, limite=25, anno_attivo=2026), 25)
+            self.assertEqual(move.call_count, 25)
 
 
 if __name__ == '__main__':
