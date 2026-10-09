@@ -1,3 +1,4 @@
+import RipartizioneSalari from '../../../frontend_shared/RipartizioneSalari';
 import React, { useState, useEffect, useRef } from 'react';
 import { Check, X, Trash2 } from 'lucide-react';
 import { useLocation } from 'react-router-dom';
@@ -133,15 +134,11 @@ export default function ArchivioBonifici() {
   // Il PDF del singolo bonifico: prima si scaricava solo lo ZIP dell'anno.
   const [bonificoPdf, setBonificoPdf] = useState(null);
   const [noteText, setNoteText] = useState('');
-  const [associaDropdown, setAssociaDropdown] = useState(null);
-  const [operazioniCompatibili, setOperazioniCompatibili] = useState([]);
-  const [loadingOperazioni, setLoadingOperazioni] = useState(false);
+  const [ripartizioneId, setRipartizioneId] = useState(null);
   const [fattureCompatibili, setFattureCompatibili] = useState([]);
   const [associaFatturaDropdown, setAssociaFatturaDropdown] = useState(null);
   const [loadingFatture, setLoadingFatture] = useState(false);
   const [fatturaView, setFatturaView] = useState(null);
-  const [dipendenteIbanMatch, setDipendenteIbanMatch] = useState(null);
-  const [salaryBlockReason, setSalaryBlockReason] = useState('');
 
   const location = useLocation();
 
@@ -179,11 +176,8 @@ export default function ArchivioBonifici() {
     const handleClickOutside = event => {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
         // Chiudi tutti i dropdown
-        setAssociaDropdown(null);
         setAssociaFatturaDropdown(null);
-        setOperazioniCompatibili([]);
         setFattureCompatibili([]);
-        setSalaryBlockReason('');
       }
     };
 
@@ -376,61 +370,6 @@ export default function ArchivioBonifici() {
     }
   };
 
-  // Carica operazioni salari compatibili per associazione
-  const loadOperazioniCompatibili = async bonifico_id => {
-    setLoadingOperazioni(true);
-    setDipendenteIbanMatch(null);
-    setSalaryBlockReason('');
-    try {
-      const res = await api.get(`/api/archivio-bonifici/operazioni-salari/${bonifico_id}`);
-      setOperazioniCompatibili(res.data.operazioni_compatibili || []);
-      setSalaryBlockReason(res.data.motivo_blocco || '');
-      // Salva info dipendente trovato per IBAN
-      if (res.data.dipendente_iban_match) {
-        setDipendenteIbanMatch(res.data.dipendente_iban_match);
-      }
-    } catch (error) {
-      console.error('Errore caricamento operazioni:', error);
-      setOperazioniCompatibili([]);
-      setSalaryBlockReason(error.response?.data?.detail || 'Periodi salario non disponibili');
-    }
-    setLoadingOperazioni(false);
-  };
-
-  // Toggle dropdown associazione SALARI
-  const toggleAssociaDropdown = bonifico_id => {
-    // Chiudi dropdown fatture se aperto
-    setAssociaFatturaDropdown(null);
-    setFattureCompatibili([]);
-
-    if (associaDropdown === bonifico_id) {
-      setAssociaDropdown(null);
-      setOperazioniCompatibili([]);
-      setDipendenteIbanMatch(null);
-      setSalaryBlockReason('');
-    } else {
-      setAssociaDropdown(bonifico_id);
-      loadOperazioniCompatibili(bonifico_id);
-    }
-  };
-
-  // Associa bonifico a operazione salari
-  const handleAssocia = async (bonifico_id, operazione_id) => {
-    try {
-      await api.post(
-        `/api/archivio-bonifici/associa-salario?bonifico_id=${bonifico_id}&operazione_id=${operazione_id}`
-      );
-      setAssociaDropdown(null);
-      setOperazioniCompatibili([]);
-      toast.success('Salario associato');
-      loadTransfers();
-    } catch (error) {
-      toast.error('Associazione non riuscita', {
-        description: error.response?.data?.detail || error.message,
-      });
-    }
-  };
-
   // Disassocia bonifico da salario (DOPPIA CONFERMA)
   const handleDisassocia = async (bonifico_id, dipendente_nome) => {
     const confirmed = await confirm({
@@ -468,8 +407,6 @@ export default function ArchivioBonifici() {
 
   const toggleAssociaFatturaDropdown = bonifico_id => {
     // Chiudi dropdown salari se aperto
-    setAssociaDropdown(null);
-    setOperazioniCompatibili([]);
 
     if (associaFatturaDropdown === bonifico_id) {
       setAssociaFatturaDropdown(null);
@@ -538,6 +475,9 @@ export default function ArchivioBonifici() {
 
   return (
     <div style={{ maxWidth: 1400, margin: '0 auto', padding: '16px' }} ref={dropdownRef}>
+      {ripartizioneId && <RipartizioneSalari key={ripartizioneId}
+        request={async payload => (await api.post(`/api/archivio-bonifici/ripartizione-salari/${ripartizioneId}`, payload)).data}
+        onClose={() => setRipartizioneId(null)} onSaved={() => { setRipartizioneId(null); toast.success('Pagamento ripartito sui cedolini'); loadTransfers(); }} />}
       {/* Action bar senza titolo duplicato */}
       {/* Riepilogo compatto: una riga di numeri e le tre azioni, la lista resta in vista */}
       <div
@@ -976,11 +916,11 @@ export default function ArchivioBonifici() {
                       ) : (
                         <div>
                           <button
-                            onClick={() => toggleAssociaDropdown(t.id)}
+                            onClick={() => setRipartizioneId(t.id)}
                             style={{
                               padding: '4px 10px',
-                              background: associaDropdown === t.id ? '#c15f3c' : '#f2f0e9',
-                              color: associaDropdown === t.id ? 'white' : '#5f5c55',
+                              background: '#f2f0e9',
+                              color: '#5f5c55',
                               border: 'none',
                               borderRadius: 6,
                               cursor: 'pointer',
@@ -989,135 +929,9 @@ export default function ArchivioBonifici() {
                             }}
                             data-testid={`btn-associa-${t.id}`}
                           >
-                            {associaDropdown === t.id ? 'Chiudi' : 'Associa stipendio'}
+                            Ripartisci sui cedolini
                           </button>
-                          {/* Dropdown operazioni */}
-                          {associaDropdown === t.id && (
-                            <div
-                              style={{
-                                position: 'absolute',
-                                top: '100%',
-                                left: 0,
-                                zIndex: 100,
-                                background: 'white',
-                                border: '1px solid #e6e3d9',
-                                borderRadius: 8,
-                                boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
-                                minWidth: 300,
-                                maxHeight: 250,
-                                overflowY: 'auto',
-                              }}
-                            >
-                              {/* Identita dipendente verificata prima di mostrare i periodi */}
-                              {dipendenteIbanMatch && !loadingOperazioni && (
-                                <div
-                                  style={{
-                                    background: '#ecfdf5',
-                                    borderBottom: '2px solid #16a34a',
-                                    padding: '8px 12px',
-                                    fontSize: 10,
-                                  }}
-                                >
-                                  <div style={{ fontWeight: 600, color: '#16a34a' }}>
-                                    Dipendente riconosciuto
-                                  </div>
-                                  <div style={{ color: '#166534', marginTop: 2 }}>
-                                    Dipendente: <strong>{dipendenteIbanMatch.nome_display}</strong>
-                                  </div>
-                                </div>
-                              )}
-                              {loadingOperazioni ? (
-                                <div style={{ padding: 16, textAlign: 'center', color: '#7a776e' }}>
-                                  Caricamento...
-                                </div>
-                              ) : operazioniCompatibili.length === 0 ? (
-                                <div
-                                  style={{
-                                    padding: 16,
-                                    textAlign: 'center',
-                                    color: '#7a776e',
-                                    fontSize: 11,
-                                  }}
-                                >
-                                  {dipendenteIbanMatch
-                                    ? `Nessuna operazione in Prima Nota Salari per ${dipendenteIbanMatch.nome_display}`
-                                    : salaryBlockReason || 'Identifica prima il dipendente del bonifico'}
-                                </div>
-                              ) : (
-                                operazioniCompatibili.map((op, idx) => (
-                                  <div
-                                    key={op.id || idx}
-                                    onClick={() => handleAssocia(t.id, op.id)}
-                                    style={{
-                                      padding: '10px 12px',
-                                      borderBottom: '1px solid #f2f0e9',
-                                      cursor: 'pointer',
-                                      transition: 'background 0.1s',
-                                      background: '#ecfdf5',
-                                    }}
-                                    onMouseOver={e =>
-                                      (e.currentTarget.style.background = '#e2f0e7')
-                                    }
-                                    onMouseOut={e =>
-                                      (e.currentTarget.style.background = '#ecfdf5')
-                                    }
-                                  >
-                                    <div
-                                      style={{
-                                        display: 'flex',
-                                        justifyContent: 'space-between',
-                                        alignItems: 'center',
-                                      }}
-                                    >
-                                      <span style={{ fontWeight: 500, fontSize: 11 }}>
-                                        {op.dipendente || op.descrizione || 'Operazione'}
-                                      </span>
-                                      <div
-                                        style={{ display: 'flex', gap: 4, alignItems: 'center' }}
-                                      >
-                                        <span
-                                          style={{
-                                            background: '#e2f0e7',
-                                            color: '#166534',
-                                            padding: '2px 6px',
-                                            borderRadius: 4,
-                                            fontSize: 9,
-                                            fontWeight: 600,
-                                          }}
-                                        >
-                                          Identita verificata
-                                        </span>
-                                      </div>
-                                    </div>
-                                    <div
-                                      style={{
-                                        fontSize: 10,
-                                        color: '#7a776e',
-                                        marginTop: 4,
-                                        display: 'flex',
-                                        justifyContent: 'space-between',
-                                      }}
-                                    >
-                                      <span>
-                                        {op.anno && op.mese
-                                          ? `${op.mese}/${op.anno}`
-                                          : formatDate(op.data)}
-                                      </span>
-                                      <span
-                                        style={{
-                                          fontWeight: 600,
-                                          fontFamily:
-                                            'ui-monospace, SFMono-Regular, Menlo, monospace',
-                                        }}
-                                      >
-                                        {euroOppure(op.importo_display)}
-                                      </span>
-                                    </div>
-                                  </div>
-                                ))
-                              )}
-                            </div>
-                          )}
+
                         </div>
                       )}
                     </div>

@@ -105,7 +105,7 @@ def esiti_confermati(esiti) -> bool:
 MAX_CANDIDATI = 10
 #: Cambia quando cambia il modo di calcolarli: le righe salvate con un'altra
 #: versione si ricalcolano alla lettura.
-VERSIONE_CANDIDATI = 1
+VERSIONE_CANDIDATI = 2
 #: Oltre questa eta' (secondi) i candidati salvati si ricalcolano (buste e
 #: residui cambiano quando arriva un altro pagamento).
 ETA_MASSIMA_CANDIDATI_SECONDI = 300

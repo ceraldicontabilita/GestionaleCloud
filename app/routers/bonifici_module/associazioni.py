@@ -4,7 +4,7 @@ Gestisce associazioni fatture/salari ai bonifici, sync IBAN, ricerche per dipend
 """
 
 import re
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Body
 from typing import Dict, Any, List, Optional
 from datetime import datetime, timezone
 import logging
@@ -210,69 +210,41 @@ def _salario_appartiene_al_dipendente(
     )
 
 
-@router.post("/associa-salario")
-async def associa_salario_a_bonifico(
-    bonifico_id: str = Query(...),
-    operazione_id: str = Query(...)
-) -> Dict[str, Any]:
-    """Associa un'operazione salario a un bonifico attivo o storico."""
-    db = Database.get_db()
-
-    bonifico = await _trova_bonifico(db, bonifico_id)
-    if not bonifico:
-        raise HTTPException(404, "Bonifico non trovato in nessuna collection")
-    destinazione = await classifica_bonifico_dipendente(db, bonifico)
-    if not destinazione.get("identita_univoca"):
-        raise HTTPException(
-            status_code=409,
-            detail="Dipendente non identificato in modo univoco dal bonifico.",
-        )
-
-    operazione = await db["prima_nota_salari"].find_one(
-        {"id": operazione_id}, {"_id": 0}
-    )
-    if not operazione:
-        raise HTTPException(404, "Periodo salario non trovato")
-    if not _salario_appartiene_al_dipendente(operazione, destinazione):
-        raise HTTPException(
-            status_code=409,
-            detail="Il periodo selezionato appartiene a un altro dipendente.",
-        )
-
-    aggiornamento = {
-        "operazione_salario_id": operazione_id,
-        "salario_associato": True,
-        "operazione_salario_desc": (
-            f"Cedolino {int(operazione.get('mese') or 0):02d}/"
-            f"{operazione.get('anno') or ''} - {_nome_salario(operazione)}"
-        ),
-        "stato_riconciliazione": "associato_salario",
-        "data_associazione": datetime.now(timezone.utc).isoformat(),
-        "dipendente_id": destinazione.get("dipendente_id"),
-        "dipendente_nome": destinazione.get("dipendente_nome_rilevato"),
-        "periodo_salario": {
-            "anno": operazione.get("anno"),
-            "mese": operazione.get("mese"),
-        },
-    }
-
-    result = await db["bonifici_transfers"].update_one({"id": bonifico_id}, {"$set": aggiornamento})
-    if result.modified_count > 0:
-        return {"success": True, "message": "Salario associato al bonifico (transfers)"}
-
-    try:
-        result2 = await db["archivio_bonifici"].update_one(
-            {"_id": bonifico_id},
-            {"$set": aggiornamento}
-        )
-        if result2.modified_count > 0:
-            return {"success": True, "message": "Salario associato al bonifico (archivio)"}
-    except Exception as exc:  # noqa: BLE001
-        logger.warning(
-            "[Bonifici] associazione del salario non riuscita anche in "
-            "archivio_bonifici: %s", exc)
-
-    raise HTTPException(404, "Bonifico non trovato in nessuna collection")
+@router.post("/ripartizione-salari/{bonifico_id}")
+async def ripartizione_salario_erp(bonifico_id: str, data: Dict[str, Any] = Body(...)):
+    from app.hr.database import Database as HRDatabase
+    from app.hr.routers.dipendenti_cloud import _indici_dipendenti
+    from app.services.hr_pagamenti_deposito import risolvi_dipendente
+    from app.services.associazione_salari import anteprima, pubblica, conferma
+    from app.services.conferma_bonifico import chiavi_bonifico, campi_conferma
+    db, hr = Database.get_db(), HRDatabase.get_db()
+    b = await _trova_bonifico(db, bonifico_id)
+    if not b:
+        raise HTTPException(404, "Bonifico non trovato")
+    ben = b.get("beneficiario") or {}
+    nome = ben.get("nome", "") if isinstance(ben, dict) else str(ben)
+    dip, _ = risolvi_dipendente(await _indici_dipendenti(hr), f"{nome} {b.get('causale') or ''}")
+    if not dip:
+        raise HTTPException(409, "Identifica il dipendente nella pagina HR Bonifici da associare")
+    pagamento = {"id": "erp-" + bonifico_id, "gestionale_transfer_id": bonifico_id,
+                 "importo": b.get("importo"), "data": b.get("data"), "causale": b.get("causale"),
+                 "beneficiario": nome, "cro": b.get("cro_trn"), "rif_banca": b.get("rif_interno"),
+                 "hash": b.get("document_hash"), "pdf_filename": b.get("source_file"),
+                 "gestionale_movimento_id": b.get("movimento_estratto_conto_id")}
+    chiavi = chiavi_bonifico(pagamento)
+    code = await hr.bonifici_da_associare.find({}, {"_id": 0, "pdf_data": 0}).to_list(None)
+    coda = next((c for c in code if chiavi & chiavi_bonifico(c)), None)
+    if coda:
+        pagamento = {**coda, **pagamento, "id": coda["id"]}
+    if not data.get("conferma"):
+        return pubblica(await anteprima(hr, pagamento, dip["id"], data.get("destinazioni"), data.get("collega_key")))
+    risultato = await conferma(hr, pagamento, dip["id"], data)
+    await db["bonifici_transfers"].update_one({"id": bonifico_id}, {"$set": {
+        **campi_conferma("admin"), "salario_associato": True, "dipendente_hr_id": dip["id"],
+        "pagamento_esito_key": risultato["pagamento_key"], "ripartizione_salari_versione": 1,
+        "operazione_salario_desc": risultato["dipendente"] + " · " + str(len(risultato["quote"])) + " cedolini",
+        "stato_riconciliazione": "associato_salario"}})
+    return risultato
 
 
 @router.delete("/disassocia-salario/{bonifico_id}")
@@ -280,10 +252,17 @@ async def disassocia_salario(bonifico_id: str) -> Dict[str, Any]:
     """Rimuove l'associazione salario da un bonifico. Supporta entrambe le collection."""
     db = Database.get_db()
 
+    bonifico = await _trova_bonifico(db, bonifico_id)
+    if bonifico and bonifico.get("ripartizione_salari_versione") == 1:
+        from app.hr.database import Database as HRDatabase
+        from app.services.associazione_salari import annulla
+        await annulla(HRDatabase.get_db(), bonifico.get("pagamento_esito_key"))
+
     rimozione = {
         "operazione_salario_id": "", "data_associazione": "",
         "operazione_salario_desc": "", "periodo_salario": "",
         "dipendente_id": "", "dipendente_nome": "",
+        "pagamento_esito_key": "", "ripartizione_salari_versione": "", "confermato_manuale": "",
     }
 
     result = await db["bonifici_transfers"].update_one(
@@ -391,82 +370,6 @@ async def get_fatture_compatibili(bonifico_id: str) -> Dict[str, Any]:
     fatture.sort(key=lambda x: x["compatibilita_score"], reverse=True)
 
     return {"fatture_compatibili": fatture, "non_associabile_fattura": False}
-
-
-@router.get("/operazioni-salari/{bonifico_id}")
-async def get_operazioni_salari(bonifico_id: str) -> Dict[str, Any]:
-    """Elenca soltanto i periodi del dipendente identificato dal bonifico."""
-    db = Database.get_db()
-    bonifico = await _trova_bonifico(db, bonifico_id)
-    if not bonifico:
-        raise HTTPException(404, "Bonifico non trovato")
-
-    destinazione = await classifica_bonifico_dipendente(db, bonifico)
-    if not destinazione.get("identita_univoca"):
-        return {
-            "operazioni_compatibili": [],
-            "dipendente_iban_match": None,
-            "motivo_blocco": "Identita del dipendente non univoca: seleziona prima il dipendente.",
-        }
-
-    importo = abs(float(bonifico.get("importo") or 0))
-    operazioni_raw = await db["prima_nota_salari"].find(
-        {"riconciliato": {"$ne": True}}, {"_id": 0}
-    ).to_list(5000)
-    operazioni_raw = [
-        op for op in operazioni_raw
-        if _salario_appartiene_al_dipendente(op, destinazione)
-    ]
-
-    data_bonifico = str(bonifico.get("data") or "")[:10]
-    try:
-        data_dt = datetime.fromisoformat(data_bonifico)
-        if data_dt.day >= 25:
-            anno_atteso, mese_atteso = data_dt.year, data_dt.month
-        elif data_dt.month == 1:
-            anno_atteso, mese_atteso = data_dt.year - 1, 12
-        else:
-            anno_atteso, mese_atteso = data_dt.year, data_dt.month - 1
-    except ValueError:
-        anno_atteso, mese_atteso = 0, 0
-
-    operazioni = []
-    for op in operazioni_raw:
-        importo_op = op.get("importo_busta") or op.get("importo_bonifico") or 0
-        operazioni.append({
-            **op,
-            "importo_display": importo_op,
-            "identita_verificata": True,
-            "periodo": {"anno": op.get("anno"), "mese": op.get("mese")},
-            "differenza_importo": abs(float(importo_op or 0) - importo),
-            "periodo_consigliato": (
-                int(op.get("anno") or 0) == anno_atteso
-                and int(op.get("mese") or 0) == mese_atteso
-            ),
-        })
-    operazioni.sort(
-        key=lambda op: (
-            not op.get("periodo_consigliato"),
-            -(int(op.get("anno") or 0)),
-            -(int(op.get("mese") or 0)),
-            op.get("differenza_importo") or 0,
-        )
-    )
-
-    return {
-        "operazioni_compatibili": operazioni,
-        "dipendente_iban_match": {
-            "nome_display": destinazione.get("dipendente_nome_rilevato"),
-            "dipendente_id": destinazione.get("dipendente_id"),
-            "motivo": destinazione.get("motivo_destinazione"),
-        },
-        "motivo_blocco": None if operazioni else "Nessun periodo salario disponibile per questo dipendente.",
-        "regola_periodo": {
-            "anno": anno_atteso,
-            "mese": mese_atteso,
-            "descrizione": "Dal giorno 25: stesso mese; prima del 25: mese precedente.",
-        },
-    }
 
 
 @router.post("/sync-iban-anagrafica")

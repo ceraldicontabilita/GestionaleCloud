@@ -3491,7 +3491,8 @@ stessa pagina, non è la tassazione separata del TFR.
 Errori di lettura e ferie mancanti devono impedire il riepilogo completo e le
 rate, non azzerare le componenti. Uno zero documentato o inserito esplicitamente
 resta ammesso. La data di un acconto non ne prova la competenza: senza
-`scalato_su_anno_mese` esplicito non chiude automaticamente una busta.
+competenza esplicita, i pagamenti salariali seguono i residui più antichi (§65A);
+questa regola non assegna automaticamente la natura TFR o conciliazione.
 
 ---
 
@@ -3533,6 +3534,25 @@ distinti. Nessuno dei tre implica automaticamente gli altri.
 Drive conserva gli originali; Supabase conserva dati, stati e relazioni.
 Excel è un formato di importazione, non un secondo archivio operativo.
 
+### Ripartizione dei pagamenti salariali — 09/10/2026
+
+Regola richiesta dal titolare: prima la mensilità scelta o documentata nella
+causale; in mancanza, il residuo del cedolino più antico non saldato. Il
+pagamento prosegue sulle buste successive e l'eccedenza rimane acconto.
+Le quote non cambiano la data bancaria né moltiplicano il fatto di pagamento.
+Il saldo cronologico sottrae l'intero pagamento una volta alla data effettiva.
+I netti sconosciuti non diventano zero; le chiusure cumulative documentate
+restano «pagato con bonifico del…», senza suddivisioni inventate.
+
+ERP e HR usano la stessa anteprima e conferma. La conferma verifica nuovamente
+l'archivio in transazione; una ricevuta può arricchire un pagamento già
+registrato. Stessa persona/data/importo senza riferimento bancario comporta
+una scelta esplicita fra collegare e registrare un'altra operazione.
+Il ritiro conserva il pagamento originale se esisteva prima dell'associazione.
+
+Verifiche locali: conteggi, residui, idempotenza e ritiro provati; la verifica
+in produzione richiede il rilascio di questa modifica.
+
 ### Griglia ed esportazione dell'Archivio paghe
 
 La spunta «Griglia annuale» alterna elenco e tabella compatta, anche con
@@ -3550,7 +3570,7 @@ la competenza dalla data. La scheda aperta dal nome del dipendente mostra
 come vista iniziale una riga per mensilità, con dovuto, tutti i pagamenti
 attribuiti (date e importi), totale pagato e differenza. Il dettaglio
 cronologico con saldo progressivo resta consultabile in una sezione chiusa.
-I pagamenti senza competenza rimangono autonomi e incidono comunque sul saldo;
+I pagamenti senza competenza alimentano i residui secondo la regola precedente;
 i cumulativi compaiono una sola volta con rimandi dai mesi coperti, senza
 quote inventate. La vista raggruppata non modifica dati, date o associazioni.
 La coda conserva l'identità certa anche quando resta da decidere il periodo;
@@ -3844,7 +3864,8 @@ Distinguere due fatti:
 
 L'acconto versato conserva dipendente, importo, data, natura,
 periodo di destinazione e prova del pagamento.
-Se la competenza è sconosciuta, resta da attribuire.
+Se la competenza è sconosciuta, la ripartizione segue i residui salariali più antichi;
+la competenza documentale resta sconosciuta e non si ricava dalla data.
 
 Un bonifico già importato si classifica come acconto:
 non si ricrea come movimento manuale.
