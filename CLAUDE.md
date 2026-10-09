@@ -5621,8 +5621,12 @@ SHA-256 corrispondente e contesto interno della cartella unica. I membri
 ZIP e gli header degli upload non riusano l'ID del contenitore. La ricerca
 doppioni legge solo metadati e il testo PDF viene estratto una sola volta.
 66 test passano, inclusa riapertura byte-identica, rifiuto di originali
-modificati e archiviazione verificata per gli altri ingressi. Quest'ultima
-ottimizzazione resta da verificare nel relativo deploy.
+modificati e archiviazione verificata per gli altri ingressi. PR #1185 live
+dalle 09:34 UTC (`17e1c69d`). Campione live 09:38-09:40: 11 bonifici PDF,
+mediana 4,63 s contro 9,34 s su 46 bonifici del campione 09:08-09:18.
+Sono campioni diversi, non un benchmark controllato ne' una stima della
+durata dell'intera coda. Verifica SQL dei primi 4: riferimento originale
+conservato e canale Drive corretto per tutti.
 
 Un successivo log live mostra un XML con fattura numero 41 che impiega
 116,87 secondi e riesamina 76 movimenti. La selezione cercava "41" come
@@ -5631,7 +5635,13 @@ ancora aperti contenevano la sottostringa, uno solo passa il nuovo filtro
 senza cifre adiacenti.
 La query ora esclude le cifre adiacenti; mantiene FT41, 41/A, citazioni
 cumulative e ricerca per importo esatto. Il motore di riconciliazione resta
-lo stesso. 67 regressioni superate; rilascio e tempi successivi da verificare.
+lo stesso. 67 regressioni e tutti i controlli CI superati. PR #1186 live
+dalle 09:40 UTC (`d44f5106`), health delle 09:41: Supabase connesso,
+archivio verificato, zero errori di hydration. Il beneficio specifico
+del filtro sui prossimi XML non e' ancora misurato. Ultimo lotto completo
+del job precedente (09:23-09:32): 50 file, 39 elaborati e 11 rinviati per
+anno, zero errori. L'arretrato non e' esaurito; lo scheduler continua i
+lotti sul server, indipendentemente dalla pagina aperta.
 
 08/10/2026: recupero acconto collegato al dovuto di Archivio paghe, posizione
 dipendente ed export. Il netto PDF resta distinto: Dias marzo 2023 stampa
