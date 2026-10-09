@@ -717,12 +717,15 @@ async def _ricalcola_stato_paga(db, dip, anno, mese):
     from app.services import posizione_dipendente as pos
 
     from app.constants.stati_associazione_bonifico import esiti_riconciliati, ha_riscontro_bancario
+    from app.services.pagamenti_mensilita import periodi_saldati
     tot_esiti, n_esiti, esiti = pos.ZERO, 0, []
     async for e in db.pagamenti_esiti.find({"dipendente_id": dip, "mese": mese, "anno": anno}, {"_id": 0, "pdf_data": 0}):
+        if periodi_saldati(e):
+            continue
         tot_esiti += pos.importo(e.get("importo")) or pos.ZERO
         n_esiti += 1
         esiti.append(e)
-    bonifico = tot_esiti if n_esiti else (pos.importo(p.get("bonifico_importo")) or pos.ZERO)
+    bonifico = tot_esiti if n_esiti else (pos.ZERO if p.get("bonifico_da_esiti") else (pos.importo(p.get("bonifico_importo")) or pos.ZERO))
     busta = pos.importo(p.get("importo_busta"))
     from app.hr.services.regole_pagamenti_dipendenti import filtra_acconti_contanti
 
@@ -750,12 +753,21 @@ async def _ricalcola_stato_paga(db, dip, anno, mese):
         stato = "da_verificare"
     upd = {"stato_pagamento": stato,
            "saldo": float(busta - erogato) if busta is not None else None,
+           "pagamenti_copertura": [],
            "updated_at": now_iso()}
-    if n_esiti:
+    if n_esiti or p.get("bonifico_da_esiti"):
         upd["bonifico_importo"] = float(bonifico)
+        upd["bonifico_da_esiti"] = True
         upd["bonifico_ricevuto"] = bonifico > 0 and all(ha_riscontro_bancario(e) for e in esiti)
         upd["bonifico_riconciliato_auto"] = automatico
     await db.paghe_mensili.update_one({"dipendente_id": dip, "anno": anno, "mese": mese}, {"$set": upd})
+    from app.services.pagamenti_mensilita import indice_coperture, stato_copertura
+    tutte_prove = await db.pagamenti_esiti.find({"dipendente_id": dip}, {"_id": 0, "pdf_data": 0}).to_list(None)
+    copertura = indice_coperture(tutte_prove).get((dip, anno, mese))
+    if copertura:
+        await db.paghe_mensili.update_one({"dipendente_id": dip, "anno": anno, "mese": mese},
+                                         {"$set": stato_copertura(copertura)})
+        return "pagato_documentato"
     return stato
 
 # ============ BONIFICI DA ASSOCIARE ============
@@ -873,8 +885,9 @@ async def associa_bonifico(bonifico_id: str, data: Dict[str, Any] = Body(...),
     * ``conciliazione`` / ``bonus``: pagamento della parte ordinaria o del
       bonus di una conciliazione del dipendente (``conciliazione_id``).
 
-    Anno e mese, se mancano, sono quelli della data del bonifico. Un bonifico
-    gia' associato non si associa una seconda volta."""
+    Il mese della busta deve essere esplicito per uno stipendio. Un acconto
+    puo' restare senza competenza e riduce il saldo alla data del pagamento.
+    Un bonifico gia' associato non si associa una seconda volta."""
     from app.services import posizione_dipendente as pos
 
     dipendente_id = data.get("dipendente_id")
@@ -904,14 +917,19 @@ async def associa_bonifico(bonifico_id: str, data: Dict[str, Any] = Body(...),
     dip = await db.dipendenti.find_one({"id": dipendente_id}, {"_id": 0})
     if not dip:
         raise HTTPException(404, "Dipendente non trovato")
-    data_bon = str(in_coda.get("data") or "")
+    # La data dell'addebito non prova quale mensilita' si sta pagando.
+    anno = mese = None
     try:
-        anno = int(data.get("anno") or data_bon[:4])
-        mese = int(data.get("mese") or data_bon[5:7])
+        if data.get("anno") not in (None, "") or data.get("mese") not in (None, ""):
+            anno = int(data.get("anno"))
+            mese = int(data.get("mese"))
     except (TypeError, ValueError) as exc:
-        raise HTTPException(400, "anno e mese obbligatori (il bonifico non ha una data leggibile)") from exc
-    if not (1 <= mese <= 14) or anno < 2000:
+        raise HTTPException(400, "Indica sia mese sia anno di competenza, oppure lasciali entrambi vuoti per un acconto") from exc
+    if anno is not None and (not (1 <= mese <= 14) or anno < 2000):
         raise HTTPException(400, "mese deve essere 1-14, anno >= 2000")
+    if tipo == "stipendio" and anno is None:
+        raise HTTPException(400, "Scegli la competenza del cedolino oppure Acconto / pagamento da attribuire")
+    competenza = "%s-%02d" % (anno, mese) if anno is not None else None
 
     if tipo != "stipendio":
         try:
@@ -933,10 +951,10 @@ async def associa_bonifico(bonifico_id: str, data: Dict[str, Any] = Body(...),
         await db.bonifici_da_associare.update_one(
             {"id": bonifico_id},
             {"$set": {"stato": "associato", "associato_a": dipendente_id, "associato_tipo": tipo,
-                      "associato_competenza": "%s-%02d" % (anno, mese), "associato_il": now_iso(), **rif}})
+                      "associato_competenza": competenza, "associato_il": now_iso(), **rif}})
         await _segna_conferma(db, in_coda, attore, {"dipendente_id": dipendente_id, "tipo": tipo,
-                                                    "competenza": "%s-%02d" % (anno, mese)})
-        if tipo == "acconto":
+                                                    "competenza": competenza})
+        if tipo == "acconto" and anno is not None:
             # l'acconto e' un pagamento sulla busta del mese: lo stato del mese lo conta
             await _ricalcola_stato_paga(db, dipendente_id, anno, mese)
         return {"ok": True, "tipo": tipo, **rif}
@@ -4239,8 +4257,14 @@ async def _calcola_associazioni_bonifici(db, anno: Optional[int] = None, mese: O
     # pagamenti (import da Drive, ponte bonifici storici) ora portano il PDF
     # allegato, un'inclusione lo trasferirebbe comunque per intero per ogni riga.
     esiti_idx: Dict[tuple, List[Dict[str, Any]]] = {}
+    from app.services.pagamenti_mensilita import indice_coperture, periodi_saldati
+    tutte_prove = []
     async for e in db.pagamenti_esiti.find({}, {"_id": 0, "pdf_data": 0}):
+        tutte_prove.append(e)
+        if periodi_saldati(e):
+            continue
         esiti_idx.setdefault((e.get("dipendente_id"), e.get("mese"), e.get("anno")), []).append(e)
+    coperture = indice_coperture(tutte_prove)
     for lst in esiti_idx.values():
         lst.sort(key=lambda e: e.get("data") or "")
 
@@ -4287,8 +4311,14 @@ async def _calcola_associazioni_bonifici(db, anno: Optional[int] = None, mese: O
     from app.hr.services import stato_rapporto as stato_rapporto_service
     from app.hr.services.regole_pagamenti_dipendenti import filtra_acconti_contanti
 
-    async for p in db.paghe_mensili.find(q, {"_id": 0}):
+    paghe = await db.paghe_mensili.find(q, {"_id": 0}).to_list(None)
+    chiavi_paghe = {(p.get("dipendente_id"), p.get("anno"), p.get("mese")) for p in paghe}
+    for dip_id, anno_c, mese_c in coperture:
+        if (dip_id, anno_c, mese_c) not in chiavi_paghe and (not anno or anno_c == int(anno)) and (not mese or mese_c == int(mese)):
+            paghe.append({"dipendente_id": dip_id, "anno": anno_c, "mese": mese_c})
+    for p in paghe:
         dip_id = p.get("dipendente_id")
+        copertura = coperture.get((dip_id, p.get("anno"), p.get("mese")), [])
         dip = dip_map.get(dip_id) or {}
         ced = ced_by_id.get(p.get("cedolino_id"))
         if not ced or ced.get("dipendente_id") != dip_id:
@@ -4302,7 +4332,7 @@ async def _calcola_associazioni_bonifici(db, anno: Optional[int] = None, mese: O
         acc_list, acc_scartati = filtra_acconti_contanti(dip, p.get("acconti") or [])
         acc_dec = sum((_dec(a.get("importo")) or ZERO for a in acc_list), ZERO)
         acc = float(acc_dec)
-        if busta_dec is None and bon <= 0 and acc <= 0 and not p.get("importi_excel"):
+        if busta_dec is None and bon <= 0 and acc <= 0 and not p.get("importi_excel") and not copertura:
             continue
 
         nome = f"{dip.get('cognome', '')} {dip.get('nome', '')}".strip() or dip_id
@@ -4362,11 +4392,13 @@ async def _calcola_associazioni_bonifici(db, anno: Optional[int] = None, mese: O
         acconto_da_verificare = bool(((ced or {}).get("dati_chiave") or {}).get("acconto_recuperato_da_verificare"))
         if avvisi_excel or acconto_da_verificare:
             st = "da_verificare"
+        if copertura:
+            st = "pagato_documentato"
 
         if stato and st != stato:
             continue
 
-        if st == STATO_PAGA_PAGATO:
+        if st in (STATO_PAGA_PAGATO, "pagato_documentato"):
             tot["pagati"] += 1
         elif st == STATO_PAGA_PARZIALE:
             tot["parziali"] += 1
@@ -4405,7 +4437,7 @@ async def _calcola_associazioni_bonifici(db, anno: Optional[int] = None, mese: O
         tot["buste"] += busta
         tot["bonifici"] += bon
         tot["acconti"] += acc
-        if not senza_busta:
+        if not senza_busta and not copertura:
             tot["saldo"] += (busta - erogato)
 
         righe.append({
@@ -4427,7 +4459,8 @@ async def _calcola_associazioni_bonifici(db, anno: Optional[int] = None, mese: O
             "data_cessazione_rapporto": stato_rapporto_service.data_fine_rapporto(dip),
             "erogato": round(erogato, 2),
             # senza busta il saldo non si conosce: mai uno zero o un negativo di comodo
-            "saldo": None if senza_busta else round(busta - erogato, 2),
+            "saldo": 0.0 if copertura else None if senza_busta else round(busta - erogato, 2),
+            "pagamenti_copertura": copertura,
             "stato": st,
             "stato_importo": stato_importo,
             "fonte": fonte,
@@ -4445,6 +4478,9 @@ async def _calcola_associazioni_bonifici(db, anno: Optional[int] = None, mese: O
             "cedolino_id": cedolino_id,
         })
 
+    # La prova di un pagamento cumulativo compare su ogni mese, il denaro una volta sola.
+    cumulativi = {p["id"]: p for r in righe for p in r.get("pagamenti_copertura", [])}
+    tot["bonifici"] += sum(float(p["importo"]) for p in cumulativi.values())
     righe.sort(key=lambda r: ((r["anno"] or 0), (r["mese"] or 0), r["dipendente"]), reverse=True)
     for k in ("buste", "bonifici", "acconti", "saldo"):
         tot[k] = round(tot[k], 2)

@@ -3576,6 +3576,27 @@ un elenco o una ricevuta senza riscontro bancario non imposta `bonifico_ricevuto
 né trasforma una semplice quadratura in `pagato`. Le conferme manuali già
 presenti restano separate dalla riconciliazione automatica.
 
+### Bonifici cumulativi e conferma acconti — 09/10/2026
+
+Un bonifico che salda più mensilità esplicitamente confermate dal titolare
+resta un solo pagamento in `pagamenti_esiti`, alla data bancaria. I mesi
+sono conservati in `periodi_saldati`: la vista paghe, la sincronizzazione e
+l'Excel li indicano «Stipendio pagato con bonifico del …», con saldo mensile
+zero, esclusi dai non pagati, anche se il netto non è disponibile. Nessuna
+quota mensile è inventata; il progressivo sottrae l'intero bonifico una volta.
+`pagato_documentato` distingue questa copertura dalla ripartizione numerica.
+
+La conferma di un candidato conserva il tipo scelto (anche acconto). Non
+deduce la competenza dalla data bancaria: senza mese/anno espliciti l'acconto
+riduce il progressivo alla data reale e resta da attribuire. La griglia
+mostra gli importi noti anche se manca il riscontro bancario, con dettaglio
+toccabile del controllo necessario, senza sostituirli con un «?» generico.
+
+Il foglio presenze Zucchetti Aut. 301, anche chiamato «Busta paga … (1).pdf»,
+passa allo stesso motore da HR, Drive e Import documenti: esito `presenze`,
+zero buste, nessun errore. Nel cedolino Zucchetti nuovo competenze e trattenute
+si leggono dalle celle etichettate, non da coppie di cifre nel testo.
+
 ### Componenti 13ª, 14ª e TFR nei cedolini
 
 Il lettore unico conserva `dati_chiave.componenti_busta`: tipo, importo,
