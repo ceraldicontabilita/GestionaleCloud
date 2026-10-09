@@ -5627,7 +5627,8 @@ ottimizzazione resta da verificare nel relativo deploy.
 Un successivo log live mostra un XML con fattura numero 41 che impiega
 116,87 secondi e riesamina 76 movimenti. La selezione cercava "41" come
 sottostringa di causali e riferimenti bancari: al controllo SQL 74 movimenti
-ancora aperti contenevano la sottostringa, nessuno il numero isolato.
+ancora aperti contenevano la sottostringa, uno solo passa il nuovo filtro
+senza cifre adiacenti.
 La query ora esclude le cifre adiacenti; mantiene FT41, 41/A, citazioni
 cumulative e ricerca per importo esatto. Il motore di riconciliazione resta
 lo stesso. 67 regressioni superate; rilascio e tempi successivi da verificare.
