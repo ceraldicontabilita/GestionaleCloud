@@ -378,7 +378,7 @@ REGOLE_NON_RICONOSCIUTI = 2
 # Versione della classificazione degli estratti conto e delle fatture PDF: un file in ERRORI
 # letto con una versione piu' vecchia si rilegge una volta (2: estratto = forma dell'estratto,
 # non la sola parola o il nome della banca; fattura PDF italiana = ARRETRATO).
-REGOLE_CLASSIFICAZIONE = 2
+REGOLE_CLASSIFICAZIONE = 3
 _ESTRATTO_NON_ESTRATTO = "Formato Banco BPM non riconosciuto"
 _FATTURA_PDF_ITALIANA = "Fattura PDF senza partita IVA estera"
 NON_RICONOSCIUTO = "tipo di documento non riconosciuto"
@@ -514,6 +514,31 @@ def e_busta(f: Dict[str, Any]) -> bool:
     return nome.lower().endswith(".pdf") and bool(_BUSTA_PAGA.search(nome))
 
 
+def seleziona_lotto(coda: List[Dict[str, Any]], limite: int) -> List[Dict[str, Any]]:
+    """Un posto per famiglia a turno: nessun PDF aspetta migliaia di XML.
+
+    Nomi e date decidono solo la precedenza; il contenuto decide sempre il
+    tipo effettivo. Conserva l'ordine interno e riusa i posti delle code vuote.
+    """
+    from collections import deque
+
+    code = [deque() for _ in range(4)]
+    visti = set()
+    for f in ordina_coda(coda):
+        if f["id"] in visti:
+            continue
+        visti.add(f["id"])
+        indice = (0 if e_estratto_conto(f) else 1 if e_busta(f) else
+                  2 if str(f.get("name") or "").lower().endswith(_ESTENSIONI_XML) else 3)
+        code[indice].append(f)
+    lotto = []
+    while len(lotto) < limite and any(code):
+        for coda_tipo in code:
+            if coda_tipo and len(lotto) < limite:
+                lotto.append(coda_tipo.popleft())
+    return lotto
+
+
 # Buste lette insieme (decisione del titolare, 28/09/2026). Solo le buste: la
 # loro scrittura e' serializzata per dipendente e periodo
 # (``cedolini_manager.registra_busta``); fatture e altri documenti restano uno
@@ -578,11 +603,16 @@ async def rimetti_in_coda_buste_gia_presenti(db, service, cartelle: Dict[str, st
                            and int(riga.get("rinvii") or 0) < MAX_RINVII)
             # Classificazione corretta dopo: bollette, solleciti e stampe della banca prese per
             # estratto conto, fatture PDF italiane che ora vanno in ARRETRATO. Una volta sola.
-            if int(riga.get("regole_classificazione") or 0) < REGOLE_CLASSIFICAZIONE:
+            versione_classificazione = int(riga.get("regole_classificazione") or 0)
+            if versione_classificazione < 2:
                 tipo_riga = str(riga.get("tipo") or "")
                 da_rileggere = da_rileggere or (
                     (tipo_riga.startswith("estratto_conto") and _ESTRATTO_NON_ESTRATTO in motivo)
                     or (tipo_riga == "fattura_pdf" and motivo.startswith(_FATTURA_PDF_ITALIANA)))
+            if versione_classificazione < 3:
+                da_rileggere = da_rileggere or (
+                    "Formato documento mutuo non riconosciuto" in motivo
+                    or ("Riga di movimento incompleta" in motivo and " ZI " in motivo))
             if (not gia_presente and not busta_come_estratto and not da_rileggere
                     and not _GUASTO_DI_RETE.match(motivo)
                     and not (e_guasto_transitorio(motivo) and int(riga.get("rinvii") or 0) < MAX_RINVII)):
@@ -792,7 +822,7 @@ async def _giro(db) -> Dict[str, Any]:
             in_coda += [{**f, "_da": cartelle[INBOX]} for f in await asyncio.to_thread(
                 _elenca, service, cartelle[INBOX], campi, None, True)]
         esito["in_coda_totale"] = len(in_coda)
-        in_coda = ordina_coda(in_coda)[:_batch()]
+        in_coda = seleziona_lotto(in_coda, _batch())
         per_md5 = await _md5_archivio(service, cartelle[ARCHIVIO], esito)
     except Exception as exc:
         esito["errore"] = f"{type(exc).__name__}: {exc}"
@@ -817,6 +847,8 @@ async def _giro(db) -> Dict[str, Any]:
         drive = drive or service
         esito["letti"] += 1
         fid, nome = f["id"], f.get("name") or f["id"]
+        iniziato_file = time.perf_counter()
+        logger.info("[cartella-unica] inizio file id=%s nome=%s", fid, nome)
         try:
             tipo = None
             if isinstance(pre, BaseException):
@@ -948,6 +980,9 @@ async def _giro(db) -> Dict[str, Any]:
             except Exception as exc2:
                 logger.warning("[cartella-unica] %s non spostato in ERRORI: %s: %s",
                                nome, type(exc2).__name__, exc2)
+        finally:
+            logger.info("[cartella-unica] fine file id=%s durata_s=%.2f",
+                        fid, time.perf_counter() - iniziato_file)
     blocchi: Dict[str, asyncio.Lock] = {}
     parallelo = asyncio.Semaphore(BUSTE_IN_PARALLELO)
     buste = [f for f in in_coda if e_busta(f)]

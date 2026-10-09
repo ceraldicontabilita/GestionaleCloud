@@ -5567,6 +5567,35 @@ La pulizia dei riferimenti Git non garantisce la cancellazione delle copie local
 
 # 120. Verifica delle modifiche
 
+09/10/2026: PR #1182 pubblicata su Render (commit `889d7397`, deploy live
+08:36 UTC). Ripartizione salari condivisa fra ERP e HR: quote su piu'
+cedolini, residuo/acconto, priorita' alla competenza esplicita e poi al
+residuo piu' antico, senza duplicare pagamenti gia' presenti. Verifiche
+isolate con dati reali e browser; asset HR pubblicato e health confermati.
+Applicata successivamente la rettifica documentata: 124 causali rilette
+dalle ricevute originali, 60 associazioni (17 a pagamenti gia' registrati),
+13 date BNL recuperate da numero assegno e importo; 859 proiezioni mensili
+riallineate. Nessun netto cedolino modificato. Verifica SQL successiva:
+zero chiavi pagamento duplicate. Le date prive di prova restano aperte.
+
+09/10/2026, verifica locale successiva: la cartella DA ELABORARE indicata
+dal titolare contiene 11.384 file, dei quali 7.822 PDF. La precedenza di
+tutti gli XML impediva ai PDF senza parole chiave nel nome di avanzare.
+Il lotto ora riserva turni a estratti, cedolini, XML e altri documenti;
+sulla coda reale il lotto da 50 comprende 25 XML e 25 PDF. I log live
+mostrano inoltre tre ricerche di riconciliazione che caricavano gli originali
+di tutte le fatture candidate; ora usano soltanto i metadati necessari.
+Corretto anche il contratto difensivo `movement_ids=[]`: non esegue letture
+ne' scritture. Il chiamante import fatture aveva gia' una guardia sulla
+lista vuota: questo caso non e' la causa osservata nei suoi log.
+Sui tre ZIP (122 file) riprodotti e corretti 12 estratti BPM classificati
+come mutui e un BNL rifiutato per il codice alfabetico ZI allineato a destra.
+Il BNL verifica 36 movimenti e saldo 640,71 + 7.345,00 - 6.694,79 =
+1.290,92 EUR; il piano di ammortamento autentico resta classificato mutuo.
+Non tutti i formati dei tre ZIP sono gia' supportati: carte BNL, alcuni
+export storici e documenti accessori richiedono ancora verifica dedicata.
+Queste ultime correzioni restano locali fino alla verifica del nuovo deploy.
+
 08/10/2026: recupero acconto collegato al dovuto di Archivio paghe, posizione
 dipendente ed export. Il netto PDF resta distinto: Dias marzo 2023 stampa
 7,00 EUR e recupera 800,00 EUR con voce 000306, quindi il dovuto e' 807,00 EUR.
