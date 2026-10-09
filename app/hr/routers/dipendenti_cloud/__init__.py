@@ -638,8 +638,11 @@ async def sincronizza_bonifici_storici():
             {"dipendente_id": dip_id, "anno": anno, "mese": mese},
             {"$set": {"bonifico_importo": round(tot, 2), "bonifico_ricevuto": tot > 0,
                       "bonifico_da_esiti": True, "updated_at": now_iso()}})
-        await _ricalcola_stato_paga(db, dip_id, anno, mese)
 
+
+    from app.services.associazione_salari import aggiorna_proiezioni
+    for dip_id in {r[0] for r in affected}:
+        await aggiorna_proiezioni(db, dip_id)
     return {"bonifici_esaminati": len(bonifici), "importati_in_pagamenti_esiti": importati,
             "duplicati_saltati": duplicati, "mesi_aggiornati": len(affected)}
 
@@ -702,73 +705,10 @@ async def imposta_acconti(payload: AccontiCloud):
 
 
 async def _ricalcola_stato_paga(db, dip, anno, mese):
-    """MOTORE UNICO buste↔bonifici. Aggancia i pagamenti bancari già arrivati
-    (pagamenti_esiti) come bonifico del mese e ricalcola lo stato:
-    in_attesa_pagamento (busta senza pagamento) / parziale / pagato / vuoto.
-    Chiamato da OGNI ingresso (busta da LUL/email, prima nota, CSV, modifica manuale),
-    così il popolamento di un dato aggiorna automaticamente gli altri."""
-    anno, mese = int(anno), int(mese)
-    p = await db.paghe_mensili.find_one({"dipendente_id": dip, "anno": anno, "mese": mese})
-    if not p:
-        return None
-    # Importi in Decimal e confronto al centesimo (titolare 02/10/2026: niente
-    # tolleranza). Una busta non ancora in archivio e' ``None``, mai 0: il
-    # bonifico arrivato prima della busta resta «in attesa della busta».
-    from app.services import posizione_dipendente as pos
-
-    from app.constants.stati_associazione_bonifico import esiti_riconciliati, esiti_confermati, ha_riscontro_bancario
-    from app.services.pagamenti_mensilita import periodi_saldati
-    tot_esiti, n_esiti, esiti = pos.ZERO, 0, []
-    async for e in db.pagamenti_esiti.find({"dipendente_id": dip, "mese": mese, "anno": anno}, {"_id": 0, "pdf_data": 0}):
-        if periodi_saldati(e):
-            continue
-        tot_esiti += pos.importo(e.get("importo")) or pos.ZERO
-        n_esiti += 1
-        esiti.append(e)
-    bonifico = tot_esiti if n_esiti else (pos.ZERO if p.get("bonifico_da_esiti") else (pos.importo(p.get("bonifico_importo")) or pos.ZERO))
-    busta = pos.importo(p.get("importo_busta"))
-    from app.hr.services.regole_pagamenti_dipendenti import filtra_acconti_contanti
-
-    acconti_salvati = p.get("acconti") or []
-    dipendente = {}
-    if acconti_salvati:
-        dipendente = await db.dipendenti.find_one(
-            {"id": dip},
-            {"_id": 0, "stato": 1, "attivo": 1, "in_carico": 1,
-             "data_fine_rapporto": 1, "data_cessazione": 1,
-             "data_dimissione": 1, "data_cessazione_prevista": 1},
-        ) or {}
-    acconti_validi, _ = filtra_acconti_contanti(dipendente, acconti_salvati)
-    acc = sum((pos.importo(a.get("importo")) or pos.ZERO for a in acconti_validi), pos.ZERO)
-    # Gli acconti del registro unico (anche quelli nati da «Bonifici da associare»)
-    # sono pagamenti sulla busta come per la posizione dipendente: lo stesso conto.
-    acconti_registro = await db.acconti_dipendenti.find(
-        {"dipendente_id": dip}, {"_id": 0}).to_list(2000)
-    acc += pos.acconti_registro_del_mese(acconti_registro, anno, mese, p.get("acconti") or [])
-    erogato = bonifico + acc
-    stato = stato_paga_mese(busta, erogato)
-    automatico = esiti_riconciliati(esiti)
-    riconciliato = p.get("bonifico_riconciliato") is True or esiti_confermati(esiti)
-    if bonifico > 0 and busta is not None and not riconciliato:
-        stato = "da_verificare"
-    upd = {"stato_pagamento": stato,
-           "saldo": float(busta - erogato) if busta is not None else None,
-           "pagamenti_copertura": [],
-           "updated_at": now_iso()}
-    if n_esiti or p.get("bonifico_da_esiti"):
-        upd["bonifico_importo"] = float(bonifico)
-        upd["bonifico_da_esiti"] = True
-        upd["bonifico_ricevuto"] = bonifico > 0 and all(ha_riscontro_bancario(e) for e in esiti)
-        upd["bonifico_riconciliato_auto"] = automatico
-    await db.paghe_mensili.update_one({"dipendente_id": dip, "anno": anno, "mese": mese}, {"$set": upd})
-    from app.services.pagamenti_mensilita import indice_coperture, stato_copertura
-    tutte_prove = await db.pagamenti_esiti.find({"dipendente_id": dip}, {"_id": 0, "pdf_data": 0}).to_list(None)
-    copertura = indice_coperture(tutte_prove).get((dip, anno, mese))
-    if copertura:
-        await db.paghe_mensili.update_one({"dipendente_id": dip, "anno": anno, "mese": mese},
-                                         {"$set": stato_copertura(copertura)})
-        return "pagato_documentato"
-    return stato
+    """Stesso saldo e stesse quote delle due UI, anche fra anni diversi."""
+    from app.services.associazione_salari import aggiorna_proiezioni
+    stati = await aggiorna_proiezioni(db, dip)
+    return stati.get((int(anno), int(mese)))
 
 # ============ BONIFICI DA ASSOCIARE ============
 # Bonifici bancari "BENEFICIARI DIVERSI": la banca li emette come un unico
@@ -872,6 +812,25 @@ async def _segna_conferma(db, in_coda: Dict[str, Any], attore: str, evento: Dict
     return campi
 
 
+@router.post("/bonifici-da-associare/{bonifico_id}/ripartizione")
+async def ripartizione_bonifico(bonifico_id: str, data: Dict[str, Any] = Body(...),
+                               utente: Dict[str, Any] = Depends(require_staff)):
+    from app.services.associazione_salari import anteprima, pubblica, conferma
+    db = get_db()
+    pagamento = await db.bonifici_da_associare.find_one({"id": bonifico_id}, {"_id": 0, "pdf_data": 0})
+    if not pagamento:
+        raise HTTPException(404, "Bonifico non trovato")
+    if pagamento.get("stato") not in (None, "da_associare", "associato"):
+        raise HTTPException(409, "Bonifico non disponibile per l'associazione")
+    if data.get("conferma"):
+        risultato = await conferma(db, pagamento, data.get("dipendente_id"), data, _attore(utente))
+        await _segna_conferma(db, pagamento, _attore(utente), {"dipendente_id": data.get("dipendente_id"),
+                              "destinazioni_salari": risultato["destinazioni"]})
+        return risultato
+    return pubblica(await anteprima(db, pagamento, data.get("dipendente_id"),
+                                   data.get("destinazioni"), data.get("collega_key")))
+
+
 @router.post("/bonifici-da-associare/{bonifico_id}/associa")
 async def associa_bonifico(bonifico_id: str, data: Dict[str, Any] = Body(...),
                            utente: Dict[str, Any] = Depends(require_staff)):
@@ -927,9 +886,20 @@ async def associa_bonifico(bonifico_id: str, data: Dict[str, Any] = Body(...),
         raise HTTPException(400, "Indica sia mese sia anno di competenza, oppure lasciali entrambi vuoti per un acconto") from exc
     if anno is not None and (not (1 <= mese <= 14) or anno < 2000):
         raise HTTPException(400, "mese deve essere 1-14, anno >= 2000")
-    if tipo == "stipendio" and anno is None:
-        raise HTTPException(400, "Scegli la competenza del cedolino oppure Acconto / pagamento da attribuire")
     competenza = "%s-%02d" % (anno, mese) if anno is not None else None
+    if tipo in ("stipendio", "acconto"):
+        from app.services.associazione_salari import anteprima, conferma
+        piano = await anteprima(db, in_coda, dipendente_id)
+        destinazioni = []
+        if anno is not None:
+            ced = next((c for c in piano["cedolini"] if c["anno"] == anno and c["mese"] == mese), None)
+            if ced:
+                destinazioni = [{"anno": anno, "mese": mese, "importo": min(piano["importo"], ced["dovuto"] or piano["importo"])}]
+        piano = await anteprima(db, in_coda, dipendente_id, destinazioni)
+        risultato = await conferma(db, in_coda, dipendente_id,
+            {"destinazioni": destinazioni, "versione": piano["versione"]}, attore)
+        await _segna_conferma(db, in_coda, attore, {"dipendente_id": dipendente_id, "tipo": tipo})
+        return risultato
 
     if tipo != "stipendio":
         try:
@@ -959,59 +929,6 @@ async def associa_bonifico(bonifico_id: str, data: Dict[str, Any] = Body(...),
             await _ricalcola_stato_paga(db, dipendente_id, anno, mese)
         return {"ok": True, "tipo": tipo, **rif}
 
-    nuovo = {
-        "id": str(uuid.uuid4()), "dipendente_id": dipendente_id,
-        "dipendente_nome": dip.get("nome_completo"),
-        "data": in_coda.get("data"), "importo": in_coda.get("importo"),
-        "competenza": "%s-%02d" % (int(anno), int(mese)),
-        "categoria": "DIPENDENTE",
-        "pdf_filename": in_coda.get("pdf_filename"), "pdf_data": in_coda.get("pdf_data"),
-        "fonte": in_coda.get("fonte"),
-        "assegnato_manualmente": True,
-        "assegnato_da_bonifico_diversi": bonifico_id,
-        "created_at": now_iso(),
-    }
-    await db.bonifici.insert_one(nuovo)
-    await db.bonifici_da_associare.update_one(
-        {"id": bonifico_id},
-        {"$set": {"stato": "associato", "associato_a": dipendente_id, "associato_tipo": "stipendio",
-                  "associato_competenza": nuovo["competenza"], "associato_il": now_iso()}})
-    campi = await _segna_conferma(db, in_coda, attore, {"dipendente_id": dipendente_id, "tipo": "stipendio",
-                                                        "competenza": nuovo["competenza"]})
-    # Il bonifico e l'esito di pagamento portano lo stesso segno e le stesse
-    # chiavi d'identita' (MB…, CRO, hash): nessun'altra riga li riassegna.
-    identita = {k: in_coda.get(k) for k in ("rif_banca", "cro", "hash",
-                                            "gestionale_movimento_id", "gestionale_transfer_id")
-                if in_coda.get(k)}
-    await db.bonifici.update_one({"id": nuovo["id"]}, {"$set": {**campi, **identita,
-                                                               "bonifico_da_associare_id": bonifico_id}})
-
-    # Aggancia anche al MOTORE UNICO paghe (pagamenti_esiti + paghe_mensili):
-    # senza questo passo l'associazione restava confinata alla collezione
-    # `bonifici` e non si vedeva mai né in "Cedolini & Bonifici" né sulla busta
-    # come pagata, perché quella vista/lo stato paga leggono solo pagamenti_esiti.
-    anno_i, mese_i = int(anno), int(mese)
-    key = f"beneficiari-diversi:{bonifico_id}"
-    await db.pagamenti_esiti.update_one(
-        {"key": key},
-        {"$set": {"key": key, "cro": in_coda.get("cro"), "dipendente_id": dipendente_id,
-                  "data": in_coda.get("data"), "importo": in_coda.get("importo") or 0,
-                  "causale": in_coda.get("causale") or "Bonifico beneficiari diversi",
-                  "beneficiario": dip.get("nome_completo"),
-                  "mese": mese_i, "anno": anno_i,
-                  "bonifico_da_associare_id": bonifico_id, **campi, **identita}}, upsert=True)
-    await db.paghe_mensili.update_one(
-        {"dipendente_id": dipendente_id, "anno": anno_i, "mese": mese_i},
-        {"$set": {"dipendente_id": dipendente_id, "anno": anno_i, "mese": mese_i,
-                  "updated_at": now_iso()}}, upsert=True)
-    await _ricalcola_stato_paga(db, dipendente_id, anno_i, mese_i)
-    # Lo stato del mese (motore unico) si riflette sul cedolino del gestionale
-    # (`pagato`, `importo_pagato`, `pagamenti[]`): un solo scrittore, lo stesso
-    # della riconciliazione automatica. `ritira-conferma` lo riapre.
-    cedolino_gest = await allinea_cedolino_gestionale_da_paghe(
-        db, _db_gestionale(), dipendente_id, anno_i, mese_i,
-        riferimento=_riferimento_coda(bonifico_id), importo=in_coda.get("importo"), data=in_coda.get("data"))
-    return {"ok": True, "bonifico": nuovo, "cedolino_gestionale": cedolino_gest}
 
 
 @router.post("/bonifici-da-associare/{bonifico_id}/ritira-conferma")
@@ -1035,6 +952,13 @@ async def ritira_conferma_bonifico(bonifico_id: str, utente: Dict[str, Any] = De
                                   "details": {"tipo": riga.get("associato_tipo")}})
     attore = _attore(utente)
     dip_id = riga.get("associato_a")
+    if riga.get("ripartizione_salari_versione") == 1:
+        from app.services.associazione_salari import annulla
+        risultato = await annulla(db, riga.get("pagamento_esito_key"))
+        await imposta_conferma_gestionale(_db_gestionale(), riga, {
+            **campi_ritiro(), "salario_associato": False, "pagamento_esito_key": None,
+            "ripartizione_salari_versione": None, "stato_riconciliazione": "non_riconciliato"})
+        return risultato
     try:
         anno_i, mese_i = (int(x) for x in str(riga.get("associato_competenza") or "").split("-"))
     except ValueError:
@@ -4144,7 +4068,10 @@ async def importa_pagamenti(file: UploadFile = File(...)):
             {"$set": {"dipendente_id": dip_id, "anno": anno, "mese": mese,
                       "bonifico_importo": round(tot, 2), "bonifico_ricevuto": tot > 0,
                       "bonifico_da_esiti": True, "updated_at": now_iso()}}, upsert=True)
-        await _ricalcola_stato_paga(db, dip_id, anno, mese)
+
+    from app.services.associazione_salari import aggiorna_proiezioni
+    for dip_id in {r[0] for r in affected}:
+        await aggiorna_proiezioni(db, dip_id)
     return {"importati": importati, "mesi_aggiornati": len(affected),
             "non_trovati": sorted(set(non_trovati))}
 
@@ -4312,7 +4239,32 @@ async def _calcola_associazioni_bonifici(db, anno: Optional[int] = None, mese: O
     from app.hr.services import stato_rapporto as stato_rapporto_service
     from app.hr.services.regole_pagamenti_dipendenti import filtra_acconti_contanti
 
-    paghe = await db.paghe_mensili.find(q, {"_id": 0}).to_list(None)
+    # L'intera storia del dipendente serve anche quando si visualizza un anno:
+    # il residuo del pagamento continua sulle buste successive, senza duplicarlo.
+    from collections import defaultdict
+    from app.services.posizione_dipendente import componi_movimenti
+    from app.services.ripartizione_salari import indice_quote
+    tutte_paghe = await db.paghe_mensili.find({}, {"_id": 0}).to_list(None)
+    tutti_acconti = await db.acconti_dipendenti.find({}, {"_id": 0}).to_list(None)
+    code_certe = await db.bonifici_da_associare.find(
+        {"stato": "da_associare", "associazione_certa": True}, {"_id": 0, "pdf_data": 0}).to_list(None)
+    gruppi = {nome: defaultdict(list) for nome in ("paghe", "esiti", "cedolini", "acconti", "code")}
+    for nome, dati in (("paghe", tutte_paghe), ("esiti", tutte_prove), ("cedolini", cedolini_lista),
+                       ("acconti", tutti_acconti), ("code", code_certe)):
+        for r in dati:
+            gruppi[nome][r.get("dipendente_id")].append(r)
+    esiti_idx = {}
+    acconti_idx = {}
+    for dip_id, dip in dip_map.items():
+        registro = componi_movimenti(
+            paghe=gruppi["paghe"][dip_id], esiti=gruppi["esiti"][dip_id],
+            cedolini=gruppi["cedolini"][dip_id], acconti=gruppi["acconti"][dip_id],
+            pagamenti_senza_competenza=gruppi["code"][dip_id], conciliazioni=[], rapporto=dip)["registro"]
+        for (a, m), quote in indice_quote(registro, gruppi["esiti"][dip_id]).items():
+            esiti_idx[(dip_id, m, a)] = [e for e in quote if e["quota_tipo"] == "bonifico"]
+            acconti_idx[(dip_id, m, a)] = [e for e in quote if e["quota_tipo"] == "acconto"]
+    paghe = [p for p in tutte_paghe if (not anno or p.get("anno") == int(anno))
+             and (not mese or p.get("mese") == int(mese))]
     chiavi_paghe = {(p.get("dipendente_id"), p.get("anno"), p.get("mese")) for p in paghe}
     for dip_id, anno_c, mese_c in coperture:
         if (dip_id, anno_c, mese_c) not in chiavi_paghe and (not anno or anno_c == int(anno)) and (not mese or mese_c == int(mese)):
@@ -4330,9 +4282,11 @@ async def _calcola_associazioni_bonifici(db, anno: Optional[int] = None, mese: O
         # busta assente (``None``) = non ancora arrivata, non uno zero
         busta_dec = dovuto["dovuto"]
         busta = float(busta_dec or ZERO)
-        bon_dec = _dec(p.get("bonifico_importo")) or ZERO
+        chiave_quote = (dip_id, p.get("mese"), p.get("anno"))
+        bon_dec = sum((_dec(e["importo"]) or ZERO for e in esiti_idx.get(chiave_quote, [])), ZERO)
         bon = float(bon_dec)
-        acc_list, acc_scartati = filtra_acconti_contanti(dip, p.get("acconti") or [])
+        _, acc_scartati = filtra_acconti_contanti(dip, p.get("acconti") or [])
+        acc_list = acconti_idx.get(chiave_quote, [])
         acc_dec = sum((_dec(a.get("importo")) or ZERO for a in acc_list), ZERO)
         acc = float(acc_dec)
         if busta_dec is None and bon <= 0 and acc <= 0 and not p.get("importi_excel") and not copertura:
@@ -4379,7 +4333,7 @@ async def _calcola_associazioni_bonifici(db, anno: Optional[int] = None, mese: O
         # confermano da soli il collegamento. Solo la conferma esplicita e
         # reversibile ``bonifico_riconciliato`` trasforma il candidato in un
         # legame verificato.
-        riconciliato = p.get("bonifico_riconciliato") is True or esiti_confermati(prove)
+        riconciliato = esiti_confermati(prove) if prove else p.get("bonifico_riconciliato") is True
         # Lo stato contabile effettivo non può derivare dal solo quadramento
         # numerico. Conserviamo quel calcolo come candidato, ma finché manca
         # una conferma reversibile della prova bancaria/assegno esponiamo

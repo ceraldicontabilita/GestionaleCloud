@@ -444,9 +444,10 @@ def componi_movimenti(*, paghe: Iterable[Dict[str, Any]], esiti: Iterable[Dict[s
                                  avviso=avviso))
 
         # registro paghe senza bonifici singoli: l'importo del mese
-        bon = importo(paga.get("bonifico_importo"))
-        if bon and bon > 0 and chiave not in periodi_con_esiti:
-            registro.append(_mov(_data_iso(paga.get("bonifico_data")) or _fine_mese(a, m), "bonifico",
+        originale = paga.get("bonifico_registro_originale") or {}
+        bon = importo(originale.get("importo") if originale else paga.get("bonifico_importo"))
+        if bon and bon > 0 and chiave not in periodi_con_esiti and (originale or not paga.get("bonifico_da_esiti")):
+            registro.append(_mov(_data_iso(originale.get("data") or paga.get("bonifico_data")) or _fine_mese(a, m), "bonifico",
                                  f"Bonifico {_nome_periodo(a, m)} (registro paghe)", avere=bon,
                                  competenza=chiave, fonte="registro_paghe", link={"anno": a, "mese": m}))
 
@@ -468,6 +469,7 @@ def componi_movimenti(*, paghe: Iterable[Dict[str, Any]], esiti: Iterable[Dict[s
         registro.append(_mov(data, "bonifico", descr + (f" — {causale[:80]}" if causale else ""),
                              avere=imp, competenza=comp, fonte="pagamenti_esiti",
                              link={"key": e.get("key"), "anno": a, "mese": m,
+                                   "destinazioni_salari": e.get("destinazioni_salari") or [],
                                    "periodi_saldati": coperti},
                              avviso=None if comp or coperti else "Già scalato dal saldo; mese da attribuire"))
 
@@ -682,8 +684,8 @@ def posizione(movimenti: Dict[str, List[Dict[str, Any]]], anno: Optional[int] = 
 def prospetto_competenze(movimenti: Dict[str, List[Dict[str, Any]]]) -> List[Dict[str, Any]]:
     """Una riga per busta e relativi pagamenti, preservando date e registro.
 
-    Non assegna mesi ai pagamenti senza competenza e non ripartisce bonifici
-    cumulativi. Ogni movimento monetario compare una sola volta nel prospetto.
+    Le quote consumano prima il cedolino scelto/documentato, poi il residuo
+    più antico. La somma delle quote e degli acconti resta il pagamento originale.
     """
     gruppi = {}
     coperture = []
@@ -694,7 +696,9 @@ def prospetto_competenze(movimenti: Dict[str, List[Dict[str, Any]]]) -> List[Dic
             "descrizione": _nome_periodo(a, m), "buste": [], "pagamenti": [],
             "coperture": [], "ordine": (a, m, 0, key)})
 
-    for i, mv in enumerate(movimenti["registro"]):
+    from app.services.ripartizione_salari import ripartisci_movimenti
+    ripartizione = ripartisci_movimenti(movimenti["registro"])
+    for i, mv in enumerate(ripartizione["movimenti"]):
         comp = mv.get("competenza")
         coperti = mv.get("link", {}).get("periodi_saldati") or []
         if comp and not coperti and mv["tipo"] in ("busta", "bonifico", "acconto"):

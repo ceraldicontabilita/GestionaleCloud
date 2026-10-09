@@ -364,10 +364,14 @@ class ContestoHR:
         if key in self.per_key:
             return self.per_key[key], "key"
         from app.services.posizione_dipendente import importo as dec
+        from app.services.conferma_bonifico import chiavi_bonifico
         riferimento = riferimento or {}
+        chiavi = chiavi_bonifico({**riferimento, "cro": cro})
         for e in self.per_dipendente.get(str(dipendente_id), []):
             if dec(e.get("importo")) != dec(importo):
                 continue
+            if chiavi & chiavi_bonifico(e):
+                return e, "riferimento_bancario"
             for campo in ("gestionale_movimento_id", "gestionale_transfer_id"):
                 if riferimento.get(campo) and riferimento[campo] == e.get(campo):
                     return e, campo
@@ -469,7 +473,7 @@ async def _arricchisci_esito(ctx: ContestoHR, esistente: Dict[str, Any],
     esistente.update({k: v for k, v in aggiunte.items() if k != "pdf_data"})
     if aggiunte.get("hash"):
         ctx.per_hash[aggiunte["hash"]] = esistente
-    ctx.periodi_toccati.add((esistente["dipendente_id"], int(esistente["anno"]), int(esistente["mese"])))
+    ctx.periodi_toccati.add((esistente["dipendente_id"], int(esistente.get("anno") or 0), int(esistente.get("mese") or 0)))
     return sorted(aggiunte)
 
 
@@ -517,29 +521,11 @@ async def _completa_riga_in_coda(ctx: ContestoHR, coda_id: str, campi: Dict[str,
 
 
 async def _ricalcola_periodi(ctx: ContestoHR) -> None:
-    """Stessa sequenza dell'importatore Drive HR: prima ``bonifico_importo`` =
-    somma degli esiti del periodo (anche 0, se un esito e' stato tolto), poi
-    il motore unico ``_ricalcola_stato_paga``."""
-    from app.hr.routers.dipendenti_cloud import _ricalcola_stato_paga
-
-    while ctx.periodi_toccati:
-        dip, anno, mese = ctx.periodi_toccati.pop()
-        from app.constants.stati_associazione_bonifico import esiti_riconciliati, ha_riscontro_bancario
-        from app.services.posizione_dipendente import ZERO, importo
-        esiti = []
-        tot = ZERO
-        async for e in ctx.db.pagamenti_esiti.find(
-                {"dipendente_id": dip, "mese": mese, "anno": anno},
-                {"_id": 0, "pdf_data": 0}):
-            tot += importo(e.get("importo")) or ZERO
-            esiti.append(e)
-        await ctx.db.paghe_mensili.update_one(
-            {"dipendente_id": dip, "anno": anno, "mese": mese},
-            {"$set": {"bonifico_importo": float(tot),
-                      "bonifico_ricevuto": tot > 0 and all(ha_riscontro_bancario(e) for e in esiti),
-                      "bonifico_riconciliato_auto": esiti_riconciliati(esiti),
-                      "bonifico_da_esiti": True, "updated_at": _now_iso()}})
-        await _ricalcola_stato_paga(ctx.db, dip, anno, mese)
+    from app.services.associazione_salari import aggiorna_proiezioni
+    dipendenti = {dip for dip, _, _ in ctx.periodi_toccati}
+    ctx.periodi_toccati.clear()
+    for dip in sorted(dipendenti):
+        await aggiorna_proiezioni(ctx.db, dip)
 
 
 def _marcatore(esito: str, **extra: Any) -> Dict[str, Any]:
@@ -734,8 +720,8 @@ async def deposita_bonifico_transfer_in_hr(db, transfer: Dict[str, Any],
         pdf_filename=transfer.get("source_file"),
         pdf_data=pdf_data,
         origine=ORIGINE_PDF,
-        mese_dichiarato=transfer.get("periodo_mese") or transfer.get("mese_pagamento_file"),
-        anno_dichiarato=transfer.get("periodo_anno") or transfer.get("anno_pagamento_file"),
+        mese_dichiarato=transfer.get("periodo_mese"),
+        anno_dichiarato=transfer.get("periodo_anno"),
         riferimento={"gestionale_transfer_id": transfer.get("id"),
                      "gestionale_fonte": transfer.get("source")},
         dry_run=dry_run,

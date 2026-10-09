@@ -17,24 +17,58 @@ from .common import parse_date, normalize_str, IBAN_RE, logger
 
 
 def read_pdf_text(pdf_path: Path) -> str:
-    """Estrae testo da PDF usando pdfminer o PyMuPDF."""
-    try:
-        text = extract_text(str(pdf_path)) or ""
-        if text.strip():
-            return text
-    except Exception as e:
-        logger.warning(f"pdfminer failed for {pdf_path}: {e}")
-    try:
-        if fitz:
-            doc = fitz.open(str(pdf_path))
-            parts = []
-            for page in doc:
-                parts.append(page.get_text("text"))
-            doc.close()
-            return "\n".join(parts)
-    except Exception as e:
-        logger.exception(f"PyMuPDF parse failed for {pdf_path}: {e}")
-    return ""
+    """Usa lo stesso lettore dell'import documenti e di Drive."""
+    return read_pdf_bytes(pdf_path.read_bytes())
+
+
+def _causale_bpm_da_layout(content: bytes) -> Optional[str]:
+    """Legge la cella CAUSALE della ricevuta, non l'ordine interno dei font.
+
+    In alcuni PDF BPM pdfminer estrae entrambe le intestazioni CAUSALE dopo
+    i valori. La parola AGGIUNTIVA finiva quindi al posto del testo reale.
+    Il rettangolo termina prima della causale aggiuntiva/operazione: nessun
+    importo, nome del file o mese del pagamento viene usato come ripiego.
+    """
+    if not fitz:
+        return None
+    with fitz.open(stream=content, filetype="pdf") as doc:
+        if len(doc) != 1:
+            return None
+        page = doc[0]
+        text = page.get_text()
+        if not re.search(r"REGISTRIAMO\s+A\s+VOSTRO\s+DEBITO\s+A\s+FAVORE\s+DI", text, re.I):
+            return None
+        labels = sorted(page.search_for("CAUSALE"), key=lambda r: r.y0)
+        if len(labels) < 2:
+            return None
+        first, second = labels[:2]
+        # Nel modello precedente il valore è sotto l'etichetta, dentro una
+        # cella chiusa. Il modello recente lo mette a destra. Le linee del
+        # modulo delimitano entrambi senza includere IBAN e tabella contabile.
+        borders = []
+        for drawing in page.get_drawings():
+            for item in drawing["items"]:
+                segments = []
+                if item[0] == "l":
+                    segments = [(item[1], item[2])]
+                elif item[0] == "re":
+                    rect = item[1]
+                    segments = [(rect.tl, rect.tr), (rect.bl, rect.br)]
+                for a, b in segments:
+                    if abs(a.y - b.y) < 1 and first.y1 < a.y < second.y0:
+                        borders.append((a.y, min(a.x, b.x), max(a.x, b.x)))
+        closing = [b for b in borders if b[1] <= first.x0 and b[2] >= first.x1]
+        if not closing:
+            return None
+        bottom, left, right = min(closing)
+        # La riga moderna ha due celle (titolo e testo): include anche la
+        # cella contigua che termina alla stessa altezza.
+        right = max((x1 for y, x0, x1 in borders if abs(y - bottom) < 1), default=right)
+        words = [w for w in page.get_text("words")
+                 if left <= w[0] < right and first.y0 - 8 <= w[1] < bottom - 1
+                 and w[4].upper() != "CAUSALE"]
+        words.sort(key=lambda w: (round(w[1] / 5), w[0]))
+        return normalize_str(" ".join(w[4] for w in words))
 
 
 def read_pdf_bytes(content: bytes) -> str:
@@ -47,6 +81,12 @@ def read_pdf_bytes(content: bytes) -> str:
     try:
         text = extract_text(io.BytesIO(content)) or ""
         if text.strip():
+            try:
+                causale = _causale_bpm_da_layout(content)
+                if causale is not None:
+                    text = "[CAUSALE_BPM]" + causale + "[/CAUSALE_BPM]\n" + text
+            except Exception as exc:
+                logger.warning("Lettura cella causale BPM non riuscita: %s", exc)
             return text
     except Exception as exc:
         logger.warning("pdfminer failed for in-memory bonifico: %s", exc)
@@ -105,21 +145,11 @@ def extract_filename_metadata(filename: str) -> Dict[str, Any]:
 
 def _extract_payroll_period(causale: str) -> Dict[str, Optional[int]]:
     """Estrae la competenza solo se dichiarata nella causale del bonifico."""
-    text = (normalize_str(causale or "") or "").casefold()
-    if not re.search(r"\b(stipend|salari|emolument|competenz|mensilit)", text):
-        return {"periodo_mese": None, "periodo_anno": None}
-    mese = None
-    for nome_mese, numero in _MESI.items():
-        if re.search(rf"\b{nome_mese}\b", text):
-            mese = numero
-            break
-    numerico = re.search(r"\b(0?[1-9]|1[0-2])[/\-](20\d{2})\b", text)
-    if numerico:
-        return {"periodo_mese": int(numerico.group(1)), "periodo_anno": int(numerico.group(2))}
-    anno_match = re.search(r"\b(20\d{2})\b", text)
+    from app.services.stipendi_bonifici import estrai_periodo_causale
+    periodo = estrai_periodo_causale(causale or "")
     return {
-        "periodo_mese": mese,
-        "periodo_anno": int(anno_match.group(1)) if anno_match else None,
+        "periodo_mese": periodo[0] if periodo else None,
+        "periodo_anno": periodo[1] if periodo else None,
     }
 
 
@@ -394,11 +424,14 @@ def extract_transfers_from_text(text: str, filename: str = "") -> List[Dict[str,
     caus = table_row.get("causale") or _value_after_label(
         lines, r"causale(?:\s+del\s+bonifico)?|motivazione"
     )
+    cella = re.search(r"\[CAUSALE_BPM\](.*?)\[/CAUSALE_BPM\]", text)
+    if cella is not None:
+        caus = cella.group(1).strip() or None
     if caus and (IBAN_RE.search(caus.replace(" ", "")) or _parse_euro(caus) is not None):
         caus = None
 
     # Cerca IBAN
-    ibans = IBAN_RE.findall(text.replace(' ', ''))
+    ibans = [iban for iban in IBAN_RE.findall(text.replace(' ', '')) if 15 <= len(iban) <= 34]
     ben_iban = table_row.get("beneficiario_iban") or (ibans[0] if ibans else None)
     ord_iban = ibans[1] if len(ibans) > 1 else None
 

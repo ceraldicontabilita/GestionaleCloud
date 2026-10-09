@@ -45,18 +45,18 @@ class SaldoDipendenteTests(unittest.TestCase):
         self.assertEqual(r["pagamenti"][0]["data"], "2021-12-03")
         self.assertEqual([x["saldo"] for x in vista["movimenti"]], [878, 15])
 
-    def test_pagamenti_multipli_e_acconto_senza_mese_non_si_mischiano(self):
+    def test_pagamenti_multipli_chiudono_busta_e_lasciano_acconto(self):
         m = componi_movimenti(paghe=[{"anno": 2021, "mese": 11, "importo_busta": 878}],
                               esiti=[{"data": d, "importo": i, "anno": 2021, "mese": 11}
                                      for d, i in [("2021-12-03", 863), ("2021-12-16", 1878), ("2021-12-21", 1000)]]
                                     + [{"data": "2021-12-22", "importo": 400}],
                               cedolini=[], acconti=[], conciliazioni=[])
         vista = prima_nota_mensile(m)
-        r, libero = vista["competenze"]
-        self.assertEqual(len(r["pagamenti"]), 3)
-        self.assertEqual((r["pagato"], r["differenza"]), (3741, -2863))
-        self.assertIsNone(libero["mese"])
-        self.assertEqual(libero["pagato"], 400)
+        r, *liberi = vista["competenze"]
+        self.assertEqual(len(r["pagamenti"]), 2)
+        self.assertEqual((r["pagato"], r["differenza"]), (878, 0))
+        self.assertTrue(all(libero["mese"] is None for libero in liberi))
+        self.assertEqual(sum(libero["pagato"] for libero in liberi), 3263)
         self.assertEqual(vista["saldo_finale"], -3263)
 
     def test_esito_senza_mese_ha_valore_economico(self):
@@ -156,3 +156,43 @@ class CoperturaMensilitaTests(unittest.TestCase):
         self.assertEqual(_parse_zucchetti_totals_layout([words[1:2]]), {})
         ambiguous = words + [(540, 713, 560, 720, '999,99')]
         self.assertNotIn('trattenute', _parse_zucchetti_totals_layout([ambiguous]))
+
+
+class RipartizioneSalariTests(unittest.TestCase):
+    def vista(self, paghe, esiti):
+        return prima_nota_mensile(componi_movimenti(paghe=paghe, esiti=esiti,
+            cedolini=[], acconti=[], conciliazioni=[]))
+
+    def test_prima_competenza_poi_residuo_vecchio_e_acconto(self):
+        paghe = [{"anno": 2025, "mese": 11, "importo_busta": 800},
+                 {"anno": 2025, "mese": 12, "importo_busta": 1000}]
+        vista = self.vista(paghe, [{"key": "p1", "data": "2026-01-10", "anno": 2025, "mese": 12, "importo": 1950}])
+        mesi = {r["mese"]: r for r in vista["competenze"]}
+        self.assertEqual([mesi[m]["pagato"] for m in (11, 12, None)], [800, 1000, 150])
+        self.assertEqual(sum(r["pagato"] for r in vista["competenze"]), 1950)
+        self.assertEqual(vista["saldo_finale"], -150)
+
+    def test_due_pagamenti_consumano_soltanto_il_residuo(self):
+        paghe = [{"anno": 2025, "mese": m, "importo_busta": 1000} for m in (11, 12)]
+        esiti = [{"key": "p1", "data": "2025-12-10", "importo": 700},
+                 {"key": "p2", "data": "2026-01-07", "importo": 600}]
+        vista = self.vista(paghe, esiti)
+        self.assertEqual([(r["pagato"], r["differenza"]) for r in vista["competenze"]], [(1000, 0), (300, 700)])
+        self.assertEqual(vista["saldo_finale"], 700)
+        self.assertEqual([r["data"] for r in vista["movimenti"] if r["avere"]], ["2025-12-10", "2026-01-07"])
+
+    def test_cedolino_scelto_vince_sulla_causale_senza_dividere_il_fatto_banca(self):
+        paghe = [{"anno": 2025, "mese": m, "importo_busta": 1000} for m in (10, 11, 12)]
+        e = {"key": "p", "data": "2026-01-01", "anno": 2025, "mese": 11, "importo": 1200,
+             "destinazioni_salari": [{"anno": 2025, "mese": 12, "importo": 1000}]}
+        vista = self.vista(paghe, [e])
+        self.assertEqual([(r["mese"], r["pagato"]) for r in vista["competenze"]], [(10, 200), (11, 0), (12, 1000)])
+        self.assertEqual(len([r for r in vista["movimenti"] if r["avere"]]), 1)
+
+    def test_netto_assente_non_si_inventa_ed_eccedenza_si_applica_al_prossimo_cedolino(self):
+        e = {"key": "p", "data": "2025-12-10", "importo": 400}
+        senza = self.vista([], [e])
+        con = self.vista([{"anno": 2026, "mese": 1, "importo_busta": 500}], [e])
+        self.assertIsNone(senza["competenze"][0]["dovuto"])
+        self.assertEqual((con["competenze"][0]["pagato"], con["competenze"][0]["differenza"]), (400, 100))
+        self.assertEqual(con["movimenti"][0]["saldo"], -400)

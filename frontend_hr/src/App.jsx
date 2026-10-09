@@ -9,6 +9,7 @@ import Sortable from "sortablejs";
 import { isIntentionalPaintDrag } from "./presenzeSelection";
 import { buildPresenzePrintHtml } from "./presenzePrint";
 import { buildPresenzeCsv } from "./presenzeCsv";
+import RipartizioneSalari from "../../frontend_shared/RipartizioneSalari";
 import GrigliaPaghe from "./GrigliaPaghe";
 import PrimaNotaPaghe from "./PrimaNotaPaghe";
 import { sceltaIniziale, sceltaCandidato, propostaIntatta } from "./sceltaBonifico";
@@ -4375,6 +4376,7 @@ function BonificiDaAssociarePage({ dipendenti }) {
   const [scelte, setScelte] = useState({});   // id -> { dipendente_id, tipo, conciliazione_id, mese, anno }
   const [concPerDip, setConcPerDip] = useState({}); // dipendente_id -> conciliazioni aperte
   const [busy, setBusy] = useState(null);
+  const [ripartizione, setRipartizione] = useState(null);
   const [confermaCand, setConfermaCand] = useState(null);   // { b, c }: candidato toccato, in attesa di conferma
 
   const eur = (n) => (Number(n) || 0).toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -4396,7 +4398,6 @@ function BonificiDaAssociarePage({ dipendenti }) {
   };
   useEffect(() => { load(); }, []);
   const numeroDistinte = righe.filter(b => b.distinta).length;
-  const mostraDistinte = numeroDistinte > 0;
 
   const caricaConciliazioni = async (dipId) => {
     if (!dipId || concPerDip[dipId]) return;
@@ -4417,6 +4418,11 @@ function BonificiDaAssociarePage({ dipendenti }) {
   const associa = async (id, { silenzioso = false, scelta = null } = {}) => {
     const sc = scelta || scelte[id];
     if (!sc?.dipendente_id) { toast("Scegli prima il dipendente", "err"); return false; }
+    if (!silenzioso && (sc.tipo === "stipendio" || sc.tipo === "acconto")) {
+      setConfermaCand(null);
+      setRipartizione({ id, dipendente_id: sc.dipendente_id });
+      return false;
+    }
     if (Boolean(sc.mese) !== Boolean(sc.anno) || (sc.tipo === "stipendio" && !sc.mese)) {
       toast("Indica mese e anno del cedolino. Se non li conosci, scegli Acconto / pagamento da attribuire e lascia entrambi vuoti.", "err");
       return false;
@@ -4495,11 +4501,15 @@ function BonificiDaAssociarePage({ dipendenti }) {
   };
 
   return (
-    <div className="dc-page">
+    <div className="dc-page dc-bonifici-coda">
+      {ripartizione && <RipartizioneSalari key={ripartizione.id}
+        request={async payload => (await axios.post(`${API}/bonifici-da-associare/${ripartizione.id}/ripartizione`, { ...payload, dipendente_id: ripartizione.dipendente_id })).data}
+        onClose={() => setRipartizione(null)} onSaved={() => { setRighe(r => r.filter(b => b.id !== ripartizione.id)); setRipartizione(null); toast("Pagamento ripartito sui cedolini"); }} />}
+
       <div className="dc-page-header">
         <div>
           <h1>Bonifici da associare</h1>
-          <p>{righe.length} bonifici in attesa di assegnazione{numeroDistinte ? `, di cui ${numeroDistinte} distinte “beneficiari vari”` : ""}. Qui trovi in un solo posto candidati, estratto, ricevuta, commissione e suggerimenti disponibili; dipendente, tipo e mese restano sempre una scelta manuale.</p>
+          <p>{righe.length} bonifici in attesa di assegnazione{numeroDistinte ? `, di cui ${numeroDistinte} distinte “beneficiari vari”` : ""}. Qui restano le assegnazioni da completare o verificare.</p>
         </div>
         {proposteIntatte.length > 0 && (
           <button type="button" className="dc-btn dc-btn-primary" style={{ minHeight: 44 }} disabled={!!avanzamento || !!busy} onClick={confermaProposte}>
@@ -4509,21 +4519,19 @@ function BonificiDaAssociarePage({ dipendenti }) {
       </div>
 
       <div className="dc-card" style={{ marginBottom: 12, padding: 12, fontSize: 13, color: "#6b7669" }}>
-        Per ogni bonifico trovi i <b>candidati</b> con la prova che li porta (nome, cognome e importo, periodo scritto
-        in causale) e, se il bonifico può riguardare più persone, un avviso col motivo. Toccare un candidato apre la
-        conferma: niente si assegna da solo. Confronta il bonifico con l'estratto dal <b>CRO</b> e dal <b>riferimento banca</b>.
-        Il tipo (stipendio, acconto, conciliazione, bonus) e il periodo si scelgono dalle tendine.
-        Se la competenza non è nota, lascia mese e anno vuoti: l’acconto riduce comunque il saldo alla data del pagamento.
+        Beneficiario e causale identificano il dipendente e il periodo. Le associazioni univoche
+        entrano nell’archivio paghe; qui puoi completare quelle ancora in sospeso e aprire la prova.
+        Senza competenza, il pagamento riduce comunque il saldo alla sua data.
       </div>
 
       {loading ? <div className="dc-card" style={{ padding: 20 }}>Carico…</div> :
        righe.length === 0 ? <div className="dc-card" style={{ padding: 20 }}>Nessun bonifico in attesa.</div> :
-      <div className="dc-card" style={{ padding: 0 }}>
-        <table className="dc-table dc-table--cards">
+      <div className="dc-card dc-coda-table-wrap">
+        <table className="dc-table dc-table--cards dc-coda-table">
           <thead>
             <tr>
-              <th>Data</th><th>Importo</th><th>Causale</th><th>Riferimenti</th>{mostraDistinte && <th>Dati della distinta</th>}<th>PDF</th>
-              <th>Dipendente</th><th>Tipo</th><th>Periodo</th><th></th>
+              <th>Pagamento</th><th>Documento e riferimenti</th>
+              <th>Dipendente</th><th>Tipo e competenza</th><th>Azioni</th>
             </tr>
           </thead>
           <tbody>
@@ -4534,9 +4542,8 @@ function BonificiDaAssociarePage({ dipendenti }) {
               const concs = concPerDip[sc.dipendente_id] || [];
               return (
                 <tr key={b.id}>
-                  <td>{b.data ? dataIt : "—"}</td>
-                  <td data-label="Importo">€ {eur(b.importo)}</td>
-                  <td data-label="Causale" className="dc-muted" style={{ fontSize: 12, maxWidth: 240, whiteSpace: "normal" }}>
+                  <td data-label="Pagamento"><div>{b.data ? dataIt : "Data da verificare"}</div><strong className="dc-coda-importo">€ {eur(b.importo)}</strong></td>
+                  <td data-label="Documento e riferimenti" className="dc-coda-documento">
                     {b.causale || "—"}
                     <AvvisoMultiDipendente b={b} />
                     {b.gia_confermato_altrove && (
@@ -4549,11 +4556,9 @@ function BonificiDaAssociarePage({ dipendenti }) {
                         Proposta: {b.proposta.dipendente_nome || "dipendente"} — {b.proposta.prova}
                       </div>
                     )}
-                  </td>
-                  <td data-label="Riferimenti"><CodaRiferimenti b={b} /></td>
-                  {mostraDistinte && (
-                    <td data-label="Dati della distinta" style={{ fontSize: 12, whiteSpace: "normal", maxWidth: 260 }}>
-                      {!b.distinta ? <span className="dc-muted">—</span> : <>
+                  <CodaRiferimenti b={b} />
+                  {b.distinta && (
+                    <details className="dc-coda-distinta"><summary>Dati della distinta</summary>
                       {b.distinta.commissione != null && <div>Commissione € {eur(b.distinta.commissione)}</div>}
                       {b.distinta.nota && <div><b>Nota:</b> {b.distinta.nota}</div>}
                       <div className="dc-muted">{b.distinta.ufficiale ? "Estratto ufficiale" : "Solo export CSV (provvisorio)"}{b.distinta.estratto ? ` · ${b.distinta.estratto}` : ""}</div>
@@ -4576,10 +4581,8 @@ function BonificiDaAssociarePage({ dipendenti }) {
                           </button>
                         </div>
                       )}
-                      </>}
-                    </td>
+                    </details>
                   )}
-                  <td data-label="PDF">
                     <button type="button" className="dc-btn dc-btn-ghost" style={{ fontSize: 12, padding: "3px 8px", minHeight: 36 }} onClick={() => apriPdf(b.id)} aria-label={`Apri il PDF del bonifico del ${dataIt}`}>
                       Apri
                     </button>
@@ -4596,7 +4599,8 @@ function BonificiDaAssociarePage({ dipendenti }) {
                     </select>
                     </div>
                   </td>
-                  <td data-label="Tipo">
+                  <td data-label="Tipo e competenza">
+                    <div className="dc-coda-periodo">
                     <div style={{ display: "flex", gap: 4, flexWrap: "wrap", justifyContent: "flex-end" }}>
                       <select className="dc-input" aria-label={`Che cosa paga il bonifico di € ${eur(b.importo)}`} value={sc.tipo || "acconto"} onChange={e => setScelta(b.id, "tipo", e.target.value)} style={{ minWidth: 130, minHeight: 44 }}>
                         {TIPI.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}
@@ -4608,20 +4612,20 @@ function BonificiDaAssociarePage({ dipendenti }) {
                         </select>
                       )}
                     </div>
-                  </td>
-                  <td data-label="Periodo">
-                    <div style={{ display: "flex", gap: 4 }}>
-                      <select className="dc-input" aria-label={`Mese di competenza del bonifico di € ${eur(b.importo)}`} value={sc.mese || ""} onChange={e => setScelta(b.id, "mese", e.target.value ? Number(e.target.value) : "")} style={{ width: 130, minHeight: 44 }}>
+
+                    <div className="dc-coda-mese-anno">
+                      <select className="dc-input" aria-label={`Mese di competenza del bonifico di € ${eur(b.importo)}`} value={sc.mese || ""} onChange={e => setScelta(b.id, "mese", e.target.value ? Number(e.target.value) : "")} style={{ minHeight: 44 }}>
                         <option value="">Da attribuire</option>
                         {mesi.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
                         <option value={13}>13ª</option><option value={14}>14ª</option>
                       </select>
                       <input type="number" className="dc-input" placeholder="Anno" aria-label={`Anno di competenza del bonifico di € ${eur(b.importo)}`} value={sc.anno || ""}
-                        onChange={e => setScelta(b.id, "anno", e.target.value ? Number(e.target.value) : "")} style={{ width: 80, minHeight: 44 }} />
+                        onChange={e => setScelta(b.id, "anno", e.target.value ? Number(e.target.value) : "")} style={{ minHeight: 44 }} />
+                    </div>
                     </div>
                   </td>
                   <td data-label="Azioni">
-                    <div style={{ display: "flex", gap: 6 }}>
+                    <div className="dc-coda-azioni">
                       <button className="dc-btn" style={{ minHeight: 44 }} disabled={busy === b.id || b.gia_confermato_altrove} onClick={() => associa(b.id)}>
                         {busy === b.id ? "…" : "Associa"}
                       </button>

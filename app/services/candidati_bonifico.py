@@ -213,8 +213,11 @@ def calcola_candidati(
 
 
 def testo_riga_coda(riga: Dict[str, Any]) -> str:
-    """Il testo su cui si cercano i nomi: causale e nome del file."""
-    return " ".join(str(p) for p in (riga.get("causale"), riga.get("pdf_filename")) if p)
+    """Conserva anche il beneficiario esplicito della ricevuta bancaria."""
+    beneficiario = riga.get("beneficiario")
+    if isinstance(beneficiario, dict):
+        beneficiario = beneficiario.get("nome")
+    return " ".join(str(p) for p in (beneficiario, riga.get("causale"), riga.get("pdf_filename")) if p)
 
 
 def _campi_calcolati(esito: Dict[str, Any]) -> Dict[str, Any]:

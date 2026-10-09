@@ -73,6 +73,11 @@ def chiavi_bonifico(riga: Optional[Dict[str, Any]]) -> Set[str]:
         chiave = _norm_chiave(campo, riga.get(campo))
         if chiave:
             chiavi.add(chiave)
+    # Lo stesso MB... può essere stato archiviato come CRO dalle vecchie
+    # importazioni. L'identità bancaria non dipende dal nome della colonna.
+    rif = rif_interno_banca(riga.get("rif_banca"), riga.get("cro"), riga.get("rif_interno"))
+    if rif:
+        chiavi.add(_norm_chiave("rif_banca", rif))
     if not riga.get("rif_banca"):
         # righe nate prima del campo: il «MB…» si legge dalla causale o dal nome del file
         chiave = _norm_chiave("rif_banca", rif_interno_banca(riga.get("causale"), riga.get("pdf_filename")))
