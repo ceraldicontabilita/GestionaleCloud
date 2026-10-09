@@ -5624,6 +5624,14 @@ doppioni legge solo metadati e il testo PDF viene estratto una sola volta.
 modificati e archiviazione verificata per gli altri ingressi. Quest'ultima
 ottimizzazione resta da verificare nel relativo deploy.
 
+Un successivo log live mostra un XML con fattura numero 41 che impiega
+116,87 secondi e riesamina 76 movimenti. La selezione cercava "41" come
+sottostringa di causali e riferimenti bancari: al controllo SQL 74 movimenti
+ancora aperti contenevano la sottostringa, nessuno il numero isolato.
+La query ora esclude le cifre adiacenti; mantiene FT41, 41/A, citazioni
+cumulative e ricerca per importo esatto. Il motore di riconciliazione resta
+lo stesso. 67 regressioni superate; rilascio e tempi successivi da verificare.
+
 08/10/2026: recupero acconto collegato al dovuto di Archivio paghe, posizione
 dipendente ed export. Il netto PDF resta distinto: Dias marzo 2023 stampa
 7,00 EUR e recupera 800,00 EUR con voce 000306, quindi il dovuto e' 807,00 EUR.
