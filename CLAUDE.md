@@ -5582,10 +5582,12 @@ zero chiavi pagamento duplicate. Le date prive di prova restano aperte.
 dal titolare contiene 11.384 file, dei quali 7.822 PDF. La precedenza di
 tutti gli XML impediva ai PDF senza parole chiave nel nome di avanzare.
 Il lotto ora riserva turni a estratti, cedolini, XML e altri documenti;
-sulla coda reale il lotto da 50 comprende 25 XML e 25 PDF. Trovata inoltre
-la causa di ripassi contabili non richiesti: `movement_ids=[]` veniva
-interpretato come tutto l'archivio. Ora non esegue letture ne' scritture;
-le ricerche per fattura non caricano XML/PDF originali inutilizzati.
+sulla coda reale il lotto da 50 comprende 25 XML e 25 PDF. I log live
+mostrano inoltre tre ricerche di riconciliazione che caricavano gli originali
+di tutte le fatture candidate; ora usano soltanto i metadati necessari.
+Corretto anche il contratto difensivo `movement_ids=[]`: non esegue letture
+ne' scritture. Il chiamante import fatture aveva gia' una guardia sulla
+lista vuota: questo caso non e' la causa osservata nei suoi log.
 Sui tre ZIP (122 file) riprodotti e corretti 12 estratti BPM classificati
 come mutui e un BNL rifiutato per il codice alfabetico ZI allineato a destra.
 Il BNL verifica 36 movimenti e saldo 640,71 + 7.345,00 - 6.694,79 =
