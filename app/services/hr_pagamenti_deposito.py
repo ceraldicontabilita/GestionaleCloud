@@ -595,6 +595,11 @@ async def _deposita(
     # applicata sopra, prima ancora di risolvere il dipendente: resta un
     # veto valido anche con un nome dipendente riconosciuto dentro.
     if dip is None or periodo is None:
+        riferimento = {**riferimento, **({
+            "dipendente_id": dip["id"], "beneficiario": _nome_dipendente(dip),
+            "associazione_certa": True, "associazione_certa_motivo": motivo,
+            "associazione_certa_fonte": origine, "competenza_da_attribuire": True,
+        } if dip is not None and motivo in {"cf", "nome", "cognome"} else {})}
         # ambiguo, oppure nessun dipendente riconosciuto: decide una
         # persona dalla coda HR.
         rif = rif_interno_banca(cro, causale, pdf_filename)

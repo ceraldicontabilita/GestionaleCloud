@@ -3535,26 +3535,37 @@ Excel è un formato di importazione, non un secondo archivio operativo.
 
 ### Griglia ed esportazione dell'Archivio paghe
 
-La griglia distingue dipendente, anno e mese tecnico (1–14), anche con
-«Tutti gli anni». Le celle separano dovuto, pagamenti attribuiti, residuo e
-stato documentale; si aprono sugli stessi dati e originali dell'elenco.
-Scelta della vista e misura visualizzata persistono durante la navigazione.
-Un importo non letto resta «Da leggere»; uno zero effettivo resta zero.
-I totali delle celle incomplete sono esplicitamente parziali. Una seconda
-riga della stessa chiave non sovrascrive silenziosamente la prima.
+La spunta «Griglia annuale» alterna elenco e tabella compatta, anche con
+«Tutti gli anni»: una riga per dipendente/anno, mesi 1–14 in colonne, nessuna
+scheda a riquadri. La scelta persiste durante la navigazione. Un dato non
+letto resta sconosciuto, uno zero documentato resta zero; periodi ambigui
+non sovrascrivono altri valori e i totali incompleti non diventano completi.
+Il riepilogo esteso degli import conclusi non occupa la pagina; gli errori
+restano consultabili nella sezione richiudibile «Segnalazioni dell'import».
 
-L'esportazione di controllo, distinta dal file destinato all'importazione,
-usa gli stessi filtri del reader e quattro fogli: `Importi cedolini`,
-`Pagamenti recuperati`, `Cedolini mancanti`, `Mesi riconciliati`.
+Il saldo personale segue la data effettiva dei movimenti, con riporto fra
+anni: ogni pagamento attribuito con certezza al dipendente riduce il saldo
+alla data del bonifico, anche senza mese o riconciliazione. Non si inventa
+la competenza dalla data. La prima nota mostra il dettaglio cronologico.
+La coda conserva l'identità certa anche quando resta da decidere il periodo;
+i soli candidati non incidono sul saldo. Ricevuta ed esito con la stessa
+identità bancaria si contano una volta. Se una ricevuta coincide per persona,
+data e importo con l'elenco del titolare privo di riferimento bancario,
+il pagamento già registrato resta nel saldo e la ricevuta viene segnalata
+come possibile copia da confrontare: nessuna fusione o doppia sottrazione
+automatica. La riconciliazione del mese resta un controllo distinto.
+
+L'esportazione di controllo usa gli stessi filtri del reader e quattro fogli:
+`Importi cedolini`, `Pagamenti recuperati`, `PDF non collegati`, `Mesi riconciliati`.
+«PDF non collegati» indica solo periodi presenti nel registro senza PDF
+collegato, non dimostra l'assenza del cedolino e non modifica alcun saldo.
 Riporta netto PDF, netto confermato da elenco e recupero acconto separati.
-Il foglio pagamenti contiene solo le operazioni attribuite ai periodi
-esportati: per l'archivio completo usare i collegamenti al gestionale.
-I mesi mancanti hanno dati di periodo ma nessun riferimento all'originale;
-un buco del calendario non diventa automaticamente una busta mancante.
+Il foglio pagamenti contiene le operazioni attribuite ai periodi esportati;
+per tutti i pagamenti del dipendente, anche senza competenza, fa fede la
+posizione cronologica. Un buco nel calendario non prova una busta mancante.
 Il foglio riconciliati esclude mere uguaglianze di importo, associazioni non
 confermate, importi da leggere, anomalie e mesi privi di PDF o riscontro
-bancario. Un’associazione manuale senza tale riscontro resta da verificare.
-I contatori e gli importi del riepilogo rispettano il medesimo filtro stato.
+bancario. I filtri di stato non cancellano pagamenti dal saldo personale.
 
 I report ricostruiti dagli allegati dell'utente affiancano le fonti originali:
 il foglio «Cedolini» dell'allegato con i pagamenti del mese successivo è una

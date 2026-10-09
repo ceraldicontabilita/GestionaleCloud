@@ -4191,9 +4191,9 @@ async def paghe_in_attesa():
 
 @router.get("/paghe/prima-nota")
 async def prima_nota(dipendente_id: str):
-    """Prima nota salari di un dipendente per mese di competenza: dovuto (busta,
+    """Prima nota salari di un dipendente per data del movimento: dovuto (busta,
     con l'acconto recuperato in busta), erogato (bonifici e acconti) e saldo
-    progressivo (>0 = ancora da pagare). E' la vista mensile della posizione
+    progressivo (>0 = ancora da pagare). E' la vista cronologica della posizione
     dare/avere (``app/services/posizione_dipendente.py``): un solo registro."""
     from app.services.posizione_dipendente import prima_nota_dipendente
     return await prima_nota_dipendente(get_db(), dipendente_id)
@@ -4499,7 +4499,7 @@ async def _calcola_associazioni_bonifici(db, anno: Optional[int] = None, mese: O
 @router.get("/paghe/associazioni-bonifici/export-excel")
 async def associazioni_bonifici_export_excel(anno: Optional[int] = None, mese: Optional[int] = None,
                                               stato: Optional[str] = None):
-    """Esporta documenti, pagamenti, PDF mancanti e mesi riconciliati separatamente."""
+    """Esporta documenti, pagamenti, PDF non collegati e mesi riconciliati separatamente."""
     from fastapi.responses import StreamingResponse
     from app.hr.services.export_paghe import workbook_paghe
 

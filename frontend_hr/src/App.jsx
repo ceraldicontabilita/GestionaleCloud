@@ -5403,7 +5403,7 @@ function PagheBonificiPage({ dipendenti = [] }) {
   // voci di busta, simulazione F24, griglia annuale.
   const mesi = ["Gennaio","Febbraio","Marzo","Aprile","Maggio","Giugno","Luglio","Agosto","Settembre","Ottobre","Novembre","Dicembre"];
   const annoCorr = new Date().getFullYear();
-  const importSession = useImportSession('hr-paghe', { importing: false, importMsg: null, pnMsg: null, csvMsg: null, storicoMsg: null, files: [], anno: 0, mese: 0, filtroStato: "", griglia: false, misuraGriglia: "dovuto" });
+  const importSession = useImportSession('hr-paghe', { importing: false, importMsg: null, pnMsg: null, csvMsg: null, storicoMsg: null, files: [], anno: 0, mese: 0, filtroStato: "", griglia: false });
   const { anno, mese, filtroStato } = importSession.state;
   const setAnno = value => importSession.setField('anno', value);
   const setMese = value => importSession.setField('mese', value);
@@ -5774,7 +5774,7 @@ function PagheBonificiPage({ dipendenti = [] }) {
         axios.get(`${API}/paghe/prima-nota?dipendente_id=${dipId}`),
         axios.get(`${API}/paghe/storico-pagamenti?dipendente_id=${dipId}`).catch(() => ({ data: { righe: [] } })),
       ]);
-      setPnDett({ nome, righe: r.data.righe || [], saldo_finale: r.data.saldo_finale, storico: st.data.righe || [] });
+      setPnDett({ nome, righe: r.data.movimenti || [], saldo_finale: r.data.saldo_finale, storico: st.data.righe || [] });
     } catch { setPnDett({ nome, righe: [], errore: true }); }
   };
 
@@ -5862,54 +5862,21 @@ function PagheBonificiPage({ dipendenti = [] }) {
           <button className="dc-btn" disabled={exportBusy} onClick={esportaExcel}>
             {exportBusy ? "Esporto…" : "📊 Esporta Excel"}
           </button>
+          {!importing && importSession.state.files.length > 0 && !importMsg?.success && <button className="dc-btn" onClick={() => handleImportLul(null)}>Riprendi import</button>}
           <button className="dc-btn" onClick={() => setShowStrumenti(s => !s)}>🔎 Strumenti {showStrumenti ? "▲" : "▼"}</button>
         </div>
       </div>
 
       {importSession.error && <div role="alert" className="dc-card">{importSession.error}</div>}
       {importing && <div role="status" className="dc-card">Import in corso. Puoi cambiare pagina: file e risultati vengono conservati.</div>}
-      {!importing && importSession.state.files.length > 0 && <div className="dc-card">
-        {importSession.state.files.length} file conservati per questo import.
-        <button className="dc-btn" onClick={() => handleImportLul(null)}>Riprendi / verifica import</button>
-        <button className="dc-btn" onClick={() => { importSession.setField('files', []); setImportMsg(null); }}>Chiudi riepilogo</button>
-      </div>}
-      {importMsg && (
-        <div className="dc-card" style={msgCard(importMsg)}>
-          {importMsg.errore ? <div style={{ color: "#d35f4e", fontWeight: 600 }}>⚠ {importMsg.errore}</div> : (
-            <div>
-              <div style={{ fontWeight: 700, marginBottom: 6 }}>
-                {importMsg.errori?.length || importMsg.success === false ? "⚠ Import non completato" : importMsg.da_controllare?.length ? "⚠ Elaborazione con segnalazioni" : "✓ Elaborazione terminata"} · {importMsg.file_pdf} documenti · {importMsg.totale_associati} buste{importMsg.bonifici?.length ? ` · ${importMsg.bonifici.length} bonifici` : ""}{importMsg.prestiti?.length ? ` · ${importMsg.prestiti.length} prestiti` : ""}{importMsg.presenze?.length ? ` · ${importMsg.presenze.length} presenze` : ""}
-              </div>
-              {importMsg.errori?.length > 0 && <div role="alert" style={{ color: "#a13e30", marginBottom: 10 }}>
-                {importMsg.errori.map((errore, i) => <div key={i}>{errore}</div>)}
-              </div>}
-              {importMsg.messaggio && <div style={{ marginBottom: 6 }}>{importMsg.messaggio}</div>}
-              {importMsg.duplicati?.length > 0 && <div style={{ marginBottom: 6 }}>{importMsg.duplicati.length} buste già presenti, nessuna nuova copia.</div>}
-              {importMsg.saltati_presenze?.length > 0 && <details style={{ marginBottom: 6 }}><summary>{importMsg.saltati_presenze.length} fogli presenze saltati (non sono cedolini)</summary>{importMsg.saltati_presenze.map((voce, i) => <div key={i}>{voce.file}</div>)}</details>}
-              {importMsg.da_controllare?.length > 0 && <div role="alert" style={{ color: "#7d5526", marginBottom: 10 }}>
-                Da controllare: {importMsg.da_controllare.map((voce, i) => <div key={i}>{voce.file ? `${voce.file}: ` : ""}{voce.errore || voce.motivo || voce.dipendente || "Documento da verificare"}</div>)}
-              </div>}
-              {importMsg.mesi?.length > 0 && <div style={{ fontSize: 13, marginBottom: 6 }}>Mesi importati: {importMsg.mesi.map(mm => `${mesi[mm.mese - 1]} ${mm.anno} (${mm.n})`).join(" · ")}</div>}
-              <div style={{ fontSize: 13, color: "#6b7669", display: "flex", flexWrap: "wrap", gap: "2px 14px" }}>
-                {importMsg.associati?.map((a, i) => <span key={i}>{a.dipendente}: {a.netto == null ? "netto da verificare nel PDF" : `€ ${eur(a.netto)}`}{importMsg.mesi?.length > 1 ? ` (${a.mese}/${a.anno})` : ""}{a.metodo !== "codice fiscale" ? " ⚠" : ""}</span>)}
-              </div>
-              {importMsg.bonifici?.length > 0 && (
-                <div style={{ marginTop: 10, fontSize: 13 }}>
-                  <div style={{ fontWeight: 700, marginBottom: 4, color: "#234d3d" }}>Bonifici associati ({importMsg.bonifici.length})</div>
-                  {importMsg.bonifici.map((b, i) => <div key={i}>{b.dipendente}: € {eur(b.importo)} → {mesi[b.mese - 1]} {b.anno} <span style={{ color: "#6b7669" }}>[{b.fonte}]</span>{b.discrepanza != null && <span style={{ color: "#7d5526" }}> (Excel attendeva € {eur(b.discrepanza)})</span>}</div>)}
-                </div>
-              )}
-              {importMsg.tfr?.length > 0 && (
-                <div style={{ marginTop: 10, fontSize: 13 }}>
-                  <div style={{ fontWeight: 700, marginBottom: 4, color: "#56442d" }}>Anticipi TFR ({importMsg.tfr.length}) — fuori dal saldo stipendi</div>
-                  {importMsg.tfr.map((x, i) => <div key={i}>{x.dipendente}: € {eur(x.importo)} → {mesi[x.mese - 1]} {x.anno}</div>)}
-                </div>
-              )}
-              {importMsg.non_associati?.length > 0 && <div style={{ marginTop: 8, fontSize: 13, color: "#7d5526" }}>⚠ Non associati: {importMsg.non_associati.map(x => x.file || x).join(", ")}</div>}
-            </div>
-          )}
-        </div>
-      )}
+      {importMsg && (importMsg.errore || importMsg.errori?.length > 0 || importMsg.da_controllare?.length > 0 || importMsg.non_associati?.length > 0) && <details className="dc-card" style={{ padding: 10 }}>
+        <summary>Segnalazioni dell'import da verificare</summary>
+        {importMsg.errore && <div role="alert">{importMsg.errore}</div>}
+        {importMsg.errori?.map((e, i) => <div key={i} role="alert">{e}</div>)}
+        {importMsg.da_controllare?.map((v, i) => <div key={i}>{v.file ? `${v.file}: ` : ""}{v.errore || v.motivo || v.dipendente}</div>)}
+        {importMsg.non_associati?.map((v, i) => <div key={i}>{v.file || v}</div>)}
+        <button className="dc-btn" onClick={() => handleImportLul(null)}>Riprendi import</button>
+      </details>}
       {pnMsg && (
         <div className="dc-card" style={msgCard(pnMsg)}>
           {pnMsg.in_corso ? <div>Import importi in corso. Puoi cambiare pagina: la coda è conservata.</div> : pnMsg.errore ? <div style={{ color: "#d35f4e", fontWeight: 600 }}>⚠ {pnMsg.errore}</div> : (
@@ -6030,7 +5997,7 @@ function PagheBonificiPage({ dipendenti = [] }) {
       )}
 
       {/* Filtri */}
-      <button className="dc-btn" style={{ marginBottom: 10 }} onClick={() => { setAnno(0); setMese(0); setFiltroStato(""); if (!anno && !mese && !filtroStato) load(); }}>Mostra tutte le buste</button>
+
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", marginBottom: 16 }}>
         <select style={sel} aria-label="Anno" value={anno} onChange={e => setAnno(Number(e.target.value))}>
           <option value={0}>Tutti gli anni</option>
@@ -6077,10 +6044,7 @@ function PagheBonificiPage({ dipendenti = [] }) {
       </div>
 
       {griglia && <GrigliaPaghe righe={data.righe} daLeggere={data.cedolini_da_verificare}
-        loading={loading} misura={importSession.state.misuraGriglia || "dovuto"}
-        onMisura={value => importSession.setField("misuraGriglia", value)}
-        onPdf={apriCedolino} onDipendente={apriPrimaNota}
-        onElenco={r => { setGriglia(false); setAnno(r.anno); setMese(r.mese); setFiltroStato(""); setAperta(keyOf(r)); }} />}
+        loading={loading} onDipendente={apriPrimaNota} />}
 
       {/* Tabella */}
       <div hidden={griglia} style={{ background: "#fffefb", border: "1px solid #e6e0d4", borderRadius: 12, overflow: "hidden" }}>
@@ -6290,19 +6254,20 @@ function PagheBonificiPage({ dipendenti = [] }) {
       </div>
 
       {pnDett && (
-        <Modal title={`Prima nota — ${pnDett.nome}`} onClose={() => setPnDett(null)} maxWidth={640}>
+        <Modal title={`Prima nota — ${pnDett.nome}`} onClose={() => setPnDett(null)} maxWidth={880}>
           <div className="dc-modal-body">
+            <p className="dc-muted">I pagamenti riducono il saldo alla loro data, anche quando il mese è ancora da attribuire o riconciliare.</p>
             {pnDett.loading ? <p className="dc-muted">Carico…</p> : !pnDett.righe?.length ? <p className="dc-muted" style={{ marginTop: 12 }}>Nessun dato.</p> : (
               <div style={{ overflowX: "auto", marginTop: 12 }}>
                 <table className="dc-table" style={{ minWidth: 520, whiteSpace: "nowrap" }}>
-                  <thead><tr><th>Periodo</th><th style={{ textAlign: "right" }}>Busta €</th><th style={{ textAlign: "right" }}>Erogato €</th><th style={{ textAlign: "right" }}>Saldo progressivo €</th></tr></thead>
+                  <thead><tr><th>Data / movimento</th><th style={{ textAlign: "right" }}>Dovuto €</th><th style={{ textAlign: "right" }}>Pagamenti €</th><th style={{ textAlign: "right" }}>Saldo progressivo €</th></tr></thead>
                   <tbody>
                     {pnDett.righe.map((x, i) => (
                       <tr key={i}>
-                        <td>{x.mese >= 1 && x.mese <= 12 ? mesi[x.mese - 1] : x.mese} {x.anno}</td>
-                        <td style={{ textAlign: "right" }}>{x.busta ? eur(x.busta) : "—"}</td>
-                        <td style={{ textAlign: "right" }}>{x.erogato ? eur(x.erogato) : "—"}</td>
-                        <td style={{ textAlign: "right", fontWeight: 700, color: x.saldo_progressivo > 0 ? "#d35f4e" : x.saldo_progressivo < 0 ? "#7d5526" : "#3d8168" }}>{eur(x.saldo_progressivo)}</td>
+                        <td style={{ whiteSpace: "normal", minWidth: 200 }}>{formatDate(x.data)}<div>{x.descrizione}</div>{x.avviso && <small className="dc-muted">{x.avviso}</small>}</td>
+                        <td style={{ textAlign: "right" }}>{x.dare == null ? "—" : eur(x.dare)}</td>
+                        <td style={{ textAlign: "right" }}>{x.avere == null ? "—" : eur(x.avere)}</td>
+                        <td style={{ textAlign: "right", fontWeight: 700, color: x.saldo > 0 ? "#d35f4e" : x.saldo < 0 ? "#7d5526" : "#3d8168" }}>{eur(x.saldo)}</td>
                       </tr>
                     ))}
                     <tr style={{ fontWeight: 700, borderTop: "2px solid #e6e0d4" }}>
