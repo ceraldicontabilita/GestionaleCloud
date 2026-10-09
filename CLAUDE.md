@@ -3546,7 +3546,13 @@ restano consultabili nella sezione richiudibile «Segnalazioni dell'import».
 Il saldo personale segue la data effettiva dei movimenti, con riporto fra
 anni: ogni pagamento attribuito con certezza al dipendente riduce il saldo
 alla data del bonifico, anche senza mese o riconciliazione. Non si inventa
-la competenza dalla data. La prima nota mostra il dettaglio cronologico.
+la competenza dalla data. La scheda aperta dal nome del dipendente mostra
+come vista iniziale una riga per mensilità, con dovuto, tutti i pagamenti
+attribuiti (date e importi), totale pagato e differenza. Il dettaglio
+cronologico con saldo progressivo resta consultabile in una sezione chiusa.
+I pagamenti senza competenza rimangono autonomi e incidono comunque sul saldo;
+i cumulativi compaiono una sola volta con rimandi dai mesi coperti, senza
+quote inventate. La vista raggruppata non modifica dati, date o associazioni.
 La coda conserva l'identità certa anche quando resta da decidere il periodo;
 i soli candidati non incidono sul saldo. Ricevuta ed esito con la stessa
 identità bancaria si contano una volta. Se una ricevuta coincide per persona,

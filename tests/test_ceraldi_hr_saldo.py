@@ -34,6 +34,31 @@ class SaldoDipendenteTests(unittest.TestCase):
         righe = prima_nota_mensile(m)["movimenti"]
         self.assertEqual([(r["data"], r["saldo"]) for r in righe], [("2025-12-20", -400), ("2026-01-31", 600)])
 
+    def test_cedolino_e_pagamento_successivo_sulla_stessa_riga(self):
+        m = componi_movimenti(paghe=[{"anno": 2021, "mese": 11, "importo_busta": 878}],
+                              esiti=[{"data": "2021-12-03", "importo": 863, "anno": 2021, "mese": 11}],
+                              cedolini=[], acconti=[], conciliazioni=[])
+        vista = prima_nota_mensile(m)
+        self.assertEqual(len(vista["competenze"]), 1)
+        r = vista["competenze"][0]
+        self.assertEqual((r["dovuto"], r["pagato"], r["differenza"]), (878, 863, 15))
+        self.assertEqual(r["pagamenti"][0]["data"], "2021-12-03")
+        self.assertEqual([x["saldo"] for x in vista["movimenti"]], [878, 15])
+
+    def test_pagamenti_multipli_e_acconto_senza_mese_non_si_mischiano(self):
+        m = componi_movimenti(paghe=[{"anno": 2021, "mese": 11, "importo_busta": 878}],
+                              esiti=[{"data": d, "importo": i, "anno": 2021, "mese": 11}
+                                     for d, i in [("2021-12-03", 863), ("2021-12-16", 1878), ("2021-12-21", 1000)]]
+                                    + [{"data": "2021-12-22", "importo": 400}],
+                              cedolini=[], acconti=[], conciliazioni=[])
+        vista = prima_nota_mensile(m)
+        r, libero = vista["competenze"]
+        self.assertEqual(len(r["pagamenti"]), 3)
+        self.assertEqual((r["pagato"], r["differenza"]), (3741, -2863))
+        self.assertIsNone(libero["mese"])
+        self.assertEqual(libero["pagato"], 400)
+        self.assertEqual(vista["saldo_finale"], -3263)
+
     def test_esito_senza_mese_ha_valore_economico(self):
         m = componi_movimenti(paghe=[], esiti=[{"data": "2025-12-20", "importo": 400}],
                               cedolini=[], acconti=[], conciliazioni=[])
@@ -116,6 +141,10 @@ class CoperturaMensilitaTests(unittest.TestCase):
             self.assertEqual(prove[0]['nota'], 'Stipendio pagato con bonifico del 10/06/2022')
         mov = componi_movimenti(paghe=[], esiti=[e], cedolini=[], acconti=[], conciliazioni=[])
         self.assertEqual(prima_nota_mensile(mov)['saldo_finale'], -3249)
+        righe = prima_nota_mensile(mov)['competenze']
+        self.assertEqual(sum(r['pagato'] for r in righe), 3249)
+        self.assertEqual([r['mese'] for r in righe if r['coperture']], [3, 4, 5])
+        self.assertTrue(all(r['differenza'] == 0 and r['dovuto'] is None for r in righe if r['coperture']))
         self.assertEqual(indice_coperture([e | {'confermato_manuale': False}]), {})
 
     def test_totali_zucchetti_dalle_celle_non_dalla_prima_coppia_del_testo(self):

@@ -10,6 +10,7 @@ import { isIntentionalPaintDrag } from "./presenzeSelection";
 import { buildPresenzePrintHtml } from "./presenzePrint";
 import { buildPresenzeCsv } from "./presenzeCsv";
 import GrigliaPaghe from "./GrigliaPaghe";
+import PrimaNotaPaghe from "./PrimaNotaPaghe";
 import { sceltaIniziale, sceltaCandidato, propostaIntatta } from "./sceltaBonifico";
 import MissioniPage from "./MissioniPage";
 import { normalizzaEsitoImportPaghe } from "./esitoImportPaghe";
@@ -450,7 +451,7 @@ function Modal({ title, onClose, large, wide, maxWidth, children }) {
     const box = boxRef.current;
     if (!box) return undefined;
     const focusables = () => Array.from(box.querySelectorAll(
-      'a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+      'a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), summary, [tabindex]:not([tabindex="-1"])'
     )).filter(el => el.offsetParent !== null);
     const primo = focusables().find(el => !el.classList.contains("dc-modal-close")) || box;
     primo.focus();
@@ -5849,7 +5850,7 @@ function PagheBonificiPage({ dipendenti = [] }) {
         axios.get(`${API}/paghe/prima-nota?dipendente_id=${dipId}`),
         axios.get(`${API}/paghe/storico-pagamenti?dipendente_id=${dipId}`).catch(() => ({ data: { righe: [] } })),
       ]);
-      setPnDett({ nome, righe: r.data.movimenti || [], saldo_finale: r.data.saldo_finale, storico: st.data.righe || [] });
+      setPnDett({ nome, competenze: r.data.competenze || [], righe: r.data.movimenti || [], saldo_finale: r.data.saldo_finale, storico: st.data.righe || [] });
     } catch { setPnDett({ nome, righe: [], errore: true }); }
   };
 
@@ -6343,33 +6344,12 @@ function PagheBonificiPage({ dipendenti = [] }) {
       </div>
 
       {pnDett && (
-        <Modal title={`Prima nota — ${pnDett.nome}`} onClose={() => setPnDett(null)} maxWidth={880}>
+        <Modal title={`Cedolini e pagamenti — ${pnDett.nome}`} onClose={() => setPnDett(null)} maxWidth={1080}>
           <div className="dc-modal-body">
-            <p className="dc-muted">I pagamenti riducono il saldo alla loro data, anche quando il mese è ancora da attribuire o riconciliare.</p>
-            {pnDett.loading ? <p className="dc-muted">Carico…</p> : !pnDett.righe?.length ? <p className="dc-muted" style={{ marginTop: 12 }}>Nessun dato.</p> : (
-              <div style={{ overflowX: "auto", marginTop: 12 }}>
-                <table className="dc-table" style={{ minWidth: 520, whiteSpace: "nowrap" }}>
-                  <thead><tr><th>Data / movimento</th><th style={{ textAlign: "right" }}>Dovuto €</th><th style={{ textAlign: "right" }}>Pagamenti €</th><th style={{ textAlign: "right" }}>Saldo progressivo €</th></tr></thead>
-                  <tbody>
-                    {pnDett.righe.map((x, i) => (
-                      <tr key={i}>
-                        <td style={{ whiteSpace: "normal", minWidth: 200 }}>{formatDate(x.data)}<div>{x.descrizione}</div>{x.avviso && <small className="dc-muted">{x.avviso}</small>}</td>
-                        <td style={{ textAlign: "right" }}>{x.dare == null ? "—" : eur(x.dare)}</td>
-                        <td style={{ textAlign: "right" }}>{x.avere == null ? "—" : eur(x.avere)}</td>
-                        <td style={{ textAlign: "right", fontWeight: 700, color: x.saldo > 0 ? "#d35f4e" : x.saldo < 0 ? "#7d5526" : "#3d8168" }}>{eur(x.saldo)}</td>
-                      </tr>
-                    ))}
-                    <tr style={{ fontWeight: 700, borderTop: "2px solid #e6e0d4" }}>
-                      <td colSpan={3}>Saldo finale (positivo = ancora da pagare)</td>
-                      <td style={{ textAlign: "right", color: pnDett.saldo_finale > 0 ? "#d35f4e" : "#3d8168" }}>{eur(pnDett.saldo_finale)}</td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-            )}
+            <PrimaNotaPaghe prospetto={pnDett} />
             {pnDett.storico?.length > 0 && (
-              <div style={{ marginTop: 18 }}>
-                <h4 style={{ margin: "0 0 4px" }}>Storico ante-app (da Excel)</h4>
+              <details style={{ marginTop: 18 }}>
+                <summary>Storico ante-app (da Excel)</summary>
                 <p className="dc-muted" style={{ fontSize: 12.5, margin: "0 0 8px" }}>Sola consultazione: registro dei pagamenti effettuati prima di questa app, per data del bonifico.</p>
                 <div style={{ overflowX: "auto", maxHeight: 260, overflowY: "auto" }}>
                   <table className="dc-table" style={{ minWidth: 420, whiteSpace: "nowrap" }}>
@@ -6377,7 +6357,7 @@ function PagheBonificiPage({ dipendenti = [] }) {
                     <tbody>{pnDett.storico.map((x, i) => <tr key={i}><td>{formatDate(x.data)}</td><td style={{ textAlign: "right" }}>{x.busta ? eur(x.busta) : "—"}</td><td style={{ textAlign: "right" }}>{x.pagato ? eur(x.pagato) : "—"}</td></tr>)}</tbody>
                   </table>
                 </div>
-              </div>
+              </details>
             )}
           </div>
         </Modal>

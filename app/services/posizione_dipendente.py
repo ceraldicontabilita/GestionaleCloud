@@ -467,7 +467,8 @@ def componi_movimenti(*, paghe: Iterable[Dict[str, Any]], esiti: Iterable[Dict[s
             descr = "Stipendi pagati: " + ", ".join(_nome_periodo(a, m) for a, m in coperti)
         registro.append(_mov(data, "bonifico", descr + (f" — {causale[:80]}" if causale else ""),
                              avere=imp, competenza=comp, fonte="pagamenti_esiti",
-                             link={"key": e.get("key"), "anno": a, "mese": m},
+                             link={"key": e.get("key"), "anno": a, "mese": m,
+                                   "periodi_saldati": coperti},
                              avviso=None if comp or coperti else "Già scalato dal saldo; mese da attribuire"))
 
     # Una coda con identità certa e periodo assente è già un pagamento al
@@ -678,6 +679,54 @@ def posizione(movimenti: Dict[str, List[Dict[str, Any]]], anno: Optional[int] = 
     }
 
 
+def prospetto_competenze(movimenti: Dict[str, List[Dict[str, Any]]]) -> List[Dict[str, Any]]:
+    """Una riga per busta e relativi pagamenti, preservando date e registro.
+
+    Non assegna mesi ai pagamenti senza competenza e non ripartisce bonifici
+    cumulativi. Ogni movimento monetario compare una sola volta nel prospetto.
+    """
+    gruppi = {}
+    coperture = []
+
+    def periodo(a, m):
+        key = f"{a}-{m:02d}"
+        return gruppi.setdefault(key, {"key": key, "anno": a, "mese": m,
+            "descrizione": _nome_periodo(a, m), "buste": [], "pagamenti": [],
+            "coperture": [], "ordine": (a, m, 0, key)})
+
+    for i, mv in enumerate(movimenti["registro"]):
+        comp = mv.get("competenza")
+        coperti = mv.get("link", {}).get("periodi_saldati") or []
+        if comp and not coperti and mv["tipo"] in ("busta", "bonifico", "acconto"):
+            r = periodo(*comp)
+        else:
+            key = f"movimento-{i}"
+            r = {"key": key, "anno": None, "mese": None, "descrizione": mv["descrizione"],
+                 "buste": [], "pagamenti": [], "coperture": [],
+                 "ordine": (int(mv["data"][:4]), int(mv["data"][5:7]), 1, key)}
+            gruppi[key] = r
+        r["pagamenti" if mv["avere"] is not None else "buste"].append(_riga_json(mv))
+        if coperti:
+            coperture.append((coperti, {"data": mv["data"], "importo_totale": _eur(mv["avere"]),
+                                       "riferimento": r["key"], "descrizione": mv["descrizione"]}))
+
+    for periodi, pagamento in coperture:
+        for a, m in periodi:
+            periodo(a, m)["coperture"].append(pagamento)
+
+    out = []
+    for r in sorted(gruppi.values(), key=lambda x: x["ordine"]):
+        buste = r["buste"]
+        dovuto = (sum((importo(b["dare"]) for b in buste), ZERO)
+                  if buste and all(b["dare"] is not None for b in buste) else None)
+        pagato = sum((importo(p["avere"]) or ZERO for p in r["pagamenti"]), ZERO)
+        # Una copertura documentata chiude il mese senza inventare la sua quota.
+        differenza = ZERO if r["coperture"] else dovuto - pagato if dovuto is not None else None
+        out.append({k: v for k, v in r.items() if k != "ordine"} | {
+            "dovuto": _eur(dovuto), "pagato": _eur(pagato), "differenza": _eur(differenza)})
+    return out
+
+
 def prima_nota_mensile(movimenti: Dict[str, List[Dict[str, Any]]]) -> Dict[str, Any]:
     """Riepilogo per mese contabile e dettaglio cronologico dello stesso registro.
 
@@ -711,6 +760,7 @@ def prima_nota_mensile(movimenti: Dict[str, List[Dict[str, Any]]]) -> Dict[str, 
                       "saldo_progressivo": _eur(saldo)})
     dettaglio, saldo = _con_saldo(movimenti["registro"])
     return {"righe": righe, "movimenti": [_riga_json(mv) for mv in dettaglio],
+            "competenze": prospetto_competenze(movimenti),
             "saldo_finale": _eur(saldo), "valuta": VALUTA}
 
 
