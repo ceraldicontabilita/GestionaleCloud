@@ -3788,9 +3788,13 @@ async def upload_documento_automatico(
             # dati non venivano letti ne' associati al dipendente.
             import base64 as b64
             from app.services.bonifici_pdf_ingest import STATO_NON_REGISTRATO, importa_pdf_bonifico
+            from app.services.pdf_drive_only import reference_from_download
 
             ingest = await importa_pdf_bonifico(
-                db, content, filename, source="upload_manuale_import_documenti"
+                db, content, filename,
+                source=source_context.get("channel") or "upload_manuale_import_documenti",
+                source_path=source_context.get("source_path") or source_context.get("drive_path"),
+                source_context=source_context,
             )
             if ingest.get("status") not in {"saved", "duplicate"}:
                 result.update({"success": False, "imported": 0,
@@ -3807,10 +3811,11 @@ async def upload_documento_automatico(
                 "id": doc_id,
                 "filename": filename,
                 "pdf_data": b64.b64encode(content).decode('utf-8'),  # Drive/Supabase
+                **reference_from_download(content, source_context),
                 "category": "bonifico",
                 "status": "da_processare",
                 "processed": False,
-                "source": "upload_manuale",
+                "source": source_context.get("channel") or "upload_manuale",
                 "sha256": content_sha256,
                 "bonifico_transfer_id": ingest["transfer_id"],
                 "created_at": datetime.now(timezone.utc).isoformat()
