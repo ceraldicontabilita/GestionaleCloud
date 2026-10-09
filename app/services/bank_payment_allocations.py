@@ -8,6 +8,7 @@ import logging
 import re
 
 from fastapi import HTTPException
+from app.document_repository import metadata_projection
 
 from app.services.accounting_relation_writers import record_bank_invoice_allocation
 from app.services.identity_matching import (
@@ -747,7 +748,7 @@ async def _reconcile_unique_identity_matches(
     invoices = await db["invoices"].find({"$or": [
         {**FILTRO_NON_PAGATE, "stato_pagamento": {"$ne": "pagata"}},
         {"in_attesa_riscontro_banca": True},
-    ]}, {"_id": 0}).to_list(50000)
+    ]}, metadata_projection("invoices")).to_list(50000)
     invoices_by_residual: Dict[int, List[Dict[str, Any]]] = {}
     for invoice in invoices:
         residual = max(
@@ -1009,7 +1010,7 @@ async def reconcile_cited_invoices(db, movements: List[Dict[str, Any]]) -> Dict[
     candidati = [m for m in candidati if citati_per_mov[str(m.get("id"))]]
     if not candidati:
         return {"collegati": [], "collegati_count": 0, "sospesi": 0}
-    fatture = await db["invoices"].find(FILTRO_DA_RISCONTRARE, {"_id": 0}).to_list(50000)
+    fatture = await db["invoices"].find(FILTRO_DA_RISCONTRARE, metadata_projection("invoices")).to_list(50000)
     fatture = [
         f for f in fatture
         if str(f.get("status") or "").lower() not in {"deleted", "archived", "archiviata"}
@@ -1124,7 +1125,7 @@ async def reconcile_acconti_fornitore(
     fatture = await db["invoices"].find({"$or": [
         {**FILTRO_NON_PAGATE, "stato_pagamento": {"$ne": "pagata"}},
         {"in_attesa_riscontro_banca": True},
-    ]}, {"_id": 0}).to_list(50000)
+    ]}, metadata_projection("invoices")).to_list(50000)
     fatture = [
         f for f in fatture
         if str(f.get("status") or "").lower() not in {"deleted", "archived", "archiviata"}
@@ -1225,7 +1226,11 @@ async def reconcile_deterministic_invoice_allocations(
 ) -> Dict[str, Any]:
     """Collega automaticamente solo distinte con riferimenti univoci e quadrati."""
     query: Dict[str, Any] = {"riconciliato": {"$ne": True}}
-    if movement_ids:
+    if movement_ids is not None:
+        if not movement_ids:
+            # Il chiamante ha gia' riconciliato tutti i candidati. Una lista
+            # vuota non autorizza un ripasso dell'intero archivio bancario.
+            return {"esaminati": 0, "allocati": 0, "sospesi": 0, "errori": []}
         query["id"] = {"$in": [str(value) for value in movement_ids if value]}
     if anno:
         query["data"] = {"$regex": f"^{anno}"}
