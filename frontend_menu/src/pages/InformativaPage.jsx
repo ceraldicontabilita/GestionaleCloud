@@ -15,7 +15,7 @@ const FOCUS_SALVIA =
 // se cambia il codice, cambia anche qui. Il titolare arriva dall'anagrafica
 // azienda unica (`GET /api/menu/titolare`), mai scritto a mano: se non si
 // legge, la pagina lo dice invece di inventarlo.
-import { MENU_BACKEND_URL as BACKEND_URL } from '@/lib/backend';
+const BACKEND_URL = process.env.REACT_APP_MENU_BACKEND_URL || '';
 
 export const DATA_AGGIORNAMENTO = '26/09/2026';
 

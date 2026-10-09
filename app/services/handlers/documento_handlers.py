@@ -58,18 +58,7 @@ async def on_documento_acquisito(event: Dict[str, Any], db) -> Optional[Dict]:
     risultati = []
     documento = await db["documents_inbox"].find_one(
         {"id": doc_id},
-        {
-            "_id": 0,
-            "id": 1,
-            "category": 1,
-            "sha256": 1,
-            "file_hash": 1,
-            "tipo_documento": 1,
-            "testo_estratto": 1,
-            "extracted_text": 1,
-            "content_text": 1,
-            "text": 1,
-        },
+        {"_id": 0, "id": 1, "category": 1, "sha256": 1, "file_hash": 1, "tipo_documento": 1},
     ) or {}
 
     # --- DEDUPLICA su SHA-256 ---
@@ -106,24 +95,7 @@ async def on_documento_acquisito(event: Dict[str, Any], db) -> Optional[Dict]:
         return {"action": "documento_gia_classificato", "categoria": categoria,
                 "risultati": risultati}
 
-    testo = next(
-        (
-            str(valore)
-            for valore in (
-                event.get("testo_estratto"),
-                event.get("extracted_text"),
-                event.get("content_text"),
-                event.get("text"),
-                documento.get("testo_estratto"),
-                documento.get("extracted_text"),
-                documento.get("content_text"),
-                documento.get("text"),
-            )
-            if valore
-        ),
-        "",
-    )
-    tipo = _classifica_documento(testo, mime_type)
+    tipo = _classifica_documento(filename, mime_type, mittente)
 
     if tipo == "fattura_xml":
         modulo_target = "fatture"
@@ -217,38 +189,46 @@ async def on_documento_instradato(event: Dict[str, Any], db) -> Optional[Dict]:
 # ============================================================
 # CLASSIFICAZIONE
 # ============================================================
-def _classifica_documento(testo: str, mime_type: str = "") -> str:
-    """Classifica solo quando il contenuto fornisce una prova sufficiente.
-
-    Nome file e mittente restano metadati utili per la revisione, ma non sono
-    fatti contabili: non possono assegnare da soli una categoria definitiva.
+def _classifica_documento(filename: str, mime_type: str, mittente: str) -> str:
     """
-    compatto = re.sub(r"\s+", " ", str(testo or "")).upper()
-    senza_separatore = re.sub(r"[^A-Z0-9]", "", compatto)
+    Classifica il tipo di documento in base a filename, mime e mittente.
+    """
+    fn = (filename or "").lower()
+    mt = (mittente or "").lower()
 
-    if "FATTURAELETTRONICA" in senza_separatore:
-        return "fattura_xml"
-    if (
-        ("DELEGAIRREVOCABILE" in senza_separatore or "MODELLODIPAGAMENTOUNIFICATO" in senza_separatore)
-        and "CODICETRIBUTO" in senza_separatore
-    ):
+    # Fattura XML/P7M
+    if fn.endswith(".xml") or fn.endswith(".p7m") or fn.endswith(".xml.p7m"):
+        if "fattura" in fn or "ft" in fn or "it" in fn[:5]:
+            return "fattura_xml"
+        # Se da PEC SDI è sempre fattura
+        if "fatturapa" in mt or "pec.fatturapa.it" in mt:
+            return "fattura_xml"
+        return "fattura_xml"  # XML nel contesto gestionale = quasi sempre fattura
+
+    # F24 (dal nome file o mittente)
+    if "f24" in fn or "f-24" in fn or "modello f24" in fn:
         return "f24"
-    if sum(
-        marker in senza_separatore
-        for marker in ("NETTODELMESE", "TOTALECOMPETENZE", "TOTALETRATTENUTE", "PERIODODIRETRIBUZIONE")
-    ) >= 3:
+    if "ferrantini" in mt or "marotta" in mt:
+        if "f24" in fn:
+            return "f24"
+
+    # Cedolino/LUL
+    if any(kw in fn for kw in ["cedolino", "busta_paga", "busta paga", "cedolini"]):
         return "cedolino"
-    if "LIBROUNICODELLAVORO" in senza_separatore and "PRESENZE" in senza_separatore:
+    if any(kw in fn for kw in ["lul", "libro_unico", "libro unico", "presenze"]):
         return "lul_presenze"
-    if any(
-        marker in compatto
-        for marker in (
-            "VERBALE DI ACCERTAMENTO DI VIOLAZIONE",
-            "SANZIONE AMMINISTRATIVA",
-            "CONTRAVVENZIONE",
-        )
-    ):
+    # Da mittente consulente → cedolino se PDF
+    if ("ferrantini" in mt or "marotta" in mt) and fn.endswith(".pdf"):
+        return "cedolino"
+
+    # Verbale
+    if any(kw in fn for kw in ["verbale", "multa", "sanzione", "contravvenzione"]):
         return "verbale"
-    if mime_type == "application/pdf" and compatto:
+    if "comune.napoli" in mt or "partenopay" in mt:
+        return "verbale"
+
+    # PDF generico
+    if fn.endswith(".pdf"):
         return "pdf_generico"
+
     return "non_riconosciuto"

@@ -109,15 +109,17 @@ export default function Commercialista() {
     if (!periodo.valido) return;
     setLoading(true);
     try {
+      const rotta = `${periodo.anno}/${periodo.meseRotta}${queryPeriodo(periodo)}`;
+
       const [primaNotaRes, fattureCassaRes, assegniRes, riepilogoRes] = await Promise.all([
-        api.get(`/api/commercialista/prima-nota-cassa/${periodo.anno}/${periodo.meseRotta}${queryPeriodo(periodo)}`),
-        api.get(`/api/commercialista/fatture-cassa/${periodo.anno}/${periodo.meseRotta}${queryPeriodo(periodo)}`),
+        api.get(`/api/commercialista/prima-nota-cassa/${rotta}`),
+        api.get(`/api/commercialista/fatture-cassa/${rotta}`),
         api.get(`/api/assegni?anno=${periodo.anno}`),
-        api.get(`/api/commercialista/riepilogo/${periodo.anno}/${periodo.meseRotta}${queryPeriodo(periodo)}`),
+        api.get(`/api/commercialista/riepilogo/${rotta}`),
       ]);
 
       // A parte: se il controllo non risponde, il resto della pagina resta.
-      api.get(`/api/commercialista/completezza/${periodo.anno}/${periodo.meseRotta}${queryPeriodo(periodo)}`)
+      api.get(`/api/commercialista/completezza/${rotta}`)
         .then(res => setCompletezza(res.data))
         .catch(() => setCompletezza(null));
 

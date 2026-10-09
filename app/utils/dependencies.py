@@ -2,7 +2,7 @@
 FastAPI dependencies for dependency injection.
 Provides reusable dependencies for authentication, database, etc.
 """
-from fastapi import Depends, HTTPException, Request, status
+from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from typing import Optional, Dict, Any
 from jose import jwt, JWTError
@@ -19,31 +19,27 @@ security = HTTPBearer(auto_error=False)
 
 
 async def get_current_user(
-    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
-    request: Request = None,
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security)
 ) -> Dict[str, Any]:
     """
     Dependency to get current authenticated user from JWT token.
 
-    Il middleware autentica Bearer e cookie httpOnly ``access_token``.
-    Questa dependency verifica nuovamente lo stesso JWT, senza fidarsi
-    dell'identita' in request.state. Un Authorization esplicito non valido
-    non puo' essere sostituito da un cookie valido. Il parametro request in
-    coda conserva le chiamate dirette con ``credentials=...``.
+    In produzione ogni richiesta che arriva qui è già passata per
+    AuthenticationMiddleware (safety net globale su tutte le rotte /api/*
+    non whitelistate), quindi credentials è già garantito non-None. Questo
+    controllo fallisce chiuso (401) invece di restituire un utente admin
+    fittizio, così una futura rotta whitelistata che usi questa dependency
+    non ottiene accesso admin gratuito senza token.
     """
-    token = None
-    if credentials is not None:
-        token = credentials.credentials
-    elif request is not None and not request.headers.get("Authorization"):
-        token = request.cookies.get("access_token")
-
-    if not token:
+    if credentials is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Authentication required",
             headers={"WWW-Authenticate": "Bearer"}
         )
 
+    token = credentials.credentials
+    
     try:
         # Decode JWT token
         payload = jwt.decode(
@@ -54,7 +50,7 @@ async def get_current_user(
         
         # Extract user data
         user_id: str = payload.get("sub")
-        if not user_id:
+        if user_id is None:
             raise AuthenticationError("Invalid token: missing user ID")
         
         # Check token expiration (timezone-aware)

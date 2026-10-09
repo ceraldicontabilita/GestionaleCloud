@@ -45,15 +45,9 @@ PROIEZIONE = {
     "prezzo_vendita": 1, "prezzo_tavolo": 1, "descrizione": 1,
     "allergeni": 1, "allergeni_auto": 1, "foto_url": 1,
     "menu_pubblico": 1, "foto_storage_path": 1, "foto_id": 1,
-    "foto_content_type": 1, "foto_sha256": 1, "descrizione_origine": 1,
+    "foto_content_type": 1, "foto_sha256": 1, "foto_drive_id": 1,
+    "foto_drive_folder_id": 1, "descrizione_origine": 1,
     "ingredienti": 1, "ingredienti_dettaglio": 1,
-    # Il recupero deve rispettare le stesse scelte del salvataggio singolo:
-    # ometterle fa applicare al ponte i default e puo' riattivare il B&B,
-    # spostare categorie o duplicare un prodotto collegato esplicitamente.
-    "menu_bb": 1, "menu_prodotto_id": 1,
-    "menu_categoria_id": 1, "menu_sottocategoria_id": 1,
-    "vendita_sala": 1, "vendita_delivery": 1, "esaurito": 1,
-    "aggiunte": 1, "rimozioni": 1,
 }
 
 LIMITE_RICETTE = 5000
@@ -194,7 +188,6 @@ async def _salva_stato(db, **campi: Any) -> None:
 
 
 _in_corso = False
-_riallineamento_richiesto = False
 # Riferimento al task in volo: senza, il garbage collector puo' raccogliere il
 # task a meta' giro (asyncio tiene solo una reference debole), il `finally` che
 # azzera `_in_corso` non gira mai e ogni avvio successivo risponde
@@ -208,43 +201,25 @@ def ripubblicazione_in_corso() -> bool:
 
 
 async def _ripubblica_in_background(db, *, pubblica_tutte: bool = False) -> None:
-    global _in_corso, _riallineamento_richiesto
+    global _in_corso
     _in_corso = True
+    await _salva_stato(db, stato="in_corso", avviato_at=_now(), risultato=None,
+                       errore=None, avanzamento=None)
 
     async def progresso(fatte: int, totale: int) -> None:
         await _salva_stato(db, avanzamento={"fatte": fatte, "totale": totale})
 
     try:
-        await _salva_stato(db, stato="in_corso", avviato_at=_now(), risultato=None,
-                           errore=None, avanzamento=None)
         risultato = await ripubblica_menu(db, dry_run=False, on_progress=progresso,
                                          pubblica_tutte=pubblica_tutte)
         # «completato» non deve mentire: oltre LIMITE_RICETTE il giro e' parziale.
         stato = "completato_parziale" if risultato.get("troncato") or risultato.get("errori") else "completato"
         await _salva_stato(db, stato=stato, terminato_at=_now(), risultato=risultato)
-    except asyncio.CancelledError:
-        _riallineamento_richiesto = False
-        raise
     except Exception as exc:  # noqa: BLE001 - lo stato deve restare leggibile
         logger.exception("Ripubblicazione ricette nel Menu interrotta")
         await _salva_stato(db, stato="errore", errore=str(exc), terminato_at=_now())
     finally:
         _in_corso = False
-        if _riallineamento_richiesto:
-            _riallineamento_richiesto = False
-            avvia_ripubblicazione_in_background(db, pubblica_tutte=False)
-
-
-def richiedi_riallineamento_dopo_import(db) -> dict:
-    """Usa il ponte canonico; accoda un giro se un import cambia dati in volo."""
-    global _riallineamento_richiesto
-    if _in_corso:
-        _riallineamento_richiesto = True
-        esito = "accodato"
-    else:
-        avvia_ripubblicazione_in_background(db, pubblica_tutte=False)
-        esito = "avviato"
-    return {"esito": esito, "stato_url": "/api/ricette-ripubblica-menu/stato"}
 
 
 def avvia_ripubblicazione_in_background(db, *, pubblica_tutte: bool = False) -> bool:

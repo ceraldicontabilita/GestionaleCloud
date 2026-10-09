@@ -36,7 +36,7 @@ async def get_saldo_dipendente(
     - TFR: accantonamento mese, totale
     - Permessi ex-festività
     """
-    from app.services.salari_unificati_v2 import get_saldo_completo_dipendente
+    from app.hr.services.salari_unificati_v2 import get_saldo_completo_dipendente
     db = Database.get_db()
     return await get_saldo_completo_dipendente(db, codice_fiscale=codice_fiscale, anno=anno)
 
@@ -51,7 +51,7 @@ async def riepilogo_tutti_dipendenti(
     Evidenzia chi ha debiti residui o cedolini non pagati.
     Mostra saldo debito/credito, ferie, ROL.
     """
-    from app.services.salari_unificati_v2 import get_riepilogo_salari_tutti
+    from app.hr.services.salari_unificati_v2 import get_riepilogo_salari_tutti
     db = Database.get_db()
     return await get_riepilogo_salari_tutti(db, anno=anno)
 
@@ -72,7 +72,7 @@ async def registra_pagamento(
     - tipo: "acconto" | "saldo"
     - note: note libere
     """
-    from app.services.salari_unificati_v2 import registra_pagamento_salario
+    from app.hr.services.salari_unificati_v2 import registra_pagamento_salario
     
     db = Database.get_db()
     
@@ -128,7 +128,7 @@ async def riconcilia_cedolini_banca(
     Riconcilia cedolini non pagati con movimenti estratto conto.
     Cerca corrispondenze per nome/IBAN/importo e registra pagamenti.
     """
-    from app.services.cedolini_manager import riconcilia_stipendio_automatico
+    from app.hr.services.cedolini_manager import riconcilia_stipendio_automatico
     
     db = Database.get_db()
     anno = data.get("anno", None)
@@ -165,7 +165,7 @@ async def riconcilia_cedolini_banca(
         
         if riconc:
             # Registra pagamento
-            from app.services.salari_unificati_v2 import registra_pagamento_salario
+            from app.hr.services.salari_unificati_v2 import registra_pagamento_salario
             await registra_pagamento_salario(
                 db, ced["id"], residuo, "bonifico",
                 note="Riconciliazione automatica estratto conto",

@@ -36,10 +36,8 @@ def _route_decorators(node: ast.FunctionDef | ast.AsyncFunctionDef):
 
 def collect() -> dict[str, Any]:
     python_files = sorted(APP.rglob("*.py"))
-    # Include sotto-app e i router definiti nei server, non solo ERP.
-    router_files = python_files
+    router_files = sorted(ROUTERS.rglob("*.py"))
     routes: list[dict[str, Any]] = []
-    route_modules: set[str] = set()
     parse_errors: list[str] = []
     large_queries: list[str] = []
     hard_deletes: list[str] = []
@@ -85,12 +83,11 @@ def collect() -> dict[str, Any]:
                     "response_model": "response_model" in keywords,
                     "status_code": "status_code" in keywords,
                 })
-                route_modules.add(rel)
 
     mutation_routes = [r for r in routes if r["method"] in {"POST", "PUT", "PATCH", "DELETE"}]
     return {
         "python_files": len(python_files),
-        "router_files": len(route_modules),
+        "router_files": len(router_files),
         "routes": len(routes),
         "mutation_routes": len(mutation_routes),
         "routes_without_response_model": sum(not r["response_model"] for r in routes),

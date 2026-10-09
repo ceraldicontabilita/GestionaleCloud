@@ -507,8 +507,7 @@ class EmailFullDownloader:
         filename: str,
         category: str,
         email_info: Dict[str, Any],
-        period_info: Dict[str, Any],
-        category_proposal: Optional[str] = None,
+        period_info: Dict[str, Any]
     ) -> Optional[str]:
         """
         Salva un PDF nel database nella collezione appropriata.
@@ -533,10 +532,6 @@ class EmailFullDownloader:
             "pdf_hash": pdf_hash,
             "pdf_size": len(pdf_content),
             "category": category,
-            "category_proposal": category_proposal if category == "altro" else None,
-            "classification_source": (
-                "document_content" if category != "altro" else "unclassified"
-            ),
             "email_subject": email_info.get("subject", ""),
             "email_from": email_info.get("from", ""),
             "email_date": email_info.get("date", ""),
@@ -693,8 +688,9 @@ class EmailFullDownloader:
                 pass
 
         # ============================================================
-        # Le parole chiave amministrative descrivono l'email, ma non decidono
-        # se un allegato attendibile debba essere acquisito o quale fatto sia.
+        # FILTRO PAROLE CHIAVE AMMINISTRATIVE DA DATABASE
+        # Carica le parole chiave configurate dall'utente in /admin
+        # ============================================================
         admin_keywords = await self._load_admin_keywords()
 
         # PEC che notifica una cartella di pagamento: la data della notifica sta solo qui (il PDF
@@ -752,10 +748,9 @@ class EmailFullDownloader:
         has_admin_keyword = any(kw.lower() in search_text for kw in admin_keywords)
 
         if not has_admin_keyword:
-            logger.debug(
-                "Email senza parola chiave amministrativa: gli allegati del "
-                "mittente attendibile saranno comunque letti dal contenuto"
-            )
+            # Email non amministrativa - SALTA
+            logger.debug(f"Email saltata (no keyword): {subject[:50]} [{source_folder}]")
+            return 0
 
         # FILTRO MITTENTI ATTENDIBILI — REGOLA UTENTE 18/07/2026: "la lista
         # è il vangelo per scaricare la posta: devi scaricare SOLO da quelli
@@ -785,18 +780,17 @@ class EmailFullDownloader:
         pdfs = self.extract_pdfs_from_email(msg)
 
         for filename, content in pdfs:
-            # Il riconoscimento delle dimissioni valida sempre il contenuto;
-            # nome e oggetto servono soltanto per evitare lavoro superfluo.
+            # Modulo di dimissioni telematiche (Ministero del Lavoro, via PEC):
+            # e' la conferma delle dimissioni — alert HR + scadenza UNILAV a 5
+            # giorni (titolare 14/09/2026), stesso percorso dell'Import manuale.
             if _sembra_modulo_dimissioni(filename, subject):
                 esito_dim = await self._archivia_dimissioni(filename, content, email_info, source_folder)
                 if esito_dim:
                     pdfs_saved += 1
                     continue
 
-            from app.services.email_document_downloader import category_from_content
-
-            category = category_from_content(filename, content)
-            category_proposal = categorize_document(filename, subject, body)
+            # Categorizza
+            category = categorize_document(filename, subject, body)
 
             # REGOLA BUSINESS: le fatture NON si scaricano da Gmail
             # Le fatture arrivano SOLO via PEC (Aruba) o import manuale XML
@@ -813,12 +807,7 @@ class EmailFullDownloader:
                 filename=filename,
                 category=category,
                 email_info={**email_info, "source_folder": source_folder},
-                period_info=period_info,
-                category_proposal=(
-                    category_proposal
-                    if category == "altro" and category_proposal != "altro"
-                    else None
-                ),
+                period_info=period_info
             )
 
             if doc_id:

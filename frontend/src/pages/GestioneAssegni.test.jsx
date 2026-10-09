@@ -1,0 +1,466 @@
+import React from 'react';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
+import api from '../api';
+
+import GestioneAssegni, {
+  assegnoInteramenteAssociato,
+  fatturePerFornitore,
+  filtraAssegni,
+  importiCoincidonoAlCentesimo,
+  normalizzaBeneficiarioAssegno,
+  totaleQuoteFatture,
+} from './GestioneAssegni';
+
+vi.mock('../api', () => ({
+  default: {
+    get: vi.fn(),
+    post: vi.fn(),
+    put: vi.fn(),
+    delete: vi.fn(),
+  },
+}));
+
+vi.mock('../contexts/AnnoContext', () => ({
+  useAnnoGlobale: () => ({ anno: 2026 }),
+}));
+
+vi.mock('../components/ui/ConfirmDialog', () => ({
+  useConfirm: () => vi.fn(),
+}));
+
+vi.mock('sonner', () => ({
+  toast: {
+    error: vi.fn(),
+    success: vi.fn(),
+    warning: vi.fn(),
+    info: vi.fn(),
+  },
+}));
+
+// La fotocamera vera (getUserMedia/canvas) non gira in jsdom: uno stub coi
+// due pulsanti che il componente reale espone (scatta/annulla) basta a
+// provare che GestioneAssegni la apre e usa il blob che restituisce.
+vi.mock('../components/CameraCattura', () => ({
+  default: ({ onCattura, onChiudi }) => (
+    <div data-testid="camera-cattura-stub">
+      <button type="button" onClick={() => onCattura(new Blob(['foto'], { type: 'image/jpeg' }))}>
+        Scatta (stub)
+      </button>
+      <button type="button" onClick={onChiudi}>Annulla (stub)</button>
+    </div>
+  ),
+}));
+
+const ASSEGNI = [
+  { id: 'a1', numero: '208769333', importo: 1097.47, beneficiario: '-' },
+  { id: 'a2', numero: '208770635', importo: 644.21, beneficiario: 'FORNITORE TEST' },
+  { id: 'a3', numero: '0208771000-01', importo: null, beneficiario: null, stato: 'vuoto' },
+];
+
+describe('Filtri pagina assegni', () => {
+  it('non tratta i segnaposto come un vero beneficiario', () => {
+    expect(normalizzaBeneficiarioAssegno('-')).toBe('');
+    expect(normalizzaBeneficiarioAssegno('N/A')).toBe('');
+    expect(normalizzaBeneficiarioAssegno('FORNITORE TEST')).toBe('FORNITORE TEST');
+  });
+
+  it('filtra per importo esatto accettando il formato italiano', () => {
+    expect(filtraAssegni(ASSEGNI, { importoEsatto: '1.097,47' }).map(a => a.id)).toEqual(['a1']);
+  });
+
+  it('mostra i fogli del carnet anche prima di inserire importo e beneficiario', () => {
+    expect(filtraAssegni(ASSEGNI).map(a => a.id)).toContain('a3');
+    expect(filtraAssegni(ASSEGNI, { importoMin: '1' }).map(a => a.id)).not.toContain('a3');
+  });
+
+  it('inizia a filtrare il numero solo dopo tre cifre', () => {
+    expect(filtraAssegni(ASSEGNI, { numeroAssegno: '20' })).toHaveLength(3);
+    expect(filtraAssegni(ASSEGNI, { numeroAssegno: '933' }).map(a => a.id)).toEqual(['a1']);
+  });
+});
+
+describe('Copertura assegno con fatture collegate', () => {
+  it('considera completo l’assegno da 652,74 associato alla fattura da 652,74', () => {
+    const collegate = [{ id: 'fattura-1', quota: 652.74 }];
+
+    expect(totaleQuoteFatture(collegate)).toBeCloseTo(652.74, 2);
+    expect(assegnoInteramenteAssociato(652.74, collegate)).toBe(true);
+  });
+
+  it('consente altre fatture soltanto finché resta un importo da coprire', () => {
+    expect(assegnoInteramenteAssociato(652.74, [{ quota: 331.04 }])).toBe(false);
+    expect(
+      assegnoInteramenteAssociato(652.74, [{ quota: 331.04 }, { quota: 321.70 }])
+    ).toBe(true);
+  });
+});
+
+describe('Selezione guidata fornitore e fattura', () => {
+  const fatture = [
+    {
+      id: 'fatt-kimbo-1', supplier_name: 'KIMBO S.P.A.', supplier_vat: 'IT00123456789',
+      invoice_number: '0070021988', invoice_date: '2026-06-29', importo_residuo: 1498.96,
+    },
+    {
+      id: 'fatt-altro', supplier_name: 'ALTRO FORNITORE SRL', supplier_vat: 'IT00987654321',
+      invoice_number: '77', invoice_date: '2026-06-30', importo_residuo: 1498.96,
+    },
+  ];
+
+  it('usa identita fornitore e centesimi esatti senza mescolare fatture omonime', () => {
+    expect(fatturePerFornitore(fatture, 'KIMBO S.P.A.', 'IT00123456789'))
+      .toHaveLength(1);
+    expect(importiCoincidonoAlCentesimo(1498.96, '1498.960')).toBe(true);
+    expect(importiCoincidonoAlCentesimo(1498.96, 1498.95)).toBe(false);
+  });
+});
+
+const renderPagina = () => render(
+  <MemoryRouter>
+    <GestioneAssegni />
+  </MemoryRouter>
+);
+
+const rispostaPagina = assegni => url => {
+  if (url.includes('/learning/stats-avanzate')) return Promise.resolve({ data: {} });
+  if (url.includes('/stats?')) {
+    return Promise.resolve({ data: { totale: assegni.length, per_stato: {} } });
+  }
+  return Promise.resolve({ data: assegni });
+};
+
+describe('Stati e resa responsive della pagina Assegni', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    Object.defineProperty(window, 'innerWidth', { configurable: true, writable: true, value: 1280 });
+  });
+
+  it('mostra lo stato di caricamento', () => {
+    api.get.mockImplementation(() => new Promise(() => {}));
+
+    renderPagina();
+
+    expect(screen.getByText('Caricamento...')).toBeInTheDocument();
+  });
+
+  it('mostra un errore esplicito anche quando il backend nega il permesso', async () => {
+    api.get.mockRejectedValue({ response: { data: { detail: 'Non autenticato' } } });
+
+    renderPagina();
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Impossibile caricare assegni e statistiche: Non autenticato'
+    );
+  });
+
+  it('mostra lo stato vuoto senza inventare righe', async () => {
+    api.get.mockImplementation(rispostaPagina([]));
+
+    renderPagina();
+
+    expect(await screen.findByText('Nessun assegno presente')).toBeInTheDocument();
+    expect(screen.queryByTestId('assegni-table')).not.toBeInTheDocument();
+  });
+
+  it('usa la tabella su desktop', async () => {
+    api.get.mockImplementation(rispostaPagina([
+      { id: 'a1', numero: '0208770985', stato: 'incassato', importo: 9760 },
+    ]));
+
+    renderPagina();
+
+    const lista = await screen.findByTestId('assegni-table');
+    await waitFor(() => expect(lista.querySelector('table')).not.toBeNull());
+    expect(screen.getByText('Da ricavare dalla fattura')).toBeInTheDocument();
+    expect(screen.getByText('Data EC mancante')).toBeInTheDocument();
+    expect(screen.getByText('Nessuna fattura collegata')).toBeInTheDocument();
+    expect(screen.getByTestId('choose-invoice-a1')).toHaveTextContent('Scegli fattura');
+    expect(screen.getByText('Non calcolata')).toBeInTheDocument();
+  });
+
+  it('scatta dalla fotocamera live (mai da galleria/file) e salva la foto', async () => {
+    api.get.mockImplementation(rispostaPagina([
+      { id: 'a1', numero: '0208770985', stato: 'incassato', importo: 9760 },
+    ]));
+    api.post.mockResolvedValue({ data: { success: true, foto_url: '/api/assegni/foto/a1_xyz' } });
+
+    renderPagina();
+    await screen.findByTestId('assegni-table');
+    expect(screen.queryByTestId('vedi-foto-a1')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('camera-cattura-stub')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId('foto-a1'));
+    expect(await screen.findByTestId('camera-cattura-stub')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText('Scatta (stub)'));
+
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith(
+      '/api/assegni/a1/upload-foto', expect.any(FormData),
+    ));
+    await waitFor(() => expect(screen.queryByTestId('camera-cattura-stub')).not.toBeInTheDocument());
+  });
+
+  it('annullare la fotocamera non carica nessuna foto', async () => {
+    api.get.mockImplementation(rispostaPagina([
+      { id: 'a1', numero: '0208770985', stato: 'incassato', importo: 9760 },
+    ]));
+
+    renderPagina();
+    await screen.findByTestId('assegni-table');
+
+    fireEvent.click(screen.getByTestId('foto-a1'));
+    expect(await screen.findByTestId('camera-cattura-stub')).toBeInTheDocument();
+    fireEvent.click(screen.getByText('Annulla (stub)'));
+
+    await waitFor(() => expect(screen.queryByTestId('camera-cattura-stub')).not.toBeInTheDocument());
+    expect(api.post).not.toHaveBeenCalledWith('/api/assegni/a1/upload-foto', expect.anything());
+  });
+
+  it('espone fornitore numero fattura data fattura e data incasso', async () => {
+    api.get.mockImplementation(rispostaPagina([{
+      id: 'a2', numero: '0208770986', stato: 'incassato', importo: 562.24,
+      fornitore_fattura: 'Fornitore Verificato S.r.l.', numero_fattura: '120',
+      data_fattura: '2026-06-15', data_incasso: '2026-06-30',
+      evidenza_estratto_conto_id: 'ec-1', fattura_collegata: 'f-1',
+    }]));
+
+    renderPagina();
+
+    expect(await screen.findByText(/Fornitore Verificato/)).toBeInTheDocument();
+    expect(screen.getByText('Fatt. 120')).toBeInTheDocument();
+    expect(screen.getByText('15/06/2026')).toBeInTheDocument();
+    expect(screen.getByText('30/06/2026')).toBeInTheDocument();
+    expect(screen.getByText('Estratto conto')).toBeInTheDocument();
+  });
+
+  it('rende separati emissione, riscontro EC e storno', async () => {
+    api.get.mockImplementation(rispostaPagina([
+      {
+        id: 'a-emesso', numero: '0208770987', stato: 'emesso', importo: 320,
+        data_emissione: '2026-06-30', riscontro_banca: 'da_rientrare_in_banca',
+      },
+      { id: 'a-stornato', numero: '0208770988', stato: 'stornato', importo: 90, riscontro_banca: 'stornato' },
+      { id: 'a-compilato', numero: '0208770989', stato: 'compilato', importo: 42 },
+    ]));
+    api.post.mockResolvedValue({ data: { success: true } });
+
+    renderPagina();
+
+    expect((await screen.findAllByText('Da rientrare in banca')).length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Stornato').length).toBeGreaterThan(0);
+    fireEvent.click(screen.getByTestId('emetti-a-compilato'));
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith(
+      '/api/assegni/a-compilato/emetti', { data_emissione: expect.any(String) },
+    ));
+  });
+
+  it('seleziona il fornitore, mostra solo le sue fatture e compila la data dal documento', async () => {
+    const assegno = {
+      id: 'a-kimbo', numero: '0208769323', stato: 'incassato', importo: 1498.96,
+      beneficiario: '', data_incasso: '2026-05-28',
+    };
+    const fatture = [
+      {
+        id: 'fatt-kimbo', supplier_name: 'KIMBO S.P.A.', supplier_vat: 'IT00123456789',
+        invoice_number: '0070021988', invoice_date: '2026-06-29', importo_residuo: 1498.96,
+      },
+      {
+        id: 'fatt-saima', supplier_name: 'SAIMA S.P.A.', supplier_vat: 'IT00987654321',
+        invoice_number: '1/1557', invoice_date: '2026-01-07', importo_residuo: 1498.96,
+      },
+    ];
+    api.get.mockImplementation(url => {
+      if (url.includes('/supporto/fatture-disponibili')) return Promise.resolve({ data: fatture });
+      return rispostaPagina([assegno])(url);
+    });
+    api.put.mockResolvedValue({ data: { success: true } });
+
+    renderPagina();
+    fireEvent.click(await screen.findByTestId('edit-a-kimbo'));
+    fireEvent.change(screen.getByLabelText('Cerca e seleziona fornitore'), {
+      target: { value: 'KIMBO S.P.A.' },
+    });
+
+    const selezione = await screen.findByLabelText('Fattura del fornitore');
+    await waitFor(() => expect(selezione.querySelectorAll('option')).toHaveLength(2));
+    expect(selezione).toHaveTextContent('0070021988');
+    expect(selezione).not.toHaveTextContent('1/1557');
+    fireEvent.change(selezione, { target: { value: 'fatt-kimbo' } });
+    expect(screen.getByText(/Data fattura:/)).toHaveTextContent('29/06/2026');
+
+    fireEvent.click(screen.getByTitle('Salva'));
+    await waitFor(() => expect(api.put).toHaveBeenCalledWith(
+      '/api/assegni/a-kimbo/fatture-collegate',
+      { fatture: [{ fattura_id: 'fatt-kimbo', quota: 1498.96 }] },
+    ));
+  });
+
+  it('espone la scelta manuale senza collegare in automatico i casi ambigui', async () => {
+    api.get.mockImplementation(rispostaPagina([
+      { id: 'auto', numero: '0208770649', stato: 'incassato', importo: 977.38 },
+      {
+        id: 'ambiguo', numero: '0208770650', stato: 'incassato', importo: 977.38,
+        associazione_ambigua: true,
+      },
+    ]));
+
+    renderPagina();
+
+    await screen.findByTestId('assegni-table');
+    expect(screen.getByTestId('choose-invoice-auto')).toHaveTextContent('Scegli fattura');
+    expect(screen.getByTestId('choose-invoice-ambiguo')).toHaveTextContent('Scegli fattura');
+    expect(screen.getByText('Più candidati')).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('choose-invoice-auto'));
+    expect(await screen.findByLabelText('Cerca e seleziona fornitore')).toBeInTheDocument();
+  });
+
+  it('«Scegli manualmente» sui casi ambigui apre il modale filtrato per fornitore', async () => {
+    api.get.mockImplementation(url => {
+      if (url.includes('/supporto/fatture-disponibili')) return Promise.resolve({ data: [] });
+      return rispostaPagina([
+        {
+          id: 'ambiguo', numero: '0208770650', stato: 'incassato', importo: 977.38,
+          beneficiario: 'FORNITORE AMBIGUO SRL', associazione_ambigua: true,
+        },
+      ])(url);
+    });
+
+    renderPagina();
+    await screen.findByTestId('assegni-table');
+
+    fireEvent.click(screen.getByTestId('scegli-manualmente-ambiguo'));
+    expect(await screen.findByText(/Collega Fatture all'Assegno/)).toBeInTheDocument();
+    await waitFor(() => expect(api.get).toHaveBeenCalledWith(
+      expect.stringContaining('fornitore=FORNITORE+AMBIGUO+SRL'),
+    ));
+  });
+
+  it('mostra il piano rate XML nelle proposte e confronta la quota della rata', async () => {
+    api.get.mockImplementation(url => {
+      if (url.includes('/api/assegni/ambigui')) return Promise.resolve({ data: {
+        ambigui: [{
+          assegno_id: 'a-rata', assegno_numero: '0208770763', importo: 3000,
+          candidates: [{
+            fattura_id: 'f-rata', numero: '20', importo_residuo: 12000.01,
+            fornitore: 'DI MASSA', piano_rate_xml: {
+              rata_numero: 3, numero_rate: 4, data_scadenza: '2026-04-23', importo_rata: 3000,
+            },
+          }],
+        }],
+      } });
+      return rispostaPagina([])(url);
+    });
+    renderPagina();
+    fireEvent.click(await screen.findByTestId('menu-operazioni-btn'));
+    fireEvent.click(screen.getByTestId('ambigui-toggle'));
+    expect(await screen.findByText(/rata 3\/4/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('checkbox'));
+    expect(screen.getByText(/Totale selezionato/).parentElement).toHaveTextContent('€ 3000.00');
+    expect(screen.getByText(/Totale selezionato/).parentElement).not.toHaveTextContent('€ 12000.01');
+  });
+
+  it('riprocessa estratto conto e fatture senza aprire una scelta manuale', async () => {
+    api.get.mockImplementation(rispostaPagina([
+      { id: 'a1', numero: '0208770649', stato: 'incassato', importo: 977.38 },
+    ]));
+    api.post.mockResolvedValue({
+      data: {
+        success: true,
+        estratto_conto: { movimenti_analizzati: 1 },
+        fatture: {
+          analizzati: 1, collegati: 1, in_attesa_fattura: 0, ambigui: 0,
+        },
+      },
+    });
+
+    renderPagina();
+    // Le operazioni automatiche stanno nel menu' unico «Operazioni».
+    fireEvent.click(await screen.findByTestId('menu-operazioni-btn'));
+    fireEvent.click(screen.getByTestId('riprocessa-collegamenti-btn'));
+
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith(
+      '/api/assegni/riprocessa-collegamenti?anno=2026'
+    ));
+    expect(await screen.findByTestId('riprocessamento-result')).toHaveTextContent(
+      'Collegati: 1'
+    );
+    expect(screen.getByTestId('choose-invoice-a1')).toBeInTheDocument();
+  });
+
+  it('segnala i collegamenti storici che superano il totale fattura', async () => {
+    api.get.mockImplementation(rispostaPagina([{
+      id: 'conflitto', numero: '0208770988', stato: 'incassato', importo: 646.72,
+      numero_fattura: '56/D', associazione_conflittuale: true,
+    }]));
+
+    renderPagina();
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Collegamento storico da verificare'
+    );
+  });
+
+  it('riconosce lo stesso fornitore anche con la forma societaria estesa', () => {
+    const fatture = [{
+      id: 'fatt-kimbo', supplier_name: 'KIMBO S.P.A.', total_amount: 1498.96,
+    }];
+
+    expect(fatturePerFornitore(fatture, 'KIMBO')).toEqual(fatture);
+  });
+
+  it('usa card senza tabella su schermo mobile', async () => {
+    window.innerWidth = 375;
+    api.get.mockImplementation(rispostaPagina([
+      { id: 'a1', numero: '0208770985', stato: 'incassato', importo: 9760 },
+    ]));
+
+    renderPagina();
+
+    const lista = await screen.findByTestId('assegni-table');
+    await waitFor(() => expect(lista.querySelector('table')).toBeNull());
+    expect(lista).toHaveStyle({ display: 'flex', flexDirection: 'column' });
+  });
+});
+
+describe('Carnet appena generato', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    Object.defineProperty(window, 'innerWidth', { configurable: true, writable: true, value: 1280 });
+  });
+
+  it('compare in cima alla lista anche se ha numeri piu bassi dei carnet gia presenti', async () => {
+    // 60 fogli di carnet piu alti: senza il riordino il nuovo carnet
+    // (numeri piu bassi, elenco decrescente) finiva in seconda pagina.
+    const vecchi = Array.from({ length: 60 }, (_, i) => ({
+      id: `v${i}`, numero: `02087700${String(i + 1).padStart(2, '0')}`,
+      stato: 'vuoto', carnet: i < 50 ? '0208770001' : '0208770051', anno: 2026,
+    }));
+    const nuovi = Array.from({ length: 10 }, (_, i) => ({
+      id: `n${i}`, numero: `02087694${81 + i}`, stato: 'vuoto', carnet: '0208769481', anno: 2026,
+    }));
+    let generato = false;
+    api.get.mockImplementation(url => rispostaPagina(generato ? [...vecchi, ...nuovi] : vecchi)(url));
+    api.post.mockImplementation(() => {
+      generato = true;
+      return Promise.resolve({ data: {
+        generati: 10, primo: '0208769481', ultimo: '0208769490', numeri: nuovi.map(a => a.numero),
+      } });
+    });
+
+    renderPagina();
+    await screen.findByText('Lista Assegni (60)');
+    expect(screen.queryByText('0208769481')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId('genera-assegni-btn'));
+    fireEvent.change(screen.getByTestId('numero-primo-input'), { target: { value: '0208769481' } });
+    expect(screen.getByTestId('numero-primo-input')).toHaveAttribute('inputmode', 'numeric');
+    fireEvent.click(screen.getByTestId('genera-salva-btn'));
+
+    await screen.findByText('Lista Assegni (70)');
+    expect(await screen.findByText('0208769481')).toBeInTheDocument();
+    expect(screen.getByText('0208769490')).toBeInTheDocument();
+    expect(screen.getByText('Nuovo carnet: 10 fogli')).toBeInTheDocument();
+  });
+});

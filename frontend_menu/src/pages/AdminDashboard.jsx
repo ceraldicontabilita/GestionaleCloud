@@ -13,7 +13,7 @@ import AllergeniMancanti from '../components/admin/AllergeniMancanti';
 import BackupManager from '../components/admin/BackupManager';
 import MenuClientiQR from '../components/admin/MenuClientiQR';
 
-import { MENU_BACKEND_URL as BACKEND_URL } from '@/lib/backend';
+const BACKEND_URL = process.env.REACT_APP_MENU_BACKEND_URL;
 
 const AdminDashboard = () => {
   const [activeTab, setActiveTab] = useState('products');

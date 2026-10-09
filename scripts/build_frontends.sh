@@ -22,8 +22,8 @@ cd "$(dirname "$0")/.."
 
 if [ "${1:-}" != "--apps" ]; then
   echo "== frontend (gestionale)"
-  corepack yarn --cwd frontend install --frozen-lockfile --production=false
-  corepack yarn --cwd frontend run build:erp
+  npm --prefix frontend install --include=dev --legacy-peer-deps
+  npm --prefix frontend run build
 fi
 
 for dir in frontend_*/; do

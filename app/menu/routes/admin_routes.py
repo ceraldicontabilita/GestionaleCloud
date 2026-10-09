@@ -1,14 +1,13 @@
 from fastapi import APIRouter, HTTPException, Depends, UploadFile, File
 from datetime import datetime
 import os
-from pathlib import Path
+import mimetypes
 
 router = APIRouter(prefix="/api/admin", tags=["Admin Management"])
 
 # Get JWT verification from qrcode_routes
 from app.menu.routes.qrcode_routes import verify_token
 from app.menu.supabase_client import supabase
-from app.menu.image_optimizer import ottimizza_immagine_web
 
 # Le immagini caricate dallo staff vengono salvate su Supabase Storage
 # (bucket pubblico "menu-images", stesso bucket delle foto dei prodotti) cosi' da restare disponibili anche dopo un nuovo
@@ -34,15 +33,15 @@ async def upload_image(
 ):
     """Carica un'immagine su Supabase Storage (persistente tra i deploy)"""
     try:
-        filename = f"{Path(_safe_filename(file.filename)).stem}.webp"
+        filename = _safe_filename(file.filename)
         storage_path = f"{UPLOAD_PREFIX}/{filename}"
-        content = ottimizza_immagine_web(await file.read())
-        content_type = "image/webp"
+        content = await file.read()
+        content_type = file.content_type or mimetypes.guess_type(filename)[0] or "application/octet-stream"
 
         supabase.storage.from_(STORAGE_BUCKET).upload(
             storage_path,
             content,
-            {"content-type": content_type, "cache-control": "31536000", "upsert": "true"}
+            {"content-type": content_type, "upsert": "true"}
         )
 
         image_url = _public_url(filename)

@@ -1196,6 +1196,25 @@ async def get_cedolini_problematici() -> Dict[str, Any]:
 # ENDPOINT GENERICI (devono stare alla fine per evitare conflitti di routing)
 # ==============================================
 
+@router.get("/{cedolino_id}")
+@handle_errors
+async def get_cedolino_dettaglio(cedolino_id: str) -> Dict[str, Any]:
+    """
+    Recupera il dettaglio completo di un cedolino, incluso pdf_data per visualizzazione.
+    """
+    db = Database.get_db()
+    
+    cedolino = await db["cedolini"].find_one(
+        {"id": cedolino_id},
+        {"_id": 0}  # Include pdf_data per visualizzazione
+    )
+    
+    if not cedolino:
+        raise HTTPException(status_code=404, detail="Cedolino non trovato")
+    
+    return cedolino
+
+
 @router.get("/{cedolino_id}/download")
 @handle_errors
 async def download_cedolino_pdf(cedolino_id: str):
@@ -1204,16 +1223,52 @@ async def download_cedolino_pdf(cedolino_id: str):
     import io
 
     db = Database.get_db()
-    doc = await db["cedolini"].find_one({"id": cedolino_id}, {"_id": 0})
-    if not doc:
-        raise HTTPException(status_code=404, detail="Cedolino non trovato")
-    filename = doc.get("pdf_filename") or doc.get("filename")
-    # Nessuna associazione per nome o solo mese durante un download: puo'
-    # scegliere l'allegato di un'altra persona e modificare l'archivio.
-    from app.services.cedolino_originale import carica_originale
-    pdf_bytes = await carica_originale(doc)
-    if not pdf_bytes:
+    doc = await db["cedolini"].find_one({"id": cedolino_id}, {"_id": 0, "pdf_data": 1, "drive_file_id": 1, "pdf_filename": 1, "dipendente": 1, "mese": 1, "anno": 1})
+    
+    pdf_data = doc.get("pdf_data") if doc else None
+    filename = doc.get("pdf_filename") if doc else None
+    
+    # Fallback 1: Cerca in cedolini_email_attachments
+    if not pdf_data and doc:
+        dipendente = doc.get("dipendente", "")
+        mese = doc.get("mese")
+        anno = doc.get("anno")
+        
+        # Cerca per dipendente e periodo
+        attachment = await db["cedolini_email_attachments"].find_one({
+            "$or": [
+                {"filename": {"$regex": dipendente, "$options": "i"}},
+                {"$and": [{"mese": mese}, {"anno": anno}]}
+            ],
+            "associato": False
+        })
+        
+        if attachment and attachment.get("pdf_data"):
+            pdf_data = attachment["pdf_data"]
+            filename = attachment.get("filename")
+            # Copia il PDF nel cedolino
+            await db["cedolini"].update_one(
+                {"id": cedolino_id},
+                {"$set": {"pdf_data": pdf_data, "pdf_filename": filename}}
+            )
+            # Marca attachment come associato
+            await db["cedolini_email_attachments"].update_one(
+                {"id": attachment["id"]},
+                {"$set": {"associato": True, "documento_associato_id": cedolino_id}}
+            )
+    
+    # Fallback 2: Cerca in payslips legacy
+    if not pdf_data and not (doc or {}).get("drive_file_id"):
+        payslip = await db["cedolini"].find_one({"id": cedolino_id}, {"pdf_data": 1, "filename": 1})
+        if payslip and payslip.get("pdf_data"):
+            pdf_data = payslip["pdf_data"]
+            filename = payslip.get("filename")
+    
+    if not pdf_data and not (doc or {}).get("drive_file_id"):
         raise HTTPException(status_code=404, detail="PDF non disponibile")
+
+    from app.services.cedolino_originale import carica_originale
+    pdf_bytes = await carica_originale({**(doc or {}), "pdf_data": pdf_data})
     if not filename:
         filename = f"cedolino_{cedolino_id}.pdf"
 
@@ -1613,15 +1668,3 @@ async def simulazione_f24(anno: int, mese: int) -> Dict[str, Any]:
             "parametri": {"inps_azienda_percento": INPS_AZIENDA_PERCENT,
                           "inps_dipendente_percento": INPS_DIPENDENTE_PERCENT,
                           "nota": "Simulazione: fa fede il modello F24 del consulente."}}
-
-
-# Dopo simulazione-f24 e gli altri percorsi statici.
-@router.get("/{cedolino_id}")
-@handle_errors
-async def get_cedolino_dettaglio(cedolino_id: str) -> Dict[str, Any]:
-    """Recupera il cedolino completo, incluso il PDF per visualizzazione."""
-    db = Database.get_db()
-    cedolino = await db["cedolini"].find_one({"id": cedolino_id}, {"_id": 0})
-    if not cedolino:
-        raise HTTPException(status_code=404, detail="Cedolino non trovato")
-    return cedolino

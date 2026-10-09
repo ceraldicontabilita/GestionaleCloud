@@ -1,0 +1,211 @@
+import asyncio
+
+from app.services.archivio_documenti_memoria import ClientArchivioMemoria
+
+from app.routers.prima_nota_module import banca, cassa, stats
+from app.services.prima_nota_sumup_projection import (
+    applica_proiezione_ai_movimenti,
+    giorno_corrente_negozio,
+    leggi_proiezione_sumup_cassa,
+    leggi_proiezioni_sumup_cassa,
+)
+
+
+def _run(awaitable):
+    return asyncio.run(awaitable)
+
+
+def _evidenza(data, importo=635.80):
+    return {
+        "id": "sumup-api-oggi",
+        "data": data,
+        "gestore": "sumup",
+        "source": "api_gestore_pos",
+        "fonte_dato": "api",
+        "stato_dato": "confermato",
+        "importo": importo,
+        "updated_at": f"{data}T15:00:00+00:00",
+    }
+
+
+def _riga_cassa(data, ident="cassa-sumup-oggi", importo=116.90):
+    return {
+        "id": ident,
+        "data": data,
+        "tipo": "uscita",
+        "importo": importo,
+        "categoria": "POS SUMUP Verso Banca",
+        "descrizione": "POS SUMUP snapshot precedente",
+        "status": "active",
+    }
+
+
+def test_proiezione_sumup_aggiorna_la_risposta_senza_riscrivere_il_db():
+    db = ClientArchivioMemoria()["sumup_live_projection_test"]
+    oggi = giorno_corrente_negozio()
+    _run(db["chiusure_pos_manuali"].insert_one(_evidenza(oggi)))
+    _run(db["prima_nota_cassa"].insert_one(_riga_cassa(oggi)))
+
+    proiezione = _run(leggi_proiezione_sumup_cassa(db, oggi))
+    righe_api = applica_proiezione_ai_movimenti([_riga_cassa(oggi)], proiezione)
+    persistita = _run(db["prima_nota_cassa"].find_one({"id": "cassa-sumup-oggi"}))
+
+    assert proiezione["applicabile"] is True
+    assert proiezione["delta"] == 518.90
+    assert righe_api[0]["importo"] == 635.80
+    assert righe_api[0]["importo_persistito"] == 116.90
+    assert righe_api[0]["non_modificabile"] is True
+    assert persistita["importo"] == 116.90
+
+
+def test_proiezione_sumup_non_accorpa_due_righe_ambigue():
+    db = ClientArchivioMemoria()["sumup_live_ambiguous_test"]
+    oggi = giorno_corrente_negozio()
+    _run(db["chiusure_pos_manuali"].insert_one(_evidenza(oggi)))
+    _run(db["prima_nota_cassa"].insert_many([
+        _riga_cassa(oggi, "duplicato-1"),
+        _riga_cassa(oggi, "duplicato-2"),
+    ]))
+
+    proiezione = _run(leggi_proiezione_sumup_cassa(db, oggi))
+
+    assert proiezione["applicabile"] is False
+    assert proiezione["stato"] == "righe_persistite_ambigue"
+    assert proiezione["movimento_ids"] == ["duplicato-1", "duplicato-2"]
+
+
+def test_dashboard_esclude_sumup_dalla_cassa_senza_modificare_la_riga(monkeypatch):
+    db = ClientArchivioMemoria()["sumup_live_dashboard_test"]
+    oggi = giorno_corrente_negozio()
+    monkeypatch.setattr(stats.Database, "get_db", staticmethod(lambda: db))
+    _run(db["chiusure_pos_manuali"].insert_one(_evidenza(oggi)))
+    _run(db["prima_nota_cassa"].insert_one(_riga_cassa(oggi)))
+
+    risultato = _run(stats.get_prima_nota_stats(
+        data_da=f"{oggi[:4]}-01-01", data_a=f"{oggi[:4]}-12-31",
+    ))
+    persistita = _run(db["prima_nota_cassa"].find_one({"id": "cassa-sumup-oggi"}))
+
+    assert risultato["cassa"]["uscite"] == 0
+    assert risultato["cassa"]["saldo"] == 0
+    assert risultato["sumup_cassa_live"]["stato"] == "conto_pos_separato"
+    assert persistita["importo"] == 116.90
+
+
+def test_endpoint_cassa_esclude_sumup_e_conserva_lo_snapshot(monkeypatch):
+    db = ClientArchivioMemoria()["sumup_live_cassa_endpoint_test"]
+    oggi = giorno_corrente_negozio()
+    monkeypatch.setattr(cassa.Database, "get_db", staticmethod(lambda: db))
+    _run(db["chiusure_pos_manuali"].insert_one(_evidenza(oggi)))
+    _run(db["prima_nota_cassa"].insert_one(_riga_cassa(oggi)))
+
+    risultato = _run(cassa.list_prima_nota_cassa(
+        skip=0,
+        limit=10000,
+        anno=int(oggi[:4]),
+        data_da=None,
+        data_a=None,
+        tipo=None,
+        categoria=None,
+    ))
+    persistita = _run(db["prima_nota_cassa"].find_one({"id": "cassa-sumup-oggi"}))
+
+    assert risultato["movimenti"] == []
+    assert risultato["totale_uscite"] == 0
+    assert risultato["saldo_anno"] == 0
+    assert risultato["sumup_live"]["stato"] == "conto_pos_separato"
+    assert persistita["importo"] == 116.90
+
+
+def test_periodo_sumup_corregge_11_e_aggiunge_12_senza_scrivere(monkeypatch):
+    db = ClientArchivioMemoria()["sumup_period_projection_test"]
+    _run(db["prima_nota_cassa"].insert_one(_riga_cassa(
+        "2026-08-11", ident="legacy-11", importo=116.90
+    )))
+    transazioni = [
+        {"data": "2026-08-11", "tipo": "PAYMENT", "stato": "SUCCESSFUL", "importo": 1407.10},
+        {"data": "2026-08-12", "tipo": "PAYMENT", "stato": "SUCCESSFUL", "importo": 1522.20},
+    ]
+
+    async def archiviate(*_args, **_kwargs):
+        return transazioni
+
+    from app.services import prima_nota_sumup_projection as projection
+    monkeypatch.setattr(projection.sumup_sync, "transazioni_del_periodo", archiviate)
+    monkeypatch.setattr(projection.sumup_sync, "TIPO_VENDITA", "PAYMENT")
+    monkeypatch.setattr(projection.sumup_sync, "STATO_VALIDO", "SUCCESSFUL")
+
+    proiezioni = _run(leggi_proiezioni_sumup_cassa(
+        db, "2026-08-11", "2026-08-12"
+    ))
+    movimenti = [_riga_cassa("2026-08-11", ident="legacy-11", importo=116.90)]
+    for proiezione in proiezioni:
+        movimenti = applica_proiezione_ai_movimenti(movimenti, proiezione)
+
+    per_data = {m["data"]: m for m in movimenti}
+    assert per_data["2026-08-11"]["importo"] == 1407.10
+    assert per_data["2026-08-11"]["importo_persistito"] == 116.90
+    assert per_data["2026-08-12"]["importo"] == 1522.20
+    assert per_data["2026-08-12"]["virtuale"] is True
+    persistita = _run(db["prima_nota_cassa"].find_one({"id": "legacy-11"}))
+    assert persistita["importo"] == 116.90
+
+
+def test_dashboard_non_proietta_giornate_sumup_nella_cassa(monkeypatch):
+    db = ClientArchivioMemoria()["sumup_dashboard_period_test"]
+    monkeypatch.setattr(stats.Database, "get_db", staticmethod(lambda: db))
+    _run(db["prima_nota_cassa"].insert_one(_riga_cassa(
+        "2026-08-11", ident="legacy-dashboard-11", importo=116.90
+    )))
+
+    async def archiviate(*_args, **_kwargs):
+        return [
+            {"data": "2026-08-11", "tipo": "PAYMENT", "stato": "SUCCESSFUL", "importo": 773.40},
+            {"data": "2026-08-12", "tipo": "PAYMENT", "stato": "SUCCESSFUL", "importo": 646.40},
+        ]
+
+    from app.services import prima_nota_sumup_projection as projection
+    monkeypatch.setattr(projection.sumup_sync, "transazioni_del_periodo", archiviate)
+    monkeypatch.setattr(projection.sumup_sync, "TIPO_VENDITA", "PAYMENT")
+    monkeypatch.setattr(projection.sumup_sync, "STATO_VALIDO", "SUCCESSFUL")
+
+    risultato = _run(stats.get_prima_nota_stats(
+        data_da="2026-01-01", data_a="2026-12-31"
+    ))
+
+    assert risultato["cassa"]["uscite"] == 0
+    assert risultato["cassa"]["movimenti"] == 0
+    assert risultato["sumup_cassa_live"]["stato"] == "conto_pos_separato"
+
+
+def test_credito_sumup_esclude_solo_transazioni_con_payout_riconciliato(monkeypatch):
+    db = ClientArchivioMemoria()["sumup_open_credit_test"]
+    monkeypatch.setattr(banca.Database, "get_db", staticmethod(lambda: db))
+
+    transazioni = [
+        {"data": "2026-12-31", "tipo": "PAYMENT", "stato": "SUCCESSFUL",
+         "importo": 100.0, "payout_id": "payout-gennaio"},
+        {"data": "2026-08-14", "tipo": "PAYMENT", "stato": "SUCCESSFUL",
+         "importo": 40.0},
+    ]
+
+    async def archiviate(*_args, **_kwargs):
+        return transazioni
+
+    async def saldi(*_args, **_kwargs):
+        return {"conti_reali": []}
+
+    monkeypatch.setattr(banca.sumup_sync, "transazioni_del_periodo", archiviate)
+    monkeypatch.setattr(banca, "saldi_finanziari", saldi)
+    _run(db["sumup_payouts"].insert_one({
+        "payout_id": "payout-gennaio",
+        "giorni": ["2026-12-31", "2027-01-01"],
+        "credito_coperto": 250.0,
+        "stato_riconciliazione": "riconciliato",
+    }))
+
+    risultato = _run(banca.list_prima_nota_sumup(anno=2026))
+
+    assert risultato["totale_netto_vendite"] == 140.0
+    assert risultato["credito_sumup_coperto"] == 100.0
+    assert risultato["credito_sumup_aperto"] == 40.0

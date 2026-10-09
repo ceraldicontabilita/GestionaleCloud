@@ -196,6 +196,17 @@ def acconto_in_busta(ced: Dict[str, Any], netto_cella: Optional[Decimal]) -> Tup
     return ZERO, None
 
 
+def netto_da_verificare(ced: Optional[Dict[str, Any]]) -> bool:
+    """Solo un esito esplicitamente negativo invalida i dati storici HR."""
+    from app.constants.stati_netto import STATI_NON_UTILIZZABILI
+    if not ced:
+        return False
+    componenti = ced.get("cedolini_componenti")
+    if componenti:
+        return any(netto_da_verificare(c) for c in componenti)
+    return str(ced.get("stato_netto") or "").strip().upper() in STATI_NON_UTILIZZABILI
+
+
 def dovuto_busta(paga: Dict[str, Any], ced: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     """Il dovuto di un mese: netto della busta piu' l'acconto recuperato in busta.
 
@@ -232,7 +243,7 @@ def dovuto_busta(paga: Dict[str, Any], ced: Optional[Dict[str, Any]]) -> Dict[st
         return {"dovuto": netto_confermato + acconto if netto_confermato is not None else registro,
                 "netto_busta": base, "acconto": acconto,
                 "fonte_acconto": fonte, "manuale": True}
-    if base is None:
+    if netto_da_verificare(ced) or base is None:
         return {"dovuto": None, "netto_busta": None, "acconto": ZERO, "fonte_acconto": None, "manuale": False}
     acconto, fonte = acconto_in_busta(ced, base)
     if not acconto:
@@ -402,7 +413,11 @@ def componi_movimenti(*, paghe: Iterable[Dict[str, Any]], esiti: Iterable[Dict[s
     from app.services.cedolini_versioni import attiva
 
     from app.services.cedolini_rapporti import raggruppa_cedolini
-    for c in raggruppa_cedolini(cedolini).values():
+    # I documenti TFR autonomi hanno un conto distinto: escluderli prima
+    # della somma, anche quando condividono mese e dipendente con una busta.
+    buste = (c for c in cedolini if
+             (str(c.get("tipo_cedolino") or "").strip().lower() or None) in TIPI_BUSTA_DOVUTO)
+    for c in raggruppa_cedolini(buste).values():
         tipo = str(c.get("tipo_cedolino") or "").strip().lower() or None
         # una versione superata della busta (`sostituito`) non e' un dovuto
         if tipo not in TIPI_BUSTA_DOVUTO or not attiva(c):
@@ -968,6 +983,9 @@ async def attribuisci_eccedenza(db, eccedenza_id: str, dati: Dict[str, Any],
                  "beneficiario": dip.get("nome_completo"), "mese": mese, "anno": anno,
                  "origine": "eccedenze_pagamenti", "eccedenza_id": eccedenza_id,
                  "bonifico_da_associare_id": ecc.get("bonifico_da_associare_id")}
+        from app.services.conferma_bonifico import campi_conferma
+        esito.update(campi_conferma(attore), associazione_certa=True,
+                     competenza_confermata=True)
         await db.pagamenti_esiti.update_one({"key": key}, {"$set": esito}, upsert=True)
         await db.paghe_mensili.update_one(
             {"dipendente_id": dip_id, "anno": anno, "mese": mese},

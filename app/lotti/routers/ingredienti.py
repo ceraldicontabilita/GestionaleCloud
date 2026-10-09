@@ -15,6 +15,7 @@ Endpoint principali:
 """
 
 import logging
+import os
 import re
 from datetime import datetime, timezone, timedelta
 from typing import Optional

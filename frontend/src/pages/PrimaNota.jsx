@@ -11,6 +11,7 @@ import AssociaAssegnoFattura from '../components/AssociaAssegnoFattura';
 import DocumentViewerModal from '../components/DocumentViewerModal';
 import { VisoreOriginale } from '../components/ApriOriginale';
 import { urlOriginale, NON_DISPONIBILE } from '../lib/vista';
+import DocumentImportLink from '../components/DocumentImportLink';
 import BancaDiretta from '../components/BancaDiretta';
 import FinanziamentoSoci from './FinanziamentoSoci';
 import { PageHeader } from '../components/ds/PageHeader';
@@ -671,6 +672,16 @@ export function CartaNexi({ anno }) {
             </b>
           </div>
         ))}
+      </div>
+      <div style={{ marginTop: 8, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+        <DocumentImportLink
+          workflow="nexi"
+          aria-label="Allega estratto Nexi PDF"
+          title="Acquisisci lo statement Nexi da Documenti: classificazione e provenienza centralizzate"
+          style={{ background: '#d97706', color: 'white', border: 'none', borderRadius: 7, padding: '6px 12px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer' }}
+        >
+          Acquisisci statement Nexi da Documenti
+        </DocumentImportLink>
       </div>
     </div>
   );

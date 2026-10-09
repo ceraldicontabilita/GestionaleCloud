@@ -57,7 +57,7 @@ async def dipendenti_attivi() -> Dict[str, Any]:
 @router.post("/pin-login", summary="Login via PIN (mobile app)")
 async def pin_login(
     request: Request,
-    payload: Dict[str, Any] = Body(..., examples=[{"pin": "******"}]),
+    payload: Dict[str, Any] = Body(..., example={"pin": "******"}),
 ) -> Dict[str, Any]:
     ip = _client_ip(request)
 

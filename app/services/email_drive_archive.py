@@ -80,23 +80,20 @@ def _escape_query(value: str) -> str:
 
 
 def _already_archived(
-    service, parent_ids: list[str], filename: str, digest: str, content: bytes,
+    service, parent_id: str, filename: str, digest: str, content: bytes,
 ) -> dict[str, Any] | None:
-    parents = "(" + " or ".join(f"'{_escape_query(p)}' in parents" for p in parent_ids) + ")"
     # Prima l'impronta forte, indipendente dal nome: due copie byte-identiche
     # devono riusare lo stesso originale Drive e lo stesso documento logico.
     by_sha = service.files().list(
-        q=(f"{parents} and trashed = false and "
+        q=(f"'{parent_id}' in parents and trashed = false and "
            f"appProperties has {{ key='gestionale_sha256' and value='{_escape_query(digest)}' }}"),
         fields="files(id, name, appProperties, md5Checksum)", pageSize=20, supportsAllDrives=True,
         includeItemsFromAllDrives=True,
     ).execute()
-    content_md5 = hashlib.md5(content, usedforsecurity=False).hexdigest()
-    for item in by_sha.get("files", []):
-        if item.get("md5Checksum") == content_md5:
-            return item
+    if by_sha.get("files"):
+        return by_sha["files"][0]
     result = service.files().list(
-        q=f"name = '{_escape_query(filename)}' and {parents} and trashed = false",
+        q=f"name = '{_escape_query(filename)}' and '{parent_id}' in parents and trashed = false",
         fields="files(id, name, appProperties, md5Checksum)", pageSize=20, supportsAllDrives=True,
         includeItemsFromAllDrives=True,
     ).execute()
@@ -104,8 +101,11 @@ def _already_archived(
     # titolare puo' depositare l'originale in ELABORATE dal proprio Drive: lo
     # riconosciamo soltanto se nome, MD5 Drive e SHA-256 dei byte riletti
     # coincidono. Il solo nome non e' mai prova d'identita'.
+    content_md5 = hashlib.md5(content, usedforsecurity=False).hexdigest()
     for item in result.get("files", []):
         props = item.get("appProperties") or {}
+        if props.get("gestionale_sha256") == digest:
+            return item
         if item.get("md5Checksum") != content_md5:
             continue
         try:
@@ -168,27 +168,17 @@ def archive_binary_copy(
     service = _drive_service()
     if service is None:
         return {"status": "not_configured", "area": area}
-    # Il caricamento manuale puo' essere lo stesso file gia' depositato dal
-    # titolare in DA ELABORARE. Si riusa solo un originale byte-identico:
-    # non si crea una seconda copia e non si sposta il file durante la prova.
-    folders = service.files().list(
-        q=f"'{_escape_query(root_id)}' in parents and mimeType = '{cu.CARTELLA_MIME}' and trashed = false",
-        fields="files(id,name)", pageSize=100, supportsAllDrives=True,
-        includeItemsFromAllDrives=True,
-    ).execute().get("files", [])
-    sources = {f["name"]: f["id"] for f in folders
-               if f.get("name") in {cu.INBOX, cu.ARCHIVIO, cu.ERRORI, cu.ARRETRATO}}
+    folder_id = cu._cartella(service, root_id, cu.ARCHIVIO)
 
     filename = str(filename or "documento.pdf").strip()
     digest = hashlib.sha256(content).hexdigest()
     content_md5 = hashlib.md5(content, usedforsecurity=False).hexdigest()
-    existing = _already_archived(service, [root_id, *sources.values()], filename, digest, content)
+    existing = _already_archived(service, folder_id, filename, digest, content)
     if existing:
         return {"status": "duplicate", "area": area, "drive_file_id": existing.get("id"),
                 "sha256": digest, "md5": content_md5, "bytes": len(content),
                 "archived_at": datetime.now(timezone.utc).isoformat()}
 
-    folder_id = sources.get(cu.ARCHIVIO) or cu._cartella(service, root_id, cu.ARCHIVIO)
     from googleapiclient.http import MediaIoBaseUpload
     mime_type = mimetypes.guess_type(filename)[0] or "application/octet-stream"
     media = MediaIoBaseUpload(io.BytesIO(content), mimetype=mime_type, resumable=False)

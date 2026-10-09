@@ -24,6 +24,8 @@ GET  /api/ricette-ripubblica-menu/stato
 GET  /api/tablet/{reparto}          — prodotti per vista tablet
 """
 
+import logging
+
 from fastapi import APIRouter, HTTPException, Query, UploadFile, File, Form, Body, Depends
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from pydantic import BaseModel, Field, ConfigDict, field_validator
@@ -170,9 +172,6 @@ class RicettaCreate(BaseModel):
     menu_pubblico: Optional[bool] = None
     menu_bb: Optional[bool] = None
     visibile_tablet: Optional[bool] = None
-    fornitore_partita_iva: Optional[str] = Field(default=None, max_length=32)
-    codice_articolo_fornitore: Optional[str] = Field(default=None, max_length=100)
-    confezione: Optional[str] = Field(default=None, max_length=300)
 
     @field_validator("prezzo_vendita", "prezzo_tavolo")
     @classmethod
@@ -503,11 +502,9 @@ async def _importa_ricettario_excel(
             await _clona_foto_tra_ricette(
                 item["campi"]["ricetta_base_id"], item["id"], fonte="import_ricettario_excel"
             )
-    from app.lotti.servizi.menu_backfill import richiedi_riallineamento_dopo_import
     return {
         "ok": True,
         "anteprima": False,
-        "menu_sync": richiedi_riallineamento_dopo_import(db) if changed else None,
         "bundle_sha256": bundle_hash,
         "backup_id": backup_id,
         **summary,
@@ -1581,10 +1578,8 @@ async def import_csv_ricette(
             plan["errori"].append(f"Errore aggiornamento '{item['nome']}': {e}")
             err_count += 1
 
-    from app.lotti.servizi.menu_backfill import richiedi_riallineamento_dopo_import
     return {
         "successo": True,
-        "menu_sync": richiedi_riallineamento_dopo_import(db) if create_count or update_count else None,
         "create": create_count,
         "aggiornate": update_count,
         "saltate": len(plan["saltate"]),
@@ -1666,8 +1661,7 @@ class VisibilitaTabletRicetta(BaseModel):
 
 
 CATEGORIE_RAPIDE_RICETTA = {
-    "colazioni", "dolci_secchi", "ricorrenze", "natale", "pasqua", "rosticceria_giorno", "pasticceria_classica", "semilavorati",
-    "bagne", "panini", "insalate", "primi_piatti", "contorni",
+    "colazioni", "dolci_secchi", "ricorrenze", "natale", "pasqua", "rosticceria_giorno", "pasticceria_classica",
 }
 
 
@@ -1712,17 +1706,6 @@ async def imposta_categorie_rapide_ricetta(
     profilo = {**(_admin if isinstance(_admin, dict) else {}), "ruolo": "amministratore"}
     esito = await aggiorna_campo_ricetta(ricetta_id, {"categorie_rapide": richiesta.categorie}, profilo)
     return {"id": ricetta_id, **esito["aggiornato"], "menu_sync": esito["menu_sync"]}
-
-
-@router.get("/ricette/{ricetta_id}/fatture-acquisto")
-async def get_fatture_acquisto_ricetta(
-    ricetta_id: str, anno: int = Query(..., ge=2000, le=2100), _admin=Depends(require_admin),
-):
-    from app.lotti.servizi.acquisti_semilavorati import fatture_acquisto
-    item = await db.ricette.find_one({"id": ricetta_id}, {"_id": 0})
-    if not item:
-        raise HTTPException(404, "Ricetta non trovata")
-    return await fatture_acquisto(item, anno)
 
 
 @router.get("/ricette/{ricetta_id}", response_model=Ricetta)
@@ -1820,9 +1803,6 @@ async def update_ricetta(ricetta_id: str, item: RicettaCreate, _ruolo=Depends(re
         verifica_reparto(_ruolo, item.reparto)
 
     payload = item.model_dump()
-    for campo_acquisto in ("fornitore_partita_iva", "codice_articolo_fornitore", "confezione"):
-        if campo_acquisto not in item.model_fields_set:
-            payload.pop(campo_acquisto, None)
     payload.pop("descrizione_origine", None)
     payload.pop("allergeni_confermati", None)
     # Provenienza del procedimento: la decide il server, mai il client.
@@ -2030,9 +2010,7 @@ async def importa_tracciabilita(sostituisci: bool = Query(True), _admin=Depends(
             create += 1
             dettaglio.append({"nome": nome, "azione": "creata", "ingredienti": len(nomi)})
 
-    from app.lotti.servizi.menu_backfill import richiedi_riallineamento_dopo_import
     return {"ok": True, "totale_nel_foglio": len(ricette),
-            "menu_sync": richiedi_riallineamento_dopo_import(db) if create or aggiornate else None,
             "create": create, "aggiornate": aggiornate, "saltate": saltate,
             "dettaglio": dettaglio[:200]}
 
@@ -2250,9 +2228,7 @@ async def importa_cartel1(
                 **doc_set,
             })
 
-    from app.lotti.servizi.menu_backfill import richiedi_riallineamento_dopo_import
     return {"ok": True, "anteprima": False, "source_sha256": source_hash,
-            "menu_sync": richiedi_riallineamento_dopo_import(db) if changed_operations else None,
             "backup_id": backup_id, **summary, "dettaglio": public_detail}
 
 
@@ -2308,6 +2284,131 @@ async def restore_ricetta(voce_id: str, _admin=Depends(require_admin)):
         "ripristinata": stato == "ripristinata",
         "menu_sync": await _sincronizza_menu(ricetta_id) if stato == "ripristinata" else None,
     }
+
+
+@router.post("/ricette-cestino/migra-foto-storage")
+async def migra_foto_cestino_storage(
+    applica: bool = Query(False),
+    limite: int = Query(10, ge=1, le=25),
+    _admin=Depends(require_admin),
+):
+    """Porta su Supabase Storage, in lotti riprendibili, le foto del cestino
+    ancora nel vecchio archivio ``foto_files``.
+
+    E' lo stesso archivio delle ricette attive: una ricetta ripristinata dal
+    cestino torna con ``foto_storage_path`` e ``GET /api/foto`` la serve senza
+    passare da Drive (l'account di servizio non ha spazio nel Drive del
+    titolare, e la vecchia cartella foto non esiste piu'). Ogni voce si salva
+    subito dopo l'upload: un rilancio non ricarica le foto gia' portate.
+    """
+    voci = await db.ricette_cestino.find(
+        {"ricetta.foto_url": {"$regex": r"/api/foto/"}},
+        {"_id": 1, "ricetta": 1},
+    ).to_list(5000)
+    gruppi: dict[str, list[dict]] = {}
+    for voce in voci:
+        ricetta = voce.get("ricetta") or {}
+        if ricetta.get("foto_storage_path") or ricetta.get("foto_drive_id"):
+            continue
+        legacy_id = _foto_id_da_url(ricetta.get("foto_url"))
+        if legacy_id:
+            gruppi.setdefault(legacy_id, []).append(voce)
+
+    if not applica:
+        mancanti = 0
+        for legacy_id in gruppi:
+            if not await db.foto_files.find_one({"_id": legacy_id}, {"_id": 1}):
+                mancanti += 1
+        return {
+            "dry_run": True,
+            "voci_da_migrare": sum(len(x) for x in gruppi.values()),
+            "foto_distinte_da_migrare": len(gruppi),
+            "foto_legacy_mancanti": mancanti,
+        }
+
+    if await db.ricette_cestino_foto_backup_20260922.count_documents({}) == 0:
+        originali = await db.ricette_cestino.find({}, {"_id": 0}).to_list(5000)
+        if originali:
+            await db.ricette_cestino_foto_backup_20260922.insert_many(originali)
+
+    from app.lotti.servizi import supabase_foto_ricette
+    migrate = list(gruppi.items())[:limite]
+    foto_migrate = 0
+    voci_aggiornate = 0
+    mancanti: list[str] = []
+    for legacy_id, riferimenti in migrate:
+        foto = await db.foto_files.find_one({"_id": legacy_id})
+        if not foto or not foto.get("data"):
+            mancanti.append(legacy_id)
+            continue
+        contenuto = bytes(foto["data"])
+        mime = str(foto.get("mime") or "image/jpeg")
+        ricetta_id = str((riferimenti[0].get("ricetta") or {}).get("id") or legacy_id)
+        caricata = await asyncio.to_thread(
+            supabase_foto_ricette.carica,
+            ricetta_id=f"cestino-{ricetta_id}",
+            contenuto=contenuto,
+            mime=mime,
+            filename=foto.get("filename") or f"{legacy_id}.img",
+        )
+        foto_id = caricata["id"]
+        versione = int(datetime.now(timezone.utc).timestamp())
+        campi = {
+            "ricetta.foto_url": f"/api/foto/{foto_id}?v={versione}",
+            "ricetta.foto_id": foto_id,
+            "ricetta.foto_storage_bucket": caricata["bucket"],
+            "ricetta.foto_storage_path": caricata["path"],
+            "ricetta.foto_content_type": mime,
+            "ricetta.foto_filename": foto.get("filename") or f"{ricetta_id}.{supabase_foto_ricette._estensione(mime)}",
+            "ricetta.foto_sha256": caricata["sha256"],
+            "ricetta.foto_source": (riferimenti[0].get("ricetta") or {}).get("foto_source") or foto.get("fonte") or "legacy_migrata",
+            "ricetta.foto_migrated_at": datetime.now(timezone.utc).isoformat(),
+        }
+        for voce in riferimenti:
+            esito = await db.ricette_cestino.update_one({"_id": voce["_id"]}, {"$set": campi})
+            voci_aggiornate += esito.modified_count
+        foto_migrate += 1
+
+    restanti = await db.ricette_cestino.count_documents({
+        "ricetta.foto_url": {"$regex": r"/api/foto/"},
+        "ricetta.foto_storage_path": {"$exists": False},
+        "ricetta.foto_drive_id": {"$exists": False},
+    })
+    return {
+        "dry_run": False,
+        "foto_migrate": foto_migrate,
+        "voci_aggiornate": voci_aggiornate,
+        "foto_legacy_mancanti": mancanti,
+        "voci_restanti": restanti,
+    }
+
+
+async def completa_migrazione_foto_cestino(limite: int = 25) -> dict:
+    """Completa la migrazione RST-0508AN in lotti idempotenti.
+
+    Il deploy la esegue in background usando le credenziali gia' configurate
+    del servizio. La funzione termina soltanto quando nessuna voce del cestino
+    richiama piu' un blob legacy; un blob assente o un giro senza avanzamento
+    viene trattato come errore esplicito, non come migrazione riuscita.
+    """
+    totali = {"foto_migrate": 0, "voci_aggiornate": 0, "giri": 0}
+    while True:
+        esito = await migra_foto_cestino_storage(True, limite, {})
+        totali["giri"] += 1
+        totali["foto_migrate"] += int(esito.get("foto_migrate") or 0)
+        totali["voci_aggiornate"] += int(esito.get("voci_aggiornate") or 0)
+        mancanti = list(esito.get("foto_legacy_mancanti") or [])
+        restanti = int(esito.get("voci_restanti") or 0)
+        if mancanti:
+            raise RuntimeError(
+                f"Migrazione foto cestino interrotta: {len(mancanti)} blob legacy mancanti"
+            )
+        if restanti == 0:
+            return {**totali, "voci_restanti": 0}
+        if not esito.get("foto_migrate"):
+            raise RuntimeError(
+                f"Migrazione foto cestino senza avanzamento: {restanti} voci restanti"
+            )
 
 
 _BASE_NOME_RE = re.compile(r"\s*\(\s*base\s*\)\s*$", re.IGNORECASE)
@@ -2709,42 +2810,90 @@ def _foto_id_da_url(foto_url: str) -> Optional[str]:
 async def _clona_foto_tra_ricette(
     ricetta_origine_id: str,
     ricetta_destinazione_id: str,
+    fonte: str,
 ) -> Optional[str]:
     """Copia bytes e metadati in un foto_id nuovo, poi collega la destinazione."""
     origine = await db.ricette.find_one(
         {"id": ricetta_origine_id},
         {"_id": 0, "foto_url": 1, "nome": 1, "foto_source": 1,
+         "foto_drive_id": 1, "foto_drive_folder_id": 1,
          "foto_storage_path": 1, "foto_content_type": 1, "foto_filename": 1},
     )
     foto_origine_id = _foto_id_da_url((origine or {}).get("foto_url"))
     if not foto_origine_id:
         return None
     storage_path = str((origine or {}).get("foto_storage_path") or "").strip()
-    if not storage_path:
+    drive_id = str((origine or {}).get("foto_drive_id") or "").strip()
+    if storage_path or drive_id:
+        from app.lotti.servizi import supabase_foto_ricette
+        if storage_path:
+            dati_foto = await asyncio.to_thread(supabase_foto_ricette.leggi, storage_path)
+            mime = str((origine or {}).get("foto_content_type") or "image/jpeg")
+            nome_file = (origine or {}).get("foto_filename")
+        else:
+            from app.lotti.servizi import drive_foto_ricette
+            folder = str((origine or {}).get("foto_drive_folder_id") or "").strip()
+            dati_foto, mime, metadata = await asyncio.to_thread(
+                drive_foto_ricette.leggi, drive_id, folder_id=folder
+            )
+            nome_file = metadata.get("name")
+        # La copia va sempre su Supabase Storage, l'archivio delle foto nuove:
+        # nel Drive del titolare l'account di servizio non ha spazio.
+        caricata = await asyncio.to_thread(
+            supabase_foto_ricette.carica,
+            ricetta_id=ricetta_destinazione_id,
+            contenuto=dati_foto,
+            mime=mime,
+            filename=nome_file,
+        )
+        versione = int(datetime.now(timezone.utc).timestamp())
+        nuovo_foto_id = caricata["id"]
+        foto_url = f"/api/foto/{nuovo_foto_id}?v={versione}"
+        await db.ricette.update_one(
+            {"id": ricetta_destinazione_id}, {"$set": {
+                "foto_url": foto_url, "foto_id": nuovo_foto_id,
+                "foto_storage_bucket": caricata["bucket"],
+                "foto_storage_path": caricata["path"],
+                "foto_filename": nome_file, "foto_content_type": mime,
+                "foto_sha256": caricata["sha256"],
+                "foto_source": (origine or {}).get("foto_source") or "copia_ricetta",
+                "foto_copiata_da_ricetta_id": ricetta_origine_id,
+            }, "$unset": {"foto_drive_id": "", "foto_drive_folder_id": ""}}
+        )
+        return foto_url
+
+    # Fallback solo per i record non ancora migrati; rimosso a riferimenti=0.
+    foto = await db.foto_files.find_one({"_id": foto_origine_id})
+    if not foto or not foto.get("data"):
         return None
-    from app.lotti.servizi import supabase_foto_ricette
-    dati_foto = await asyncio.to_thread(supabase_foto_ricette.leggi, storage_path)
-    mime = str((origine or {}).get("foto_content_type") or "image/jpeg")
-    nome_file = (origine or {}).get("foto_filename")
-    caricata = await asyncio.to_thread(
-        supabase_foto_ricette.carica,
-        ricetta_id=ricetta_destinazione_id,
-        contenuto=dati_foto,
-        mime=mime,
-        filename=nome_file,
-    )
+
+    safe_dest = ricetta_destinazione_id.replace("/", "_")
+    nuovo_foto_id = f"ricetta_{safe_dest}_{uuid.uuid4().hex[:12]}"
     versione = int(datetime.now(timezone.utc).timestamp())
-    nuovo_foto_id = caricata["id"]
+    dati_foto = bytes(foto["data"])
+    foto_source = (origine or {}).get("foto_source") or foto.get("fonte") or "upload_manuale"
+    foto_sha256 = hashlib.sha256(dati_foto).hexdigest()
+    await db.foto_files.insert_one({
+        "_id": nuovo_foto_id,
+        "mime": foto.get("mime", "image/jpeg"),
+        "data": dati_foto,
+        "ricetta_id": ricetta_destinazione_id,
+        "versione": versione,
+        "fonte": foto_source,
+        "sha256": foto_sha256,
+        "filename": foto.get("filename"),
+        "tipo_copia": fonte,
+        "copiata_da_ricetta_id": ricetta_origine_id,
+        "copiata_da_foto_id": foto_origine_id,
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    })
     foto_url = f"/api/foto/{nuovo_foto_id}?v={versione}"
     await db.ricette.update_one(
         {"id": ricetta_destinazione_id}, {"$set": {
             "foto_url": foto_url, "foto_id": nuovo_foto_id,
-            "foto_storage_bucket": caricata["bucket"],
-            "foto_storage_path": caricata["path"],
-            "foto_filename": nome_file, "foto_content_type": mime,
-            "foto_sha256": caricata["sha256"],
-            "foto_source": (origine or {}).get("foto_source") or "copia_ricetta",
-            "foto_copiata_da_ricetta_id": ricetta_origine_id,
+            "foto_filename": foto.get("filename"),
+            "foto_content_type": foto.get("mime", "image/jpeg"),
+            "foto_sha256": foto_sha256, "foto_source": foto_source,
         }}
     )
     return foto_url
@@ -2808,7 +2957,9 @@ async def separa_foto_varianti(
             "collegamenti": piano,
         })
         for voce in piano:
-            nuova = await _clona_foto_tra_ricette(voce["ricetta_base_id"], voce["id"])
+            nuova = await _clona_foto_tra_ricette(
+                voce["ricetta_base_id"], voce["id"], fonte="separa_foto_varianti"
+            )
             if nuova:
                 aggiornate.append({**voce, "foto_dopo": nuova})
             else:
@@ -2839,6 +2990,7 @@ async def upload_foto(
         {
             "_id": 0, "id": 1, "nome": 1, "foto_url": 1, "foto_id": 1,
             "foto_storage_bucket": 1, "foto_storage_path": 1,
+            "foto_drive_id": 1, "foto_drive_folder_id": 1,
             "foto_filename": 1, "foto_content_type": 1, "foto_sha256": 1,
             "foto_source": 1,
         },
@@ -2876,7 +3028,8 @@ async def upload_foto(
     # ad ogni upload per invalidare cache browser/React sulla stessa ricetta.
     foto_url = f"/api/foto/{foto_id}?v={versione}"
     precedente_storage_path = str(esistente.get("foto_storage_path") or "").strip()
-    precedente_id = str(esistente.get("foto_id") or "").strip()
+    precedente_drive_id = str(esistente.get("foto_drive_id") or "").strip()
+    precedente_id = str(esistente.get("foto_id") or precedente_drive_id).strip()
     backup_id = None
     if precedente_id and precedente_id != foto_id:
         backup_id = str(uuid.uuid4())
@@ -2889,7 +3042,7 @@ async def upload_foto(
             "foto_precedente": {
                 chiave: esistente.get(chiave)
                 for chiave in (
-                    "foto_url", "foto_id",
+                    "foto_url", "foto_id", "foto_drive_id", "foto_drive_folder_id",
                     "foto_storage_bucket", "foto_storage_path",
                     "foto_filename", "foto_content_type", "foto_sha256", "foto_source",
                 )
@@ -2908,18 +3061,26 @@ async def upload_foto(
         "foto_storage_path": foto_storage_path,
         "foto_filename": file.filename, "foto_content_type": mime,
         "foto_sha256": foto_sha256, "foto_source": foto_source,
-    }})
+    }, "$unset": {"foto_drive_id": "", "foto_drive_folder_id": ""}})
     # Il Menu digitale punta allo stesso oggetto Storage e aggiorna la sua riga.
     menu_sync = await _sincronizza_menu(ricetta_id)
     precedente_eliminata = False
     precedente_errore = None
     if cestina_precedente and precedente_id and precedente_id != foto_id:
-        riferimenti_attivi = await db.ricette.count_documents({
-            "foto_storage_path": precedente_storage_path, "id": {"$ne": ricetta_id},
-        })
-        riferimenti_cestino = await db.ricette_cestino.count_documents({
-            "ricetta.foto_storage_path": precedente_storage_path,
-        })
+        if precedente_storage_path:
+            riferimenti_attivi = await db.ricette.count_documents({
+                "foto_storage_path": precedente_storage_path, "id": {"$ne": ricetta_id},
+            })
+            riferimenti_cestino = await db.ricette_cestino.count_documents({
+                "ricetta.foto_storage_path": precedente_storage_path,
+            })
+        else:
+            riferimenti_attivi = await db.ricette.count_documents({
+                "foto_drive_id": precedente_drive_id, "id": {"$ne": ricetta_id},
+            })
+            riferimenti_cestino = await db.ricette_cestino.count_documents({
+                "ricetta.foto_drive_id": precedente_drive_id,
+            })
         if riferimenti_attivi + riferimenti_cestino == 0:
             try:
                 if precedente_storage_path:
@@ -2927,6 +3088,16 @@ async def upload_foto(
                         supabase_foto_ricette.elimina, precedente_storage_path,
                     )
                     precedente_eliminata = True
+                elif precedente_drive_id:
+                    from app.lotti.servizi import drive_foto_ricette
+                    precedente_folder = str(esistente.get("foto_drive_folder_id") or "").strip()
+                    if precedente_folder:
+                        await asyncio.to_thread(
+                            drive_foto_ricette.cestina,
+                            precedente_drive_id,
+                            folder_id=precedente_folder,
+                        )
+                        precedente_eliminata = True
             except Exception as exc:
                 # Il nuovo oggetto, il record operativo e il Menu sono già
                 # coerenti: non rispondere 500 facendo credere che l'upload sia
@@ -2951,8 +3122,9 @@ async def leggi_foto(foto_id: str):
     specifica versione è immutabile, quindi cache lunga e forte è sicura — un
     aggiornamento foto genera un nuovo ?v e quindi un URL (e una cache) diversi."""
     ricetta = await db.ricette.find_one(
-        {"foto_id": foto_id},
-        {"_id": 0, "foto_content_type": 1, "foto_storage_path": 1},
+        {"$or": [{"foto_id": foto_id}, {"foto_drive_id": foto_id}]},
+        {"_id": 0, "foto_content_type": 1, "foto_storage_path": 1,
+         "foto_drive_id": 1, "foto_drive_folder_id": 1},
     )
     if ricetta and ricetta.get("foto_storage_path"):
         from app.lotti.servizi import supabase_foto_ricette
@@ -2975,7 +3147,26 @@ async def leggi_foto(foto_id: str):
             raise HTTPException(404, "Foto non trovata") from exc
         return Response(content=contenuto, media_type=ricetta.get("foto_content_type") or "image/jpeg",
                         headers={"Cache-Control": "public, max-age=31536000, immutable"})
-    raise HTTPException(404, "Foto non trovata")
+    if ricetta and ricetta.get("foto_drive_id"):
+        from app.lotti.servizi import drive_foto_ricette
+        try:
+            contenuto, mime, _ = await asyncio.to_thread(
+                drive_foto_ricette.leggi,
+                foto_id,
+                folder_id=str(ricetta.get("foto_drive_folder_id") or ""),
+            )
+        except FileNotFoundError as exc:
+            raise HTTPException(404, "Foto non trovata") from exc
+        return Response(content=contenuto, media_type=mime,
+                        headers={"Cache-Control": "public, max-age=31536000, immutable"})
+
+    # Compatibilità strettamente temporanea durante la migrazione delle foto
+    # già collegate. Verrà rimossa dopo il cut-over e il conteggio riferimenti=0.
+    doc = await db.foto_files.find_one({"_id": foto_id})
+    if not doc or not doc.get("data"):
+        raise HTTPException(404, "Foto non trovata")
+    return Response(content=bytes(doc["data"]), media_type=doc.get("mime", "image/jpeg"),
+                    headers={"Cache-Control": "public, max-age=31536000, immutable"})
 
 
 @router.put("/ricette/{ricetta_id}/ingredienti-dettaglio")

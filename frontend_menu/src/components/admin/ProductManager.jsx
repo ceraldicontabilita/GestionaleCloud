@@ -10,7 +10,7 @@ import { toast } from '../../hooks/use-toast';
 import { Edit, Save, X, Search, ExternalLink } from 'lucide-react';
 import axios from 'axios';
 
-import { MENU_BACKEND_URL as BACKEND_URL } from '@/lib/backend';
+const BACKEND_URL = process.env.REACT_APP_MENU_BACKEND_URL;
 
 const authHeaders = () => ({ Authorization: `Bearer ${localStorage.getItem('admin_token')}` });
 

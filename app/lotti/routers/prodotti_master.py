@@ -1058,7 +1058,7 @@ async def _esegui_rebuild():
             await db.prodotti_master.create_index([("aliases", 1)])
             await db.prodotti_master.create_index([("codici", 1)])
             await db.prodotti_master.create_index([("fonti", 1)])
-    except Exception:
+    except Exception as _ie:
         logger.debug("[prodotti_master] errore non bloccante ignorato")
 
     # Set di tutte le key ricalcolate

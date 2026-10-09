@@ -573,25 +573,6 @@ def parse_quietanza_f24(pdf_path: str = None, pdf_content: bytes = None) -> Dict
     if coordinate_data["sezione_tributi_locali"]:
         result["sezione_tributi_locali"] = coordinate_data["sezione_tributi_locali"]
 
-    # Il Cassetto può stampare la quietanza sulla griglia del modello F24,
-    # non nella tabella «ERARIO ... / TRIB.LOCALI ...». Riusa il lettore
-    # della griglia senza trasformare data di stampa o nome file in pagamento.
-    if (not any(result[name] for name in _QUIETANZA_SECTION_LABELS.values())
-            and e_stampa_cassetto(text) and "DELEGA IRREVOCABILE" in text.upper()
-            and result["dati_generali"].get("data_pagamento")):
-        from app.services.parser_f24 import parse_f24_commercialista
-
-        griglia = parse_f24_commercialista(pdf_path=pdf_path, pdf_content=pdf_content)
-        identita = (griglia.get("dati_generali") or {}).get("codice_fiscale")
-        stesso_soggetto = identita and identita == result["dati_generali"].get("codice_fiscale")
-        validazione_griglia = griglia.get("validazione") or {}
-        if (stesso_soggetto and validazione_griglia.get("saldo_quadrato")
-                and validazione_griglia.get("sezioni_quadrate") is not False):
-            for name in _QUIETANZA_SECTION_LABELS.values():
-                result[name] = griglia.get(name) or []
-            result["field_evidence"] = griglia.get("field_evidence") or {}
-            result["parser_righe"] = "griglia_modello_cassetto"
-
     # Da questo punto in poi il ledger usa esclusivamente centesimi interi.
     # I float mantenuti nei campi storici sono solo una vista compatibile.
     for section_name in _QUIETANZA_SECTION_LABELS.values():

@@ -43,7 +43,7 @@ async def lista_accessi(_: Dict[str, Any] = Depends(require_roles("admin"))) -> 
 @router.post("/{dipendente_id}/pin", summary="Imposta/azzera PIN dipendente (admin)")
 async def set_pin(
     dipendente_id: str,
-    payload: Dict[str, Any] = Body(..., examples=[{"pin": "1234"}]),
+    payload: Dict[str, Any] = Body(..., example={"pin": "1234"}),
     _: Dict[str, Any] = Depends(require_roles("admin")),
 ):
     pin = str(payload.get("pin", "")).strip()
@@ -67,7 +67,7 @@ async def del_pin(dipendente_id: str, _: Dict[str, Any] = Depends(require_roles(
 @router.post("/{dipendente_id}/ruolo", summary="Imposta ruolo applicativo (admin)")
 async def set_ruolo(
     dipendente_id: str,
-    payload: Dict[str, Any] = Body(..., examples=[{"ruolo_app": "responsabile_turni"}]),
+    payload: Dict[str, Any] = Body(..., example={"ruolo_app": "responsabile_turni"}),
     _: Dict[str, Any] = Depends(require_roles("admin")),
 ):
     ruolo = str(payload.get("ruolo_app", "")).strip()

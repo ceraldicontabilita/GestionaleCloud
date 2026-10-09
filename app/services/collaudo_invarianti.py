@@ -199,8 +199,7 @@ async def check_documenti_fuori_whitelist(db) -> Dict[str, Any]:
     """La lista mittenti è il vangelo: in archivio non deve esserci nulla da
     mittenti non in lista, né file tecnici PEC/SDI."""
     from app.services.email_full_download import CATEGORY_COLLECTIONS
-    from app.services.email_document_downloader import FILE_TECNICI_PEC_RE
-    from email.utils import parseaddr
+    from app.services.email_document_downloader import FILE_TECNICI_PEC_RE, FILE_FATTURA_SDI_RE
     from app.services.mittenti import _addr
     trusted = set()
     async for m in db["mittenti_email"].find({"attivo": True}):
@@ -214,9 +213,9 @@ async def check_documenti_fuori_whitelist(db) -> Dict[str, Any]:
                      "filename": 1, "file_name": 1}):
             nome_file = (d.get("filename") or d.get("file_name") or "").strip()
             mitt = (d.get("email_from") or d.get("from") or d.get("mittente") or d.get("sender") or "").lower()
-            tecnico = bool(nome_file) and bool(FILE_TECNICI_PEC_RE.search(nome_file))
-            address = parseaddr(mitt)[1].strip().lower()
-            fuori_lista = bool(mitt) and address not in trusted
+            tecnico = bool(nome_file) and bool(
+                FILE_TECNICI_PEC_RE.search(nome_file) or FILE_FATTURA_SDI_RE.match(nome_file))
+            fuori_lista = bool(mitt) and not any(s in mitt for s in trusted)
             if tecnico or fuori_lista:
                 count += 1
                 if len(esempi) < 5:

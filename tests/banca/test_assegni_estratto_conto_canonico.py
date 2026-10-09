@@ -1,0 +1,569 @@
+import asyncio
+
+from app.services.archivio_documenti_memoria import ClientArchivioMemoria
+
+from app.services.assegni_estratto_conto import (
+    collega_assegno_riconciliato_a_fattura,
+    collega_assegno_riconciliato_a_fatture,
+    estrai_numero_assegno,
+    sincronizza_assegni_da_estratto_conto,
+)
+
+
+def _run(coro):
+    loop = asyncio.new_event_loop()
+    try:
+        return loop.run_until_complete(coro)
+    finally:
+        loop.close()
+
+
+def _mov(numero="0208770981", importo=1853.02, idx=1):
+    return {
+        "id": f"ec-{idx}",
+        "data": "2026-05-08",
+        "data_pagamento": "2026-05-07",
+        "importo": importo,  # schema canonico: valore assoluto
+        "tipo": "uscita",
+        "descrizione": (
+            f"PRELIEVO ASSEGNO - DM 05387 CRA: 26050700167309 NUM: {numero}"
+        ),
+        "riconciliato": False,
+    }
+
+
+def test_numero_preserva_zero_iniziale_e_usa_num_non_cra():
+    assert estrai_numero_assegno(_mov()["descrizione"]) == "0208770981"
+
+
+def test_addebito_assegno_in_causale_originale_viene_intercettato():
+    async def scenario():
+        db = ClientArchivioMemoria().db
+        movimento = _mov(numero="0208771999", idx=1999)
+        movimento.pop("descrizione")
+        movimento.update({
+            "type": "uscita",
+            "causale": "ADDEBITO ASSEGNO N. 0208771999",
+        })
+        await db.estratto_conto_movimenti.insert_one(movimento)
+        return await sincronizza_assegni_da_estratto_conto(db)
+
+    esito = _run(scenario())
+    assert esito["assegni_creati"] == 1
+    assert esito["dettagli"][0]["numero"] == "0208771999"
+
+
+def test_importo_assoluto_tipo_uscita_crea_assegno_e_prima_nota_idempotenti():
+    async def scenario():
+        db = ClientArchivioMemoria().db
+        await db.estratto_conto_movimenti.insert_one(_mov())
+
+        primo = await sincronizza_assegni_da_estratto_conto(db)
+        secondo = await sincronizza_assegni_da_estratto_conto(db)
+
+        assegno = await db.assegni.find_one({}, {"_id": 0})
+        movimento = await db.estratto_conto_movimenti.find_one({"id": "ec-1"}, {"_id": 0})
+        prima_nota = await db.prima_nota_banca.find_one({}, {"_id": 0})
+        assert primo["assegni_creati"] == 1
+        assert secondo["assegni_creati"] == 0
+        assert await db.assegni.count_documents({}) == 1
+        assert await db.prima_nota_banca.count_documents({}) == 1
+        assert assegno["numero"] == "0208770981"
+        assert assegno["stato"] == "incassato"
+        assert assegno["incassato_confermato_banca"] is True
+        assert movimento["riconciliato_con"] == "assegno"
+        assert prima_nota["numero_assegno"] == "0208770981"
+        assert prima_nota["riconciliato"] is True
+
+    _run(scenario())
+
+
+def test_quattro_assegni_da_tremila_chiudono_quattro_rate_non_il_totale_subito():
+    async def scenario():
+        db = ClientArchivioMemoria().db
+        await db.invoices.insert_one({
+            "id": "fatt-rata",
+            "invoice_number": "TEST-RATE",
+            "invoice_date": "2026-02-06",
+            "supplier_vat": "00000000000",
+            "supplier_name": "FORNITORE TEST SRL",
+            "total_amount": 12000.0,
+            "importo_pagato": 0.0,
+            "importo_residuo": 12000.0,
+            "payment_status": "open",
+            "pagato": False,
+            "pagamento_rate": [
+                {"importo": "3000.00", "data_scadenza": f"2026-0{mese}-28"}
+                for mese in range(2, 6)
+            ],
+        })
+        for idx in range(1, 5):
+            numero = f"02087709{idx:02d}"
+            await db.assegni.insert_one({
+                "id": f"ass-rata-{idx}",
+                "numero": numero,
+                "importo": 3000.0,
+                "fattura_collegata": "fatt-rata",
+                "stato": "emesso",
+            })
+            await db.estratto_conto_movimenti.insert_one(
+                _mov(numero=numero, importo=3000.0, idx=idx)
+            )
+
+        esito = await sincronizza_assegni_da_estratto_conto(db)
+        fattura = await db.invoices.find_one({"id": "fatt-rata"}, {"_id": 0})
+        assert esito["fatture_associate"] == 4
+        assert fattura["importo_pagato"] == 12000.0
+        assert fattura["importo_residuo"] == 0.0
+        assert fattura["payment_status"] == "paid"
+        assert fattura["pagato"] is True
+        assert len(fattura["assegni_collegati"]) == 4
+        assert await db.prima_nota_banca.count_documents({}) == 4
+
+    _run(scenario())
+
+
+def test_importo_univoco_senza_numero_fattura_resta_proposta():
+    async def scenario():
+        db = ClientArchivioMemoria().db
+        await db.invoices.insert_one({
+            "id": "fatt-unica", "invoice_number": "TEST-UNICA",
+            "invoice_date": "2026-04-01", "supplier_vat": "00000000001",
+            "supplier_name": "FORNITORE TEST", "total_amount": 1853.02,
+            "importo_pagato": 0.0, "payment_status": "open", "pagato": False,
+        })
+        await db.estratto_conto_movimenti.insert_one(_mov())
+
+        esito = await sincronizza_assegni_da_estratto_conto(db)
+
+        assert esito["fatture_associate"] == 0
+        assert esito["proposte_ambigue"] == 1
+        assert await db.invoices.count_documents({"pagato": True}) == 0
+        proposta = await db.proposte_associazione_assegni.find_one({}, {"_id": 0})
+        assert proposta["fattura_id"] == "fatt-unica"
+        assert proposta["stato"] == "da_confermare"
+
+    _run(scenario())
+
+
+def test_proposta_rata_xml_indica_numero_rate_scadenza_e_non_confonde_mp05():
+    async def scenario():
+        db = ClientArchivioMemoria().db
+        await db.invoices.insert_many([
+            {
+                "id": "fatt-mp02", "invoice_number": "20", "invoice_date": "2026-02-06",
+                "supplier_vat": "00000000001", "supplier_name": "DI MASSA",
+                "total_amount": 12000.01, "importo_pagato": 0,
+                "payment_status": "open", "pagato": False,
+                "pagamento_rate": [
+                    {"modalita": "MP02", "importo": "3000.00", "data_scadenza": "2026-02-28"},
+                    {"modalita": "MP02", "importo": "3000.00", "data_scadenza": "2026-03-30"},
+                    {"modalita": "MP02", "importo": "3000.00", "data_scadenza": "2026-04-23"},
+                    {"modalita": "MP02", "importo": "3000.01", "data_scadenza": "2026-05-30"},
+                ],
+            },
+            {
+                "id": "fatt-mp05", "invoice_number": "ALTRO", "invoice_date": "2026-02-06",
+                "supplier_vat": "00000000002", "supplier_name": "ALTRO",
+                "total_amount": 9000, "importo_pagato": 0,
+                "payment_status": "open", "pagato": False,
+                "pagamento_rate": [
+                    {"modalita": "MP05", "importo": "3000.00", "data_scadenza": "2026-02-28"},
+                ],
+            },
+        ])
+        primo = _mov(numero="0208770761", importo=3000, idx=761)
+        primo["data_pagamento"] = "2026-02-28"
+        ultimo = _mov(numero="0208770764", importo=3000, idx=764)
+        ultimo["data_pagamento"] = "2026-05-30"
+        await db.estratto_conto_movimenti.insert_many([primo, ultimo])
+        esito = await sincronizza_assegni_da_estratto_conto(db)
+        proposte = await db.proposte_associazione_assegni.find({}, {"_id": 0}).to_list(10)
+        return esito, {p["assegno_numero"]: p for p in proposte}
+
+    esito, proposte = _run(scenario())
+    assert esito["fatture_associate"] == 0
+    assert len(proposte) == 2
+    proposta = proposte["0208770761"]
+    assert proposta["fattura_id"] == "fatt-mp02"
+    assert proposta["piano_rate_xml"]["numero_rate"] == 4
+    assert proposta["piano_rate_xml"]["rata_numero"] == 1
+    assert proposta["piano_rate_xml"]["data_scadenza"] == "2026-02-28"
+    ultima = proposte["0208770764"]
+    assert ultima["piano_rate_xml"]["rata_numero"] == 4
+    assert ultima["piano_rate_xml"]["scarto_centesimi"] == 1
+    assert "residuo" in ultima["nota"]
+
+
+def test_assegno_inferiore_di_un_centesimo_non_chiude_la_fattura():
+    async def scenario():
+        db = ClientArchivioMemoria().db
+        await db.invoices.insert_one({
+            "id": "fatt-cent", "invoice_number": "20", "supplier_vat": "00000000001",
+            "supplier_name": "DI MASSA", "total_amount": 3000.01,
+            "importo_pagato": 0, "payment_status": "open", "pagato": False,
+            "pagamento_rate": [{"modalita": "MP02", "importo": "3000.01"}],
+        })
+        await db.estratto_conto_movimenti.insert_one(_mov(numero="0208770764", importo=3000, idx=764))
+        await sincronizza_assegni_da_estratto_conto(db)
+        assegno = await db.assegni.find_one({"numero": "0208770764"}, {"_id": 0})
+        fattura = await db.invoices.find_one({"id": "fatt-cent"}, {"_id": 0})
+        await collega_assegno_riconciliato_a_fattura(db, assegno, fattura)
+        return await db.invoices.find_one({"id": "fatt-cent"}, {"_id": 0})
+
+    fattura = _run(scenario())
+    assert fattura["importo_pagato"] == 3000
+    assert fattura["importo_residuo"] == 0.01
+    assert fattura["payment_status"] == "partial"
+    assert fattura["pagato"] is False
+
+
+def test_sync_limitata_non_riesamina_gli_assegni_storici():
+    async def scenario():
+        db = ClientArchivioMemoria().db
+        await db.estratto_conto_movimenti.insert_many([
+            _mov(numero="0208770981", idx=1),
+            _mov(numero="0208770982", idx=2),
+        ])
+
+        esito = await sincronizza_assegni_da_estratto_conto(
+            db, movimento_ids=["ec-2", "ec-2"],
+        )
+
+        assert esito["ambito"] == "nuovi_movimenti"
+        assert esito["movimenti_analizzati"] == 1
+        assert await db.assegni.count_documents({"numero": "0208770982"}) == 1
+        assert await db.assegni.count_documents({"numero": "0208770981"}) == 0
+        storico = await db.estratto_conto_movimenti.find_one({"id": "ec-1"}, {"_id": 0})
+        assert storico["riconciliato"] is False
+
+    _run(scenario())
+
+
+def test_export_excel_viene_materializzato_solo_nel_riprocessamento_confermato():
+    async def scenario():
+        db = ClientArchivioMemoria().db
+        movimento = _mov(numero="0208769433", importo=1608.96, idx=9433)
+        movimento.update({
+            "livello_evidenza": "provvisoria",
+            "evidenza_bancaria_ufficiale": False,
+        })
+        await db.estratto_conto_movimenti.insert_one(movimento)
+
+        normale = await sincronizza_assegni_da_estratto_conto(db)
+        confermato = await sincronizza_assegni_da_estratto_conto(
+            db, include_provvisori=True,
+        )
+        assegno = await db.assegni.find_one({"numero": "0208769433"}, {"_id": 0})
+        return normale, confermato, assegno
+
+    normale, confermato, assegno = _run(scenario())
+    assert normale["movimenti_analizzati"] == 0
+    assert confermato["assegni_creati"] == 1
+    assert assegno["livello_evidenza_bancaria"] == "provvisoria"
+    assert assegno["evidenza_bancaria_ufficiale"] is False
+
+
+def test_snapshot_fatture_aperte_caricata_una_volta_per_tutto_il_batch(monkeypatch):
+    import app.services.assegni_estratto_conto as modulo
+
+    async def scenario():
+        db = ClientArchivioMemoria().db
+        await db.estratto_conto_movimenti.insert_many([
+            _mov(numero="0208770981", idx=1),
+            _mov(numero="0208770982", idx=2),
+        ])
+        chiamate = 0
+
+        async def carica_una_volta(_db):
+            nonlocal chiamate
+            chiamate += 1
+            return {}
+
+        monkeypatch.setattr(modulo, "_load_open_invoices_by_piva", carica_una_volta)
+        await sincronizza_assegni_da_estratto_conto(db)
+        return chiamate
+
+    assert _run(scenario()) == 1
+
+
+def test_importo_ambiguo_non_marca_fatture_pagata_e_salva_proposte():
+    async def scenario():
+        db = ClientArchivioMemoria().db
+        for idx in (1, 2):
+            await db.invoices.insert_one({
+                "id": f"fatt-{idx}", "invoice_number": f"TEST-{idx}",
+                "invoice_date": "2026-04-01", "supplier_vat": f"0000000000{idx}",
+                "supplier_name": f"FORNITORE TEST {idx}", "total_amount": 1853.02,
+                "importo_pagato": 0.0, "payment_status": "open", "pagato": False,
+            })
+        await db.estratto_conto_movimenti.insert_one(_mov())
+
+        esito = await sincronizza_assegni_da_estratto_conto(db)
+        assert esito["fatture_associate"] == 0
+        assert esito["proposte_ambigue"] == 2
+        assert await db.proposte_associazione_assegni.count_documents({"stato": "da_confermare"}) == 2
+        assert await db.invoices.count_documents({"pagato": True}) == 0
+
+    _run(scenario())
+
+
+def test_assegno_gia_presente_viene_riscontrato_invece_di_essere_saltato():
+    async def scenario():
+        db = ClientArchivioMemoria().db
+        await db.assegni.insert_one({
+            "id": "ass-esistente", "numero": "0208770981", "importo": 1853.02,
+            "stato": "emesso", "beneficiario": "FORNITORE TEST",
+        })
+        await db.estratto_conto_movimenti.insert_one(_mov())
+
+        esito = await sincronizza_assegni_da_estratto_conto(db)
+        assegno = await db.assegni.find_one({"id": "ass-esistente"}, {"_id": 0})
+        assert esito["assegni_esistenti"] == 1
+        assert esito["assegni_creati"] == 0
+        assert assegno["stato"] == "incassato"
+        assert assegno["movimento_estratto_conto_id"] == "ec-1"
+
+    _run(scenario())
+
+
+def test_due_assegni_uguali_restano_distinti_e_chiudono_due_rate():
+    async def scenario():
+        db = ClientArchivioMemoria().db
+        await db.invoices.insert_one({
+            "id": "fatt-due-rate", "invoice_number": "F-9760",
+            "invoice_date": "2026-05-15", "supplier_vat": "00000000001",
+            "supplier_name": "FORNITORE DUE RATE", "total_amount": 19520.0,
+            "importo_pagato": 0.0, "importo_residuo": 19520.0,
+            "payment_status": "open", "pagato": False,
+            "pagamento_rate": [
+                    {"modalita": "MP02", "importo": "9760.00", "data_scadenza": "2026-06-30"},
+                    {"modalita": "MP02", "importo": "9760.00", "data_scadenza": "2026-07-31"},
+            ],
+        })
+        await db.estratto_conto_movimenti.insert_many([
+            _mov(numero="0208770985", importo=9760.0, idx=85),
+            _mov(numero="0208770986", importo=9760.0, idx=86),
+        ])
+
+        esito = await sincronizza_assegni_da_estratto_conto(db)
+        assert esito["fatture_associate"] == 0
+        assert esito["proposte_ambigue"] == 2
+
+        for numero in ("0208770985", "0208770986"):
+            assegno = await db.assegni.find_one({"numero": numero}, {"_id": 0})
+            fattura = await db.invoices.find_one({"id": "fatt-due-rate"}, {"_id": 0})
+            await collega_assegno_riconciliato_a_fattura(db, assegno, fattura)
+
+        fattura = await db.invoices.find_one({"id": "fatt-due-rate"}, {"_id": 0})
+        assert fattura["importo_pagato"] == 19520.0
+        assert fattura["importo_residuo"] == 0.0
+        assert fattura["payment_status"] == "paid"
+        assert {link["numero"] for link in fattura["assegni_collegati"]} == {
+            "0208770985", "0208770986",
+        }
+        assert await db.prima_nota_banca.count_documents({}) == 2
+        assert await db.proposte_associazione_assegni.count_documents({"stato": "confermata"}) == 2
+
+    _run(scenario())
+
+
+def test_assegno_gia_in_banca_puo_chiudere_due_fatture_senza_due_righe_banca():
+    async def scenario():
+        db = ClientArchivioMemoria().db
+        assegno = {
+            "id": "ass-multi", "numero": "0208770985", "importo": 9760.0,
+            "incassato_confermato_banca": True,
+            "movimento_estratto_conto_id": "ec-multi", "stato": "incassato",
+        }
+        await db.assegni.insert_one(assegno)
+        await db.estratto_conto_movimenti.insert_one(
+            _mov(numero="0208770985", importo=9760.0, idx="multi")
+        )
+        await db.estratto_conto_movimenti.update_one(
+            {"id": "ec-multi"}, {"$set": {"id": "ec-multi"}}, upsert=True,
+        )
+        fatture = [
+            {"id": "fatt-a", "invoice_number": "A-1", "supplier_vat": "00000000001",
+             "supplier_name": "FORNITORE TEST", "total_amount": 4000.0,
+             "importo_pagato": 0.0, "pagato": False,
+             "assegni_collegati": [{"assegno_id": "ass-multi", "quota": 4000.0, "banca_confermata": False}]},
+            {"id": "fatt-b", "invoice_number": "B-2", "supplier_vat": "00000000001",
+             "supplier_name": "FORNITORE TEST", "total_amount": 5760.0,
+             "importo_pagato": 0.0, "pagato": False,
+             "assegni_collegati": [{"assegno_id": "ass-multi", "quota": 5760.0, "banca_confermata": False}]},
+        ]
+        await db.invoices.insert_many(fatture)
+
+        esito = await collega_assegno_riconciliato_a_fatture(db, assegno, [
+            {"fattura": fatture[0], "quota": 4000.0},
+            {"fattura": fatture[1], "quota": 5760.0},
+        ])
+
+        assert esito["quote_applicate"] == 2
+        assert esito["fattura_id"] is None
+        assert esito["fattura_ids"] == ["fatt-a", "fatt-b"]
+        assert await db.prima_nota_banca.count_documents({}) == 1
+        riga = await db.prima_nota_banca.find_one({}, {"_id": 0})
+        assert riga["fattura_ids"] == ["fatt-a", "fatt-b"]
+        assert (await db.invoices.find_one({"id": "fatt-a"}))["pagato"] is True
+        assert (await db.invoices.find_one({"id": "fatt-b"}))["pagato"] is True
+
+    _run(scenario())
+
+
+def _scenario_tre_fatture_siro(scheda_assegno):
+    """Caso reale: assegno n.862 da 755,13 paga tre fatture SIRO del 22/04."""
+    async def scenario():
+        db = ClientArchivioMemoria().db
+        await db.estratto_conto_movimenti.insert_one(
+            {**_mov(numero="0208770862", importo=755.13, idx=862), "data": "2026-04-28"})
+        quote = {"f836": 578.01, "f837": 32.03, "f838": 145.09}
+        for fid, quota in quote.items():
+            await db.invoices.insert_one({
+                "id": fid, "invoice_number": "2/" + fid[1:], "invoice_date": "2026-04-22",
+                "supplier_name": "SIRO S.R.L.", "total_amount": quota, "importo_pagato": quota,
+                "payment_status": "paid", "status": "imported",
+                "assegni_collegati": [{"assegno_id": "a862", "numero": "0208770862", "quota": quota,
+                                       "match_livello": "EC_UNIVOCO", "banca_confermata": True}],
+            })
+        await db.assegni.insert_one({"id": "a862", "numero": "0208770862", "importo": 755.13,
+                                     "data": "2026-04-28", **scheda_assegno})
+        for _ in range(2):
+            await sincronizza_assegni_da_estratto_conto(db)
+        assegno = await db.assegni.find_one({"id": "a862"}, {"_id": 0})
+        movimento = await db.estratto_conto_movimenti.find_one({"id": "ec-862"}, {"_id": 0})
+        fatture = {f["id"]: f for f in await db.invoices.find({}, {"_id": 0}).to_list(None)}
+        return assegno, movimento, fatture, quote
+
+    return _run(scenario())
+
+
+def test_assegno_su_tre_fatture_non_si_riduce_alla_prima():
+    corretta = {"fattura_id": "f836", "fatture_collegate": [
+        {"fattura_id": f, "quota": q} for f, q in (("f836", 578.01), ("f837", 32.03), ("f838", 145.09))]}
+    assegno, movimento, fatture, quote = _scenario_tre_fatture_siro(corretta)
+    assert {l["fattura_id"]: l["quota"] for l in assegno["fatture_collegate"]} == quote
+    assert sorted(movimento["fattura_ids"]) == sorted(quote)
+    for fid, quota in quote.items():
+        assert fatture[fid]["importo_pagato"] == quota  # nessuna quota applicata due volte
+
+
+def test_scheda_ridotta_a_una_fattura_si_riallinea_alle_fatture():
+    # Lo stato trovato in produzione il 25/09/2026: una fattura, tutto l'importo.
+    rovinata = {"fattura_id": "f838", "fattura_collegata": "f838",
+                "fatture_collegate": [{"fattura_id": "f838", "quota": 755.13}]}
+    assegno, movimento, fatture, quote = _scenario_tre_fatture_siro(rovinata)
+    assert {l["fattura_id"]: l["quota"] for l in assegno["fatture_collegate"]} == quote
+    assert fatture["f838"]["importo_pagato"] == 145.09
+    assert all(fatture[f]["riconciliato"] for f in quote)
+
+
+def test_regola_del_titolare_assegno_paga_la_fattura_dei_giorni_prima():
+    """Eureka 646,72 € ogni mese: n.851 (17/04) → 26/D del 07/04, n.864 (27/04)
+    → 36/D del 24/04. La 25/D del 20/03 e' fuori finestra per entrambi; un
+    assegno con due fatture nella finestra resta una scelta del titolare."""
+    async def scenario():
+        db = ClientArchivioMemoria().db
+        for fid, numero, data in (("f25", "25/D", "2026-03-20"), ("f26", "26/D", "2026-04-07"),
+                                  ("f36", "36/D", "2026-04-24"),
+                                  ("fx1", "X1", "2026-05-20"), ("fx2", "X2", "2026-05-22")):
+            await db.invoices.insert_one({
+                "id": fid, "invoice_number": numero, "invoice_date": data,
+                "supplier_name": "Eureka Onlus", "supplier_vat": "01234567890",
+                "total_amount": 646.72, "status": "imported", "payment_status": "unpaid",
+            })
+        for idx, (num, data) in enumerate((("0208770851", "2026-04-17"),
+                                           ("0208770864", "2026-04-27"),
+                                           ("0208770999", "2026-05-25")), start=1):
+            await db.estratto_conto_movimenti.insert_one(
+                {**_mov(numero=num, importo=646.72, idx=idx), "data": data})
+        await sincronizza_assegni_da_estratto_conto(db)
+        await sincronizza_assegni_da_estratto_conto(db)
+        return {a["numero"]: a for a in await db.assegni.find({}, {"_id": 0}).to_list(None)}
+
+    assegni = _run(scenario())
+    assert assegni["0208770851"]["fattura_id"] == "f26"
+    assert assegni["0208770851"]["match_livello"] == "REGOLA_TITOLARE_GIORNI_PRECEDENTI"
+    assert assegni["0208770864"]["fattura_id"] == "f36"
+    assert not assegni["0208770999"].get("fattura_id")  # X1 e X2 nella finestra: decide il titolare
+
+
+def test_assegno_da_csv_entra_provvisorio_e_la_copia_ufficiale_lo_conferma():
+    """Dal 25/08/2026 nove assegni addebitati restavano fuori dalla Prima Nota
+    perche' arrivati solo da CSV e banca diretta."""
+    async def scenario():
+        db = ClientArchivioMemoria().db
+        csv = _mov(numero="0208769486", importo=1496.95, idx=1)
+        csv.update({"livello_evidenza": "provvisoria", "evidenza_bancaria_ufficiale": False,
+                    "in_attesa_estratto_ufficiale": True})
+        await db.estratto_conto_movimenti.insert_one(csv)
+        await sincronizza_assegni_da_estratto_conto(db, include_provvisori=True)
+        provvisoria = await db.prima_nota_banca.find_one({}, {"_id": 0})
+
+        ufficiale = _mov(numero="0208769486", importo=1496.95, idx=2)
+        await db.estratto_conto_movimenti.insert_one(ufficiale)
+        await sincronizza_assegni_da_estratto_conto(db, include_provvisori=True)
+        righe = await db.prima_nota_banca.find({}, {"_id": 0}).to_list(10)
+        return provvisoria, righe
+
+    provvisoria, righe = _run(scenario())
+    assert provvisoria["livello_evidenza"] == "provvisoria"
+    assert provvisoria["in_attesa_estratto_ufficiale"] is True
+    assert len(righe) == 1, "una copia in piu' dello stesso assegno non scrive una seconda riga"
+    assert righe[0]["estratto_conto_id"] == "ec-2"
+    assert righe[0]["livello_evidenza"] == "ufficiale"
+    assert righe[0]["in_attesa_estratto_ufficiale"] is False
+
+
+def test_il_giro_automatico_include_gli_assegni_provvisori():
+    import inspect
+
+    from app.services import riconciliazione_bancaria
+
+    sorgente = inspect.getsource(riconciliazione_bancaria.riconcilia_movimenti_banca)
+    assert "include_provvisori=True" in sorgente
+
+
+def test_l_assegno_della_copia_archiviata_paga_l_attiva_e_assorbe_la_dichiarata():
+    """Il giro dell'estratto conto trova l'assegno gia' legato alla copia che
+    la dedup ha archiviato: il pagamento va alla copia attiva, e la riga che
+    il titolare aveva dichiarato per lei lascia il posto all'addebito."""
+    async def scenario():
+        db = ClientArchivioMemoria().db
+        fattura = {
+            "invoice_number": "FA-9", "invoice_date": "2026-05-02",
+            "supplier_vat": "01234567890", "supplier_name": "FORNITORE SRL",
+            "total_amount": 1853.02, "tipo_documento": "TD01",
+        }
+        await db.invoices.insert_many([
+            {**fattura, "id": "fatt-archiviata", "status": "archived",
+             "duplicate_of": "fatt-attiva"},
+            {**fattura, "id": "fatt-attiva", "status": "imported"},
+        ])
+        await db.assegni.insert_one({
+            "id": "ass-981", "numero": "0208770981", "importo": 1853.02,
+            "fattura_id": "fatt-archiviata", "fattura_collegata": "fatt-archiviata",
+        })
+        await db.prima_nota_banca.insert_one({
+            "id": "pn-dichiarata", "data": "2026-05-03", "tipo": "uscita",
+            "importo": 1853.02, "categoria": "Fatture", "fattura_id": "fatt-attiva",
+            "dichiarato_titolare": True, "in_attesa_estratto_ufficiale": True,
+            "source": "report_pagamenti_titolare",
+        })
+        await db.estratto_conto_movimenti.insert_one(_mov())
+        await sincronizza_assegni_da_estratto_conto(db)
+        return (
+            await db.assegni.find_one({"id": "ass-981"}, {"_id": 0}),
+            await db.prima_nota_banca.find(
+                {"status": {"$nin": ["deleted", "archived"]}}, {"_id": 0},
+            ).to_list(10),
+            await db.prima_nota_banca.find_one({"id": "pn-dichiarata"}, {"_id": 0}),
+        )
+
+    assegno, attive, dichiarata = _run(scenario())
+    assert assegno["fattura_id"] == "fatt-attiva"
+    assert [r.get("source") for r in attive] == ["assegno_estratto_conto"]
+    assert attive[0]["fattura_id"] == "fatt-attiva"
+    assert dichiarata["status"] == "deleted"
+    assert dichiarata["sostituita_da"] == attive[0]["id"]

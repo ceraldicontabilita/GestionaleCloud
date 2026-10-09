@@ -159,33 +159,6 @@ def _f24_preview(content: bytes, document_kind: str) -> dict[str, Any]:
 
 
 def _specialist_preview(content: bytes, filename: str, document_type: str) -> dict[str, Any]:
-    if document_type == "fattura":
-        if content.startswith(b"%PDF-"):
-            from app.routers.documenti import _pdf_text_for_detection, partita_iva_estera_nel_testo
-
-            if not partita_iva_estera_nel_testo(_pdf_text_for_detection(content)):
-                return {"error": "Copia PDF di una fattura italiana: carica l'originale XML o P7M dello SDI."}
-            return {"destinazione": "Fatture estere da verificare", "verifica_richiesta": True}
-        from app.routers.invoices.fatture_upload import parse_fattura_xml
-
-        if filename.lower().endswith(".p7m"):
-            from app.services.xml_invoice_processor import extract_xml_from_p7m
-
-            content = extract_xml_from_p7m(content)
-            if not content:
-                return {"error": "Impossibile estrarre l'XML dalla busta P7M"}
-        for encoding in ("utf-8-sig", "utf-8", "latin-1"):
-            try:
-                parsed = parse_fattura_xml(content.decode(encoding))
-                break
-            except UnicodeDecodeError:
-                continue
-        if not parsed or parsed.get("error"):
-            return {"error": (parsed or {}).get("error") or "XML fattura non leggibile"}
-        return {"fatture": [
-            {key: body.get(key) for key in ("invoice_number", "invoice_date", "supplier_name", "total_amount")}
-            for body in [parsed, *(parsed.get("_altri_body") or [])]
-        ]}
     if document_type in {"f24", "quietanza_f24"}:
         return _f24_preview(content, document_type)
     if document_type in {
@@ -256,19 +229,7 @@ async def build_import_preview(
 ) -> dict[str, Any]:
     sha256 = hashlib.sha256(content).hexdigest()
     md5 = hashlib.md5(content).hexdigest()
-    if document_type == "estratto_conto":
-        import io
-        from fastapi import HTTPException, UploadFile
-        from app.routers.bank.estratto_conto import import_estratto_conto
-
-        try:
-            parsed = await import_estratto_conto(
-                file=UploadFile(filename=filename, file=io.BytesIO(content)), dry_run=True,
-            )
-        except HTTPException as exc:
-            parsed = {"error": str(exc.detail)}
-    else:
-        parsed = await asyncio.to_thread(_specialist_preview, content, filename, document_type)
+    parsed = await asyncio.to_thread(_specialist_preview, content, filename, document_type)
     parser_error = parsed.get("error") if isinstance(parsed, dict) else None
     validation = (parsed.get("validazione") or {}) if isinstance(parsed, dict) else {}
     blocking_errors: list[str] = []

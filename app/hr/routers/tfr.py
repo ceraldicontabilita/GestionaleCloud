@@ -3,11 +3,9 @@ Router TFR - Gestione Trattamento Fine Rapporto
 Accantonamento, rivalutazione ISTAT, liquidazione TFR e gestione acconti
 """
 from fastapi import APIRouter, HTTPException, Query, Body
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 from typing import Dict, Any, Optional, List
-from datetime import date, datetime, timezone, timedelta
-from decimal import Decimal
-from calendar import monthrange
+from datetime import datetime, timezone, timedelta
 from uuid import uuid4
 import logging
 import os
@@ -41,7 +39,7 @@ async def _ricalcola_mese_acconto(db, acconto: Dict[str, Any]) -> None:
 
     if str(acconto.get("tipo") or "") not in TIPI_ACCONTO_STIPENDIO or not acconto.get("dipendente_id"):
         return
-    competenza = str(acconto.get("scalato_su_anno_mese") or "")
+    competenza = str(acconto.get("scalato_su_anno_mese") or str(acconto.get("data") or "")[:7])
     try:
         anno, mese = int(competenza[:4]), int(competenza[5:7])
     except ValueError:
@@ -68,6 +66,10 @@ TFR_DIVISORE = 13.5
 # Rivalutazione minima ISTAT
 RIVALUTAZIONE_FISSA = 1.5  # 1.5% fisso
 
+# Aliquota tassazione separata TFR (approssimata al 23% per semplicità)
+ALIQUOTA_TFR = 23.0
+
+
 # ============================================
 # MODELLI
 # ============================================
@@ -77,6 +79,14 @@ class AccantonamentoTFRInput(BaseModel):
     anno: int
     retribuzione_annua: float
     indice_istat: Optional[float] = 0.0  # percentuale variazione ISTAT
+
+
+class LiquidazioneTFRInput(BaseModel):
+    dipendente_id: str
+    data_liquidazione: str  # YYYY-MM-DD
+    motivo: str  # "dimissioni", "licenziamento", "pensionamento", "anticipo"
+    importo_richiesto: Optional[float] = None  # se anticipo, importo parziale
+    note: Optional[str] = ""
 
 
 # ============================================
@@ -139,31 +149,23 @@ async def get_situazione_tfr(dipendente_id: str) -> Dict[str, Any]:
     ).sort("data", -1).to_list(100)
 
     totale_liquidato = sum(l.get("importo_lordo", 0) for l in liquidazioni)
-    from app.services.mensilita_aggiuntive import componenti_documentate
-    cedolini = await db["cedolini"].find(
-        {"dipendente_id": dipendente_id}, {"_id": 0, "pdf_data": 0}
-    ).to_list(10000)
-    componenti = componenti_documentate(cedolini, tipi={
-        "tfr_quota_mese", "tfr_quota_anno", "tfr_fondo_pregresso", "tfr_anticipo", "tfr_liquidazione"})
 
     return {
         "dipendente_id": dipendente_id,
         "dipendente_nome": dipendente.get("nome_completo", ""),
         "tfr_accantonato": tfr_accantonato,
         "tfr_fonte": scelta["tfr_fonte"],
-        # Il simulatore non registra una liquidazione fiscale: ritenute e netto
-        # definitivi richiedono il prospetto del consulente, non un'aliquota fissa.
+        # Nota: la liquidazione (POST /liquidazione) oggi attinge SOLO dalla quota
+        # manuale (tfr_manuale), non da questo totale — un dipendente con TFR
+        # solo da buste vede qui il totale ma non può ancora liquidarlo/anticiparlo
+        # dalla stessa cifra. Da allineare separatamente.
         "tfr_manuale": round(tfr_manuale, 2),
         "tfr_da_cedolini": round(tfr_da_cedolini, 2),
         "quota_da_buste": buste.get("totale"),
         "quota_da_buste_disponibile": bool(buste.get("disponibile")),
         "quota_da_buste_motivo": buste.get("motivo"),
         "accantonamenti_buste": buste.get("righe") or [],
-        "componenti_documentali": componenti,
-        # La liquidazione aggiorna già il fondo manuale: non sottrarla due
-        # volte. Le quote documentali invece sono maturazione lorda storica.
-        "tfr_disponibile": (round(tfr_accantonato - (
-                                totale_liquidato if scelta["tfr_fonte"] == "buste" else 0), 2)
+        "tfr_disponibile": (round(tfr_accantonato - totale_liquidato, 2)
                             if tfr_accantonato is not None else None),
         "totale_liquidato": round(totale_liquidato, 2),
         "num_accantonamenti": len(accantonamenti),
@@ -342,6 +344,170 @@ async def registra_accantonamento_tfr(input_data: AccantonamentoTFRInput) -> Dic
     }
 
 
+@router.post("/liquidazione")
+@handle_errors
+async def liquida_tfr(input_data: LiquidazioneTFRInput) -> Dict[str, Any]:
+    """
+    Liquida il TFR a un dipendente (totale o parziale).
+    
+    Calcola ritenute fiscali con tassazione separata (Art. 19 TUIR).
+    L'aliquota media è calcolata come approssimazione semplificata al 23%.
+    Per anticipi (max 70% del TFR maturato, Art. 2120 c.c. comma 6-8).
+    
+    Args:
+        input_data: Dati liquidazione (dipendente_id, data, motivo, importo)
+    
+    Returns:
+        Dettaglio della liquidazione con importo lordo, ritenute e netto
+    """
+    db = Database.get_db()
+    giornale = _db_giornale()
+    
+    # Recupera dipendente
+    dipendente = await db["dipendenti"].find_one(
+        {"id": input_data.dipendente_id},
+        {"_id": 0}
+    )
+    
+    if not dipendente:
+        raise HTTPException(status_code=404, detail="Dipendente non trovato")
+    
+    tfr_disponibile = float(dipendente.get("tfr_accantonato", 0))
+    
+    # Determina importo da liquidare
+    # Per anticipo è obbligatorio indicare un importo richiesto positivo.
+    if input_data.motivo == "anticipo":
+        if input_data.importo_richiesto is None:
+            raise HTTPException(
+                status_code=400,
+                detail="Per anticipo TFR è obbligatorio specificare un importo richiesto"
+            )
+        if input_data.importo_richiesto <= 0:
+            raise HTTPException(
+                status_code=400,
+                detail="Per anticipo TFR l'importo richiesto deve essere maggiore di zero"
+            )
+
+        max_anticipo = tfr_disponibile * 0.70
+        if input_data.importo_richiesto > max_anticipo:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Anticipo TFR max 70%: richiesto €{input_data.importo_richiesto:.2f}, "
+                       f"massimo consentito €{max_anticipo:.2f} (Art. 2120 c.c.)"
+            )
+        importo_lordo = min(input_data.importo_richiesto, tfr_disponibile)
+    elif input_data.importo_richiesto is not None:
+        if input_data.importo_richiesto <= 0:
+            raise HTTPException(
+                status_code=400,
+                detail="L'importo richiesto deve essere maggiore di zero"
+            )
+        importo_lordo = min(input_data.importo_richiesto, tfr_disponibile)
+    else:
+        importo_lordo = tfr_disponibile
+    
+    if importo_lordo <= 0:
+        raise HTTPException(status_code=400, detail="Nessun TFR disponibile da liquidare")
+    
+    # Calcola ritenute (tassazione separata semplificata)
+    ritenute = importo_lordo * ALIQUOTA_TFR / 100
+    importo_netto = importo_lordo - ritenute
+    
+    # Registra liquidazione
+    liquidazione = {
+        "id": str(uuid4()),
+        "dipendente_id": input_data.dipendente_id,
+        "dipendente_nome": dipendente.get("nome_completo", ""),
+        "data": input_data.data_liquidazione,
+        "motivo": input_data.motivo,
+        "tfr_precedente": round(tfr_disponibile, 2),
+        "importo_lordo": round(importo_lordo, 2),
+        "aliquota_ritenuta": ALIQUOTA_TFR,
+        "ritenute": round(ritenute, 2),
+        "importo_netto": round(importo_netto, 2),
+        "tfr_residuo": round(tfr_disponibile - importo_lordo, 2),
+        "note": input_data.note,
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    
+    await db["tfr_liquidazioni"].insert_one(liquidazione.copy())
+    
+    # Aggiorna TFR dipendente
+    nuovo_tfr = tfr_disponibile - importo_lordo
+    await db["dipendenti"].update_one(
+        {"id": input_data.dipendente_id},
+        {"$set": {"tfr_accantonato": round(nuovo_tfr, 2)}}
+    )
+    
+    # Registra scritture contabili in partita doppia col motore unico,
+    # idempotenti sull'id della liquidazione appena generato (pattern
+    # retry-safe di app/routers/cespiti.py).
+    from app.services.registrazione_contabile import (
+        registra_scrittura_semplice, riga,
+        _C_FONDO_TFR, _C_PERSONALE_LIQUIDAZIONE, _C_ERARIO_TFR,
+    )
+    # 1. Utilizzo fondo TFR: DARE fondo TFR, AVERE debito v/dipendente per
+    # l'importo lordo da liquidare (il pagamento effettivo in banca è un
+    # evento successivo e separato, tracciato altrove).
+    imp_lordo = round(importo_lordo, 2)
+    movimento_fondo = {
+        "id": str(uuid4()),
+        "data": input_data.data_liquidazione,
+        "descrizione": f"Liquidazione TFR - {dipendente.get('nome_completo', '')}",
+        "tipo": "tfr_liquidazione",
+        "importo": imp_lordo,
+        "dipendente_id": input_data.dipendente_id,
+        "motivo": input_data.motivo,
+        "liquidazione_id": liquidazione["id"],
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    await registra_scrittura_semplice(
+        giornale,
+        movimento=movimento_fondo,
+        righe=[
+            riga(_C_FONDO_TFR, dare=imp_lordo, descrizione="Utilizzo fondo TFR"),
+            riga(_C_PERSONALE_LIQUIDAZIONE, avere=imp_lordo,
+                 descrizione=f"Debito v/dipendente per liquidazione TFR - {dipendente.get('nome_completo', '')}"),
+        ],
+        chiave_naturale={"tipo": "tfr_liquidazione", "liquidazione_id": liquidazione["id"]},
+    )
+
+    # 2. Ritenute: la quota lorda dovuta al dipendente si riduce di quanto
+    # trattenuto come imposta sostitutiva, che diventa debito verso l'erario.
+    if ritenute > 0:
+        imp_ritenute = round(ritenute, 2)
+        movimento_ritenute = {
+            "id": str(uuid4()),
+            "data": input_data.data_liquidazione,
+            "descrizione": f"Ritenute TFR - {dipendente.get('nome_completo', '')}",
+            "tipo": "ritenuta_tfr",
+            "importo": imp_ritenute,
+            "dipendente_id": input_data.dipendente_id,
+            "liquidazione_id": liquidazione["id"],
+            "created_at": datetime.now(timezone.utc).isoformat()
+        }
+        await registra_scrittura_semplice(
+            giornale,
+            movimento=movimento_ritenute,
+            righe=[
+                riga(_C_PERSONALE_LIQUIDAZIONE, dare=imp_ritenute, descrizione="Ritenute TFR"),
+                riga(_C_ERARIO_TFR, avere=imp_ritenute,
+                     descrizione=f"Debito v/erario imposta sostitutiva TFR - {dipendente.get('nome_completo', '')}"),
+            ],
+            chiave_naturale={"tipo": "ritenuta_tfr", "liquidazione_id": liquidazione["id"]},
+        )
+    
+    return {
+        "success": True,
+        "liquidazione_id": liquidazione["id"],
+        "messaggio": f"TFR liquidato per {dipendente.get('nome_completo', '')}",
+        "dettaglio": {
+            "importo_lordo": round(importo_lordo, 2),
+            "ritenute": round(ritenute, 2),
+            "importo_netto": round(importo_netto, 2),
+            "tfr_residuo": round(nuovo_tfr, 2)
+        }
+    }
 
 
 @router.get("/riepilogo-aziendale")
@@ -356,14 +522,10 @@ async def get_riepilogo_tfr_aziendale(anno: int = Query(None)) -> Dict[str, Any]
     if not anno:
         anno = datetime.now().year
     
-    # Anagrafica canonica HR; supporta l'alias status senza escludere i record
-    # attivi scritti con il campo italiano stato.
+    # Dipendenti attivi
     dipendenti = await db["dipendenti"].find(
-        {"$or": [{"stato": {"$in": ["attivo", "active"]}},
-                 {"status": {"$in": ["attivo", "active"]}}],
-         "merged_into": {"$exists": False}},
-        {"_id": 0, "id": 1, "nome_completo": 1, "codice_fiscale": 1,
-         "tfr_accantonato": 1, "progressivi": 1}
+        {"status": {"$in": ["attivo", "active"]}},
+        {"_id": 0, "id": 1, "nome_completo": 1, "tfr_accantonato": 1}
     ).to_list(1000)
     
     # Accantonamenti dell'anno
@@ -390,58 +552,28 @@ async def get_riepilogo_tfr_aziendale(anno: int = Query(None)) -> Dict[str, Any]
         }}
     ]).to_list(1)
     
-    # Stessa scelta di fonte del dettaglio, con un prefetch invece di N query
-    # per dipendente. Una busta nel gestionale non diventa un secondo fondo.
-    from app.services.tfr_quote_buste import quote_tfr_da_buste, tfr_con_fonte
-    from decimal import Decimal
-
-    counts = {}
-    async for record in db["tfr_accantonamenti"].find({}, {"_id": 0, "dipendente_id": 1}):
-        eid = record.get("dipendente_id")
-        counts[eid] = counts.get(eid, 0) + 1
-    gestionale, anagrafiche, quote = None, [], []
-    try:
-        gestionale = _db_giornale()
-        anagrafiche = [record async for record in gestionale["dipendenti"].find(
-            {}, {"_id": 0, "id": 1, "codice_fiscale": 1})]
-        quote = [record async for record in gestionale["tfr_accantonamenti"].find(
-            {"mese": {"$exists": True}}, {"_id": 0})]
-    except Exception:
-        logger.exception("[TFR] Prefetch quote da buste non disponibile")
-        gestionale = None
-    dettaglio_dipendenti = []
-    quote_anno_buste = []
-    for d in dipendenti:
-        buste = await quote_tfr_da_buste(
-            gestionale, codice_fiscale=d.get("codice_fiscale"), dipendente_id=d["id"],
-            anagrafiche=anagrafiche, quote=quote,
-        )
-        scelta = tfr_con_fonte(
-            float(d.get("tfr_accantonato") or 0),
-            float((d.get("progressivi") or {}).get("tfr_accantonato") or 0),
-            counts.get(d["id"], 0), buste,
-        )
-        if scelta["tfr_fonte"] == "buste":
-            quote_anno_buste.extend(r for r in buste["righe"] if int(r.get("anno") or 0) == anno)
-        dettaglio_dipendenti.append({"dipendente_id": d["id"],
-                                    "nome": d.get("nome_completo", ""), **scelta})
-    mancanti = sum(d["tfr_accantonato"] is None for d in dettaglio_dipendenti)
-    totale_noto = sum((Decimal(str(d["tfr_accantonato"])) for d in dettaglio_dipendenti
-                       if d["tfr_accantonato"] is not None), Decimal("0"))
-    quota_buste_anno = sum((Decimal(str(r["quota"])) for r in quote_anno_buste), Decimal("0"))
+    # Totale fondo TFR
+    totale_fondo = sum(float(d.get("tfr_accantonato", 0)) for d in dipendenti)
+    
+    # Dettaglio per dipendente
+    dettaglio_dipendenti = [
+        {
+            "dipendente_id": d["id"],
+            "nome": d.get("nome_completo", ""),
+            "tfr_accantonato": round(float(d.get("tfr_accantonato", 0)), 2)
+        }
+        for d in dipendenti
+        if float(d.get("tfr_accantonato", 0)) > 0
+    ]
     
     return {
         "anno": anno,
-        "totale_fondo_tfr": float(totale_noto) if not mancanti else None,
-        "totale_fondo_noto": float(totale_noto),
-        "dipendenti_senza_dato": mancanti,
+        "totale_fondo_tfr": round(totale_fondo, 2),
         "num_dipendenti_attivi": len(dipendenti),
         "accantonamenti_anno": {
-            "totale_quota": round(float(quota_buste_anno) + (
-                accantonamenti_anno[0]["totale_quota"] if accantonamenti_anno else 0), 2),
+            "totale_quota": round(accantonamenti_anno[0]["totale_quota"], 2) if accantonamenti_anno else 0,
             "totale_rivalutazione": round(accantonamenti_anno[0]["totale_rivalutazione"], 2) if accantonamenti_anno else 0,
-            "totale_accantonato": round(float(quota_buste_anno) + (
-                accantonamenti_anno[0]["totale_accantonato"] if accantonamenti_anno else 0), 2),
+            "totale_accantonato": round(accantonamenti_anno[0]["totale_accantonato"], 2) if accantonamenti_anno else 0,
             "num_dipendenti": accantonamenti_anno[0]["num_dipendenti"] if accantonamenti_anno else 0
         },
         "liquidazioni_anno": {
@@ -450,8 +582,7 @@ async def get_riepilogo_tfr_aziendale(anno: int = Query(None)) -> Dict[str, Any]
             "totale_netto": round(liquidazioni_anno[0]["totale_netto"], 2) if liquidazioni_anno else 0,
             "num_liquidazioni": liquidazioni_anno[0]["num_liquidazioni"] if liquidazioni_anno else 0
         },
-        "dettaglio_dipendenti": sorted(dettaglio_dipendenti,
-                                      key=lambda x: x["tfr_accantonato"] or 0, reverse=True)
+        "dettaglio_dipendenti": sorted(dettaglio_dipendenti, key=lambda x: x["tfr_accantonato"], reverse=True)
     }
 
 
@@ -562,7 +693,7 @@ class AccontoInput(BaseModel):
     dipendente_id: str
     # Tipi: "stipendio" | "tfr" | "ferie" | "tredicesima" | "quattordicesima" | "prestito"
     tipo: str
-    importo: float = Field(gt=0, allow_inf_nan=False)
+    importo: float
     data: str  # YYYY-MM-DD
     note: Optional[str] = ""
 
@@ -579,7 +710,8 @@ class AccontoInput(BaseModel):
     tipo_bonifico: Optional[str] = "standard"  # "standard" | "istantaneo"
 
     # Mese/anno del cedolino su cui questo acconto verrà scalato.
-    # Solo competenza esplicita: la data di pagamento non prova il mese dovuto.
+    # Per default: stesso mese della data dell'acconto. L'utente può forzare
+    # un mese diverso (es. "anticipo dato il 30/04 ma scalato su busta di maggio")
     scalato_su_anno_mese: Optional[str] = None  # formato "YYYY-MM"
 
 
@@ -609,39 +741,6 @@ STATI_VALIDI = {
 }
 
 
-def _importo_acconto(valore: Any) -> Decimal:
-    from app.services.posizione_dipendente import importo
-
-    try:
-        cifra = importo(valore)
-    except (ArithmeticError, ValueError, TypeError):
-        cifra = None
-    if cifra is None or cifra <= 0:
-        raise HTTPException(400, "L'importo deve essere positivo, finito e valido al centesimo")
-    return cifra
-
-
-def _data_acconto(valore: Any) -> str:
-    try:
-        if not isinstance(valore, str) or len(valore) != 10:
-            raise ValueError("formato data")
-        normalizzata = date.fromisoformat(valore).isoformat()
-        if normalizzata != valore:
-            raise ValueError("formato data non canonico")
-        return normalizzata
-    except (TypeError, ValueError) as exc:
-        raise HTTPException(400, "Data acconto non valida: usa YYYY-MM-DD") from exc
-
-
-def _competenza_acconto(valore: Any) -> Optional[str]:
-    if valore in (None, ""):
-        return None
-    if not isinstance(valore, str) or len(valore) != 7:
-        raise HTTPException(400, "Competenza non valida: usa YYYY-MM oppure lascia vuoto")
-    _data_acconto(valore + "-01")
-    return valore
-
-
 @router.get("/acconti/{dipendente_id}")
 @handle_errors
 async def get_acconti_dipendente(dipendente_id: str) -> Dict[str, Any]:
@@ -662,7 +761,7 @@ async def get_acconti_dipendente(dipendente_id: str) -> Dict[str, Any]:
     
     # Recupera tutti gli acconti
     acconti = await db["acconti_dipendenti"].find(
-        {"dipendente_id": dipendente_id, "stato": {"$ne": "annullato"}},
+        {"dipendente_id": dipendente_id},
         {"_id": 0}
     ).sort("data", -1).to_list(500)
     
@@ -727,7 +826,7 @@ async def registra_acconto(input_data: AccontoInput) -> Dict[str, Any]:
       istantaneo aiuta nella riconciliazione con l'estratto conto (i
       bonifici istantanei arrivano anche in giornata festiva).
     - scalato_su_anno_mese: mese cedolino su cui andrà scalato (es. "2026-04").
-      Se non fornito, resta da attribuire: non si deduce dalla data del pagamento.
+      Se non fornito, derivato dalla data dell'acconto.
 
     Stato lifecycle:
         registrato → riconciliato_banca → scalato_su_cedolino
@@ -756,8 +855,8 @@ async def registra_acconto(input_data: AccontoInput) -> Dict[str, Any]:
             status_code=400,
             detail=f"Tipo non valido. Usa: {', '.join(sorted(TIPI_ACCONTO_VALIDI))}",
         )
-    cifra = _importo_acconto(input_data.importo)
-    data_acconto = _data_acconto(input_data.data)
+    if input_data.importo <= 0:
+        raise HTTPException(status_code=400, detail="L'importo deve essere positivo")
 
     natura = input_data.natura_acconto or "su_futuro"
     if natura not in NATURE_VALIDE:
@@ -773,9 +872,25 @@ async def registra_acconto(input_data: AccontoInput) -> Dict[str, Any]:
             detail=f"Tipo bonifico non valido. Usa: {', '.join(sorted(TIPI_BONIFICO_VALIDI))}",
         )
 
-    scalato_su = _competenza_acconto(input_data.scalato_su_anno_mese)
-    # Anno/mese della data finanziaria restano distinti dalla competenza.
-    anno_int, mese_int = int(data_acconto[:4]), int(data_acconto[5:7])
+    # Deriva scalato_su_anno_mese da data se non fornito
+    scalato_su = input_data.scalato_su_anno_mese
+    if not scalato_su:
+        try:
+            # input_data.data è in formato YYYY-MM-DD
+            scalato_su = input_data.data[:7]  # estrae YYYY-MM
+        except Exception:
+            scalato_su = None
+
+    # Estrae anno/mese numerici dalla data per query rapide su DB
+    anno_int = mese_int = None
+    try:
+        if input_data.data and len(input_data.data) >= 7:
+            anno_int = int(input_data.data[:4])
+            mese_int = int(input_data.data[5:7])
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(
+            "[TFR] data non interpretabile: anno e mese restano vuoti e la riga non si "
+            "trova piu' cercando per periodo: %s", exc)
 
     now_iso = datetime.now(timezone.utc).isoformat()
 
@@ -785,8 +900,8 @@ async def registra_acconto(input_data: AccontoInput) -> Dict[str, Any]:
         "dipendente_id": input_data.dipendente_id,
         "dipendente_nome": dipendente.get("nome_completo", ""),
         "tipo": input_data.tipo,
-        "importo": float(cifra),
-        "data": data_acconto,
+        "importo": round(input_data.importo, 2),
+        "data": input_data.data,
         "anno": anno_int,
         "mese": mese_int,
         "note": input_data.note or "",
@@ -823,7 +938,7 @@ async def registra_acconto(input_data: AccontoInput) -> Dict[str, Any]:
         "success": True,
         "acconto_id": acconto["id"],
         "messaggio": f"Acconto {input_data.tipo} ({natura}) registrato per {dipendente.get('nome_completo', '')}",
-        "importo": float(cifra),
+        "importo": round(input_data.importo, 2),
         "natura": natura,
         "tipo_bonifico": metodo,
         "scalato_su": scalato_su,
@@ -846,13 +961,6 @@ async def modifica_acconto(acconto_id: str, input_data: dict) -> Dict[str, Any]:
     acconto = await db["acconti_dipendenti"].find_one({"id": acconto_id})
     if not acconto:
         raise HTTPException(status_code=404, detail="Acconto non trovato")
-    if acconto.get("stato") == "annullato":
-        raise HTTPException(409, "Acconto annullato: non modificabile")
-    campi_prova = {"importo", "data", "tipo", "natura_acconto", "scalato_su_anno_mese", "tipo_bonifico", "stato"}
-    if (acconto.get("movimento_bancario_id") or acconto.get("cedolino_id")
-            or acconto.get("stato") in {"riconciliato_banca", "scalato_su_cedolino"}):
-        if any(k in campi_prova and v != acconto.get(k) for k, v in input_data.items()):
-            raise HTTPException(409, "Annulla prima la riconciliazione o la scalatura dell'acconto")
     giornale = _db_giornale() if acconto.get("tipo") == "tfr" else None
 
     # Prepara aggiornamento
@@ -860,14 +968,33 @@ async def modifica_acconto(acconto_id: str, input_data: dict) -> Dict[str, Any]:
 
     if "importo" in input_data and input_data["importo"] is not None:
         vecchio_importo = acconto.get("importo", 0)
-        nuovo_importo = _importo_acconto(input_data["importo"])
-        update_fields["importo"] = float(nuovo_importo)
+        nuovo_importo = float(input_data["importo"])
+        if nuovo_importo <= 0:
+            raise HTTPException(status_code=400, detail="L'importo deve essere positivo")
+        update_fields["importo"] = round(nuovo_importo, 2)
+
+        # Acconto TFR: il giornale si rettifica per la differenza (mai cancellato)
+        # e il fondo del dipendente si riallinea, col motore unico.
+        if acconto.get("tipo") == "tfr" and round(nuovo_importo, 2) != round(float(vecchio_importo or 0), 2):
+            from app.services.tfr_acconti import correggi_importo_acconto_tfr
+
+            await correggi_importo_acconto_tfr(db, giornale, acconto, nuovo_importo)
 
     if "data" in input_data and input_data["data"]:
-        nuova_data = _data_acconto(input_data["data"])
+        nuova_data = input_data["data"]
         update_fields["data"] = nuova_data
-        update_fields["anno"] = int(nuova_data[:4])
-        update_fields["mese"] = int(nuova_data[5:7])
+        # Ricalcola anno/mese numerici dal nuovo valore
+        try:
+            if len(nuova_data) >= 7:
+                update_fields["anno"] = int(nuova_data[:4])
+                update_fields["mese"] = int(nuova_data[5:7])
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "[TFR] data non interpretabile in aggiornamento: anno e mese non "
+                "sono stati ricalcolati: %s", exc)
+        # Se l'utente non ha forzato scalato_su_anno_mese, derivalo dalla nuova data
+        if "scalato_su_anno_mese" not in input_data:
+            update_fields["scalato_su_anno_mese"] = nuova_data[:7]
 
     if "note" in input_data:
         update_fields["note"] = input_data["note"] or ""
@@ -879,8 +1006,6 @@ async def modifica_acconto(acconto_id: str, input_data: dict) -> Dict[str, Any]:
                 detail=f"Tipo non valido. Usa: {', '.join(sorted(TIPI_ACCONTO_VALIDI))}",
             )
         update_fields["tipo"] = input_data["tipo"]
-        if input_data["tipo"] != acconto.get("tipo") and "tfr" in {input_data["tipo"], acconto.get("tipo")}:
-            raise HTTPException(409, "Per cambiare la natura TFR, annulla l'acconto e registralo correttamente")
 
     if "natura_acconto" in input_data and input_data["natura_acconto"]:
         if input_data["natura_acconto"] not in NATURE_VALIDE:
@@ -900,7 +1025,7 @@ async def modifica_acconto(acconto_id: str, input_data: dict) -> Dict[str, Any]:
 
     if "scalato_su_anno_mese" in input_data:
         # Accetta None per "rimuovi binding"
-        update_fields["scalato_su_anno_mese"] = _competenza_acconto(input_data["scalato_su_anno_mese"])
+        update_fields["scalato_su_anno_mese"] = input_data["scalato_su_anno_mese"]
 
     if "stato" in input_data and input_data["stato"]:
         if input_data["stato"] not in STATI_VALIDI:
@@ -908,15 +1033,7 @@ async def modifica_acconto(acconto_id: str, input_data: dict) -> Dict[str, Any]:
                 status_code=400,
                 detail=f"Stato non valido. Usa: {', '.join(sorted(STATI_VALIDI))}",
             )
-        if input_data["stato"] != acconto.get("stato"):
-            raise HTTPException(409, "Usa il comando dedicato: lo stato richiede la relativa prova")
-
-    # Nessun effetto economico prima che TUTTI i campi siano stati validati.
-    if (acconto.get("tipo") == "tfr" and "importo" in update_fields
-            and _importo_acconto(vecchio_importo) != nuovo_importo):
-        from app.services.tfr_acconti import correggi_importo_acconto_tfr
-
-        await correggi_importo_acconto_tfr(db, giornale, acconto, float(nuovo_importo))
+        update_fields["stato"] = input_data["stato"]
 
     if update_fields:
         update_fields["updated_at"] = datetime.now(timezone.utc).isoformat()
@@ -1744,8 +1861,10 @@ async def get_storico_tfr(dipendente_id: str) -> Dict[str, Any]:
 #      (es. 220 × 52 = 11.440,00)
 #   2. quota lorda = retribuzione utile ÷ DIVISORE (12 o 13,5, a scelta:
 #      con 12 → 953,33; con 13,5 → 847,41)
-#   3. il risultato è una stima prima delle imposte, NON un netto da pagare.
-#      Questo simulatore non determina ritenute né conguagli fiscali.
+#   3. accantonamento netto = lordo (nessuna trattenuta in questa fase: l'INPS
+#      0,50% fondo garanzia è a carico dell'azienda, non riduce il TFR del
+#      dipendente; l'IRPEF sul TFR si applica solo in tassazione separata al
+#      momento della liquidazione, non anno per anno sull'accantonamento)
 # Il parametro (divisore) è globale, salvato in `impostazioni` e modificabile
 # dalla pagina TFR. 13ª/14ª (liquidazione): importo × settimane ÷ 12.
 # I periodi salvano SOLO date e importo: i valori si ricalcolano SEMPRE alla
@@ -1765,11 +1884,11 @@ async def _parametri_tfr(db) -> Dict[str, float]:
 
 
 class ParametriTfrInput(BaseModel):
-    divisore: float = Field(ge=0.01, allow_inf_nan=False)
+    divisore: float          # 12 o 13,5 (o altro valore se serve)
 
 
 class PeriodoSimulazioneInput(BaseModel):
-    importo_settimanale: float = Field(ge=0.01, allow_inf_nan=False)
+    importo_settimanale: float
     # Se omessa: giorno dopo la fine dell'ultimo periodo chiuso, oggi se il
     # precedente è aperto (è un aumento), o data assunzione per il primo periodo.
     data_inizio: Optional[str] = None
@@ -1801,8 +1920,8 @@ def _settimane_periodo(dal: datetime, al: datetime) -> int:
 def _calcola_periodo_tfr(data_inizio: datetime, data_fine: datetime, importo_settimanale: float,
                          divisore: float = 12.0) -> Dict[str, Any]:
     """Formula con il parametro scelto dal titolare (esempio: 220€/sett, anno intero,
-    divisore 12): retribuzione utile = 220×52 = 11.440 → stima lorda = ÷12 = 953,33.
-    Non calcola la tassazione: il risultato non è un netto da liquidare.
+    divisore 12): retribuzione utile = 220×52 = 11.440 → lordo = ÷12 = 953,33 = netto
+    (nessuna trattenuta: l'accantonamento non è tassato anno per anno).
     'mensile' è l'importo mensile equivalente (settimanale × 52 ÷ 12)."""
     settimane = _settimane_periodo(data_inizio, data_fine)
     retribuzione_utile = importo_settimanale * settimane
@@ -1813,6 +1932,7 @@ def _calcola_periodo_tfr(data_inizio: datetime, data_fine: datetime, importo_set
         "mensile": round(importo_settimanale * 52 / 12, 2),
         "retribuzione_utile": round(retribuzione_utile, 2),
         "lordo": round(lordo, 2),
+        "netto": round(lordo, 2),
     }
 
 
@@ -1839,11 +1959,7 @@ def _periodo_con_calcolo_live(p: Dict[str, Any], fino_a: Optional[datetime] = No
     fine = _parse_data_tfr(p["data_fine"]) if p.get("data_fine") else (fino_a or _oggi_tfr())
     calc = _calcola_periodo_tfr(_parse_data_tfr(p["data_inizio"]), fine, p["importo_settimanale"],
                                 prm["divisore"])
-    risultato = {**p, **calc, "data_fine": p.get("data_fine"), "aperto": not p.get("data_fine")}
-    # Non riesporre un vecchio netto eventualmente memorizzato: qui non è calcolato.
-    for campo in ("netto", "tassazione", "inps", "aliquota_tassazione", "irpef_percento", "imposte"):
-        risultato.pop(campo, None)
-    return risultato
+    return {**p, **calc, "data_fine": p.get("data_fine"), "aperto": not p.get("data_fine")}
 
 
 def _periodo_competenza_13(fino_a: datetime):
@@ -1872,7 +1988,7 @@ def _quota_mensilita_aggiuntiva(periodi_grezzi: List[Dict[str, Any]], data_assun
     inizio_eff = max(inizio_competenza, data_assunzione) if data_assunzione else inizio_competenza
     fine_eff = min(fine_competenza, fino_a)
     if fine_eff < inizio_eff:
-        return {"lordo": 0.0, "settimane": 0,
+        return {"lordo": 0.0, "netto": 0.0, "settimane": 0,
                 "dal": inizio_eff.strftime("%Y-%m-%d"), "al": fine_eff.strftime("%Y-%m-%d")}
     tot, settimane_tot = 0.0, 0
     for p in periodi_grezzi:
@@ -1884,7 +2000,7 @@ def _quota_mensilita_aggiuntiva(periodi_grezzi: List[Dict[str, Any]], data_assun
         settimane = _settimane_periodo(oi, of)
         tot += p["importo_settimanale"] * settimane / 12
         settimane_tot += settimane
-    return {"lordo": round(tot, 2), "settimane": settimane_tot,
+    return {"lordo": round(tot, 2), "netto": round(tot, 2), "settimane": settimane_tot,
             "dal": inizio_eff.strftime("%Y-%m-%d"), "al": fine_eff.strftime("%Y-%m-%d")}
 
 
@@ -1920,7 +2036,7 @@ async def get_simulazione_tfr(dipendente_id: str) -> Dict[str, Any]:
         "dipendente_nome": dipendente.get("nome_completo", ""),
         "periodi": periodi,
         "totale_lordo": round(sum(p["lordo"] for p in periodi), 2),
-        "tassazione_calcolata": False,
+        "totale_netto": round(sum(p["netto"] for p in periodi), 2),
         "prossimo_data_inizio": prossimo_inizio,
         "paga_attuale": periodo_aperto["importo_settimanale"] if periodo_aperto else None,
         "paga_attuale_dal": periodo_aperto["data_inizio"] if periodo_aperto else None,
@@ -2037,7 +2153,7 @@ async def aggiungi_periodo_simulazione(dipendente_id: str, input_data: PeriodoSi
 
 
 class ModificaPeriodoInput(BaseModel):
-    importo_settimanale: Optional[float] = Field(default=None, ge=0.01, allow_inf_nan=False)
+    importo_settimanale: Optional[float] = None
     data_inizio: Optional[str] = None
     data_fine: Optional[str] = None  # ha effetto solo se il periodo era già chiuso
 
@@ -2142,15 +2258,14 @@ async def elimina_periodo_simulazione(dipendente_id: str, periodo_id: str) -> Di
 @router.post("/simulazione/{dipendente_id}/rate")
 @handle_errors
 async def dividi_in_rate_simulazione(dipendente_id: str, input_data: RateSimulazioneInput) -> Dict[str, Any]:
-    """Ripartizione indicativa della stima prima delle imposte, non un piano
-    fiscale definitivo. Non registra pagamenti. Nessuna voce mancante vale zero."""
+    """Divide il netto TFR totale della simulazione in N rate (l'ultima assorbe
+    l'arrotondamento). Solo calcolo: non registra nulla, così titolare e dipendente
+    possono valutare la proposta prima di deciderla."""
     if input_data.numero_rate < 1:
         raise HTTPException(status_code=400, detail="Il numero di rate deve essere almeno 1")
 
     db = Database.get_db()
-    dipendente = await db["dipendenti"].find_one({"id": dipendente_id}, {"_id": 0})
-    if not dipendente:
-        raise HTTPException(status_code=404, detail="Dipendente non trovato")
+    dipendente = await db["dipendenti"].find_one({"id": dipendente_id}, {"_id": 0}) or {}
     grezzi = await db["tfr_simulazione_periodi"].find(
         {"dipendente_id": dipendente_id}, {"_id": 0}).to_list(500)
     if not grezzi:
@@ -2158,57 +2273,54 @@ async def dividi_in_rate_simulazione(dipendente_id: str, input_data: RateSimulaz
     parametri = await _parametri_tfr(db)
     periodi = [_periodo_con_calcolo_live(p, _fino_a_calcolo(dipendente), parametri) for p in grezzi]
 
-    totale_lordo = round(sum(p["lordo"] for p in periodi), 2)
-    if totale_lordo <= 0:
-        raise HTTPException(status_code=400, detail="Il totale lordo della simulazione è zero")
+    totale_netto = round(sum(p["netto"] for p in periodi), 2)
+    if totale_netto <= 0:
+        raise HTTPException(status_code=400, detail="Il totale netto della simulazione è zero")
 
     # Gli acconti TFR già erogati (registro unico acconti_dipendenti) si scalano
-    # PRIMA di dividere. Il saldo aritmetico NON include il conguaglio fiscale.
+    # PRIMA di dividere: le rate si calcolano sul netto residuo da pagare.
     acconti = await db["acconti_dipendenti"].find(
         {"dipendente_id": dipendente_id, "tipo": "tfr", "stato": {"$ne": "annullato"}},
         {"_id": 0, "importo": 1}).to_list(500)
     totale_acconti = round(sum(float(a.get("importo") or 0) for a in acconti), 2)
-    residuo_simulato = round(totale_lordo - totale_acconti, 2)
+    netto_residuo = round(totale_netto - totale_acconti, 2)
 
     # Le rate si calcolano sul TOTALE COMPLESSIVO: TFR residuo + tredicesima +
     # quattordicesima + ferie (anche negative), come nella card di riepilogo.
-    liq = await liquidazione_finale_simulazione(dipendente_id)
-    if not liq.get("ferie") or liq["ferie"].get("controvalore") is None:
-        raise HTTPException(409, "Ferie residue non disponibili: completa il dato prima di simulare le rate")
-    extra_13 = float(liq["tredicesima"]["lordo"])
-    extra_14 = float(liq["quattordicesima"]["lordo"])
-    extra_ferie = float(liq["ferie"]["controvalore"])
-    totale_complessivo = round(residuo_simulato + extra_13 + extra_14 + extra_ferie, 2)
+    extra_13 = extra_14 = extra_ferie = 0.0
+    try:
+        liq = await liquidazione_finale_simulazione(dipendente_id)
+        extra_13 = float((liq.get("tredicesima") or {}).get("netto") or 0)
+        extra_14 = float((liq.get("quattordicesima") or {}).get("netto") or 0)
+        extra_ferie = float((liq.get("ferie") or {}).get("controvalore") or 0)
+    except Exception as exc:  # noqa: BLE001
+        # Senza liquidazione le rate restano sul solo TFR residuo: e' un piano
+        # di pagamento piu' basso del dovuto, quindi va detto, non subito.
+        logger.warning(
+            "[TFR] simulazione della liquidazione non riuscita per %s: 13a, 14a e "
+            "ferie restano a zero nel calcolo delle rate: %s", dipendente_id, exc)
+    totale_complessivo = round(netto_residuo + extra_13 + extra_14 + extra_ferie, 2)
     if totale_complessivo <= 0:
         raise HTTPException(status_code=400, detail="Il totale complessivo da pagare è zero o negativo")
 
     n = input_data.numero_rate
-    # Centesimi interi: molte rate non devono produrre un'ultima rata negativa.
-    centesimi = int(Decimal(str(totale_complessivo)) * 100)
-    rata_base, resto = divmod(centesimi, n)
-    if rata_base < 1:
-        raise HTTPException(400, "Troppe rate: ogni rata deve essere almeno un centesimo")
-    try:
-        data_rata = _parse_data_tfr(_data_acconto(input_data.data_prima_rata)) if input_data.data_prima_rata else None
-    except ValueError as exc:
-        raise HTTPException(400, "Data prima rata non valida") from exc
+    rata_base = round(totale_complessivo / n, 2)
+    data_rata = _parse_data_tfr(input_data.data_prima_rata) if input_data.data_prima_rata else None
 
     rate = []
     for i in range(1, n + 1):
-        importo = (rata_base + (1 if i <= resto else 0)) / 100
+        importo = round(totale_complessivo - rata_base * (n - 1), 2) if i == n else rata_base
         voce = {"numero": i, "importo": importo}
         if data_rata:
             mese_idx = data_rata.month - 1 + (i - 1)
             anno_target = data_rata.year + mese_idx // 12
             mese_target = mese_idx % 12 + 1
-            if anno_target > 9999:
-                raise HTTPException(400, "Il piano supera l'intervallo di date supportato")
-            giorno = min(data_rata.day, monthrange(anno_target, mese_target)[1])
+            giorno = min(data_rata.day, 28)  # evita overflow sui mesi corti
             voce["data"] = f"{anno_target:04d}-{mese_target:02d}-{giorno:02d}"
         rate.append(voce)
 
-    return {"totale_lordo": totale_lordo, "totale_acconti": totale_acconti,
-            "residuo_simulato": residuo_simulato, "tassazione_calcolata": False,
+    return {"totale_netto": totale_netto, "totale_acconti": totale_acconti,
+            "netto_residuo": netto_residuo,
             "tredicesima": round(extra_13, 2), "quattordicesima": round(extra_14, 2),
             "ferie": round(extra_ferie, 2), "totale_complessivo": totale_complessivo,
             "numero_rate": n, "rate": rate}
@@ -2285,10 +2397,10 @@ async def liquidazione_finale_simulazione(dipendente_id: str) -> Dict[str, Any]:
         {"dipendente_id": dipendente_id}, {"_id": 0}) or {}
     if override.get("tredicesima") is not None:
         v = round(float(override["tredicesima"]), 2)
-        tredicesima = {**tredicesima, "lordo": v, "manuale": True}
+        tredicesima = {**tredicesima, "lordo": v, "netto": v, "manuale": True}
     if override.get("quattordicesima") is not None:
         v = round(float(override["quattordicesima"]), 2)
-        quattordicesima = {**quattordicesima, "lordo": v, "manuale": True}
+        quattordicesima = {**quattordicesima, "lordo": v, "netto": v, "manuale": True}
     if override.get("ferie_giorni") is not None:
         giorni = round(float(override["ferie_giorni"]), 2)
         ferie = {
@@ -2305,7 +2417,6 @@ async def liquidazione_finale_simulazione(dipendente_id: str) -> Dict[str, Any]:
         "cessato": cessato,
         "data_cessazione": data_cessazione or None,
         "calcolato_fino_a": fino_a.strftime("%Y-%m-%d"),
-        "tassazione_calcolata": False,
         "tredicesima": tredicesima,
         "quattordicesima": quattordicesima,
         "ferie": ferie,
@@ -2321,8 +2432,6 @@ async def salva_liquidazione_override(dipendente_id: str, body: Dict[str, Any] =
     calcolo automatico. Il DB salva solo gli override: tutto il resto resta
     ricalcolato a lettura."""
     db = Database.get_db()
-    if not await db["dipendenti"].find_one({"id": dipendente_id}, {"id": 1}):
-        raise HTTPException(404, "Dipendente non trovato")
     campi = {}
     for k in ("tredicesima", "quattordicesima", "ferie_giorni"):
         if k not in body:
@@ -2332,13 +2441,8 @@ async def salva_liquidazione_override(dipendente_id: str, body: Dict[str, Any] =
             campi[k] = None
         else:
             try:
-                from app.services.posizione_dipendente import importo
-
-                cifra = importo(v)
-                if cifra is None or (k != "ferie_giorni" and cifra < 0):
-                    raise ValueError("Importo non finito o negativo")
-                campi[k] = float(cifra)
-            except (ArithmeticError, TypeError, ValueError) as exc:
+                campi[k] = round(float(str(v).replace(",", ".")), 2)
+            except ValueError as exc:
                 raise HTTPException(status_code=400, detail=f"Valore non valido per {k}") from exc
     if not campi:
         raise HTTPException(status_code=400, detail="Nessun campo da salvare")
@@ -2361,7 +2465,7 @@ async def salva_liquidazione_override(dipendente_id: str, body: Dict[str, Any] =
 # CALCOLO NETTO DA LORDO (stipendio mensile, IRPEF 2026)
 # ============================================
 # Strumento SEPARATO dal simulatore TFR sopra (che usa la formula del foglio
-# storico senza calcolare imposte): qui si parte da un importo settimanale
+# storico con aliquota fissa per periodo): qui si parte da un importo settimanale
 # LORDO per stimare quanto arriva netto in busta con le regole fiscali italiane
 # 2026 (INPS 9,19%, scaglioni IRPEF progressivi, detrazione lavoro dipendente).
 # Non tocca né legge nulla del simulatore TFR.

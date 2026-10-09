@@ -1,0 +1,419 @@
+"""
+Liquidazioni IVA mensili persistite (Fase 3, SPECIFICA_IVA.md §10-13).
+
+Due livelli:
+  1. Motore puro `liquidazione_iva_engine`: selezione fatture e totali.
+  2. Router `iva` (calcola/conferma/riapri/rettifica) su un DB in memoria,
+     con focus sull'ANTI-DOPPIA-DETRAZIONE (§11): una fattura confermata in
+     gennaio non deve rientrare nel calcolo di febbraio.
+"""
+import asyncio
+import re
+
+import pytest
+
+from app.engines import liquidazione_iva_engine as liq
+from app.routers import iva as iva_router
+from app.database import Database
+
+
+# ─── 1. Motore puro ─────────────────────────────────────────────────────────
+
+def _fatt(**kw):
+    base = {"id": kw.get("id", "f"), "iva_detraibile": 100.0,
+            "iva_utilizzata": False, "periodo_iva_attribuito": "2026-01",
+            "stato_detrazione_iva": "DA_INSERIRE"}
+    base.update(kw)
+    return base
+
+
+def test_selezione_include_solo_periodo_e_disponibili():
+    fatture = [
+        _fatt(id="a", periodo_iva_attribuito="2026-01"),
+        _fatt(id="b", periodo_iva_attribuito="2026-02"),  # altro periodo → ignorata
+        _fatt(id="c", periodo_iva_attribuito="2026-01", iva_utilizzata=True,
+              periodo_iva_utilizzato="2026-01"),  # già usata → esclusa
+    ]
+    incl, escl = liq.seleziona_fatture_per_liquidazione(fatture, "2026-01")
+    assert [f["id"] for f in incl] == ["a"]
+    assert [e["id"] for e in escl] == ["c"]
+    assert "utilizzat" in escl[0]["motivo_esclusione"].lower()
+
+
+def test_selezione_esclude_annullate_e_iva_nulla_e_riduce_con_note_credito():
+    fatture = [
+        _fatt(id="nc", tipo_documento="TD04", iva_detraibile=30.0),
+        _fatt(id="ann", annullata=True),
+        _fatt(id="dup", duplicata=True),
+        _fatt(id="zero", iva_detraibile=0),
+        _fatt(id="ok"),
+    ]
+    incl, escl = liq.seleziona_fatture_per_liquidazione(fatture, "2026-01")
+    # Audit 27/09/2026 (punto 8): la nota di credito entra, col segno meno.
+    assert [f["id"] for f in incl] == ["nc", "ok"]
+    motivi = {e["id"]: e["motivo_esclusione"] for e in escl}
+    assert set(motivi) == {"ann", "dup", "zero"}
+    assert liq.calcola_totali(incl)["iva_acquisti"] == 70.0
+
+
+def test_nota_credito_con_importo_negativo_resta_negativa_una_volta():
+    nc = _fatt(id="nc", tipo_documento="TD08", iva_detraibile=-30.0)
+    assert liq.iva_detraibile_con_segno(nc) == -30.0
+    competenza, _ = liq.seleziona_fatture_per_competenza([nc, _fatt(id="ok")], "2026-01")
+    assert liq.calcola_totali(competenza)["iva_acquisti"] == 70.0
+
+
+def test_detraibilita_da_decidere():
+    assert liq.detraibilita_da_decidere({"iva": 22.0, "iva_detraibile": None})
+    assert liq.detraibilita_da_decidere(
+        {"iva": 22.0, "iva_detraibile": 22.0, "stato_detrazione_iva": "DA_VERIFICARE"})
+    # Niente IVA sul documento: nulla da decidere.
+    assert not liq.detraibilita_da_decidere({"iva": 0, "iva_detraibile": None})
+    # Deciso, gia' usato o indetraibile: non blocca.
+    assert not liq.detraibilita_da_decidere(
+        {"iva": 22.0, "iva_detraibile": 22.0, "stato_detrazione_iva": "DA_INSERIRE"})
+    assert not liq.detraibilita_da_decidere(
+        {"iva": 22.0, "iva_detraibile": None, "iva_utilizzata": True})
+    assert not liq.detraibilita_da_decidere(
+        {"iva": 22.0, "iva_detraibile": 0, "stato_detrazione_iva": "INDETRAIBILE"})
+
+
+def test_selezione_esclude_stato_non_ammesso():
+    fatture = [_fatt(id="x", stato_detrazione_iva="ESCLUSA")]
+    incl, escl = liq.seleziona_fatture_per_liquidazione(fatture, "2026-01")
+    assert incl == []
+    assert escl[0]["id"] == "x"
+
+
+def test_iva_esposta_senza_classificazione_non_entra_in_liquidazione():
+    fattura = {
+        "id": "non-classificata", "periodo_iva_attribuito": "2026-01",
+        "iva": 220.0, "iva_utilizzata": False,
+        "stato_detrazione_iva": "DA_VERIFICARE",
+    }
+    incl, escl = liq.seleziona_fatture_per_liquidazione([fattura], "2026-01")
+    assert incl == []
+    assert escl[0]["iva"] == 0
+
+
+def test_totali_saldo_debito_e_credito():
+    incl = [_fatt(iva_detraibile=200)]
+    # vendite 500, acquisti 200, nessun credito precedente → debito 300
+    t = liq.calcola_totali(incl, iva_vendite=500, credito_precedente=0)
+    assert t["iva_acquisti"] == 200 and t["saldo"] == 300
+    assert t["debito_periodo"] == 300 and t["credito_periodo"] == 0
+    # vendite 100, acquisti 200 → credito 100
+    t2 = liq.calcola_totali(incl, iva_vendite=100)
+    assert t2["saldo"] == -100 and t2["credito_periodo"] == 100 and t2["debito_periodo"] == 0
+
+
+# ─── 2. Router su DB in memoria ─────────────────────────────────────────────
+
+def _match(doc, query):
+    for k, cond in query.items():
+        val = doc.get(k)
+        if isinstance(cond, dict):
+            for op, arg in cond.items():
+                if op == "$in" and val not in arg:
+                    return False
+                if op == "$nin" and val in arg:
+                    return False
+                if op == "$ne" and val == arg:
+                    return False
+                if op == "$gt" and not (val is not None and val > arg):
+                    return False
+                if op == "$regex" and not (val is not None and re.search(arg, str(val))):
+                    return False
+        else:
+            if val != cond:
+                return False
+    return True
+
+
+def _apply_sort(items, sort):
+    if not sort:
+        return items
+    if isinstance(sort, tuple):
+        sort = [sort]
+    for key, direction in reversed(sort):
+        items = sorted(items, key=lambda d: (d.get(key) is None, d.get(key)),
+                       reverse=(direction < 0))
+    return items
+
+
+class _Cur:
+    def __init__(self, items):
+        self._items = items
+
+    def sort(self, *a):
+        if len(a) == 1:
+            self._items = _apply_sort(self._items, a[0])
+        elif len(a) == 2:
+            self._items = _apply_sort(self._items, [(a[0], a[1])])
+        return self
+
+    async def to_list(self, n):
+        return [dict(x) for x in self._items[:n]]
+
+    def __aiter__(self):
+        self._it = iter(list(self._items))
+        return self
+
+    async def __anext__(self):
+        try:
+            return dict(next(self._it))
+        except StopIteration:
+            raise StopAsyncIteration
+
+
+class _Coll:
+    def __init__(self):
+        self.docs = []
+
+    def _proj(self, doc, proj):
+        d = dict(doc)
+        d.pop("_id", None)
+        return d
+
+    async def find_one(self, query, proj=None, sort=None):
+        items = [d for d in self.docs if _match(d, query)]
+        items = _apply_sort(items, sort)
+        return self._proj(items[0], proj) if items else None
+
+    def find(self, query, proj=None):
+        items = [d for d in self.docs if _match(d, query)]
+        return _Cur([self._proj(d, proj) for d in items])
+
+    async def insert_one(self, doc):
+        self.docs.append(dict(doc))
+
+    async def update_one(self, query, update):
+        for d in self.docs:
+            if _match(d, query):
+                d.update(update.get("$set", {}))
+
+                class _R:
+                    modified_count = 1
+                return _R()
+
+        class _R0:
+            modified_count = 0
+        return _R0()
+
+    async def update_many(self, query, update):
+        modified = 0
+        for d in self.docs:
+            if _match(d, query):
+                d.update(update.get("$set", {}))
+                modified += 1
+        return type("R", (), {"modified_count": modified})()
+
+    async def delete_many(self, query):
+        prima = len(self.docs)
+        self.docs = [d for d in self.docs if not _match(d, query)]
+        return type("R", (), {"deleted_count": prima - len(self.docs)})()
+
+    async def replace_one(self, query, doc, upsert=False):
+        for i, d in enumerate(self.docs):
+            if _match(d, query):
+                self.docs[i] = dict(doc)
+                return
+        if upsert:
+            self.docs.append(dict(doc))
+
+
+class _Db:
+    def __init__(self):
+        self.colls = {}
+
+    def __getitem__(self, name):
+        return self.colls.setdefault(name, _Coll())
+
+
+def _run(coro):
+    loop = asyncio.new_event_loop()
+    try:
+        return loop.run_until_complete(coro)
+    finally:
+        loop.close()
+
+
+@pytest.fixture
+def db(monkeypatch):
+    d = _Db()
+    monkeypatch.setattr(Database, "get_db", staticmethod(lambda: d))
+    return d
+
+
+def _inv(db, **kw):
+    base = {"iva_detraibile": 100.0, "iva_utilizzata": False,
+            "periodo_iva_attribuito": "2026-01", "stato_detrazione_iva": "DA_INSERIRE"}
+    base.update(kw)
+    db["invoices"].docs.append(base)
+
+
+def test_calcola_crea_bozza_senza_marcare_iva(db):
+    _inv(db, id="a", iva_detraibile=220)
+    res = _run(iva_router.calcola_liquidazione(periodo="2026-01", iva_vendite=0))
+    lq = res["liquidazione"]
+    assert lq["stato"] == "CALCOLATA" and lq["iva_acquisti"] == 220
+    assert len(lq["fatture_incluse"]) == 1
+    # l'IVA NON è ancora utilizzata: la conferma è un passo separato
+    assert db["invoices"].docs[0]["iva_utilizzata"] is False
+
+
+def test_conferma_marca_iva_e_impedisce_doppia_detrazione(db):
+    _inv(db, id="a", iva_detraibile=220, periodo_iva_attribuito="2026-01")
+    calc = _run(iva_router.calcola_liquidazione(periodo="2026-01", iva_vendite=0))
+    liq_id = calc["liquidazione"]["id"]
+    conf = _run(iva_router.conferma_liquidazione(liq_id=liq_id, utente="mario"))
+    assert conf["fatture_marcate"] == 1
+    inv = db["invoices"].docs[0]
+    assert inv["iva_utilizzata"] is True
+    assert inv["periodo_iva_utilizzato"] == "2026-01"
+    assert inv["stato_detrazione_iva"] == "INSERITA_IN_LIQUIDAZIONE"
+    assert any(m["tipo_movimento"] == "UTILIZZO" for m in db["movimenti_iva_fattura"].docs)
+
+    # La stessa fattura NON deve entrare nel calcolo di febbraio
+    # (caso "ricevuta a febbraio ma già usata a gennaio", §11).
+    db["invoices"].docs[0]["periodo_iva_attribuito"] = "2026-02"
+    febbraio = _run(iva_router.calcola_liquidazione(periodo="2026-02", iva_vendite=0))
+    assert febbraio["liquidazione"]["iva_acquisti"] == 0
+    assert len(febbraio["liquidazione"]["fatture_escluse"]) == 1
+
+
+def test_conferma_bloccata_se_gia_confermata(db):
+    from fastapi import HTTPException
+    _inv(db, id="a")
+    calc = _run(iva_router.calcola_liquidazione(periodo="2026-01", iva_vendite=0))
+    liq_id = calc["liquidazione"]["id"]
+    _run(iva_router.conferma_liquidazione(liq_id=liq_id))
+    with pytest.raises(HTTPException) as ei:
+        _run(iva_router.conferma_liquidazione(liq_id=liq_id))
+    assert ei.value.status_code == 409
+
+
+def test_conferma_annulla_tutto_se_movimento_audit_fallisce(db, monkeypatch):
+    from fastapi import HTTPException
+
+    _inv(db, id="a")
+    calc = _run(iva_router.calcola_liquidazione(periodo="2026-01", iva_vendite=0))
+    liq_id = calc["liquidazione"]["id"]
+
+    async def insert_fallisce(_doc):
+        raise RuntimeError("audit non disponibile")
+
+    monkeypatch.setattr(db["movimenti_iva_fattura"], "insert_one", insert_fallisce)
+    with pytest.raises(HTTPException) as exc:
+        _run(iva_router.conferma_liquidazione(liq_id=liq_id))
+
+    assert exc.value.status_code == 500
+    inv = db["invoices"].docs[0]
+    assert inv["iva_utilizzata"] is False
+    assert inv["liquidazione_id"] is None
+    liquidazione = db["liquidazioni_iva"].docs[0]
+    assert liquidazione["stato"] == "CALCOLATA"
+
+
+def test_ricalcolo_bloccato_su_confermata(db):
+    from fastapi import HTTPException
+    _inv(db, id="a")
+    calc = _run(iva_router.calcola_liquidazione(periodo="2026-01", iva_vendite=0))
+    _run(iva_router.conferma_liquidazione(liq_id=calc["liquidazione"]["id"]))
+    with pytest.raises(HTTPException) as ei:
+        _run(iva_router.calcola_liquidazione(periodo="2026-01", iva_vendite=0))
+    assert ei.value.status_code == 409
+
+
+def test_riapri_libera_le_fatture(db):
+    _inv(db, id="a", iva_detraibile=150)
+    calc = _run(iva_router.calcola_liquidazione(periodo="2026-01", iva_vendite=0))
+    liq_id = calc["liquidazione"]["id"]
+    _run(iva_router.conferma_liquidazione(liq_id=liq_id))
+    ria = _run(iva_router.riapri_liquidazione(liq_id=liq_id, motivo="errore"))
+    assert ria["fatture_liberate"] == 1
+    inv = db["invoices"].docs[0]
+    assert inv["iva_utilizzata"] is False and inv["liquidazione_id"] is None
+    assert inv["disponibile_per_nuovo_calcolo"] is True
+    # dopo la riapertura si può ricalcolare
+    ric = _run(iva_router.calcola_liquidazione(periodo="2026-01", iva_vendite=0))
+    assert ric["liquidazione"]["iva_acquisti"] == 150
+
+
+def test_rettifica_crea_nuova_versione(db):
+    _inv(db, id="a", iva_detraibile=100)
+    calc = _run(iva_router.calcola_liquidazione(periodo="2026-01", iva_vendite=0))
+    liq_id = calc["liquidazione"]["id"]
+    _run(iva_router.conferma_liquidazione(liq_id=liq_id))
+    ret = _run(iva_router.rettifica_liquidazione(liq_id=liq_id, motivo="correzione", iva_vendite=0))
+    assert ret["nuova_liquidazione"]["versione"] > calc["liquidazione"]["versione"]
+    vecchia = next(d for d in db["liquidazioni_iva"].docs if d["id"] == liq_id)
+    assert vecchia["stato"] == "RETTIFICATA"
+    assert ret["nuova_liquidazione"]["iva_acquisti"] == 100
+
+
+def test_credito_precedente_riportato(db):
+    # Gennaio: solo acquisti 100, vendite 0 → credito 100 riportato.
+    _inv(db, id="a", iva_detraibile=100, periodo_iva_attribuito="2026-01")
+    g = _run(iva_router.calcola_liquidazione(periodo="2026-01", iva_vendite=0))
+    assert g["liquidazione"]["credito_periodo"] == 100
+    _run(iva_router.conferma_liquidazione(liq_id=g["liquidazione"]["id"]))
+    # Febbraio: vendite 300, acquisti 50, credito precedente 100 → saldo 300-50-100=150
+    _inv(db, id="b", iva_detraibile=50, periodo_iva_attribuito="2026-02")
+    f = _run(iva_router.calcola_liquidazione(periodo="2026-02", iva_vendite=300))
+    assert f["liquidazione"]["credito_precedente"] == 100
+    assert f["liquidazione"]["saldo"] == 150
+
+
+def test_conferma_blocca_se_fattura_cambiata_dopo_calcolo(db):
+    from fastapi import HTTPException
+    _inv(db, id="a", iva_detraibile=100)
+    calc = _run(iva_router.calcola_liquidazione(periodo="2026-01", iva_vendite=0))
+    liq_id = calc["liquidazione"]["id"]
+    db["invoices"].docs[0].update({"iva_utilizzata": True, "liquidazione_id": "altra-liq"})
+
+    with pytest.raises(HTTPException) as exc:
+        _run(iva_router.conferma_liquidazione(liq_id=liq_id))
+
+    assert exc.value.status_code == 409
+    assert db["liquidazioni_iva"].docs[0]["stato"] == "CALCOLATA"
+    assert db["invoices"].docs[0]["liquidazione_id"] == "altra-liq"
+
+
+def test_audit_conferma_usa_identita_jwt_non_query_string(db):
+    _inv(db, id="a", iva_detraibile=100)
+    calc = _run(iva_router.calcola_liquidazione(periodo="2026-01", iva_vendite=0))
+    _run(iva_router.conferma_liquidazione(
+        liq_id=calc["liquidazione"]["id"],
+        utente="admin-finto",
+        current_user={"user_id": "utente-reale", "role": "operatore"},
+    ))
+    assert db["liquidazioni_iva"].docs[0]["confermata_da"] == "utente-reale"
+    assert db["movimenti_iva_fattura"].docs[0]["created_by"] == "utente-reale"
+
+
+def test_rettifica_senza_override_ricalcola_iva_vendite_da_corrispettivi(db):
+    _inv(db, id="a", iva_detraibile=100)
+    db["corrispettivi"].docs.append({
+        "data": "2026-01-15", "totale_iva": 220,
+        "corrispettivo_key": "rt-1", "entity_status": "active", "status": "active",
+    })
+    calc = _run(iva_router.calcola_liquidazione(periodo="2026-01", iva_vendite=220))
+    liq_id = calc["liquidazione"]["id"]
+    _run(iva_router.conferma_liquidazione(liq_id=liq_id))
+
+    ret = _run(iva_router.rettifica_liquidazione(
+        liq_id=liq_id, motivo="correzione", iva_vendite=None
+    ))
+    assert ret["nuova_liquidazione"]["iva_vendite"] == 220
+    assert ret["nuova_liquidazione"]["iva_vendite_fonte"] == "corrispettivi_xml"
+
+
+def test_lista_e_periodo(db):
+    _inv(db, id="a")
+    _run(iva_router.calcola_liquidazione(periodo="2026-01", iva_vendite=0))
+    lista = _run(iva_router.lista_liquidazioni(anno=2026, limit=200))
+    assert lista["totale"] == 1
+    per = _run(iva_router.liquidazione_periodo(periodo="2026-01"))
+    assert per["corrente"]["periodo"] == "2026-01"
+    assert len(per["versioni"]) == 1

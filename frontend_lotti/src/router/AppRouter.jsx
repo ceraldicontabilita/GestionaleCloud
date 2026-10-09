@@ -2,6 +2,8 @@
 // App.js (fase 2, 24/07/2026). AppComponent arriva come prop per evitare
 // un import circolare con App.js.
 import { useEffect, useState } from "react";
+import axios from "axios";
+import { API } from "../utils/constants";
 import KioskLayout from "../layouts/KioskLayout";
 import { isAdmin, ricordaPaginaRichiesta } from "../auth";
 import { getTabletSession } from "../utils/tabletSession";
@@ -9,6 +11,16 @@ import { getTabletSession } from "../utils/tabletSession";
 export default function AppRouter({ AppComponent }) {
   const [hash, setHash] = useState(window.location.hash.replace("#", ""));
   const [, setAuthTick] = useState(0);
+
+  // Keep-warm: finché l'app è aperta (es. tablet del kiosk sempre acceso) pinga
+  // il backend ogni 10 min, così Render non va in sleep e login/temperature
+  // restano istantanei.
+  useEffect(() => {
+    const ping = () => axios.get(`${API}/health`, { timeout: 8000 }).catch(() => {});
+    ping();
+    const id = setInterval(ping, 10 * 60 * 1000);
+    return () => clearInterval(id);
+  }, []);
 
   useEffect(() => {
     const onHash = () => setHash(window.location.hash.replace("#", ""));

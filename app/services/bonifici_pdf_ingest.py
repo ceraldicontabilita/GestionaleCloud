@@ -19,8 +19,6 @@ from typing import Any, Dict, Iterable, List, Optional
 from app.constants.canale_documento import (
     STATO_BONIFICO_ASSOCIATO_ATTESA_BANCA, STATO_BONIFICO_DOCUMENTATO, canale_obbligatorio,
 )
-from app.document_repository import metadata_projection
-from app.services.pdf_drive_only import reference_from_download
 from app.routers.bonifici_module.common import build_dedup_key
 from app.routers.bonifici_module.pdf_parser import (
     extract_filename_metadata,
@@ -426,7 +424,6 @@ async def importa_pdf_bonifico(
     source: str = "upload_manuale",
     auto_associa: bool = True,
     source_path: Optional[str] = None,
-    source_context: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """Parsa e archivia il PDF; il match automatico puo' essere disattivato.
 
@@ -436,19 +433,19 @@ async def importa_pdf_bonifico(
     (ponte HR, ``hr_pagamenti_deposito.fascicolo_persona``)."""
     if not content.startswith(b"%PDF"):
         return {"status": "error", "message": "Il file non e' un PDF valido"}
-    text = await asyncio.to_thread(read_pdf_bytes, content)
-    if e_stampa_fattura(text):
+    if e_stampa_fattura(await asyncio.to_thread(read_pdf_bytes, content)):
         # La stampa di una fattura dice «Bonifico» e IBAN, ma non e' un pagamento.
         return {"status": "non_bonifico",
                 "message": "Stampa PDF di una fattura: la fattura entra dall'XML dello SDI"}
     digest = hashlib.sha256(content).hexdigest()
     esistente = await db["bonifici_transfers"].find_one(
-        {"document_hash": digest}, metadata_projection("bonifici_transfers")
+        {"document_hash": digest}, {"_id": 0}
     )
     if esistente:
         # I documenti caricati prima della correzione possono contenere il
         # mese del nome file nel vecchio campo "periodo". Rileggiamo sempre il
         # PDF originale e correggiamo i soli metadati estratti.
+        text = await asyncio.to_thread(read_pdf_bytes, content)
         reparsed = extract_transfers_from_text(text, filename=filename)[0]
         if transfer_collegato(esistente):
             # La stessa ricevuta ricaricata non riscrive l'identita' di un pagamento gia' agganciato.
@@ -489,6 +486,7 @@ async def importa_pdf_bonifico(
         )
         return {"status": "duplicate", "transfer_id": esistente.get("id"), **associazione}
 
+    text = await asyncio.to_thread(read_pdf_bytes, content)
     parsed = extract_transfers_from_text(text, filename=filename)[0]
     if accredito_non_registrabile(parsed):
         return _esito_non_registrato(parsed)
@@ -508,7 +506,6 @@ async def importa_pdf_bonifico(
         "source_path": source_path,
         "document_hash": digest,
         "pdf_data": base64.b64encode(content).decode("ascii"),
-        **reference_from_download(content, source_context or {}),
         "created_at": now,
         "riconciliato": False,
         # PDF letto, nessuna prova bancaria: lo stato nasce esplicito.

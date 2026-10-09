@@ -1,0 +1,43 @@
+import { describe, expect, it } from 'vitest';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const here = path.dirname(fileURLToPath(import.meta.url));
+const source = fs.readFileSync(path.join(here, 'NoleggioAuto.jsx'), 'utf8');
+
+describe('confini operativi della pagina Noleggio', () => {
+  it('separa pagamenti bancari e associazione fattura-veicolo', () => {
+    expect(source).toContain('AssociaMovimentoBanca');
+    expect(source).toContain('Verifica pagamento');
+    expect(source).not.toContain('/riconciliazione/banca?ambito=noleggio');
+    expect(source).toContain('/associa-veicolo');
+    expect(source).toContain('questa relazione non modifica lo stato del pagamento');
+    expect(source).not.toContain('🔗 Associa');
+  });
+
+  it('apre tutti i casi dei controlli senza troncare la lista', () => {
+    expect(source).toContain("limit: '50'");
+    expect(source).toContain('offset: String(currentItems.length)');
+    expect(source).toContain('Mostra altri');
+    expect(source).toContain('Impossibile caricare tutti i casi');
+    expect(source).toContain('La conferma resta sempre manuale.');
+  });
+
+  it('apre il verbale dalla tabella del veicolo: numero cliccabile e colonna Vedi', () => {
+    expect(source).toContain('const apriVerbale = (numero) => navigate(`/verbali-noleggio/${encodeURIComponent(String(numero))}`)');
+    expect(source).toContain('data-testid={`apri-verbale-${numero}`}');
+    expect(source).toContain('data-testid={`verbale-non-in-archivio-${numero}`}');
+    expect(source).toContain('data-testid={`vedi-verbale-${numero}`}');
+  });
+
+  it('rende cliccabili le fatture delle tabelle del veicolo', () => {
+    expect(source).toContain('data-testid={`apri-fattura-${s.fattura_id}`}');
+    expect(source).toContain('data-testid={`vedi-fattura-${s.fattura_id}`}');
+  });
+
+  it('apre il verbale vero quando la fattura cita il Registro n. del Comune', () => {
+    expect(source).toContain('const verbaleVero = (riga, numero) => riga?.verbali_risolti?.[numero] || numero;');
+    expect(source).toContain('apriVerbale(verbaleVero(s, numero))');
+  });
+});

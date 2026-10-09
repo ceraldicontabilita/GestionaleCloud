@@ -14,7 +14,6 @@ stato rimosso: la pulizia duplicati canonica gira già in automatico ogni
 from fastapi import APIRouter, HTTPException, UploadFile, File, Query, Body, Depends
 from typing import Dict, Any, List, Optional
 from datetime import datetime, timedelta, timezone
-from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 import uuid
 import logging
 import zipfile
@@ -25,7 +24,6 @@ import hashlib
 from app.services.archivio_documenti_memoria import DuplicateRecordError
 
 from app.constants.tipi_documento import TIPI_NOTA_CREDITO
-from app.constants.fattura_attiva import FILTRO_FATTURA_ATTIVA, fattura_attiva
 from app.database import Database, Collections
 from app.utils.id_fattura import filtro_id
 from app.engines.prima_nota_engine import (
@@ -37,8 +35,6 @@ from app.utils.error_handler import handle_errors
 from app.utils.iban import valida_iban
 from app.utils.ruoli import richiedi_admin
 from app.services.supplier_data_quality import apply_supplier_quality
-from app.services.fatture_canonico import invoice_key as generate_invoice_key
-from app.services.stato_pagamento_fattura import e_annullata, e_pagata
 
 logger = logging.getLogger(__name__)
 
@@ -162,116 +158,52 @@ async def _collega_nota_credito(db, invoice: Dict[str, Any], session=None) -> Op
     collegamento automatico, rischio di doppio conteggio nello scadenzario.
     """
     if (invoice.get("tipo_documento") or "").upper() not in NOTE_CREDITO_TIPI_DOCUMENTO:
-        # Recupera anche le NC arrivate prima dell'originale attraverso lo
-        # stesso motore, senza un job/writer nel browser. Ogni candidata
-        # deve superare tutte le verifiche del ramo NC qui sotto.
-        if not fattura_attiva(invoice) or not invoice.get("id") or not invoice.get("supplier_vat") or not invoice.get("invoice_number"):
-            return None
-        note_in_attesa = await db[Collections.INVOICES].find({
-            **FILTRO_FATTURA_ATTIVA,
-            "supplier_vat": invoice["supplier_vat"],
-            "tipo_documento": {"$in": list(NOTE_CREDITO_TIPI_DOCUMENTO)},
-            "dati_fatture_collegate": {"$elemMatch": {"id_documento": invoice["invoice_number"]}},
-            "$or": [
-                {"fattura_collegata_id": {"$exists": False}},
-                {"fattura_collegata_id": None},
-                {"fattura_collegata_id": ""},
-            ],
-        }, session=session).to_list(None)
-        recuperate = False
-        for nota in note_in_attesa:
-            if await _collega_nota_credito(db, nota, session=session):
-                recuperate = True
-        if not recuperate:
-            return None
-        originale = await db[Collections.INVOICES].find_one(filtro_id(invoice["id"]), session=session)
-        return {campo: originale[campo] for campo in ("note_credito_collegate", "importo_netto") if campo in originale}
+        return None
 
     riferimenti = invoice.get("dati_fatture_collegate") or []
     if not riferimenti:
         return None
 
-    # Le regole della pagina Ceraldi recuperata valgono nel motore unico:
-    # nessun aggancio ambiguo, nessun ricalcolo automatico di una fattura
-    # gia' pagata e rispetto dell'esclusione manuale [NC-NO-AUTO].
-    note_operatore = "\n".join(str(invoice.get(campo) or "") for campo in ("notes", "note"))
-    if not fattura_attiva(invoice) or "[NC-NO-AUTO]" in note_operatore:
-        return None
-    supplier_vat = str(invoice.get("supplier_vat") or "").strip()
-    if not supplier_vat:
-        return None
-    candidati = {}
+    supplier_vat = invoice.get("supplier_vat", "")
+    originale = None
     for rif in riferimenti:
-        if not isinstance(rif, dict):
-            continue
         id_doc = (rif or {}).get("id_documento")
         if not id_doc:
             continue
-        trovate = await db[Collections.INVOICES].find(
+        originale = await db[Collections.INVOICES].find_one(
             {
-                **FILTRO_FATTURA_ATTIVA,
                 "invoice_number": id_doc,
                 "supplier_vat": supplier_vat,
                 "tipo_documento": {"$nin": list(NOTE_CREDITO_TIPI_DOCUMENTO)},
             },
             session=session,
-        ).to_list(2)
-        for candidata in trovate:
-            if candidata.get("id") is None:
-                logger.warning("Nota di credito %s: fattura candidata senza identificatore", invoice.get("id"))
-                return None
-            if str(candidata.get("id")) != str(invoice.get("id")):
-                candidati[str(candidata["id"])] = candidata
-        if len(candidati) > 1:
-            logger.warning("Nota di credito %s: riferimento ambiguo, nessun aggancio automatico", invoice.get("id"))
-            return None
+        )
+        if originale:
+            break
 
-    if len(candidati) != 1:
-        return None
-    originale = next(iter(candidati.values()))
-    if e_pagata(originale) or e_annullata(originale):
-        return None
-    collegata = invoice.get("fattura_collegata_id")
-    if collegata is not None and str(collegata) != str(originale["id"]):
+    if not originale:
         return None
 
-    def importo_documentato(documento):
-        valore = documento.get("total_amount")
-        if valore is None or valore == "":
-            raise InvalidOperation("Importo documento mancante")
-        risultato = Decimal(str(valore))
-        if not risultato.is_finite():
-            raise InvalidOperation("Importo documento non finito")
-        return risultato
-
-    try:
-        importo_nc = abs(importo_documentato(invoice))
-        importo_originale = importo_documentato(originale)
-    except (InvalidOperation, ValueError, TypeError):
-        logger.warning("Nota di credito %s: importi non validi, nessun aggancio automatico", invoice.get("id"))
-        return None
+    importo_nc = float(invoice.get("total_amount") or 0)
+    importo_originale = float(originale.get("total_amount") or 0)
     note_credito_collegate = list(originale.get("note_credito_collegate") or [])
-    if not any(str(nc_id) == str(invoice["id"]) for nc_id in note_credito_collegate):
+    if invoice["id"] not in note_credito_collegate:
         note_credito_collegate.append(invoice["id"])
 
     # Somma tutte le NC collegate a questo originale (non solo quella corrente)
     # per calcolare il netto corretto anche con più note di credito parziali.
-    totale_nc = Decimal("0")
+    totale_nc = 0.0
     for nc_id in note_credito_collegate:
-        if str(nc_id) == str(invoice["id"]):
+        if nc_id == invoice["id"]:
             totale_nc += importo_nc
             continue
-        nc_doc = await db[Collections.INVOICES].find_one(filtro_id(nc_id), {"total_amount": 1}, session=session)
-        try:
-            if not nc_doc:
-                raise InvalidOperation("Nota di credito collegata assente")
-            totale_nc += abs(importo_documentato(nc_doc))
-        except (InvalidOperation, ValueError, TypeError):
-            logger.warning("Nota di credito %s: importo della nota collegata %s assente o non valido", invoice.get("id"), nc_id)
-            return None
+        nc_doc = await db[Collections.INVOICES].find_one(
+            {"id": nc_id}, {"total_amount": 1}, session=session
+        )
+        if nc_doc:
+            totale_nc += float(nc_doc.get("total_amount") or 0)
 
-    # Stringa decimale al confine JSON: nessun arrotondamento binario.
-    importo_netto = str((importo_originale - totale_nc).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
+    importo_netto = round(importo_originale - totale_nc, 2)
 
     await db[Collections.INVOICES].update_one(
         {"id": originale["id"]},
@@ -957,9 +889,6 @@ async def auto_registra_prima_nota(db, invoice: Dict[str, Any], metodo_pagamento
     """
     from app.services.stato_pagamento_fattura import e_pagata
 
-    if invoice.get("verifica_ai") == "in_attesa":
-        return None
-
     # Un piano XML a piu' rate non e' una prova di pagamento: anche per un
     # fornitore configurato "cassa" resta provvisorio finche' ogni quota non
     # viene confermata con la relativa evidenza.
@@ -1237,12 +1166,7 @@ async def riprocessa_estratto_dopo_import_fattura(
             {"importo": {"$gte": -importo - 0.004, "$lte": -importo + 0.004}},
         ])
     if numero:
-        # "41" dentro un CRO/IBAN o "1410" non e' la fattura 41. La
-        # ricerca per sottostringa faceva ripassare decine di operazioni
-        # estranee per ogni XML, fermando anche i PDF successivi in coda.
-        # Restano validi prefissi FT41, suffissi 41/A e bonifici cumulativi;
-        # il motore canonico verifica comunque identita' e importi.
-        numero_regex = rf"(?<!\d){re.escape(numero)}(?!\d)"
+        numero_regex = re.escape(numero)
         alternative.extend([
             {"descrizione": {"$regex": numero_regex, "$options": "i"}},
             {"descrizione_originale": {"$regex": numero_regex, "$options": "i"}},
@@ -2004,6 +1928,12 @@ async def riconcilia_con_estratto_conto(db, importo: float, data_fattura: str, f
         return result
 
 
+def generate_invoice_key(invoice_number: str, supplier_vat: str, invoice_date: str) -> str:
+    """Genera chiave univoca per fattura: numero_piva_data"""
+    key = f"{invoice_number}_{supplier_vat}_{invoice_date}"
+    return key.replace(" ", "").replace("/", "-").upper()
+
+
 def extract_xml_from_zip(zip_content: bytes, zip_filename: str = "archive.zip") -> List[Dict[str, Any]]:
     """
     Estrae tutti i file XML da un archivio ZIP.
@@ -2090,7 +2020,6 @@ async def upload_fattura_xml(file: UploadFile = File(...)) -> Dict[str, Any]:
 
 
 _SOURCE_METADATA_FIELDS = (
-    "documento_inbox_id",
     "source_document_id",
     "drive_file_id",
     "source_parent_id",
@@ -2568,7 +2497,6 @@ async def import_parsed_invoice(db, parsed: Dict[str, Any], filename: str, sourc
                 )
             return {
                 "status": "duplicate", "filename": filename,
-                "id": existing_invoice.get("id"),
                 "invoice_number": parsed.get("invoice_number"),
                 "derivati_incompleti": existing_invoice.get("stato_derivati") in {
                     "da_ricalcolare", "errore",
@@ -2657,9 +2585,6 @@ async def import_parsed_invoice(db, parsed: Dict[str, Any], filename: str, sourc
         **_source_metadata_fields(source_metadata, base_existing),
         **(campi_collisione_identita(identity_collision_ids) if identity_collision_ids else {}),
     }
-    if parsed.get("verifica_ai") == "in_attesa":
-        invoice["verifica_ai"] = "in_attesa"
-        invoice["stato_derivati"] = "in_attesa_verifica_ai"
     if existing_invoice_id:
         await db[Collections.INVOICES].update_one(
             {"id": existing_invoice_id}, {"$set": invoice}
@@ -2667,11 +2592,6 @@ async def import_parsed_invoice(db, parsed: Dict[str, Any], filename: str, sourc
     else:
         await db[Collections.INVOICES].insert_one(invoice.copy())
     invoice.pop("_id", None)
-
-    if invoice.get("verifica_ai") == "in_attesa":
-        return {"status": "imported", "filename": filename, "id": invoice["id"],
-                "invoice_number": invoice.get("invoice_number"), "supplier": invoice.get("supplier_name"),
-                "stato_derivati": "in_attesa_verifica_ai"}
 
     # Anche da qui (Drive, cartella unica) la ritenuta della parcella entra
     # nella proiezione Ritenute: prima la alimentava solo l'upload manuale.
@@ -2826,9 +2746,12 @@ async def process_fattura_estera_pdf(db, pdf_base64: str, filename: str,
     """Fattura ESTERA arrivata come PDF via email (mai XML: lo SDI è solo
     italiano). Estrae i dati con l'AI già usata per gli altri documenti
     (`document_ai_extractor`, stessa ANTHROPIC_API_KEY già configurata) e la
-    importa con la pipeline condivisa `import_parsed_invoice`: stessa
-    deduplica e stesso fornitore, ma i derivati contabili attendono la
-    conferma esplicita dei dati nella pagina di verifica.
+    importa con la pipeline condivisa `import_parsed_invoice` — stessa
+    dedup, stesso fornitore, stessa prima nota provvisoria — così il
+    matching PayPal (`auto_associa_transazioni`) e bonifico
+    (`riconcilia_movimenti_banca`), e l'alert di scadenza
+    `FAT_DA_PAGARE_SCADUTA` già esistenti la prendono in carico da soli,
+    senza nessun codice nuovo lato riconciliazione.
 
     Se l'estrazione fallisce o non legge né numero né importo, non crea
     nulla: meglio lasciare il PDF solo archiviato (comportamento di prima)
@@ -2840,43 +2763,6 @@ async def process_fattura_estera_pdf(db, pdf_base64: str, filename: str,
     conferma o corregge i dati letti (scelta utente 14/07/2026, per avere
     un rating di affidabilità della lettura AI per fornitore).
     """
-    # Conserva la prova prima dell'estrazione: anche un errore del lettore
-    # deve lasciare l'originale consultabile, non una fattura senza PDF.
-    import base64
-    from app.utils.upload_validation import verifica_pdf_reale
-
-    content = base64.b64decode(pdf_base64, validate=True)
-    verifica_pdf_reale(content, filename)
-    digest = hashlib.sha256(content).hexdigest()
-    existing = await db[Collections.INVOICES].find_one(
-        {"file_hash": digest, "entity_status": {"$ne": "deleted"}, "status": {"$ne": "deleted"}},
-        {"_id": 0, "id": 1, "invoice_number": 1, "supplier_name": 1},
-    )
-    if not documento_inbox_id:
-        inbox = await db["documents_inbox"].find_one({"sha256": digest}, {"_id": 0, "id": 1})
-        documento_inbox_id = (inbox or {}).get("id") or f"fattura-pdf-{digest}"
-        if not inbox:
-            await db["documents_inbox"].insert_one({
-                "id": documento_inbox_id, "filename": filename, "sha256": digest,
-                "pdf_data": pdf_base64, "category": "fattura", "status": "da_verificare",
-                "processed": False, "source": source,
-                "created_at": datetime.now(timezone.utc).isoformat(),
-            })
-        else:
-            # Ripristina un payload mancante anche sulla stessa inbox. Il
-            # deposito canonico lo conserva su Drive; non crea una fattura.
-            await db["documents_inbox"].update_one(
-                {"id": documento_inbox_id}, {"$set": {"pdf_data": pdf_base64}},
-            )
-    if existing:
-        await db[Collections.INVOICES].update_one(
-            {"id": existing["id"]}, {"$set": {"documento_inbox_id": documento_inbox_id}},
-        )
-        await db["documents_inbox"].update_one(
-            {"id": documento_inbox_id}, {"$set": {"invoice_id": existing["id"]}},
-        )
-        return {"status": "duplicate", "filename": filename, "id": existing.get("id"),
-                "invoice_number": existing.get("invoice_number"), "supplier": existing.get("supplier_name")}
     try:
         from app.services.document_ai_extractor import process_document_from_base64
         result = await process_document_from_base64(pdf_base64, filename, document_type="fattura")
@@ -2890,7 +2776,6 @@ async def process_fattura_estera_pdf(db, pdf_base64: str, filename: str,
                 "error": structured.get("error") or (result or {}).get("error") or "estrazione non riuscita"}
 
     parsed = _ai_fattura_a_parsed(structured.get("data") or {})
-    parsed["verifica_ai"] = "in_attesa"
 
     if not parsed.get("invoice_number") and not parsed.get("total_amount"):
         return {"status": "dati_insufficienti", "filename": filename}
@@ -2902,13 +2787,7 @@ async def process_fattura_estera_pdf(db, pdf_base64: str, filename: str,
                 "error": "fornitore italiano: la fattura arriva come XML dallo SDI"}
 
     esito = await import_parsed_invoice(db, parsed, filename, source, xml_raw=None,
-                                         piva_validator=_piva_estera_plausibile,
-                                         source_metadata={"file_hash": digest, "documento_inbox_id": documento_inbox_id})
-
-    if esito.get("id"):
-        await db["documents_inbox"].update_one({"id": documento_inbox_id}, {"$set": {
-            "invoice_id": esito["id"], "processed": True, "status": "elaborato",
-        }})
+                                         piva_validator=_piva_estera_plausibile)
 
     if esito.get("status") == "imported":
         try:

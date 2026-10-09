@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { saveToken, saveRuolo, setGateOk, prendiPaginaRichiesta } from "../../auth";
 import * as authLotti from "../../auth";
 import axios from "axios";
@@ -6,9 +6,8 @@ import { LayoutDashboard, Lock, LogOut, Thermometer, CalendarClock, ShieldCheck 
 import { cambiaOperatore } from "./tablet/BarraReparto";
 import { apiError } from "../../utils/apiError";
 import { allineaSessioneTitolare, getTabletSession, moveTabletSessionTo, repartiAmmessi, saveTabletSession, sessioneTitolareAttiva } from "../../utils/tabletSession";
-import { avviaPollingVisibile } from "../../utils/visiblePolling";
 
-import { API } from "../../utils/constants";
+const API = process.env.REACT_APP_LOTTI_BACKEND_URL + "/api";
 
 // Card del tablet.
 // REGOLA ENZO 25/07/2026: «il dipendente deve solo produrre e vedere le
@@ -52,8 +51,8 @@ function StatoGiorno({ attivo }) {
       });
     };
     leggi();
-    const fermaPolling = avviaPollingVisibile(leggi, 5 * 60 * 1000);
-    return () => { vivo = false; fermaPolling(); };
+    const t = setInterval(leggi, 5 * 60 * 1000);
+    return () => { vivo = false; clearInterval(t); };
   }, [attivo]);
   if (!attivo || !stato) return null;
   const nd = "dato non disponibile";
@@ -72,26 +71,12 @@ export const REPARTI_SOLO_ADMIN = REPARTI.filter(r => r.soloAdmin).map(r => r.id
 
 const buzz = (ms = 12) => { try { navigator.vibrate && navigator.vibrate(ms); } catch {} };
 
-function PinKeypad({ titolo, sottotitolo, colore = "#5b7a6b", onSuccess, onCancel, onTitolare, maxLen = 6 }) {
+function PinKeypad({ titolo, sottotitolo, colore = "#5b7a6b", onSuccess, onCancel, maxLen = 6 }) {
   const [digits, setDigits] = useState("");
   const [errore, setErrore] = useState("");
   const [loading, setLoading] = useState(false);
   const [okNome, setOkNome] = useState(null);
   const [avvio, setAvvio] = useState("");
-  const richiesta = useRef(null);
-  const ingresso = useRef(null);
-  const [bloccoFino, setBloccoFino] = useState(0);
-  const [adesso, setAdesso] = useState(Date.now());
-  const residuo = Math.max(0, Math.ceil((bloccoFino - adesso) / 1000));
-  useEffect(() => () => {
-    richiesta.current?.abort();
-    clearTimeout(ingresso.current);
-  }, []);
-  useEffect(() => {
-    if (!bloccoFino) return undefined;
-    const timer = setInterval(() => setAdesso(Date.now()), 250);
-    return () => clearInterval(timer);
-  }, [bloccoFino]);
 
   const reset = () => {
     setDigits("");
@@ -101,40 +86,48 @@ function PinKeypad({ titolo, sottotitolo, colore = "#5b7a6b", onSuccess, onCance
   };
 
   const conferma = async () => {
-    if (richiesta.current || loading || Date.now() < bloccoFino || digits.length < 4) return;
-    const controller = new AbortController();
-    richiesta.current = controller;
+    if (loading || digits.length < 4) return;
     setLoading(true);
     setErrore("");
-    setBloccoFino(0);
     setAvvio("");
     const pin = digits;
 
-    try {
-      const res = await axios.post(`${API}/tablet-operatori/login`, { pin }, { timeout: 15000, signal: controller.signal });
-      if (controller.signal.aborted) return;
-      const op = res.data?.operatore;
-      if (!op) throw new Error("Operatore non valido");
-      if (res.data?.token) saveToken(res.data.token);
-      buzz(20);
-      setOkNome(op?.nome || "");
-      ingresso.current = setTimeout(() => onSuccess(op), 180);
-    } catch (err) {
-      if (controller.signal.aborted) return;
-      if (err?.response?.status === 429) {
-        const secondi = Number(err.response.headers?.["retry-after"]) || Number(String(err.response.data?.detail || "").match(/(\d+)s/)?.[1]) || 300;
-        setBloccoFino(Date.now() + secondi * 1000);
-        setAdesso(Date.now());
+    const start = Date.now();
+    const MAX_WAIT = 150000; // copre anche un risveglio lento di Render
+    let tentativo = 0;
+    while (true) {
+      tentativo += 1;
+      try {
+        const res = await axios.post(`${API}/tablet-operatori/login`, { pin }, { timeout: 15000 });
+        const op = res.data?.operatore;
+        if (!op) throw new Error("Operatore non valido");
+        if (res.data?.token) saveToken(res.data.token);
+        buzz(20);
+        setOkNome(op?.nome || "");
+        setTimeout(() => onSuccess(op), 180);
+        return;
+      } catch (err) {
+        const status = err?.response?.status;
+        if (status === 401 || status === 403) {
+          buzz([40, 60, 40]);
+          setErrore(apiError(err, "PIN non riconosciuto"));
+          setDigits("");
+          setLoading(false);
+          return;
+        }
+        const retryable = !err?.response || [502, 503, 504].includes(status) || err?.code === "ECONNABORTED";
+        if (retryable && Date.now() - start < MAX_WAIT) {
+          const secs = Math.round((Date.now() - start) / 1000);
+          setAvvio(`Avvio del server in corso… l'accesso parte da solo, attendi (${secs}s)`);
+          await new Promise((r) => setTimeout(r, 2500));
+          continue;
+        }
+        buzz([40, 60, 40]);
+        setAvvio("");
+        setErrore(apiError(err, "Server non raggiungibile, riprova tra poco"));
+        setLoading(false);
+        return;
       }
-      buzz([40, 60, 40]);
-      setAvvio("");
-      setErrore(apiError(err, err?.code === "ECONNABORTED"
-        ? "Verifica scaduta dopo 15 secondi: controlla la connessione e riprova"
-        : "PIN non riconosciuto"));
-      setDigits("");
-      setLoading(false);
-    } finally {
-      if (richiesta.current === controller) richiesta.current = null;
     }
   };
 
@@ -146,13 +139,13 @@ function PinKeypad({ titolo, sottotitolo, colore = "#5b7a6b", onSuccess, onCance
   }, [digits, loading, maxLen]);
 
   const addDigit = (d) => {
-    if (loading || residuo || digits.length >= maxLen) return;
+    if (loading || digits.length >= maxLen) return;
     buzz(8);
     setDigits((p) => p + d);
     setErrore("");
   };
-  const delDigit = () => { if (!loading && !residuo) { setDigits((d) => d.slice(0, -1)); setErrore(""); } };
-  const annulla = () => { richiesta.current?.abort(); clearTimeout(ingresso.current); reset(); onCancel?.(); };
+  const delDigit = () => { if (!loading) { setDigits((d) => d.slice(0, -1)); setErrore(""); } };
+  const annulla = () => { reset(); onCancel?.(); };
   const KEYS = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "", "0", "⌫"];
 
   return (
@@ -175,16 +168,15 @@ function PinKeypad({ titolo, sottotitolo, colore = "#5b7a6b", onSuccess, onCance
               {Array.from({ length: maxLen }).map((_, i) => <div key={i} style={{ width: 15, height: 15, borderRadius: 99, background: i < digits.length ? colore : "#e6e0d4", transform: i < digits.length ? "scale(1.1)" : "scale(1)", boxShadow: i < digits.length ? `0 0 0 4px ${colore}22` : "none" }} />)}
             </div>
             {avvio && !errore && <div style={{ background: "#e2efe8", border: "1px solid #cfe0d5", borderRadius: 10, padding: "10px 14px", marginBottom: 16, textAlign: "center", fontSize: 13, fontWeight: 700, color: "#234d3d" }}>{avvio}</div>}
-            {errore && <div role="status" style={{ background: "#fbe6e2", border: "1px solid #f3cfc8", borderRadius: 10, padding: "10px 14px", marginBottom: 16, textAlign: "center", fontSize: 13, fontWeight: 700, color: "#8f3829" }}>{bloccoFino ? (residuo ? `Troppi tentativi. Riprova tra ${residuo} secondi` : "Ora puoi riprovare") : errore}</div>}
+            {errore && <div style={{ background: "#fbe6e2", border: "1px solid #f3cfc8", borderRadius: 10, padding: "10px 14px", marginBottom: 16, textAlign: "center", fontSize: 13, fontWeight: 700, color: "#8f3829" }}>{errore}</div>}
             <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 10 }}>
               {KEYS.map((k, i) => k === "" ? <div key={i} /> : <button key={i} onClick={() => k === "⌫" ? delDigit() : addDigit(k)} disabled={loading} style={{ height: 62, borderRadius: 14, border: "none", background: k === "⌫" ? "#f0ebe0" : "#f7f4ec", color: "#2a3329", fontSize: k === "⌫" ? 22 : 25, fontWeight: 700, cursor: loading ? "wait" : "pointer", opacity: loading ? .6 : 1 }}>{k}</button>)}
             </div>
             <div style={{ display: "flex", gap: 10, marginTop: 18 }}>
               <button onClick={annulla} style={{ flex: 1, padding: 13, border: "1.5px solid #e6e0d4", borderRadius: 14, background: "#fffefb", fontSize: 14, fontWeight: 700, color: "#6b7669", cursor: "pointer" }}>Annulla</button>
-              <button onClick={() => conferma()} disabled={loading || residuo > 0 || digits.length < 4} style={{ flex: 2, padding: 13, border: "none", borderRadius: 14, background: colore, color: "#fff", fontSize: 14, fontWeight: 800, cursor: loading ? "wait" : "pointer", opacity: (loading || residuo || digits.length < 4) ? .45 : 1 }}>{loading ? "Verifica..." : "Conferma"}</button>
+              <button onClick={() => conferma()} disabled={loading || digits.length < 4} style={{ flex: 2, padding: 13, border: "none", borderRadius: 14, background: colore, color: "#fff", fontSize: 14, fontWeight: 800, cursor: loading ? "wait" : "pointer", opacity: (loading || digits.length < 4) ? .45 : 1 }}>{loading ? "Verifica..." : "Conferma"}</button>
             </div>
             <p style={{ margin: "10px 0 0", textAlign: "center", color: "#8a8f86", fontSize: 11, fontWeight: 600 }}>4 cifre: premi Conferma. 6 cifre: verifica automatica.</p>
-            <button onClick={() => { annulla(); onTitolare?.(); }} style={{ width: "100%", minHeight: 44, marginTop: 8 }}>Sono il titolare: entra dal Gestionale</button>
           </>
         )}
       </div>
@@ -224,7 +216,6 @@ export default function TabletHome({ onEntra, preselectReparto, hashRichiesto = 
       return;
     }
     allineaSessioneTitolare(titolare, rep.id);
-    setRepSel(null);
     window.location.hash = `tablet/${rep.id}`;
     window.dispatchEvent(new Event("tablet-auth"));
     onEntra?.(rep.id, titolare);
@@ -248,8 +239,8 @@ export default function TabletHome({ onEntra, preselectReparto, hashRichiesto = 
       } catch { /* il badge si aggiorna alla prossima lettura */ }
     };
     aggiorna();
-    const fermaPolling = avviaPollingVisibile(aggiorna, 15000);
-    return () => { attivo = false; fermaPolling(); };
+    const timer = setInterval(aggiorna, 15000);
+    return () => { attivo = false; clearInterval(timer); };
   }, [sessione?.ruolo]);
 
   // Il ruolo di Lotti (HACCP, caporeparto) si rilegge dal server a ogni
@@ -356,11 +347,6 @@ export default function TabletHome({ onEntra, preselectReparto, hashRichiesto = 
       window.location.hash = rep.id === "ricette" ? "ricette" : `tablet/${rep.id}`;
       return;
     }
-    if (sessioneTitolareAttiva()) {
-      window.location.hash = rep.id === "ricette" ? "ricette" : `tablet/${rep.id}`;
-      onEntra?.(rep.id, null);
-      return;
-    }
     setRepSel(rep.id);
   };
 
@@ -429,7 +415,6 @@ export default function TabletHome({ onEntra, preselectReparto, hashRichiesto = 
             maxLen={6}
             onSuccess={handleSuccess}
             onCancel={() => setRepSel(null)}
-            onTitolare={() => apriRiservata(rep)}
           />
         );
       })()}

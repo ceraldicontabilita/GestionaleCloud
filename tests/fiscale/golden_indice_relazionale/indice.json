@@ -1,0 +1,63 @@
+{
+ "colonne": [
+  "relation_key",
+  "origine_tipo",
+  "origine_id",
+  "relazione",
+  "destinazione_tipo",
+  "destinazione_id",
+  "stato",
+  "regola",
+  "importo",
+  "prove",
+  "creata",
+  "aggiornata"
+ ],
+ "relazioni": [
+  {
+   "aggiornata": "2026-09-15T08:30:00+00:00",
+   "creata": "2026-09-15T08:30:00+00:00",
+   "destinazione_id": "INV-A",
+   "destinazione_tipo": "invoice",
+   "importo": "1234.56",
+   "motivo": null,
+   "origine_id": "MOV-7",
+   "origine_tipo": "bank_movement",
+   "prove": "cro=CRO-0001",
+   "regola": "cro",
+   "relation_key": "bank_movement|MOV-7|proves_invoice_payment|invoice|INV-A",
+   "relazione": "proves_invoice_payment",
+   "stato": "DA_VERIFICARE"
+  },
+  {
+   "aggiornata": "2026-09-30T23:59:59+00:00",
+   "creata": "2026-09-30T23:59:59+00:00",
+   "destinazione_id": "DRIVE-002",
+   "destinazione_tipo": "documento",
+   "importo": null,
+   "motivo": null,
+   "origine_id": "=CMD",
+   "origine_tipo": "f24_receipt",
+   "prove": "",
+   "regola": "collegamento_protocollo",
+   "relation_key": "f24_receipt|=CMD|has_source_document|documento|DRIVE-002",
+   "relazione": "has_source_document",
+   "stato": "REVOCATA"
+  },
+  {
+   "aggiornata": "2026-09-01T10:00:00+00:00",
+   "creata": "2026-09-01T10:00:00+00:00",
+   "destinazione_id": "DRIVE-001",
+   "destinazione_tipo": "documento",
+   "importo": null,
+   "motivo": null,
+   "origine_id": "INV-A",
+   "origine_tipo": "invoice",
+   "prove": "drive_file_id=DRIVE-001; md5=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "regola": "drive_file_id",
+   "relation_key": "invoice|INV-A|has_source_document|documento|DRIVE-001",
+   "relazione": "has_source_document",
+   "stato": "CONFERMATA"
+  }
+ ]
+}

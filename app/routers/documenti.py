@@ -13,6 +13,7 @@ from pathlib import Path
 import asyncio
 import re
 from decimal import Decimal, InvalidOperation
+import base64
 import hashlib
 import uuid
 
@@ -1491,6 +1492,270 @@ async def sync_estratti_bnl() -> Dict[str, Any]:
     }
 
 
+@router.post("/ricategorizza-documenti")
+@handle_errors
+async def ricategorizza_documenti() -> Dict[str, Any]:
+    """
+    Ricategorizza automaticamente i documenti nella categoria 'altro'
+    che possono essere riconosciuti come altri tipi.
+    """
+    db = Database.get_db()
+
+    # Trova documenti in "altro" non processati
+    docs = await db["documents_inbox"].find(
+        {"category": "altro", "processed": {"$ne": True}},
+        {"_id": 0}
+    ).to_list(500)
+
+    if not docs:
+        return {
+            "success": True,
+            "message": "Nessun documento da ricategorizzare",
+            "ricategorizzati": 0
+        }
+
+    ricategorizzati = []
+
+    for doc in docs:
+        filename = doc.get("filename", "").lower()
+        new_category = None
+
+        # Riconosci BNL
+        if "bnl" in filename:
+            new_category = "estratto_conto"
+        # Riconosci estratti conto
+        elif "estratto" in filename or "conto" in filename:
+            new_category = "estratto_conto"
+        # Riconosci buste paga
+        elif "paga" in filename or "cedolino" in filename or "lul" in filename:
+            new_category = "busta_paga"
+        # Riconosci F24
+        elif "f24" in filename:
+            new_category = "f24"
+        # Riconosci PayPal
+        elif "paypal" in filename:
+            new_category = "estratto_conto"
+
+        if new_category:
+            await db["documents_inbox"].update_one(
+                {"id": doc["id"]},
+                {"$set": {
+                    "category": new_category,
+                    "category_label": {
+                        "estratto_conto": "Estratti Conto",
+                        "busta_paga": "Buste Paga",
+                        "f24": "F24",
+                        "fattura": "Fatture"
+                    }.get(new_category, new_category.replace("_", " ").title()),
+                    "ricategorizzato_at": datetime.now(timezone.utc).isoformat()
+                }}
+            )
+            ricategorizzati.append({
+                "file": doc.get("filename"),
+                "da": "altro",
+                "a": new_category
+            })
+
+    return {
+        "success": True,
+        "ricategorizzati": len(ricategorizzati),
+        "dettagli": ricategorizzati
+    }
+
+
+@router.post("/processa-tutti")
+@handle_errors
+async def processa_tutti_documenti() -> Dict[str, Any]:
+    """
+    Endpoint combinato che:
+    1. Ricategorizza i documenti
+    2. Processa estratti conto Nexi
+    3. Processa estratti conto BNL
+
+    NOTA (audit-codice 04/09/2026): il passo "buste paga" chiamava una
+    funzione `sync_buste_paga()` mai definita in questo file (NameError
+    sempre catturato dal try/except, quindi l'endpoint "riusciva" ma non
+    processava mai nulla). I cedolini hanno un solo sistema di ingestione
+    canonico (cartella unica Drive / email_download -> cedolini_manager ->
+    salari_unificati_v2, vedi CLAUDE.md "Cedolini: un solo sistema"): questo
+    endpoint combinato non deve duplicarlo con una chiamata inventata.
+    """
+    risultati = {
+        "ricategorizzazione": None,
+        "estratti_nexi": None,
+        "estratti_bnl": None
+    }
+
+    try:
+        # 1. Ricategorizza
+        risultati["ricategorizzazione"] = await ricategorizza_documenti()
+    except Exception as e:
+        risultati["ricategorizzazione"] = {"error": str(e)}
+
+    try:
+        # 2. Estratti Nexi
+        risultati["estratti_nexi"] = await sync_estratti_conto()
+    except Exception as e:
+        risultati["estratti_nexi"] = {"error": str(e)}
+
+    try:
+        # 3. Estratti BNL
+        risultati["estratti_bnl"] = await sync_estratti_bnl()
+    except Exception as e:
+        risultati["estratti_bnl"] = {"error": str(e)}
+
+    return {
+        "success": True,
+        "risultati": risultati,
+        "sommario": {
+            "ricategorizzati": risultati.get("ricategorizzazione", {}).get("ricategorizzati", 0),
+            "estratti_nexi_processati": risultati.get("estratti_nexi", {}).get("processati", 0),
+            "estratti_bnl_processati": risultati.get("estratti_bnl", {}).get("processati", 0)
+        }
+    }
+
+
+
+@router.post("/reimporta-da-filesystem")
+@handle_errors
+async def reimporta_documenti_da_filesystem(
+    force: bool = Query(False, description="Forza reimportazione anche se esistenti nel DB"),
+    _admin: Dict[str, Any] = Depends(get_current_admin_user),
+) -> Dict[str, Any]:
+    """
+    Scansiona la cartella /app/documents e reimporta tutti i documenti nel database.
+    Utile quando il database è stato resettato ma i file sono ancora su disco.
+    """
+    import uuid
+
+    db = Database.get_db()
+
+    # DEPRECATO: Questo endpoint è per migrazione legacy.
+    # Architettura Drive/Supabase: legge file da disco e li salva come Base64 in Drive/Supabase.
+
+    # Categorie e sottocartelle
+    category_dirs = {
+        "Buste Paga": "busta_paga",
+        "Estratti Conto": "estratto_conto",
+        "F24": "f24",
+        "Fatture": "fattura",
+        "Altri": "altro"
+    }
+
+    importati = []
+    saltati = []
+    errori = []
+
+    base_path = Path("/tmp/documents")
+
+    for dir_name, category in category_dirs.items():
+        dir_path = base_path / dir_name
+        if not dir_path.exists():
+            continue
+
+        for file_path in dir_path.iterdir():
+            if not file_path.is_file():
+                continue
+
+            # Salta file di sistema
+            if file_path.name.startswith('.'):
+                continue
+
+            filename = file_path.name
+            filepath = str(file_path)
+
+            # Architettura Drive/Supabase: leggi file e codifica in Base64
+            try:
+                with open(filepath, 'rb') as f:
+                    file_content = f.read()
+                    file_hash = hashlib.md5(file_content).hexdigest()
+                    pdf_base64 = base64.b64encode(file_content).decode('utf-8')
+            except Exception as e:
+                errori.append({"file": filename, "errore": f"Impossibile leggere file: {e}"})
+                continue
+
+            # Controlla se già esiste nel DB
+            existing = await db["documents_inbox"].find_one({
+                "$or": [
+                    {"filename": filename, "file_hash": file_hash},
+                    {"file_hash": file_hash}
+                ]
+            })
+
+            if existing and not force:
+                saltati.append(filename)
+                continue
+
+            # Ricategorizza automaticamente in base al nome
+            final_category = category
+            filename_lower = filename.lower()
+
+            if "bnl" in filename_lower:
+                final_category = "estratto_conto"
+            elif "nexi" in filename_lower:
+                final_category = "estratto_conto"
+            elif "paypal" in filename_lower:
+                final_category = "estratto_conto"
+            elif "paga" in filename_lower or "cedolino" in filename_lower:
+                final_category = "busta_paga"
+            elif "f24" in filename_lower:
+                final_category = "f24"
+
+            # Crea record documento con pdf_data (Drive/Supabase)
+            doc_record = {
+                "id": str(uuid.uuid4()),
+                "filename": filename,
+                "pdf_data": pdf_base64,  # Architettura Drive/Supabase
+                "category": final_category,
+                "category_label": {
+                    "estratto_conto": "Estratti Conto",
+                    "busta_paga": "Buste Paga",
+                    "f24": "F24",
+                    "fattura": "Fatture",
+                    "altro": "Altri"
+                }.get(final_category, "Altri"),
+                "status": "nuovo",
+                "processed": False,
+                "file_hash": file_hash,
+                "file_size": len(file_content),
+                "downloaded_at": datetime.now(timezone.utc).isoformat(),
+                "source": "filesystem_import_migrated"
+            }
+
+            try:
+                if existing and force:
+                    await db["documents_inbox"].update_one(
+                        {"_id": existing["_id"]},
+                        {"$set": doc_record}
+                    )
+                else:
+                    await db["documents_inbox"].insert_one(dict(doc_record).copy())
+
+                importati.append({
+                    "file": filename,
+                    "categoria": final_category
+                })
+            except Exception as e:
+                errori.append({"file": filename, "errore": str(e)})
+
+    # Statistiche per categoria
+    by_category = {}
+    for doc in importati:
+        cat = doc["categoria"]
+        by_category[cat] = by_category.get(cat, 0) + 1
+
+    return {
+        "success": True,
+        "importati": len(importati),
+        "saltati": len(saltati),
+        "errori_count": len(errori),
+        "per_categoria": by_category,
+        "dettagli": importati[:50] if len(importati) > 50 else importati,
+        "errori": errori if errori else None,
+        "messaggio": f"Importati {len(importati)} documenti dal filesystem"
+    }
+
+
 # ============================================================
 # UPLOAD AUTOMATICO CON RICONOSCIMENTO TIPO
 # ============================================================
@@ -1509,23 +1774,21 @@ SUPPORTED_UPLOAD_SUFFIXES = {
 
 
 _PARTITA_IVA_UE = re.compile(
-    r"\b(?:AT\s?U\d{8}|BE\s?\d{10}|BG\s?\d{9,10}|CY\s?\d{8}[A-Z]|"
-    r"CZ\s?\d{8,10}|DE\s?\d{9}|DK\s?\d{8}|EE\s?\d{9}|EL\s?\d{9}|"
-    r"ES\s?[A-Z0-9]\d{7}[A-Z0-9]|FI\s?\d{8}|FR\s?[A-Z0-9]{2}\d{9}|"
-    r"HR\s?\d{11}|HU\s?\d{8}|IE\s?(?:\d{7}[A-Z]{1,2}|\d[A-Z*+]\d{5}[A-Z])|"
-    r"LT\s?(?:\d{9}|\d{12})|LU\s?\d{8}|LV\s?\d{11}|MT\s?\d{8}|"
-    r"NL\s?\d{9}B\d{2}|PL\s?\d{10}|PT\s?\d{9}|RO\s?\d{2,10}|"
-    r"SE\s?\d{12}|SI\s?\d{8}|SK\s?\d{10})\b"
+    r"\b(?:AT|BE|BG|CY|CZ|DE|DK|EE|EL|ES|FI|FR|HR|HU|IE|LT|LU|LV|MT|NL|PL|PT|RO|SE|SI|SK)"
+    r"\s?([0-9A-Z]{8,12})\b"
 )
 
 
 def partita_iva_estera_nel_testo(testo: str) -> bool:
     """Una partita IVA UE non italiana nel testo (es. «IE9813461A» di SumUp).
 
-    Forma nazionale esplicita: «FIR0133977» e' un numero fattura Ayvens,
-    non una P.IVA finlandese. Un IBAN non soddisfa queste forme.
+    Almeno sette cifre dopo il prefisso: un IBAN (piu' lungo) o una parola
+    in maiuscolo non bastano.
     """
-    return bool(_PARTITA_IVA_UE.search(str(testo or "").upper()))
+    for trovata in _PARTITA_IVA_UE.finditer(str(testo or "").upper()):
+        if sum(c.isdigit() for c in trovata.group(1)) >= 7:
+            return True
+    return False
 
 
 def _pdf_text_for_detection(file_content: bytes, max_pages: int = 5) -> str:
@@ -1656,11 +1919,23 @@ def detect_document_type(filename: str, file_content: bytes) -> str:
         # parser fatture con un falso positivo.
         return "auto"
 
+    if lower.endswith(".pdf"):
+        if "identita" in lower or "identity_card" in lower:
+            return "documento_identita"
+        if "visura" in lower:
+            return "visura_camerale"
+        if "tari" in lower and any(marker in lower for marker in (
+            "istanza", "rimborso", "compensazione",
+        )):
+            return "tari_istanza_compensazione"
+
     # Prima del nome file prevale la natura probatoria del contenuto. Una
     # nota INPS puo citare il modello F24 senza essere un F24; un avviso
     # PagoPA contiene IUV/CBILL ma non dimostra alcun pagamento.
     pdf_text = _pdf_text_for_detection(file_content).upper() if lower.endswith(".pdf") else ""
-    if lower.endswith(".pdf") and len(pdf_text.strip()) < 80:
+    if len(pdf_text.strip()) < 80 and any(clue in lower for clue in (
+        "istanza", "identita", "carta", "visura", "ant_",
+    )):
         try:
             from app.services.pagopa_receipts import _extract_receipt_text
 
@@ -1695,13 +1970,6 @@ def detect_document_type(filename: str, file_content: bytes) -> str:
     )):
         return "nota_rettifica_inps"
     if _e_cedolino_zucchetti(marker_pdf_text):
-        return "cedolino"
-    # La pagina presenze viaggia spesso come «Busta paga ... (1).pdf».
-    # Va allo stesso motore, che restituisce «presenze» senza creare buste
-    # e senza trasformare un documento riconosciuto in un errore d'import.
-    if lower.endswith(".pdf") and all(marker in marker_pdf_text for marker in (
-        "AUTORIZZAZIONEINAILN301DEL15012009", "GIUSTIFICATIVI", "TIMBRATURE",
-    )):
         return "cedolino"
     # Sentenza, precetto, relata e attestazione di una causa: prova del
     # perche' di bonifici senza fattura (spese di lite), mai un pagamento.
@@ -1789,9 +2057,6 @@ def detect_document_type(filename: str, file_content: bytes) -> str:
         "IMPORTO TOTALE PAGATO", "RICEVUTA TELEMATICA",
     )):
         return "ricevuta_pagopa"
-    if ("PAGOPA" in marker_pdf_text and "CODICEAVVISO" in marker_pdf_text
-            and "PAGAMENTOÈANDATOABUONFINE" in compact_pdf_text.replace(" ", "")):
-        return "ricevuta_pagopa"
     # Ricevuta «per l'utente» di Mooney: il livello testo porta solo il marchio
     # e il riquadro degli importi, il resto e' un'immagine (lo legge l'OCR).
     # Il testo esce con le lettere spaziate («Mo  o  n  ey»): si confronta senza separatori.
@@ -1850,18 +2115,53 @@ def detect_document_type(filename: str, file_content: bytes) -> str:
     # prendeva l'imponibile (parcella Marotta 1.612,00 invece di 1.966,64 - ritenuta).
     if (
         lower.endswith(".pdf")
-        and (
-            ("CEDENTE" in compact_pdf_text and "CESSIONARIO" in compact_pdf_text
-             and ("IMPONIBILE" in compact_pdf_text or "TOTALE DOCUMENTO" in compact_pdf_text))
-            or (
-                re.search(r"\b(?:FATTURA|INVOICE)\b", compact_pdf_text)
-                and re.search(r"\b(?:DATA|DATE)\b", compact_pdf_text)
-                and any(m in compact_pdf_text for m in ("TOTALE", "TOTAL", "SOMMA TOTALE"))
-                and (partita_iva_estera_nel_testo(pdf_text)
-                     or "FATTURA EMESSA TRAMITE SDI" in compact_pdf_text)
-            )
-        )
+        and "CEDENTE" in compact_pdf_text
+        and "CESSIONARIO" in compact_pdf_text
+        and ("IMPONIBILE" in compact_pdf_text or "TOTALE DOCUMENTO" in compact_pdf_text)
     ):
+        return "fattura"
+
+    # Segnali espliciti nel nome, dal piu specifico al piu generico.
+    if "identita" in lower or "identity_card" in lower:
+        return "documento_identita"
+    if "visura" in lower:
+        return "visura_camerale"
+    if "tari" in lower and any(marker in lower for marker in ("istanza", "rimborso", "compensazione")):
+        return "tari_istanza_compensazione"
+    if any(keyword in lower for keyword in ("ricevutatelematica", "ricevuta_pagopa", "ricevuta-pagopa")):
+        return "ricevuta_pagopa"
+    if any(keyword in lower for keyword in (
+        "quietanza_cbill", "quietanza-cbill", "ricevuta_cbill", "ricevuta-cbill",
+    )):
+        return "ricevuta_pagopa"
+    if any(keyword in lower for keyword in ("avvisodigitale", "avviso_pagopa", "avviso-pagopa")):
+        return "avviso_pagopa"
+    if any(keyword in lower for keyword in ("rettifica", "dmra")) and "inps" in compact_pdf_text:
+        return "nota_rettifica_inps"
+    if (
+        any(keyword in lower for keyword in ("cbill", "pagopa", "pago_pa", "pago-pa"))
+        and any(keyword in lower for keyword in ("quietanza", "ricevuta", "pagamento", "eseguito"))
+    ):
+        return "ricevuta_pagopa"
+    if any(keyword in lower for keyword in ("cbill", "pagopa", "pago_pa", "pago-pa")):
+        # Dal solo nome non e' possibile affermare che il pagamento sia
+        # avvenuto: il default sicuro e' avviso/obbligazione.
+        return "avviso_pagopa"
+    if any(keyword in lower for keyword in (
+        "quietanza", "ricevuta_f24", "ricevuta-f24", "pagamento_f24",
+    )):
+        return "quietanza_f24"
+    if re.search(r"(^|[^a-z0-9])f24([^a-z0-9]|$)", lower) or "delega_f24" in lower:
+        return "f24"
+    if lower.endswith(".pdf") and any(keyword in lower for keyword in (
+        "cedolin", "busta_paga", "busta paga", "libro_unico", "libro unico", "lul",
+        "tredicesima", "quattordicesima",
+    )):
+        # Solo un PDF: «Indice_Cedolini_Gestionale.xlsx» non e' una busta paga.
+        return "cedolino"
+    if any(keyword in lower for keyword in ("bonifico", "bonifici", "sepa", "transfer")):
+        return "bonifici"
+    if any(keyword in lower for keyword in ("fattura", "invoice", "ft_")):
         return "fattura"
 
     if lower.endswith(".pdf"):
@@ -1871,7 +2171,7 @@ def detect_document_type(filename: str, file_content: bytes) -> str:
         # PayPal e mutui hanno registri e regole contabili distinti.
         from app.services.classificazione_estratti import classifica
 
-        statement_route, _reason = classifica("documento.pdf", file_content)
+        statement_route, _reason = classifica(filename, file_content)
         routed_type = {
             "nexi": "estratto_conto_nexi",
             "paypal": "estratto_conto_paypal",
@@ -1939,7 +2239,8 @@ def detect_document_type(filename: str, file_content: bytes) -> str:
         if all(marker in content_str for marker in MARCATORI_REPORT_CLIENTI):
             return "anagrafica_clienti"
         if (
-            "BENEFICIARIO" in content_str
+            any(keyword in lower for keyword in ("distint", "stipend", "elenco"))
+            and "BENEFICIARIO" in content_str
             and ("IMPORTO" in content_str or "IBAN" in content_str)
         ):
             return "distinte_bpm"
@@ -1948,19 +2249,22 @@ def detect_document_type(filename: str, file_content: bytes) -> str:
         # estratti bancari e non devono essere archiviati come generici AUTO.
         from app.services.classificazione_estratti import classifica
 
-        statement_route, _reason = classifica(f"documento{Path(lower).suffix}", file_content)
+        statement_route, _reason = classifica(filename, file_content)
         if statement_route == "pos":
             return "pos_terminal"
         if statement_route == "sumup":
             return "estratto_conto_sumup"
         if statement_route == "bank":
             return "estratto_conto"
+        bank_name = any(keyword in lower for keyword in (
+            "estratto", "movimenti", "bpm", "banco", "bank_statement",
+        ))
         bank_headers = (
             ("DATA" in content_str or "VALUTA" in content_str)
             and ("CAUSALE" in content_str or "DESCRIZIONE" in content_str)
             and ("IMPORTO" in content_str or "DARE" in content_str or "AVERE" in content_str)
         )
-        return "estratto_conto" if bank_headers else "auto"
+        return "estratto_conto" if bank_name or bank_headers else "auto"
 
     return "auto"
 
@@ -2041,9 +2345,7 @@ async def _importa_estratto_conto_file(filename: str, content: bytes) -> Dict[st
     return esito
 
 
-async def _process_zip_upload_a_blocchi(
-    filename: str, content: bytes, *, source_context: Dict[str, Any] | None = None,
-) -> Dict[str, Any]:
+async def _process_zip_upload_a_blocchi(filename: str, content: bytes) -> Dict[str, Any]:
     """Uno ZIP fiscale puo generare centinaia di versioni, pagine e prove.
     Il runtime Drive/Supabase sa consolidarle per collezione e scriverle in
     blocchi; senza questo contesto ogni singola pagina consuma una richiesta e
@@ -2052,13 +2354,11 @@ async def _process_zip_upload_a_blocchi(
     batch_writes = getattr(db, "batch_writes", None)
     if callable(batch_writes):
         async with batch_writes():
-            return await _process_zip_upload(filename, content, source_context=source_context)
-    return await _process_zip_upload(filename, content, source_context=source_context)
+            return await _process_zip_upload(filename, content)
+    return await _process_zip_upload(filename, content)
 
 
-async def _process_zip_upload(
-    filename: str, content: bytes, *, source_context: Dict[str, Any] | None = None,
-) -> Dict[str, Any]:
+async def _process_zip_upload(filename: str, content: bytes) -> Dict[str, Any]:
     """Espande un archivio solo dopo controlli anti zip-bomb.
 
     Non scrive sul filesystem e non accetta ZIP annidati. Ogni documento
@@ -2139,7 +2439,6 @@ async def _process_zip_upload(
             nested_upload = UploadFile(filename=clean_name, file=io.BytesIO(payload))
             normalized_path = info.filename.replace("\\", "/")
             nested_upload.source_context = {
-                **(source_context or {}),
                 "archive_filename": filename,
                 "archive_path": normalized_path,
                 "archive_group": str(Path(normalized_path).parent).replace("\\", "/"),
@@ -2209,12 +2508,9 @@ async def _process_zip_upload(
             if duplicate:
                 duplicati += 1
             elif item.get("success") is False:
-                if not item.get("skipped_altro_anno"):
-                    errori += 1
+                errori += 1
             else:
-                importati += int(item["imported"]) if "imported" in item else 1
-            if item.get("skipped_altro_anno"):
-                scartati += 1
+                importati += max(1, int(item.get("imported") or 0))
             dettagli.append({
                 "filename": clean_name,
                 "archive_path": info.filename.replace("\\", "/"),
@@ -2238,8 +2534,7 @@ async def _process_zip_upload(
         "accounting_repaired": contabilita_ripristinata,
         "errors": errori,
         "skipped": scartati,
-        "action": ("skipped" if scartati and not processati else
-                   "duplicate" if duplicati and not importati and not errori else "processed"),
+        "action": "duplicate" if duplicati and not importati and not errori else "processed",
         "duplicate": bool(duplicati and not importati and not errori),
         "message": (
             f"ZIP elaborato: {importati} importati, {duplicati} duplicati, "
@@ -2377,24 +2672,15 @@ async def _archive_non_payment_document(
                 db, parsed_metadata, documento_id=doc_id, filename=filename)
         except Exception:
             logger.exception("Dimissioni %s: adempimenti non registrati", doc_id)
-    hr_incompleto = document_type == "dimissioni_telematiche" and (adempimenti or {}).get("hr") != "aggiornato"
     return {
         "success": True, "duplicate": False, "imported": 1,
-        "partial": hr_incompleto,
         "adempimenti_dimissioni": adempimenti,
         "tipo_rilevato": document_type, "doc_id": doc_id,
         "filename": filename, "workflow": "OBBLIGAZIONE_DOCUMENTALE",
         "payment_evidence": False,
         "association_candidates": association_candidates,
         "journal_proposal": parsed_metadata.get("journal_proposal"),
-        "message": (
-            "Modulo dimissioni archiviato, collegamento HR da verificare: "
-            + {"dipendente_non_trovato": "dipendente non trovato per codice fiscale",
-               "non_configurato": "servizio HR non disponibile",
-               "dati_incompleti": "mancano codice fiscale o data di decorrenza"}.get(
-                   (adempimenti or {}).get("hr"), "aggiornamento HR non completato")
-            if hr_incompleto else labels.get(document_type, "Documento archiviato per verifica")
-        ),
+        "message": labels.get(document_type, "Documento archiviato per verifica"),
     }
 
 
@@ -2479,13 +2765,7 @@ async def stato_cartella_unica(
     conteggi = {}
     for cartella in (cu.ARCHIVIO, cu.ERRORI, cu.DOPPIONI, cu.ARRETRATO, "CESTINO", "RIMOSSO"):
         conteggi[cartella] = await db[cu.REGISTRO].count_documents({"cartella": cartella})
-    from app.scheduler import scheduler
-
-    job = scheduler.get_job("drive_cartella_unica") if scheduler.running else None
-    prossimo = getattr(job, "next_run_time", None)
     return {"attiva": cu.attivo(),
-            "automatico_attivo": bool(cu.attivo() and job and prossimo),
-            "prossimo_giro": prossimo.isoformat() if prossimo else None,
             "giro_in_corso": cu._lock.locked() or cu.svuotamento_in_corso(),
             "ultimo_giro": stato, "registro": conteggi}
 
@@ -2558,7 +2838,6 @@ def _riferimenti_fattura(fattura: Dict[str, Any]) -> Dict[str, Any]:
     """I riferimenti della fattura che il registro della cartella unica
     conserva accanto al file: solo valori letti dal record, mai vuoti."""
     coppie = (("fattura_id", fattura.get("id")),
-              ("invoice_date", fattura.get("invoice_date")),
               ("invoice_number", fattura.get("invoice_number")),
               ("supplier_vat", fattura.get("supplier_vat")))
     return {chiave: valore for chiave, valore in coppie if valore}
@@ -2569,15 +2848,15 @@ async def _riferimenti_fattura_gia_presente(db, parsed: Optional[Dict[str, Any]]
     XML rifiutato come doppione; ``{}`` se non si trova (nessun id inventato)."""
     if not parsed:
         return {}
-    from app.services.fatture_canonico import invoice_key
+    from app.routers.invoices.fatture_upload import generate_invoice_key
 
-    chiave = invoice_key(
+    chiave = generate_invoice_key(
         parsed.get("invoice_number", ""), parsed.get("supplier_vat", ""),
         parsed.get("invoice_date", ""),
     )
     try:
         esistente = await db["invoices"].find_one(
-            {"invoice_key": chiave}, {"_id": 0, "id": 1, "invoice_number": 1, "invoice_date": 1, "supplier_vat": 1},
+            {"invoice_key": chiave}, {"_id": 0, "id": 1, "invoice_number": 1, "supplier_vat": 1},
         )
     except Exception as exc:  # noqa: BLE001 - un doppione resta un doppione, non diventa ERRORI
         logger.warning("Riferimenti della fattura gia' presente non letti (chiave %s): %s: %s",
@@ -2616,8 +2895,6 @@ async def _chiusura_fuori_anno(db, parsed: Dict[str, Any], result: Dict[str, Any
     if not anno_rt or anno_rt == anno_attivo:
         return False
     result["imported"] = 0
-    result["success"] = False
-    result["action"] = "skipped"
     result["skipped_altro_anno"] = 1
     result["tipo_documento"] = "corrispettivo"
     result["message"] = (
@@ -2649,11 +2926,6 @@ async def upload_documento_automatico(
 
     filename = Path(file.filename or "documento").name
     source_context = getattr(file, "source_context", None) or {}
-    # L'anno automatico limita lo smistamento Drive, non un file scelto e
-    # confermato dall'utente. Il documento conserva sempre la sua data reale.
-    applica_filtro_anno = source_context.get("channel") in {
-        "drive_cartella_unica", "render_calderone",
-    }
     content = await file.read()
 
     if not content:
@@ -2705,7 +2977,7 @@ async def upload_documento_automatico(
         # Il runtime Drive/Supabase sa consolidarle per collezione e scriverle in
         # blocchi; senza questo contesto ogni singola pagina consuma una
         # richiesta e supera rapidamente la quota Google di 60 write/minuto.
-        return await _process_zip_upload_a_blocchi(filename, content, source_context=source_context)
+        return await _process_zip_upload_a_blocchi(filename, content)
 
     # Se non riconosciuto, salva in inbox
     if tipo_rilevato == 'auto':
@@ -2800,8 +3072,6 @@ async def upload_documento_automatico(
         return {
             "success": True,
             "tipo_rilevato": "non_riconosciuto",
-            "partial": True,
-            "imported": 1,
             "message": "Documento salvato in inbox per classificazione manuale",
             "doc_id": doc_id,
             "filename": filename,
@@ -2843,7 +3113,7 @@ async def upload_documento_automatico(
                 if parsed.get("error"):
                     result["success"] = False
                     result["message"] = f"Errore parsing corrispettivo: {parsed['error']}"
-                elif applica_filtro_anno and await _chiusura_fuori_anno(db, parsed, result):
+                elif await _chiusura_fuori_anno(db, parsed, result):
                     # Stessa regola delle fatture qui sotto: nel gestionale
                     # entra solo l'anno attivo, l'originale resta su Drive.
                     pass
@@ -3020,8 +3290,9 @@ async def upload_documento_automatico(
                 altri_body = parsed.pop("_altri_body", None) or []
                 importati = []
                 ultimo_errore_duplicato = None
-                # Solo gli ingressi automatici rispettano l'anno del giro
-                # Drive. L'upload manuale importa anche gli anni precedenti.
+                # Stessa regola del giro Drive (process_xml_bytes): nel
+                # gestionale entra solo l'anno attivo, l'originale di un altro
+                # anno resta su Drive (decisione del titolare, 20/09/2026).
                 from app.services.config_import import get_anno_importazione_attivo
 
                 anno_attivo = await get_anno_importazione_attivo(db)
@@ -3030,7 +3301,7 @@ async def upload_documento_automatico(
                 for body in [parsed] + altri_body:
                     data_fattura = str(body.get("invoice_date") or "")
                     anno_fattura = int(data_fattura[:4]) if data_fattura[:4].isdigit() else None
-                    if (applica_filtro_anno and anno_fattura and anno_fattura != anno_attivo
+                    if (anno_fattura and anno_fattura != anno_attivo
                             and not _e_parcella_con_ritenuta(body)):
                         altro_anno.append(anno_fattura)
                         continue
@@ -3043,10 +3314,6 @@ async def upload_documento_automatico(
                         ultimo_errore_duplicato = exc
                         corpo_duplicato = body
 
-                if altro_anno:
-                    result["skipped_altro_anno"] = len(altro_anno)
-                    result["anni_in_attesa"] = sorted(set(altro_anno))
-                    result["anno_import_attivo"] = anno_attivo
                 if importati:
                     # L'id della fattura creata sale nel risultato: il registro
                     # della cartella unica lo conserva in `riferimenti` (fino al
@@ -3059,10 +3326,6 @@ async def upload_documento_automatico(
                     result["imported"] = len(importati)
                     if len(importati) > 1:
                         result["message"] += f" (+{len(importati) - 1} fatture aggiuntive nello stesso file)"
-                    if altro_anno:
-                        result["partial"] = True
-                        result["skipped_altro_anno"] = len(altro_anno)
-                        result["message"] += f"; {len(altro_anno)} fatture di altri anni non importate"
                     collisioni = [f for f in importati if f.get("collisione_identita")]
                     if collisioni:
                         # Stessa chiave di una fattura in archivio ma originale
@@ -3072,8 +3335,6 @@ async def upload_documento_automatico(
                             ": stesso numero, fornitore e data di una fattura gia' in archivio "
                             "ma contenuto diverso, da verificare (alert aperto)")
                 elif altro_anno and ultimo_errore_duplicato is None:
-                    result["success"] = False
-                    result["action"] = "skipped"
                     result["imported"] = 0
                     result["skipped_altro_anno"] = len(altro_anno)
                     result["message"] = (
@@ -3099,8 +3360,7 @@ async def upload_documento_automatico(
             from app.services.f24_canonico import importa_modello_bytes
 
             f24_result = await importa_modello_bytes(
-                db, content, filename, source="documenti_upload_auto",
-                source_metadata=source_context,
+                db, content, filename, source="documenti_upload_auto"
             )
             result["data"] = f24_result
             result["workflow"] = "F24_CANONICO"
@@ -3123,8 +3383,7 @@ async def upload_documento_automatico(
             from app.services.f24_canonico import importa_quietanza
 
             quietanza = await importa_quietanza(
-                db, content, filename, source="documenti_upload_auto",
-                source_metadata=source_context,
+                db, content, filename, source="documenti_upload_auto"
             )
             result["data"] = quietanza
             result["workflow"] = "F24_CANONICO"
@@ -3134,12 +3393,8 @@ async def upload_documento_automatico(
                 result["message"] = (
                     "Quietanza F24 già importata"
                     if quietanza.get("duplicate")
-                    else "Quietanza F24 acquisita"
+                    else "Quietanza F24 importata e riconciliata"
                 )
-                if quietanza.get("warning"):
-                    result["partial"] = True
-                    result["message"] += f". {quietanza['warning']}"
-                result["message"] += " Il riscontro bancario è separato dall'acquisizione del documento."
             else:
                 result["success"] = False
                 result["imported"] = 0
@@ -3345,12 +3600,7 @@ async def upload_documento_automatico(
                 company_id=settings.FISCAL_COMPANY_ID,
                 source="documenti_upload_auto",
             )
-            # La risposta contiene i riferimenti, non una seconda copia del PDF.
-            receipt_doc = receipt.get("receipt") or {}
-            result["data"] = {
-                **receipt,
-                "receipt": {k: v for k, v in receipt_doc.items() if k != "pdf_data"},
-            }
+            result["data"] = receipt
             receipt_kind = (receipt.get("receipt") or {}).get("document_kind")
             result["workflow"] = (
                 "PAGOPA_CBILL_CANONICO"
@@ -3368,28 +3618,6 @@ async def upload_documento_automatico(
                 )
                 if fiscal_match.get("matched"):
                     result["message"] += ", rata e cartelle AdeR collegate"
-                if receipt_doc.get("id"):
-                    result["receipt_id"] = receipt_doc["id"]
-                    try:
-                        # Un precedente tentativo non riconosciuto conserva il
-                        # proprio originale, ma ora punta al record canonico.
-                        await db["documents_inbox"].update_many(
-                            {"sha256": hashlib.sha256(content).hexdigest(),
-                             "category": "altro", "processed": {"$ne": True}},
-                            {"$set": {
-                                "category": "ricevuta_pagopa",
-                                "category_label": "Ricevute di pagamento",
-                                "status": "processato", "processed": True,
-                                "processed_to": "ricevute_pagopa",
-                                "receipt_id": receipt_doc["id"],
-                                "document_date": receipt_doc.get("data_pagamento"),
-                                "updated_at": datetime.now(timezone.utc).isoformat(),
-                            }},
-                        )
-                    except Exception:
-                        logger.exception("Originale inbox non collegato alla ricevuta %s", receipt_doc["id"])
-                        result["partial"] = True
-                        result["message"] += "; collegamento dell'originale in inbox da riprovare"
             else:
                 if receipt.get("document_kind") == "ESITO_PAGOPA_NEGATIVO":
                     return await _archive_non_payment_document(
@@ -3445,10 +3673,6 @@ async def upload_documento_automatico(
                     f"Cedolino non registrato: {esito.get('motivo') or 'nessuna busta letta'}"
                     + (f" ({errori})" if errori else "")
                 )
-            if esito.get("errori") and (scritte or esito.get("gia_presenti")):
-                result["partial"] = True
-                result["success"] = False
-                result["message"] += ". Import incompleto: " + "; ".join(str(e) for e in esito["errori"][:3])
 
         elif tipo_rilevato == 'distinte_bpm':
             # Import distinte stipendi BPM - riconcilia con buste paga
@@ -3788,56 +4012,60 @@ async def upload_documento_automatico(
             # dati non venivano letti ne' associati al dipendente.
             import base64 as b64
             from app.services.bonifici_pdf_ingest import STATO_NON_REGISTRATO, importa_pdf_bonifico
-            from app.services.pdf_drive_only import reference_from_download
 
-            ingest = await importa_pdf_bonifico(
-                db, content, filename,
-                source=source_context.get("channel") or "upload_manuale_import_documenti",
-                source_path=source_context.get("source_path") or source_context.get("drive_path"),
-                source_context=source_context,
-            )
-            if ingest.get("status") not in {"saved", "duplicate"}:
-                result.update({"success": False, "imported": 0,
-                               "message": ingest.get("message") or "Bonifico non registrato"})
-                if ingest.get("status") == STATO_NON_REGISTRATO:
-                    result.update({"non_registrato": True, "action": "skipped"})
-                return result
-
-            esistente_inbox = await db["documents_inbox"].find_one(
-                {"bonifico_transfer_id": ingest["transfer_id"]}, {"_id": 0, "id": 1},
-            )
-            doc_id = (esistente_inbox or {}).get("id") or f"bonifici_{uuid.uuid4()}"
+            doc_id = f"bonifici_{uuid.uuid4()}"
             bonifici_doc = {
                 "id": doc_id,
                 "filename": filename,
                 "pdf_data": b64.b64encode(content).decode('utf-8'),  # Drive/Supabase
-                **reference_from_download(content, source_context),
                 "category": "bonifico",
                 "status": "da_processare",
                 "processed": False,
-                "source": source_context.get("channel") or "upload_manuale",
-                "sha256": content_sha256,
-                "bonifico_transfer_id": ingest["transfer_id"],
+                "source": "upload_manuale",
                 "created_at": datetime.now(timezone.utc).isoformat()
             }
-            if not esistente_inbox:
-                bonifici_doc.update({"processed": True, "status": "elaborato",
-                                     "processed_at": datetime.now(timezone.utc).isoformat()})
-                await db["documents_inbox"].insert_one(bonifici_doc)
+            await db["documents_inbox"].insert_one(dict(bonifici_doc).copy())
 
-            if ingest.get("status") == "duplicate":
+            ingest = await importa_pdf_bonifico(
+                db, content, filename, source="upload_manuale_import_documenti"
+            )
+            if ingest.get("status") == "non_bonifico":
+                await db["documents_inbox"].delete_one({"id": doc_id})
+                result["success"] = False
+                result["tipo_rilevato"] = "fattura_pdf"
+                result["fuori_contabilita"] = (
+                    "copia PDF di una fattura italiana: la fattura entra dall'XML dello SDI")
+                result["message"] = ingest.get("message")
+                return result
+            if ingest.get("status") in {STATO_NON_REGISTRATO, "duplicate"}:
+                # Accredito di un anno che non si registra, o ricevuta gia' in
+                # archivio: la copia appena messa in inbox non serve a nessuno,
+                # e ricaricare lo stesso ZIP la rimetterebbe ogni volta.
+                await db["documents_inbox"].delete_one({"id": doc_id})
+            else:
+                await db["documents_inbox"].update_one(
+                    {"id": doc_id},
+                    {"$set": {
+                        "processed": ingest.get("status") in {"saved", "duplicate"},
+                        "status": "elaborato" if ingest.get("status") in {"saved", "duplicate"} else "da_verificare",
+                        "bonifico_transfer_id": ingest.get("transfer_id"),
+                        "processed_at": datetime.now(timezone.utc).isoformat(),
+                    }},
+                )
+
+            if ingest.get("status") == STATO_NON_REGISTRATO:
+                result["non_registrato"] = True
+                result["message"] = "Accredito in entrata del 2023: non si registra (decisione del titolare)."
+            elif ingest.get("associato"):
+                result["message"] = "Bonifico letto e associato al dipendente per nome e importo esatti."
+            elif ingest.get("status") == "duplicate":
                 # Contato fra i doppioni, non fra gli importati: dentro uno ZIP
                 # il riepilogo dice quanti documenti erano gia' in archivio.
                 result["duplicate"] = True
                 result["action"] = "duplicate"
                 result["message"] = "Bonifico gia' presente: duplicato saltato senza creare associazioni casuali."
-                result["imported"] = 0
-            elif ingest.get("associato"):
-                result["message"] = "Bonifico letto e associato al dipendente per nome e importo esatti."
-                result["imported"] = 1
             else:
                 result["message"] = "Bonifico letto e archiviato; associazione lasciata da verificare perche' nome e importo non sono univoci."
-                result["imported"] = 1
             result["doc_id"] = doc_id
             result["bonifico_transfer_id"] = ingest.get("transfer_id")
             result["associato_dipendente"] = bool(ingest.get("associato"))
@@ -3852,30 +4080,9 @@ async def upload_documento_automatico(
 
 # Import che superano i 2 minuti del browser e i 5 del proxy Render: vanno in
 # coda (`document_import_jobs`) con lo stesso motore dell'upload diretto.
-async def _importa_cedolino_file(filename: str, content: bytes) -> Dict[str, Any]:
-    import io
-
-    return await upload_documento_automatico(file=UploadFile(filename=filename, file=io.BytesIO(content)))
-
-
-async def _importa_libro_unico_hr(filename: str, content: bytes) -> Dict[str, Any]:
-    import io
-    from app.hr.routers.dipendenti_cloud import importa_libro_unico_canonico
-
-    return await importa_libro_unico_canonico(files=[UploadFile(filename=filename, file=io.BytesIO(content))])
-
-
-async def _importa_importi_tabellari_hr(filename: str, content: bytes):
-    from app.hr.services.importi_paghe_tabellari import elabora_file
-    return await elabora_file(filename, content)
-
-
 ELABORATORI_IN_CODA = {
-    "hr_importi_tabellari": _importa_importi_tabellari_hr,
     "archivio_zip": _process_zip_upload_a_blocchi,
     "estratto_conto": _importa_estratto_conto_file,
-    "cedolino": _importa_cedolino_file,
-    "hr_libro_unico": _importa_libro_unico_hr,
 }
 
 
@@ -3904,7 +4111,7 @@ async def accoda_upload_documento_voluminoso(
     if not pos and tipo_rilevato not in ELABORATORI_IN_CODA:
         raise HTTPException(
             status_code=400,
-            detail="La coda asincrona e' riservata a export POS, archivi ZIP, cedolini ed estratti conto.",
+            detail="La coda asincrona e' riservata a export POS, archivi ZIP ed estratti conto.",
         )
 
     from app.services.document_import_preview import verify_confirmation_token
@@ -3976,3 +4183,19 @@ async def stato_upload_documento_voluminoso(
         ),
         **job,
     }
+
+
+async def _importa_importi_tabellari_hr(filename: str, content: bytes):
+    from app.hr.services.importi_paghe_tabellari import elabora_file
+    return await elabora_file(filename, content)
+
+
+
+async def _importa_libro_unico_hr(filename: str, content: bytes) -> Dict[str, Any]:
+    import io
+    from app.hr.routers.dipendenti_cloud import importa_libro_unico_canonico
+
+    return await importa_libro_unico_canonico(files=[UploadFile(filename=filename, file=io.BytesIO(content))])
+
+
+ELABORATORI_IN_CODA.update(hr_libro_unico=_importa_libro_unico_hr, hr_importi_tabellari=_importa_importi_tabellari_hr)

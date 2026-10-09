@@ -459,59 +459,61 @@ table td.text-right, table th.text-right { text-align: right; }
 }
 
 
-/* Tabelle → card impilate quando non ci stanno (lib/tabelleCard.js mette data-card,
-   data-label e, misurato lo spazio del contenitore, data-stretta). Una card per riga,
-   etichetta della colonna a sinistra, valore a destra; mai scroll orizzontale. Vale su
-   telefono, tablet e finestra stretta allo stesso modo: non c'e' una larghezza fissa.
+/* Tabelle → card impilate su telefono (lib/tabelleCard.js mette data-card e data-label).
+   Una card per riga, etichetta della colonna a sinistra, valore a destra; mai scroll orizzontale.
    `data-card="no"` tiene la tabella com'è (matrici, calendari). */
-.page-content table[data-card="si"][data-stretta] {
-  display: block; width: 100%; max-width: 100%; min-width: 0 !important;
-  overflow: visible; white-space: normal; background: transparent; border: 0;
+@media (max-width: 768px) {
+  .page-content table[data-card="si"] {
+    display: block; width: 100%; max-width: 100%; min-width: 0 !important;
+    overflow: visible; white-space: normal; background: transparent; border: 0;
+  }
+  .page-content table[data-card="si"] thead { display: none; }
+  .page-content table[data-card="si"] tbody,
+  .page-content table[data-card="si"] tfoot { display: block; }
+  .page-content table[data-card="si"] tr {
+    display: block; margin: 0 0 10px; padding: 4px 12px;
+    background: var(--c-card); border: 1px solid var(--c-border); border-radius: var(--radius-md);
+  }
+  .page-content table[data-card="si"] td {
+    display: block; position: relative; box-sizing: border-box;
+    width: auto !important; min-width: 0 !important; max-width: 100% !important;
+    padding: 7px 0 7px 42% !important; min-height: 32px;
+    text-align: right !important; white-space: normal !important; overflow-wrap: anywhere;
+    border: 0 !important; border-bottom: 1px dashed var(--c-border) !important;
+  }
+  .page-content table[data-card="si"] td:last-child { border-bottom: 0 !important; }
+  .page-content table[data-card="si"] td::before {
+    content: attr(data-label); position: absolute; left: 0; top: 8px; width: 38%;
+    text-align: left; font-size: 10.5px; font-weight: 700; letter-spacing: 0.3px;
+    text-transform: uppercase; color: var(--c-text-muted); line-height: 1.3;
+  }
+  /* Etichetta lunga (oltre ~22 caratteri): sta sopra al valore invece che a sinistra, cosi' non lo copre. */
+  .page-content table[data-card="si"] td[data-lungo] { padding-left: 0 !important; text-align: left !important; }
+  .page-content table[data-card="si"] td[data-lungo]::before {
+    position: static; display: block; width: auto; margin-bottom: 3px;
+  }
+  .page-content table[data-card="si"] td:not([data-label]) { padding-left: 0 !important; text-align: left !important; }
+  .page-content table[data-card="si"] td:not([data-label])::before { display: none; }
+  .page-content table[data-card="si"] td:empty { display: none; }
+  .page-content table[data-card="si"] td button,
+  .page-content table[data-card="si"] td a { min-height: 36px; }
 }
-.page-content table[data-card="si"][data-stretta] thead { display: none; }
-.page-content table[data-card="si"][data-stretta] tbody,
-.page-content table[data-card="si"][data-stretta] tfoot { display: block; }
-.page-content table[data-card="si"][data-stretta] tr {
-  display: block; margin: 0 0 10px; padding: 4px 12px;
-  background: var(--c-card); border: 1px solid var(--c-border); border-radius: var(--radius-md);
-}
-.page-content table[data-card="si"][data-stretta] td {
-  display: block; position: relative; box-sizing: border-box;
-  width: auto !important; min-width: 0 !important; max-width: 100% !important;
-  padding: 7px 0 7px 42% !important; min-height: 32px;
-  text-align: right !important; white-space: normal !important; overflow-wrap: anywhere;
-  border: 0 !important; border-bottom: 1px dashed var(--c-border) !important;
-}
-.page-content table[data-card="si"][data-stretta] td:last-child { border-bottom: 0 !important; }
-.page-content table[data-card="si"][data-stretta] td::before {
-  content: attr(data-label); position: absolute; left: 0; top: 8px; width: 38%;
-  text-align: left; font-size: 10.5px; font-weight: 700; letter-spacing: 0.3px;
-  text-transform: uppercase; color: var(--c-text-muted); line-height: 1.3;
-}
-/* Etichetta lunga (oltre ~22 caratteri): sta sopra al valore invece che a sinistra, cosi' non lo copre. */
-.page-content table[data-card="si"][data-stretta] td[data-lungo] { padding-left: 0 !important; text-align: left !important; }
-.page-content table[data-card="si"][data-stretta] td[data-lungo]::before {
-  position: static; display: block; width: auto; margin-bottom: 3px;
-}
-.page-content table[data-card="si"][data-stretta] td:not([data-label]) { padding-left: 0 !important; text-align: left !important; }
-.page-content table[data-card="si"][data-stretta] td:not([data-label])::before { display: none; }
-.page-content table[data-card="si"][data-stretta] td:empty { display: none; }
-.page-content table[data-card="si"][data-stretta] td button,
-.page-content table[data-card="si"][data-stretta] td a { min-height: 36px; }
 
 /* Tabella senza intestazione («voce | valore»): una riga per voce, etichetta a sinistra, valore a destra. */
-.page-content table[data-card="si"][data-stretta][data-chiave-valore] tr {
-  display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 2px 12px;
-  margin: 0; padding: 0 12px; border-radius: 0; border-width: 0 0 1px; background: transparent;
+@media (max-width: 768px) {
+  .page-content table[data-card="si"][data-chiave-valore] tr {
+    display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 2px 12px;
+    margin: 0; padding: 0 12px; border-radius: 0; border-width: 0 0 1px; background: transparent;
+  }
+  .page-content table[data-card="si"][data-chiave-valore] tr:last-child { border-bottom-width: 0; }
+  .page-content table[data-card="si"][data-chiave-valore] td,
+  .page-content table[data-card="si"][data-chiave-valore] th {
+    display: block; flex: 0 1 auto; width: auto !important; padding: 8px 0 !important; border: 0 !important;
+    min-height: 0; text-align: right !important; overflow-wrap: anywhere; background: transparent;
+  }
+  .page-content table[data-card="si"][data-chiave-valore] td:first-child,
+  .page-content table[data-card="si"][data-chiave-valore] th:first-child { flex: 1 1 40%; text-align: left !important; }
 }
-.page-content table[data-card="si"][data-stretta][data-chiave-valore] tr:last-child { border-bottom-width: 0; }
-.page-content table[data-card="si"][data-stretta][data-chiave-valore] td,
-.page-content table[data-card="si"][data-stretta][data-chiave-valore] th {
-  display: block; flex: 0 1 auto; width: auto !important; padding: 8px 0 !important; border: 0 !important;
-  min-height: 0; text-align: right !important; overflow-wrap: anywhere; background: transparent;
-}
-.page-content table[data-card="si"][data-stretta][data-chiave-valore] td:first-child,
-.page-content table[data-card="si"][data-stretta][data-chiave-valore] th:first-child { flex: 1 1 40%; text-align: left !important; }
 
 /* Barra in alto sul telefono: marchio, anno, avvisi e uscita devono stare tutti nella riga.
    Il nome del marchio e l'avatar (solo decorativo) cedono il posto; il resto si stringe. */

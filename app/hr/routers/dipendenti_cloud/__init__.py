@@ -105,8 +105,6 @@ class DipendenteCloud(BaseModel):
     indirizzo: Optional[str] = None
     ruolo: Optional[str] = None
     luogo_lavoro: Optional[str] = None
-    gruppo: Optional[str] = None
-    note: Optional[str] = None
     contratto: str = "Indeterminato"
     data_assunzione: Optional[str] = None
     data_fine_contratto: Optional[str] = None
@@ -223,8 +221,6 @@ def _vista_dipendente(d: dict) -> dict:
         "data_fine_contratto": d.get("data_fine_contratto") or "",
         "data_cessazione": st["data_fine_rapporto"] or "",
         "luogo_lavoro": d.get("luogo_lavoro", ""),
-        "gruppo": d.get("gruppo") or "",
-        "note": d.get("note") or "",
         "importo_stipendio": d.get("importo_stipendio", 0),
         "livello": d.get("livello", ""),
         "ore_settimanali": d.get("ore_settimanali"),
@@ -306,29 +302,17 @@ def _campi_anagrafici(dip: DipendenteCloud, esclusi=("stato",)) -> dict:
     return dati
 
 
-async def _crea_anagrafica(dati: Dict[str, Any], *, attivo: bool = True):
-    """Writer unico per scheda manuale e nuove persone confermate da Excel."""
-    dip_dict = dict(dati)
+@router.post("/dipendenti")
+async def create_dipendente(dip: DipendenteCloud):
+    dip_dict = _campi_anagrafici(dip)
     if not dip_dict.get("nome") and not dip_dict.get("cognome"):
         raise HTTPException(status_code=400, detail="Nome e cognome obbligatori")
-    cf = re.sub(r"\s+", "", str(dip_dict.get("codice_fiscale") or "")).upper()
-    if cf:
-        dip_dict["codice_fiscale"] = cf
-        if await get_db().dipendenti.find_one({"codice_fiscale": cf}):
-            raise HTTPException(409, "Codice fiscale già presente in anagrafica: aggiorna la scheda esistente")
     dip_dict["nome_completo"] = f"{dip_dict.get('cognome', '')} {dip_dict.get('nome', '')}".strip()
-    ident = str(uuid.uuid5(uuid.NAMESPACE_URL, f"GestionaleCloud:HR:dipendente:{cf}")) if cf else generate_id()
-    dip_dict.update({"id": ident, "created_at": now_iso(),
-                     "stato": "attivo" if attivo else "cessato", "attivo": attivo,
-                     "in_carico": attivo, "ruolo_app": "dipendente"})
+    dip_dict.update({"id": generate_id(), "created_at": now_iso(), "stato": "attivo", "attivo": True,
+                     "in_carico": True, "ruolo_app": "dipendente"})
     dip_dict.setdefault("lotti_operatore", True)
     await get_db().dipendenti.insert_one(dict(dip_dict))
     return _vista_dipendente(dip_dict)
-
-
-@router.post("/dipendenti")
-async def create_dipendente(dip: DipendenteCloud):
-    return await _crea_anagrafica(_campi_anagrafici(dip))
 
 @router.put("/dipendenti/{dipendente_id}")
 async def update_dipendente(dipendente_id: str, dip: DipendenteCloud):
@@ -812,25 +796,6 @@ async def _segna_conferma(db, in_coda: Dict[str, Any], attore: str, evento: Dict
     return campi
 
 
-@router.post("/bonifici-da-associare/{bonifico_id}/ripartizione")
-async def ripartizione_bonifico(bonifico_id: str, data: Dict[str, Any] = Body(...),
-                               utente: Dict[str, Any] = Depends(require_staff)):
-    from app.services.associazione_salari import anteprima, pubblica, conferma
-    db = get_db()
-    pagamento = await db.bonifici_da_associare.find_one({"id": bonifico_id}, {"_id": 0, "pdf_data": 0})
-    if not pagamento:
-        raise HTTPException(404, "Bonifico non trovato")
-    if pagamento.get("stato") not in (None, "da_associare", "associato"):
-        raise HTTPException(409, "Bonifico non disponibile per l'associazione")
-    if data.get("conferma"):
-        risultato = await conferma(db, pagamento, data.get("dipendente_id"), data, _attore(utente))
-        await _segna_conferma(db, pagamento, _attore(utente), {"dipendente_id": data.get("dipendente_id"),
-                              "destinazioni_salari": risultato["destinazioni"]})
-        return risultato
-    return pubblica(await anteprima(db, pagamento, data.get("dipendente_id"),
-                                   data.get("destinazioni"), data.get("collega_key")))
-
-
 @router.post("/bonifici-da-associare/{bonifico_id}/associa")
 async def associa_bonifico(bonifico_id: str, data: Dict[str, Any] = Body(...),
                            utente: Dict[str, Any] = Depends(require_staff)):
@@ -889,6 +854,11 @@ async def associa_bonifico(bonifico_id: str, data: Dict[str, Any] = Body(...),
     competenza = "%s-%02d" % (anno, mese) if anno is not None else None
     if tipo in ("stipendio", "acconto"):
         from app.services.associazione_salari import anteprima, conferma
+        if anno is not None:
+            # La scelta esplicita vale anche prima dell'arrivo del PDF.
+            # Non lasciare che il FIFO consumi un altro mese al suo posto.
+            in_coda = {**in_coda, "anno": anno, "mese": mese,
+                       "competenza_confermata": True}
         piano = await anteprima(db, in_coda, dipendente_id)
         destinazioni = []
         if anno is not None:
@@ -928,7 +898,6 @@ async def associa_bonifico(bonifico_id: str, data: Dict[str, Any] = Body(...),
             # l'acconto e' un pagamento sulla busta del mese: lo stato del mese lo conta
             await _ricalcola_stato_paga(db, dipendente_id, anno, mese)
         return {"ok": True, "tipo": tipo, **rif}
-
 
 
 @router.post("/bonifici-da-associare/{bonifico_id}/ritira-conferma")
@@ -1083,14 +1052,13 @@ async def importa_excel_salari(file: UploadFile = File(...)):
     ws = wb.active
 
     dips = await get_db().dipendenti.find({}, {"_id": 0}).to_list(1000)
-    from app.hr.services.identita_dipendente import indicizza_alias_univoci
-    aliases = []
+    anag = {}
     for d in dips:
         cg = (d.get("cognome") or "").upper().strip()
         nm = (d.get("nome") or "").upper().strip()
         if cg or nm:
-            aliases.extend([(f"{cg} {nm}".strip(), d), (f"{nm} {cg}".strip(), d)])
-    anag = indicizza_alias_univoci(aliases)
+            anag[f"{cg} {nm}".strip()] = d   # Cognome Nome
+            anag[f"{nm} {cg}".strip()] = d   # Nome Cognome (ordine invertito)
 
     try:
         await get_db().paghe_mensili.create_index(
@@ -1421,15 +1389,14 @@ async def _importa_documenti(pdf_items, errori_iniziali=None, forza=False):
     file o da posta elettronica), li classifica e li importa in paghe_mensili / prestiti.
     L'anti-duplicazione per hash evita di re-importare gli stessi documenti."""
     dips = await get_db().dipendenti.find({}, {"_id": 0}).to_list(1000)
-    from app.hr.services.identita_dipendente import indicizza_alias_univoci, dipendente_unico
-    by_cf = indicizza_alias_univoci((d.get("codice_fiscale"), d) for d in dips)
-    aliases = []
+    by_cf = {(d.get("codice_fiscale") or "").upper(): d for d in dips if d.get("codice_fiscale")}
+    by_nome = {}
     for d in dips:
         cg = (d.get("cognome") or "").upper().strip()
         nm = (d.get("nome") or "").upper().strip()
         if cg or nm:
-            aliases.extend([(f"{cg} {nm}".strip(), d), (f"{nm} {cg}".strip(), d)])
-    by_nome = indicizza_alias_univoci(aliases)
+            by_nome[f"{cg} {nm}".strip()] = d
+            by_nome[f"{nm} {cg}".strip()] = d
 
     # Vincolo: una sola busta per (dipendente, anno, mese) — i duplicati diventano impossibili
     try:
@@ -1445,20 +1412,51 @@ async def _importa_documenti(pdf_items, errori_iniziali=None, forza=False):
         pass
 
     async def _registra_doc(h, tipo, chiave, origine):
-        await get_db().documenti_importati.update_one(
-            {"hash": h},
-            {"$set": {"hash": h, "tipo": tipo, "chiave": chiave, "file": origine,
-                      "imported_at": now_iso()}}, upsert=True)
+        try:
+            await get_db().documenti_importati.update_one(
+                {"hash": h},
+                {"$set": {"hash": h, "tipo": tipo, "chiave": chiave, "file": origine,
+                          "imported_at": now_iso()}}, upsert=True)
+        except Exception:
+            pass
 
     async def _imputa_competenza(dip_id, b):
-        """Solo la competenza esplicita autorizza l'imputazione automatica.
-
-        Importi uguali o una data di disposizione non provano il mese della
-        retribuzione: il documento resta da verificare, senza scegliere una busta.
-        """
+        """Determina (mese, anno, fonte) di competenza del bonifico secondo le regole:
+        1) mese esplicito in causale; 2) match per importo con la busta (acconto=busta o
+        somma cumulativa=busta) nella finestra mese precedente→mese stesso; 3) ripiego sul
+        mese precedente. Sfondamento d'anno (gen→dic anno prima) solo dal 2024 (2023 blindato)."""
         if b["esplicita"] and b["mese_causale"]:
-            return b["mese_causale"], b["anno_causale"], "causale"
-        return None, None, "competenza non esplicita"
+            anno = b["anno_causale"] or (int(b["data"][:4]) if b.get("data") else None)
+            return b["mese_causale"], anno, "causale"
+        data = b.get("data")
+        if not data:
+            return None, None, "data assente"
+        y, mo = int(data[:4]), int(data[5:7])
+        pm, py = (mo - 1, y) if mo > 1 else (12, y - 1)
+        finestra = []
+        if not (mo == 1 and py < 2023):   # 2023 blindato: gennaio 2023 non sfonda a dic 2022
+            finestra.append((py, pm))     # mese precedente (priorità)
+        finestra.append((y, mo))          # mese stesso
+        for (a, m) in finestra:
+            rec = await get_db().paghe_mensili.find_one(
+                {"dipendente_id": dip_id, "anno": a, "mese": m})
+            if not rec:
+                continue
+            busta = rec.get("importo_busta") or rec.get("netto_atteso")
+            if busta:
+                if abs(busta - b["importo"]) <= 1:
+                    return m, a, "importo (= busta)"
+                # acconto già dato nel mese (rilevato nel cedolino o bonifico precedente):
+                # acconto + questo bonifico = busta  ->  saldo che chiude la busta
+                gia = (rec.get("bonifico_importo") or 0) + (rec.get("acconto_cedolino") or 0)
+                if abs((gia + b["importo"]) - busta) <= 1:
+                    return m, a, "importo (acconto+saldo = busta)"
+                # il bonifico copre esattamente il saldo residuo dopo l'acconto
+                residuo = rec.get("saldo_residuo")
+                if residuo and abs(residuo - b["importo"]) <= 1:
+                    return m, a, "importo (= saldo dopo acconto)"
+        a, m = finestra[0]
+        return m, a, "mese precedente (dedotta)"
 
     async def _processa_pdf(pdfbytes, origine):
         with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
@@ -1484,22 +1482,18 @@ async def _importa_documenti(pdf_items, errori_iniziali=None, forza=False):
                 b = _parse_bonifico(text)
                 # match dipendente: "COGNOME NOME" presente nel testo; fallback cognome nella causale
                 T = text.upper()
-                candidati = []
+                dip = None
                 for cand in dips:
                     cg = (cand.get("cognome") or "").upper().strip()
                     nm = (cand.get("nome") or "").upper().strip()
-                    if cg and nm and any(re.search(r"\b" + re.escape(nome) + r"\b", T)
-                                         for nome in (f"{cg} {nm}", f"{nm} {cg}")):
-                        candidati.append(cand)
-                dip = dipendente_unico(candidati)
-                if not candidati:
+                    if cg and nm and f"{cg} {nm}" in T:
+                        dip = cand; break
+                if not dip:
                     cau = (b.get("causale") or "").upper()
-                    candidati = []
                     for cand in dips:
                         cg = (cand.get("cognome") or "").upper().strip()
-                        if cg and re.search(r"\b" + re.escape(cg) + r"\b", cau):
-                            candidati.append(cand)
-                    dip = dipendente_unico(candidati)
+                        if cg and cg in cau:
+                            dip = cand; break
                 manca = []
                 if not dip: manca.append("dipendente non riconosciuto")
                 if not b.get("importo"): manca.append("importo")
@@ -1561,27 +1555,23 @@ async def _importa_documenti(pdf_items, errori_iniziali=None, forza=False):
                             tfr.append({"dipendente": f"{dip.get('cognome')} {dip.get('nome')}".strip(),
                                         "importo": b["importo"], "mese": mese, "anno": anno, "data": b.get("data")})
                         else:
-                            from app.services.hr_pagamenti_deposito import (
-                                ORIGINE_PDF, _deposita, _ricalcola_periodi, carica_contesto_hr,
-                            )
-                            ctx = await carica_contesto_hr()
-                            if ctx is None:
-                                raise HTTPException(503, "Archivio pagamenti HR non disponibile")
-                            marca = await _deposita(
-                                ctx, key=f"gc:{h}", testo=text, data=b.get("data"),
-                                importo=b["importo"], hash_pdf=h, cro=cro,
-                                causale=b.get("causale") or "", pdf_filename=origine,
-                                pdf_data=base64.b64encode(pdfbytes).decode(), origine=ORIGINE_PDF,
-                                mese_dichiarato=mese, anno_dichiarato=anno,
-                                riferimento={}, dry_run=False,
-                            )
-                            await _ricalcola_periodi(ctx)
+                            esist = await get_db().paghe_mensili.find_one(
+                                {"dipendente_id": dip["id"], "anno": anno, "mese": mese}, {"erogato_atteso": 1})
+                            atteso = (esist or {}).get("erogato_atteso")
+                            discrep = atteso if (atteso is not None and abs(atteso - b["importo"]) > 1) else None
+                            set_doc = {"dipendente_id": dip["id"], "anno": anno, "mese": mese,
+                                       "bonifico_importo": b["importo"], "bonifico_data": b.get("data"),
+                                       "bonifico_ricevuto": True, "bonifico_causale": b.get("causale"),
+                                       "bonifico_cro": cro, "bonifico_pdf": origine,
+                                       "bonifico_riconciliato": True, "updated_at": now_iso()}
+                            await get_db().paghe_mensili.update_one(
+                                {"dipendente_id": dip["id"], "anno": anno, "mese": mese},
+                                {"$set": set_doc, "$setOnInsert": {"busta_riconciliata": False}}, upsert=True)
                             await _registra_doc(h, "bonifico", f"cro:{cro}" if cro else f"bon:{dip['id']}:{anno}:{mese}", origine)
                             bon.append({"dipendente": f"{dip.get('cognome')} {dip.get('nome')}".strip(),
                                         "importo": b["importo"], "mese": mese, "anno": anno,
                                         "causale": b.get("causale"), "data": b.get("data"),
-                                        "riconciliato": False, "esito_deposito": marca["esito"],
-                                        "discrepanza": None, "fonte": fonte})
+                                        "riconciliato": True, "discrepanza": discrep, "fonte": fonte})
                 return ass, dac, bon, pres, dup, tfr, prestiti
 
             # ---- FOGLIO PRESENZE (ore/timbrature, non è una busta) ----
@@ -1603,7 +1593,7 @@ async def _importa_documenti(pdf_items, errori_iniziali=None, forza=False):
             for cf, info in ced.items():
                 dip = by_cf.get(cf)
                 metodo = "codice fiscale"
-                if not dip and cf not in by_cf:
+                if not dip:
                     dip = by_nome.get((info.get("nome") or "").upper())
                     metodo = "nome (CF non combacia)"
                 netto = _to_float(info.get("netto"))
@@ -1916,7 +1906,6 @@ async def importa_libro_unico_canonico(files: List[UploadFile] = File(...)):
     from app.hr.services import libro_unico_bundle, sincronizza_paghe_mensili
 
     pdf_items, errori = [], []
-    riferimenti_drive = {}
     for uf in files:
         nome = uf.filename or ""
         try:
@@ -1927,8 +1916,6 @@ async def importa_libro_unico_canonico(files: List[UploadFile] = File(...)):
         items, err = _espandi_in_pdf(nome, data)
         pdf_items.extend(items)
         errori.extend(err)
-        if nome.lower().endswith('.pdf') and getattr(uf, 'drive_file_id', None):
-            riferimenti_drive[hashlib.sha256(data).hexdigest()] = uf.drive_file_id
     if not pdf_items:
         raise HTTPException(
             status_code=400,
@@ -1937,24 +1924,12 @@ async def importa_libro_unico_canonico(files: List[UploadFile] = File(...)):
 
     db = get_db()
     associati, duplicati, da_controllare = [], [], []
-    saltati_presenze = []
-    esiti_lettura = []
-    sincronizzazione = None
-    da_sincronizzare = False
     for nome, pdf_bytes in pdf_items:
         try:
-            esito = await libro_unico_bundle.dividi_e_registra(
-                db, pdf_bytes, nome, drive_file_id=riferimenti_drive.get(hashlib.sha256(pdf_bytes).hexdigest()),
-            )
+            esito = await libro_unico_bundle.dividi_e_registra(db, pdf_bytes, nome)
         except Exception as exc:
             errori.append(f"{nome}: {exc}")
             continue
-        errori.extend(f"{nome}: {errore}" for errore in esito.get("errori") or [])
-        esiti_lettura.append(esito.get("esito"))
-        if esito.get("sincronizzazione_paghe") is not None:
-            sincronizzazione = esito["sincronizzazione_paghe"]
-        elif esito.get("inseriti") or esito.get("gia_presenti"):
-            da_sincronizzare = True
         for record in esito.get("inseriti") or []:
             tipo = record.get("tipo_cedolino") or "ordinario"
             mese = 13 if tipo == "tredicesima" else 14 if tipo == "quattordicesima" else None
@@ -1969,17 +1944,10 @@ async def importa_libro_unico_canonico(files: List[UploadFile] = File(...)):
                 "metodo": "codice fiscale",
             })
         duplicati.extend(esito.get("gia_presenti") or [])
-        if esito.get("esito") == "presenze" and not esito.get("errori"):
-            saltati_presenze.append({"file": nome, "motivo": "Foglio presenze, nessuna pagina retributiva"})
-        else:
-            da_controllare.extend(esito.get("senza_pagina_retributiva") or [])
+        da_controllare.extend(esito.get("senza_pagina_retributiva") or [])
         da_controllare.extend(esito.get("senza_anagrafica") or [])
 
-    if da_sincronizzare:
-        try:
-            sincronizzazione = await sincronizza_paghe_mensili.sincronizza(db)
-        except Exception as exc:
-            errori.append(f"Buste archiviate, aggiornamento Paghe non completato: {exc}")
+    sincronizzazione = await sincronizza_paghe_mensili.sincronizza(db)
     mesi_set = sorted({(a["anno"], a["mese"]) for a in associati if a.get("anno") and a.get("mese")})
     mesi = [
         {"anno": anno, "mese": mese, "n": sum(1 for a in associati if a.get("anno") == anno and a.get("mese") == mese)}
@@ -1987,11 +1955,7 @@ async def importa_libro_unico_canonico(files: List[UploadFile] = File(...)):
     ]
     return {
         "associati": associati,
-        "esito": "solo_presenze" if not errori and len(esiti_lettura) == len(pdf_items) and all(e == "presenze" for e in esiti_lettura) else "buste",
-        "success": bool(associati or duplicati or saltati_presenze) and not errori,
-        "partial": bool(associati or duplicati) and bool(errori),
         "da_controllare": da_controllare,
-        "saltati_presenze": saltati_presenze,
         "totale_associati": len(associati),
         "file_pdf": len(pdf_items),
         "mesi": mesi,
@@ -2005,84 +1969,110 @@ async def importa_libro_unico_canonico(files: List[UploadFile] = File(...)):
     }
 
 
-@router.post("/paghe/importa-libro-unico-coda", status_code=202)
-async def accoda_libro_unico(file: UploadFile = File(...)):
-    from app.database import Database as ERPDatabase
-    from app.routers.documenti import _importa_libro_unico_hr, MAX_UPLOAD_BYTES, MAX_ZIP_UPLOAD_BYTES
-    from app.services.document_import_jobs import enqueue_import
-    from app.utils.upload_validation import verifica_pdf_reale
-
-    nome = os.path.basename(file.filename or "libro_unico.pdf")
-    data = await file.read()
-    if not data or len(data) > (MAX_ZIP_UPLOAD_BYTES if nome.lower().endswith('.zip') else MAX_UPLOAD_BYTES):
-        raise HTTPException(413, "File vuoto o oltre il limite di caricamento")
-    if nome.lower().endswith('.pdf'):
-        verifica_pdf_reale(data, nome)
-    elif not nome.lower().endswith('.zip'):
-        raise HTTPException(400, "Seleziona un PDF o un archivio ZIP")
-    return await enqueue_import(ERPDatabase.get_db(), content=data, filename=nome,
-                                document_type="hr_libro_unico", process=_importa_libro_unico_hr)
-
-
-@router.get("/paghe/importa-libro-unico-coda/{job_id}")
-async def stato_import_libro_unico(job_id: str):
-    from app.database import Database as ERPDatabase
-    from app.services.document_import_jobs import get_import_job
-
-    job = await get_import_job(ERPDatabase.get_db(), job_id)
-    if not job or job.get("document_type") not in {"hr_libro_unico", "hr_importi_tabellari"}:
-        raise HTTPException(404, "Import non trovato")
-    return job
-
-
 @router.post("/paghe/importa-email")
-async def importa_da_email():
-    """Usa la casella, i mittenti e gli originali del gestionale, poi il writer HR canonico."""
-    from app.database import Database as ERPDatabase
-    from app.services.email_monitor_service import (
-        _build_gmail_credentials, _load_allowed_gmail_patterns, _download_email_batch,
-    )
-    from app.services.originale_documento import byte_dal_record
-
-    erp = ERPDatabase.get_db()
-    user, password, host = await _build_gmail_credentials(erp)
-    if not user or not password:
-        raise HTTPException(400, "Configura la casella di posta nelle Impostazioni del gestionale. Puoi comunque importare i PDF dal dispositivo o da Drive.")
-    patterns = await _load_allowed_gmail_patterns(erp)
-    if not patterns:
-        raise HTTPException(400, "Nessun mittente autorizzato nella posta del gestionale. Aggiungi il mittente dei cedolini nelle Impostazioni.")
+async def importa_da_email(cartella: Optional[str] = None, solo_non_letti: bool = False):
+    """Scarica gli allegati PDF dalla casella di posta (INBOX + tutte le cartelle) e li
+    importa con la stessa pipeline. Credenziali dalle variabili ambiente Render:
+    IMAP_HOST, IMAP_PORT (default 993), IMAP_USER, IMAP_PASSWORD.
+    L'anti-duplicazione per hash evita di re-importare email già lette in passato."""
+    import imaplib, email
+    host = os.getenv("IMAP_HOST") or os.getenv("IMAP_SERVER")
+    user = os.getenv("IMAP_USER") or os.getenv("IMAP_EMAIL")
+    pwd = os.getenv("IMAP_PASSWORD") or os.getenv("IMAP_PASS")
+    port = int(os.getenv("IMAP_PORT") or 993)
+    mancano = [n for n, v in [("IMAP_HOST", host), ("IMAP_USER", user), ("IMAP_PASSWORD", pwd)] if not v]
+    if mancano:
+        raise HTTPException(status_code=400,
+            detail="Variabili ambiente IMAP mancanti su Render: " + ", ".join(mancano) +
+                   ". Servono IMAP_HOST, IMAP_USER, IMAP_PASSWORD (IMAP_PORT opzionale, default 993).")
     try:
-        download = await _download_email_batch(erp, user, password, host, 90, 200, patterns)
-    except Exception as exc:
-        logger.warning("Posta HR: download fallito (%s)", type(exc).__name__)
-        raise HTTPException(502, "Lettura della posta non riuscita. Controlla il collegamento alla casella nelle Impostazioni del gestionale.") from exc
-    if download.get("success") is False:
-        raise HTTPException(502, "La casella del gestionale non ha completato la lettura. Controlla l'esito nella pagina Importa.")
+        M = imaplib.IMAP4_SSL(host, port)
+        M.login(user, pwd)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Connessione/login IMAP fallito ({host}:{port}): {e}") from e
 
-    docs = await erp["documents_inbox"].find({"$or": [
-        {"category": "busta_paga"}, {"tipo_documento": {"$in": ["busta_paga", "cedolino"]}},
-    ]}, {"_id": 0}).to_list(200)
-    files, errori = [], []
-    for doc in docs:
-        nome = doc.get("filename") or "cedolino.pdf"
+    pdf_items, errori, cartelle_lette = [], [], []
+    try:
+        # Elenco cartelle: una specifica se richiesta, altrimenti tutte
+        if cartella:
+            target = [cartella]
+        else:
+            target = []
+            typ, data = M.list()
+            if typ == "OK":
+                for raw in data:
+                    line = raw.decode(errors="ignore") if isinstance(raw, bytes) else str(raw)
+                    # l'ultimo token tra virgolette è il nome cartella
+                    nome_c = line.split(' "')[-1].strip().strip('"') if '"' in line else line.split()[-1]
+                    if nome_c and "\\Noselect" not in line:
+                        target.append(nome_c)
+            if "INBOX" not in target:
+                target.insert(0, "INBOX")
+        for box in target:
+            try:
+                typ, _ = M.select(f'"{box}"', readonly=True)
+                if typ != "OK":
+                    continue
+                crit = "(UNSEEN)" if solo_non_letti else "ALL"
+                typ, msgnums = M.search(None, crit)
+                if typ != "OK":
+                    continue
+                ids = msgnums[0].split()
+                cartelle_lette.append({"cartella": box, "messaggi": len(ids)})
+                for num in ids:
+                    typ, msgdata = M.fetch(num, "(RFC822)")
+                    if typ != "OK" or not msgdata or not msgdata[0]:
+                        continue
+                    msg = email.message_from_bytes(msgdata[0][1])
+                    for part in msg.walk():
+                        if part.get_content_maintype() == "multipart":
+                            continue
+                        fn = part.get_filename()
+                        if not fn:
+                            continue
+                        try:
+                            payload = part.get_payload(decode=True)
+                        except Exception:
+                            continue
+                        if not payload:
+                            continue
+                        its, err = _espandi_in_pdf(fn, payload)
+                        pdf_items += [(f"[{box}] {o}", d) for (o, d) in its]
+                        errori += err
+            except Exception as e:
+                errori.append(f"cartella {box}: {e}")
+    finally:
         try:
-            originale = await byte_dal_record(doc, [])
-            if not originale:
-                raise ValueError("Originale non disponibile")
-            file = UploadFile(filename=nome, file=io.BytesIO(originale[0]))
-            file.drive_file_id = doc.get("drive_file_id")
-            files.append(file)
-        except Exception as exc:
-            errori.append(f"{nome}: {exc}")
-    result = await importa_libro_unico_canonico(files=files) if files else {
-        "file_pdf": 0, "totale_associati": 0, "associati": [], "duplicati": [], "errori": [], "mesi": [],
-    }
-    result.setdefault("errori", []).extend(errori)
-    result["success"] = not result["errori"] and result.get("success", True)
-    result["messaggio"] = "Posta del gestionale: ultimi 90 giorni, fino a 200 messaggi per lettura. Elaborati i cedolini presenti nell'archivio documenti."
-    if not files:
-        result["messaggio"] += " Nessun cedolino disponibile."
-    return result
+            M.logout()
+        except Exception:
+            pass
+
+    if not pdf_items:
+        return {"associati": [], "da_controllare": [], "totale_associati": 0, "file_pdf": 0,
+                "mesi": [], "errori": errori, "bonifici": [], "presenze": [], "duplicati": [],
+                "tfr": [], "prestiti": [], "cartelle_lette": cartelle_lette,
+                "documenti": {"caricati": 0, "non_assegnati": 0, "duplicati": 0},
+                "messaggio": "Nessun allegato PDF trovato nella casella."}
+    res = await _importa_documenti(pdf_items, errori)
+    res["cartelle_lette"] = cartelle_lette
+    # Oltre a paghe/bonifici, archivia OGNI allegato nelle cartelle Documenti del dipendente
+    # (UNILAV, Certificazione Unica, contratti, codice fiscale…): stesso motore dell'upload massivo.
+    db_doc = get_db()
+    indici = await _indici_dipendenti(db_doc)
+    doc_caricati, doc_non_ass, doc_dup = 0, 0, 0
+    for origine, raw in pdf_items:
+        try:
+            esito, _cat, _nome = await _archivia_documento_cloud(db_doc, origine, raw, indici=indici, origine="email")
+            if esito == "caricato":
+                doc_caricati += 1
+            elif esito == "non_assegnato":
+                doc_non_ass += 1
+            elif esito == "duplicato":
+                doc_dup += 1
+        except Exception as e:
+            errori.append(f"archivio doc {origine}: {e}")
+    res["documenti"] = {"caricati": doc_caricati, "non_assegnati": doc_non_ass, "duplicati": doc_dup}
+    return res
 
 
 # ============ PRESENZE ============
@@ -2617,7 +2607,7 @@ def _pdf_riepilogo_periodi(anno, mese, giorni, righe):
     pagine A4 verticali (si estende da sola se i periodi sono tanti)."""
     import fitz
     W, H = 595, 842  # A4 verticale
-    mL, mT, mB = 32, 70, 40
+    mL, _mR, mT, mB = 32, 32, 70, 40
     pdf = fitz.open()
     page = pdf.new_page(width=W, height=H)
     y = [mT]
@@ -2860,7 +2850,7 @@ async def invia_presenze_commercialista(data: dict = Body(...)):
             invia_email, dest, f"Presenze {periodo} — Ceraldi Group S.r.l.",
             f"In allegato il riepilogo presenze di {periodo} (PDF + CSV).\n\n"
             + (blocco_note + "\n\n" if blocco_note else "")
-            + "Messaggio generato automaticamente dal gestionale Ceraldi Group.",
+            + f"Messaggio generato automaticamente dal gestionale Ceraldi Group.",
             allegati)
     except Exception as e:
         # Log con traceback completo: l'errore esatto (auth Gmail, porta SMTP
@@ -3380,11 +3370,33 @@ async def correggi_acconti_cedolino():
 
 
 @router.post("/cedolini/riscansiona")
-async def riscansiona_cedolini(anno: Optional[int] = None, dipendente_id: Optional[str] = None,
-                               dopo_id: str = ""):
-    """Rilegge le componenti documentali senza modificare netti o pagamenti."""
-    from app.services.cedolini_hr_riverifica import riscansiona_componenti
-    return await riscansiona_componenti(get_db(), anno=anno, dipendente_id=dipendente_id, dopo_id=dopo_id)
+async def riscansiona_cedolini(anno: Optional[int] = None, dipendente_id: Optional[str] = None):
+    """Ri-estrae tutte le voci dai cedolini storici (2023→oggi) che hanno il PDF salvato,
+    così il motore di ricerca trova ogni codice anche sulle buste già importate."""
+    import io
+    import pdfplumber
+    db = get_db()
+    q: dict = {"pdf_data": {"$exists": True}}
+    if anno:
+        q["anno"] = anno
+    if dipendente_id:
+        q["dipendente_id"] = dipendente_id
+    aggiornati, errori = 0, 0
+    async for c in db.cedolini.find(q, {"_id": 0, "id": 1, "pdf_data": 1}):
+        try:
+            raw = base64.b64decode(c["pdf_data"])
+            text = ""
+            with pdfplumber.open(io.BytesIO(raw)) as pdf:
+                for p in pdf.pages:
+                    text += (p.extract_text() or "") + "\n"
+            dati = _lul_dati_busta(text)
+            if dati:
+                await db.cedolini.update_one({"id": c["id"]}, {"$set": dati})
+                aggiornati += 1
+        except Exception:
+            errori += 1
+    return {"aggiornati": aggiornati, "errori": errori,
+            "nota": "I cedolini senza PDF salvato non possono essere riscansionati: vanno re-importati dal Libro Unico."}
 
 
 # ============ IMPORT PRIMA NOTA SALARI (Excel) ============
@@ -3405,41 +3417,6 @@ async def importa_prima_nota(file: UploadFile = File(...), applica: bool = False
         return preview
     return await enqueue_import(ERPDatabase.get_db(), content=raw, filename=nome,
                                 document_type="hr_importi_tabellari", process=tabellari.elabora_file)
-
-
-@router.post("/paghe/verifica-importo-excel")
-async def verifica_importo_excel(data: dict = Body(...)):
-    """Conferma la verifica del confronto senza modificare importi o pagamenti."""
-    from app.hr.services.sincronizza_paghe_mensili import _SYNC_LOCK
-    from app.hr.services.importi_paghe_tabellari import euro, intero
-    from app.hr.db_supabase import SupabaseDatabase
-    try:
-        key = {"dipendente_id": str(data.get("dipendente_id") or ""),
-               "anno": intero(data.get("anno")), "mese": intero(data.get("mese"))}
-        expected = euro(data.get("busta_attuale"), allow_negative=True)
-        if not key["dipendente_id"] or not 1 <= key["mese"] <= 14 or not data.get("confronto_id"):
-            raise ValueError("Dipendente, periodo e confronto obbligatori")
-    except ValueError as exc:
-        raise HTTPException(400, str(exc)) from exc
-    async with _SYNC_LOCK:
-        db = get_db()
-        if isinstance(db, SupabaseDatabase):
-            await db.refresh_collections("paghe_mensili")
-        paga = await db.paghe_mensili.find_one(key, {"_id": 0})
-        if not paga:
-            raise HTTPException(404, "Periodo non trovato")
-        if paga.get("importo_busta") is None:
-            raise HTTPException(409, "Controlla il cedolino e inserisci il netto prima di confermare la verifica")
-        if expected != euro(paga.get("importo_busta"), allow_negative=True):
-            raise HTTPException(409, "Importo cambiato: aggiorna la pagina e ricontrolla")
-        entries = list(paga.get("importi_excel") or [])
-        entry = next((e for e in entries if e.get("id") == data.get("confronto_id")), None)
-        if not entry:
-            raise HTTPException(404, "Confronto non trovato")
-        entry.update(verificato=True, verificato_il=now_iso(), verificato_importo=paga.get("importo_busta"),
-                     verificato_netto=paga.get("netto_stampato"))
-        await db.paghe_mensili.update_one(key, {"$set": {"importi_excel": entries}})
-    return {"ok": True}
 
 
 @router.post("/paghe/importa-storico-pagamenti")
@@ -3567,11 +3544,6 @@ _ANAGRAFICA_HEADER = {
     "cittadinanza": {"cittadinanza"},
     "titolo_studio": {"titolo studio", "titolo di studio"},
     "mansione": {"mansione", "ruolo"},
-    "matricola": {"matricola", "codice dipendente"},
-    "gruppo": {"gruppo", "reparto"},
-    "luogo_lavoro": {"luogo di lavoro", "luogo lavoro", "sede"},
-    "note": {"note"},
-    "attivo": {"attivo", "in forza"},
     "telefono": {"telefono", "cellulare", "cell"},
     "email": {"email", "e mail", "mail"},
     "indirizzo": {"indirizzo", "residenza"},
@@ -3584,7 +3556,6 @@ _ANAGRAFICA_CAMPI_SCRIVIBILI = (
     "codice_fiscale_azienda", "sesso", "regione_residenza", "provincia_residenza",
     "comune_residenza", "regione_domicilio", "provincia_domicilio", "comune_domicilio",
     "cittadinanza", "titolo_studio",
-    "matricola", "gruppo", "luogo_lavoro", "note", "attivo",
 )
 
 
@@ -3617,9 +3588,6 @@ def _trova_foglio_anagrafica(wb):
     preferiti = [ws for ws in wb.worksheets if _testo_header(ws.title) == "anagrafiche dipendenti"]
     candidati = preferiti or list(wb.worksheets)
     for ws in candidati:
-        # Alcuni esportatori dichiarano erroneamente una sola cella nel file.
-        if hasattr(ws, "reset_dimensions"):
-            ws.reset_dimensions()
         for numero, row in enumerate(ws.iter_rows(min_row=1, max_row=12, values_only=True), start=1):
             mappa = _mappa_header_anagrafica(row)
             if "codice_fiscale" not in mappa:
@@ -3700,15 +3668,6 @@ def _normalizza_riga_anagrafica(row: tuple, mappa: Dict[str, int]) -> tuple[Dict
             valore = re.sub(r"\s+", "", str(valore)).upper()
             if not re.fullmatch(r"(?:\d{11}|[A-Z0-9]{16})", valore):
                 errori.append("codice fiscale azienda non valido")
-        elif campo == "attivo":
-            normalizzato = _testo_header(str(valore))
-            if normalizzato in {"true", "1", "si", "vero", "attivo"}:
-                valore = True
-            elif normalizzato in {"false", "0", "no", "falso", "inattivo", "cessato"}:
-                valore = False
-            else:
-                errori.append("Attivo non valido: usare vero/falso, sì/no o 1/0")
-                continue
         else:
             valore = str(valore).strip()
         if valore not in (None, ""):
@@ -3739,13 +3698,12 @@ def _valori_anagrafici_equivalenti(campo: str, corrente: Any, nuovo: Any) -> boo
 @router.post("/dipendenti/importa-anagrafica")
 async def importa_anagrafica(
     file: UploadFile = File(...), applica: bool = False, conferma_hash: Optional[str] = None,
-    crea_mancanti: bool = False,
 ):
     """Anteprima per difetto; applica soltanto aggiornamenti confermati allo stesso file.
 
     Identita' = codice fiscale esatto. Nomi, importi o posizione nel foglio non
-    creano mai un'associazione. Le persone nuove richiedono l'opzione esplicita
-    crea_mancanti, nome/cognome, CF e stato Attivo leggibile nell'originale.
+    creano mai un'associazione. Righe senza CF, CF duplicati e dipendenti non
+    presenti restano da verificare e non vengono creati automaticamente.
     """
     import openpyxl
     raw = await file.read()
@@ -3787,7 +3745,6 @@ async def importa_anagrafica(
         if cf:
             occorrenze_cf.setdefault(cf, []).append(numero)
 
-    wb.close()
     for numero, dati, errori, nominativo in righe_sorgente:
         cf = dati.get("codice_fiscale")
         if not cf:
@@ -3802,25 +3759,6 @@ async def importa_anagrafica(
             righe.append({"riga": numero, "codice_fiscale": cf, "stato": "da_verificare", "motivi": errori})
             continue
         candidati = per_cf.get(cf, [])
-        if not candidati and crea_mancanti:
-            mancanti = [campo for campo in ("nome", "cognome", "attivo") if campo not in dati]
-            if mancanti:
-                righe.append({"riga": numero, "codice_fiscale": cf, "stato": "da_verificare",
-                              "motivi": ["Nuova scheda: completare " + ", ".join(mancanti)]})
-                continue
-            voce = {"riga": numero, "codice_fiscale": cf,
-                    "nome": f"{dati['cognome']} {dati['nome']}", "stato": "creabile",
-                    "campi": sorted(dati), "attivo": dati["attivo"]}
-            if not dati["attivo"]:
-                voce["avvisi"] = ["Non in forza; data e motivo della cessazione non presenti nel file"]
-            if applica:
-                nuova = await _crea_anagrafica(
-                    {**dati, "import_anagrafica_hash": impronta, "import_anagrafica_riga": numero},
-                    attivo=dati["attivo"],
-                )
-                voce["dipendente_id"] = nuova["id"]
-            righe.append(voce)
-            continue
         if len(candidati) != 1:
             motivo = "dipendente non presente in anagrafica" if not candidati else "codice fiscale duplicato in anagrafica"
             righe.append({"riga": numero, "codice_fiscale": cf, "stato": "da_verificare", "motivi": [motivo]})
@@ -3830,11 +3768,6 @@ async def importa_anagrafica(
         conflitti_campo: List[str] = []
         for campo, valore in dati.items():
             if campo == "codice_fiscale":
-                continue
-            if campo == "attivo":
-                # Un foglio non puo' riattivare o cessare un rapporto esistente.
-                if stato_rapporto.e_in_forza(dip) != valore:
-                    conflitti_campo.append("attivo")
                 continue
             corrente = dip.get(campo)
             if _valore_anagrafico_vuoto(corrente):
@@ -3864,16 +3797,14 @@ async def importa_anagrafica(
             )
 
     conteggi = {stato: sum(1 for r in righe if r["stato"] == stato)
-                for stato in ("creabile", "aggiornabile", "invariato", "da_verificare")}
+                for stato in ("aggiornabile", "invariato", "da_verificare")}
     conteggi["conflitto"] = sum(
         1 for r in righe if r["stato"] == "conflitto" or r.get("conflitti")
     )
     return {
         "dry_run": not applica, "hash_sha256": impronta, "foglio": ws.title,
-        "crea_mancanti": crea_mancanti,
         "riga_intestazioni": header_row, "righe_lette": len(righe),
         "aggiornati": conteggi["aggiornabile"] if applica else 0,
-        "creati": conteggi["creabile"] if applica else 0,
         "conteggi": conteggi, "righe": righe, "colonne_ignorate": colonne_ignorate,
     }
 
@@ -4474,12 +4405,66 @@ async def _calcola_associazioni_bonifici(db, anno: Optional[int] = None, mese: O
 @router.get("/paghe/associazioni-bonifici/export-excel")
 async def associazioni_bonifici_export_excel(anno: Optional[int] = None, mese: Optional[int] = None,
                                               stato: Optional[str] = None):
-    """Esporta documenti, pagamenti, PDF non collegati e mesi riconciliati separatamente."""
+    """Esporta in Excel la stessa vista di /paghe/associazioni-bonifici: una riga per
+    dipendente/periodo con dipendente, periodo cedolino, importo cedolino, importo bonifico
+    e stato dell'associazione. Stessa fonte dati (nessun sistema parallelo)."""
+    import openpyxl
+    from openpyxl.styles import Font, PatternFill, Alignment
     from fastapi.responses import StreamingResponse
-    from app.hr.services.export_paghe import workbook_paghe
+    from app.services.conti_pos import data_italiana
 
     dati = await _calcola_associazioni_bonifici(get_db(), anno, mese, stato)
-    wb = workbook_paghe(dati)
+    mesi = ["Gennaio", "Febbraio", "Marzo", "Aprile", "Maggio", "Giugno", "Luglio",
+            "Agosto", "Settembre", "Ottobre", "Novembre", "Dicembre"]
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Cedolini e Bonifici"
+    intestazioni = ["Dipendente", "Periodo", "Importo Cedolino", "Importo Bonifico",
+                    "Acconti", "Erogato", "Saldo", "Stato", "Qualità match", "Fonte",
+                    "N. Bonifici", "Data ultimo bonifico", "CRO / riferimento bonifici", "PDF Cedolino"]
+    ws.append(intestazioni)
+    header_font = Font(bold=True, color="FFFFFF")
+    header_fill = PatternFill(start_color="5B7A6B", end_color="5B7A6B", fill_type="solid")
+    for cell in ws[1]:
+        cell.font = header_font
+        cell.fill = header_fill
+        cell.alignment = Alignment(horizontal="center")
+
+    stati_lbl = {"pagato": "Pagato", "parziale": "Parziale", "da_pagare": "Da pagare",
+                 "da_verificare": "Da verificare", STATO_PAGA_IN_ATTESA_BUSTA: "In attesa della busta"}
+    qualita_lbl = {"esatto": "Match esatto", "per_importo": "Match per importo",
+                   "aggregato": "Più bonifici", "da_verificare": "Da verificare"}
+    for r in dati["righe"]:
+        periodo = f"{mesi[r['mese'] - 1]} {r['anno']}" if r.get("mese") and 1 <= r["mese"] <= 12 else f"{r.get('mese')}/{r.get('anno')}"
+        # "Data ultimo bonifico": paghe_mensili.bonifico_data non viene mai
+        # popolato dagli import via pagamenti_esiti (CSV, Drive, ponte storico) —
+        # la data vera sta sui singoli pagamenti (r["bonifici"], già ordinati per
+        # data), non sul campo aggregato della busta.
+        date_bonifici = [b.get("data") for b in (r.get("bonifici") or []) if b.get("data")]
+        data_ultimo = max(date_bonifici) if date_bonifici else (r.get("bonifico_data") or "")
+        # Il CRO sta accanto al bonifico: e' quello che si cerca sull'estratto conto.
+        riferimenti = ", ".join(dict.fromkeys(
+            str(b.get("riferimento")) for b in (r.get("bonifici") or []) if b.get("riferimento")))
+        ws.append([
+            r.get("dipendente"), periodo,
+            r.get("busta") or 0, r.get("bonifico") or 0, r.get("acconti") or 0,
+            r.get("erogato") or 0, r.get("saldo") or 0,
+            stati_lbl.get(r.get("stato"), r.get("stato")),
+            qualita_lbl.get(r.get("qualita"), r.get("qualita") or ""),
+            r.get("fonte") or "", r.get("n_bonifici") or 0,
+            data_italiana(data_ultimo) if data_ultimo else "", riferimenti,
+            "Sì" if r.get("cedolino_pdf") else "No",
+        ])
+    # Importi in euro all'italiana, incolonnati a destra (colonne C..G).
+    for riga in ws.iter_rows(min_row=2, min_col=3, max_col=7):
+        for cella in riga:
+            cella.number_format = '#,##0.00 "€"'
+            cella.alignment = Alignment(horizontal="right")
+    for col in ws.columns:
+        larghezza = max((len(str(c.value)) if c.value is not None else 0) for c in col) + 2
+        ws.column_dimensions[col[0].column_letter].width = min(max(larghezza, 10), 40)
+
     buf = io.BytesIO()
     wb.save(buf)
     buf.seek(0)
@@ -4653,46 +4638,6 @@ async def create_missione(missione: MissioneCloud):
     await get_db().missioni_cloud.insert_one(miss_dict)
     return serialize_doc(miss_dict)
 
-
-async def _dati_missione(missione: MissioneCloud):
-    from datetime import date
-    import math
-
-    dati = missione.model_dump()
-    try:
-        inizio = date.fromisoformat(dati["data_inizio"])
-        fine = date.fromisoformat(dati["data_fine"])
-    except ValueError as exc:
-        raise HTTPException(400, "Inserisci date valide per la missione") from exc
-    if fine < inizio:
-        raise HTTPException(400, "La data fine non può precedere la data inizio")
-    if not math.isfinite(dati["rimborso"]) or dati["rimborso"] < 0:
-        raise HTTPException(400, "Il rimborso deve essere un importo non negativo")
-    for campo in ("destinazione", "scopo"):
-        dati[campo] = dati[campo].strip()
-        if not dati[campo]:
-            raise HTTPException(400, "Destinazione e scopo sono obbligatori")
-    if not await get_db().dipendenti.find_one({"id": dati["dipendente_id"]}, {"_id": 0, "id": 1}):
-        raise HTTPException(404, "Dipendente non trovato")
-    dati["stato"] = "in_attesa"
-    return dati
-
-
-@router.put("/missioni/{missione_id}")
-async def update_missione(missione_id: str, missione: MissioneCloud):
-    db = get_db()
-    corrente = await db.missioni_cloud.find_one({"id": missione_id}, {"_id": 0})
-    if not corrente:
-        raise HTTPException(404, "Missione non trovata")
-    if corrente.get("stato") != "in_attesa":
-        raise HTTPException(409, "Una missione già approvata non può essere modificata da questa pagina")
-    dati = await _dati_missione(missione)
-    dati["updated_at"] = now_iso()
-    result = await db.missioni_cloud.update_one({"id": missione_id, "stato": "in_attesa"}, {"$set": dati})
-    if not result.matched_count:
-        raise HTTPException(409, "La missione è cambiata: aggiorna la pagina")
-    return {**corrente, **dati}
-
 @router.put("/missioni/{missione_id}/approva")
 async def approva_missione(missione_id: str):
     db = get_db()
@@ -4711,7 +4656,7 @@ async def approva_missione(missione_id: str):
     # Rimborso missione → partita aperta (tracciamento finanziario)
     if rimborso > 0 and dip_id:
         try:
-            from app.services.partite_aperte_engine import crea_partita, TipoPartita
+            from app.hr.services.partite_aperte_engine import crea_partita, TipoPartita
             await crea_partita(
                 tipo=TipoPartita.ALTRO, documento_id=missione_id,
                 documento_collection="missioni_cloud", controparte_id=dip_id,
@@ -4735,10 +4680,7 @@ async def approva_missione(missione_id: str):
 
 @router.delete("/missioni/{missione_id}")
 async def delete_missione(missione_id: str):
-    corrente = await get_db().missioni_cloud.find_one({"id": missione_id}, {"_id": 0})
-    if corrente and corrente.get("stato") != "in_attesa":
-        raise HTTPException(409, "Una missione già approvata non può essere eliminata da questa pagina")
-    result = await get_db().missioni_cloud.delete_one({"id": missione_id, "stato": "in_attesa"})
+    result = await get_db().missioni_cloud.delete_one({"id": missione_id})
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Missione non trovata")
     return {"message": "Missione eliminata"}
@@ -4824,12 +4766,10 @@ CATEGORIE_DOC = ["UNILAV", "CERTIFICAZIONE_UNICA", "CONTRATTO", "RIDUZIONE_ORARI
 
 
 def classifica_documento(text: str, filename: str = "") -> str:
-    """Riconosce il tipo soltanto dal contenuto estratto.
-
-    Il nome file non costituisce prova; una scansione senza testo resta ALTRO
-    e richiede verifica invece di essere instradata per supposizione.
-    """
+    """Riconosce il tipo di documento dal testo e, in fallback, dal nome del file
+    (utile per le scansioni-immagine senza testo). Diciture standard italiane."""
     t = (text or "").lower()
+    fn = (filename or "").lower()
 
     def H(s, *ks):
         return any(k in s for k in ks)
@@ -4853,7 +4793,28 @@ def classifica_documento(text: str, filename: str = "") -> str:
         return "CARTA_IDENTITA"
     if H(t, "riduzione orario", "riduzione dell'orario", "riduzione dell orario", "trasformazione part-time", "riduzione part time"):
         return "RIDUZIONE_ORARIO"
-    # Segnale debole dal testo
+    # 2) Nome FILE (per scansioni senza testo)
+    if H(fn, "riduzione"):
+        return "RIDUZIONE_ORARIO"
+    if H(fn, "dimission", "recesso"):
+        return "DIMISSIONI"
+    if H(fn, "licenziament"):
+        return "LICENZIAMENTO"
+    if H(fn, "unilav"):
+        return "UNILAV"
+    if H(fn, "certificazione_unica", "certificazione unica", "_cu_", "cud"):
+        return "CERTIFICAZIONE_UNICA"
+    if H(fn, "contratto"):
+        return "CONTRATTO"
+    if H(fn, "bonific"):
+        return "BONIFICO"
+    if H(fn, "carta_di_identit", "carta d'identit", "carta identit", "carta_identit"):
+        return "CARTA_IDENTITA"
+    if H(fn, "codice_fiscale", "codice fiscale", "tessera_sanitaria", "tessera sanitaria"):
+        return "CODICE_FISCALE"
+    if H(fn, "busta", "cedolino"):
+        return "BUSTA_PAGA"
+    # 3) Segnale debole dal testo
     if H(t, "tessera sanitaria", "servizio sanitario nazionale"):
         return "CODICE_FISCALE"
     return "ALTRO"
@@ -4875,21 +4836,18 @@ def indici_da_dipendenti(dips):
     """Gli stessi indici da un elenco gia' letto (la banca lo carica da se')."""
     def norm(s):
         return re.sub(r"\s+", " ", str(s or "").strip()).lower()
-    coppie_cf, coppie_nome, by_cogn = [], [], {}
+    by_cf, by_nome, by_cogn = {}, {}, {}
     for d in dips:
         cf = (d.get("codice_fiscale") or "").upper().strip()
         if cf:
-            coppie_cf.append((cf, d))
+            by_cf[cf] = d
         n, c = norm(d.get("nome")), norm(d.get("cognome"))
         for v in {norm(d.get("nome_completo")), f"{c} {n}".strip(), f"{n} {c}".strip()}:
             if v and len(v) > 6:
-                coppie_nome.append((v, d))
+                by_nome[v] = d
         if len(c) >= 4:
             by_cogn.setdefault(c, []).append(d)
-    from app.hr.services.identita_dipendente import indicizza_alias_univoci
-    return {"cf": indicizza_alias_univoci(coppie_cf),
-            "nome": {k.lower(): v for k, v in indicizza_alias_univoci(coppie_nome).items()},
-            "cogn": by_cogn}
+    return {"cf": by_cf, "nome": by_nome, "cogn": by_cogn}
 
 
 async def _archivia_documento_cloud(db, filename, raw, contesto="", indici=None, origine="upload_massivo"):
@@ -4915,11 +4873,33 @@ async def _archivia_documento_cloud(db, filename, raw, contesto="", indici=None,
             text = ""
     if indici is None:
         indici = await _indici_dipendenti(db)
-    categoria = classifica_documento(text)
-    from app.services.hr_pagamenti_deposito import risolvi_dipendente
-    d, livello = risolvi_dipendente(indici, text)
-    if livello not in {"cf", "nome"}:
-        d = None
+    by_cf, by_nome, by_cogn = indici["cf"], indici["nome"], indici["cogn"]
+
+    def norm(s):
+        return re.sub(r"\s+", " ", str(s or "").strip()).lower()
+    categoria = classifica_documento(text, f"{contesto} {filename}".strip())
+    d = None
+    for cf in _CF_DOC_RE.findall((text or "").upper()):
+        if cf in by_cf:
+            d = by_cf[cf]
+            break
+    if not d:
+        tl = norm(text)
+        for nome_n, dd in by_nome.items():
+            if nome_n in tl:
+                d = dd
+                break
+    if not d:
+        fn_norm = norm(f"{contesto} {filename}".replace("_", " ").replace("-", " "))
+        for nome_n, dd in by_nome.items():
+            if nome_n in fn_norm:
+                d = dd
+                break
+        if not d:
+            for cogn, lst in by_cogn.items():
+                if cogn in fn_norm and len(lst) == 1:
+                    d = lst[0]
+                    break
     doc = {"id": generate_id(),
            "dipendente_id": (d or {}).get("id"),
            "dipendente_nome": (f"{d.get('cognome','')} {d.get('nome','')}".strip() if d else None),
@@ -5153,3 +5133,131 @@ async def seed_data():
         await get_db().turni_cloud.insert_one(t)
     
     return {"message": "Dati di esempio creati"}
+
+
+@router.post("/bonifici-da-associare/{bonifico_id}/ripartizione")
+async def ripartizione_bonifico(bonifico_id: str, data: Dict[str, Any] = Body(...),
+                               utente: Dict[str, Any] = Depends(require_staff)):
+    from app.services.associazione_salari import anteprima, pubblica, conferma
+    db = get_db()
+    pagamento = await db.bonifici_da_associare.find_one({"id": bonifico_id}, {"_id": 0, "pdf_data": 0})
+    if not pagamento:
+        raise HTTPException(404, "Bonifico non trovato")
+    if pagamento.get("stato") not in (None, "da_associare", "associato"):
+        raise HTTPException(409, "Bonifico non disponibile per l'associazione")
+    if data.get("conferma"):
+        risultato = await conferma(db, pagamento, data.get("dipendente_id"), data, _attore(utente))
+        await _segna_conferma(db, pagamento, _attore(utente), {"dipendente_id": data.get("dipendente_id"),
+                              "destinazioni_salari": risultato["destinazioni"]})
+        return risultato
+    return pubblica(await anteprima(db, pagamento, data.get("dipendente_id"),
+                                   data.get("destinazioni"), data.get("collega_key")))
+
+
+
+@router.post("/paghe/verifica-importo-excel")
+async def verifica_importo_excel(data: dict = Body(...)):
+    """Conferma la verifica del confronto senza modificare importi o pagamenti."""
+    from app.hr.services.sincronizza_paghe_mensili import _SYNC_LOCK
+    from app.hr.services.importi_paghe_tabellari import euro, intero
+    from app.hr.db_supabase import SupabaseDatabase
+    try:
+        key = {"dipendente_id": str(data.get("dipendente_id") or ""),
+               "anno": intero(data.get("anno")), "mese": intero(data.get("mese"))}
+        expected = euro(data.get("busta_attuale"), allow_negative=True)
+        if not key["dipendente_id"] or not 1 <= key["mese"] <= 14 or not data.get("confronto_id"):
+            raise ValueError("Dipendente, periodo e confronto obbligatori")
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    async with _SYNC_LOCK:
+        db = get_db()
+        if isinstance(db, SupabaseDatabase):
+            await db.refresh_collections("paghe_mensili")
+        paga = await db.paghe_mensili.find_one(key, {"_id": 0})
+        if not paga:
+            raise HTTPException(404, "Periodo non trovato")
+        if paga.get("importo_busta") is None:
+            raise HTTPException(409, "Controlla il cedolino e inserisci il netto prima di confermare la verifica")
+        if expected != euro(paga.get("importo_busta"), allow_negative=True):
+            raise HTTPException(409, "Importo cambiato: aggiorna la pagina e ricontrolla")
+        entries = list(paga.get("importi_excel") or [])
+        entry = next((e for e in entries if e.get("id") == data.get("confronto_id")), None)
+        if not entry:
+            raise HTTPException(404, "Confronto non trovato")
+        entry.update(verificato=True, verificato_il=now_iso(), verificato_importo=paga.get("importo_busta"),
+                     verificato_netto=paga.get("netto_stampato"))
+        await db.paghe_mensili.update_one(key, {"$set": {"importi_excel": entries}})
+    return {"ok": True}
+
+
+async def _dati_missione(missione: MissioneCloud):
+    from datetime import date
+    import math
+
+    dati = missione.model_dump()
+    try:
+        inizio = date.fromisoformat(dati["data_inizio"])
+        fine = date.fromisoformat(dati["data_fine"])
+    except ValueError as exc:
+        raise HTTPException(400, "Inserisci date valide per la missione") from exc
+    if fine < inizio:
+        raise HTTPException(400, "La data fine non può precedere la data inizio")
+    if not math.isfinite(dati["rimborso"]) or dati["rimborso"] < 0:
+        raise HTTPException(400, "Il rimborso deve essere un importo non negativo")
+    for campo in ("destinazione", "scopo"):
+        dati[campo] = dati[campo].strip()
+        if not dati[campo]:
+            raise HTTPException(400, "Destinazione e scopo sono obbligatori")
+    if not await get_db().dipendenti.find_one({"id": dati["dipendente_id"]}, {"_id": 0, "id": 1}):
+        raise HTTPException(404, "Dipendente non trovato")
+    dati["stato"] = "in_attesa"
+    return dati
+
+
+
+@router.post("/paghe/importa-libro-unico-coda", status_code=202)
+async def accoda_libro_unico(file: UploadFile = File(...)):
+    from app.database import Database as ERPDatabase
+    from app.routers.documenti import _importa_libro_unico_hr, MAX_UPLOAD_BYTES, MAX_ZIP_UPLOAD_BYTES
+    from app.services.document_import_jobs import enqueue_import
+    from app.utils.upload_validation import verifica_pdf_reale
+
+    nome = os.path.basename(file.filename or "libro_unico.pdf")
+    data = await file.read()
+    if not data or len(data) > (MAX_ZIP_UPLOAD_BYTES if nome.lower().endswith('.zip') else MAX_UPLOAD_BYTES):
+        raise HTTPException(413, "File vuoto o oltre il limite di caricamento")
+    if nome.lower().endswith('.pdf'):
+        verifica_pdf_reale(data, nome)
+    elif not nome.lower().endswith('.zip'):
+        raise HTTPException(400, "Seleziona un PDF o un archivio ZIP")
+    return await enqueue_import(ERPDatabase.get_db(), content=data, filename=nome,
+                                document_type="hr_libro_unico", process=_importa_libro_unico_hr)
+
+
+
+@router.get("/paghe/importa-libro-unico-coda/{job_id}")
+async def stato_import_libro_unico(job_id: str):
+    from app.database import Database as ERPDatabase
+    from app.services.document_import_jobs import get_import_job
+
+    job = await get_import_job(ERPDatabase.get_db(), job_id)
+    if not job or job.get("document_type") not in {"hr_libro_unico", "hr_importi_tabellari"}:
+        raise HTTPException(404, "Import non trovato")
+    return job
+
+
+
+@router.put("/missioni/{missione_id}")
+async def update_missione(missione_id: str, missione: MissioneCloud):
+    db = get_db()
+    corrente = await db.missioni_cloud.find_one({"id": missione_id}, {"_id": 0})
+    if not corrente:
+        raise HTTPException(404, "Missione non trovata")
+    if corrente.get("stato") != "in_attesa":
+        raise HTTPException(409, "Una missione già approvata non può essere modificata da questa pagina")
+    dati = await _dati_missione(missione)
+    dati["updated_at"] = now_iso()
+    result = await db.missioni_cloud.update_one({"id": missione_id, "stato": "in_attesa"}, {"$set": dati})
+    if not result.matched_count:
+        raise HTTPException(409, "La missione è cambiata: aggiorna la pagina")
+    return {**corrente, **dati}

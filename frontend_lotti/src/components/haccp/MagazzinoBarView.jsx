@@ -5,7 +5,6 @@ import { apiError } from "../../utils/apiError";
 import { norm } from "../../utils/textNormalize";
 import { getTabletSession, sessioneTitolareAttiva } from "../../utils/tabletSession";
 import { aggiungiAlCarrello, euro } from "../../utils/confrontoFornitori";
-import { avviaPollingVisibile } from "../../utils/visiblePolling";
 
 const API = process.env.REACT_APP_LOTTI_BACKEND_URL + "/api";
 
@@ -234,7 +233,8 @@ export default function MagazzinoBarView({ onBack, soloLavagna = false }) {
 
   useEffect(() => { carica(); caricaRichieste(); }, [carica, caricaRichieste]);
   useEffect(() => {
-    return avviaPollingVisibile(caricaRichieste, 12000); // la lavagna si aggiorna da sola
+    const t = setInterval(caricaRichieste, 12000); // la lavagna si aggiorna da sola
+    return () => clearInterval(t);
   }, [caricaRichieste]);
 
 

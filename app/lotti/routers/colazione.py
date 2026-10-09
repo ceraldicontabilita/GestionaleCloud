@@ -325,7 +325,7 @@ async def get_colazione(nome: Optional[str] = None):
 @router.put("")
 async def salva_colazione(template: ColazioneTemplate, _admin=Depends(require_admin)):
     now = datetime.now(timezone.utc).isoformat()
-    doc = template.model_dump()
+    doc = template.dict()
     doc["ultima_modifica"] = now
     await db.colazione_template.update_one(
         {"nome": template.nome}, {"$set": doc}, upsert=True
@@ -779,9 +779,7 @@ async def get_prodotti_disponibili(catalogo: bool = False, solo_acquistati: bool
         ricette_casa = await db.ricette.find(
             {"reparto": {"$in": ["pasticceria", "rosticceria"]}},
             {"_id": 0, "id": 1, "nome": 1, "foto_url": 1, "reparto": 1, "prezzo_vendita": 1,
-             "categorie_rapide": 1, "categorie_rapide_aggiornate_il": 1,
-             "fornitore_rivendita": 1,
-             "ingredienti_dettaglio": 1, "ricetta_base_nome": 1,
+             "categorie_rapide": 1, "ingredienti_dettaglio": 1, "ricetta_base_nome": 1,
              "visibile_tablet": 1, "sola_lettura": 1, "origine": 1},
         ).to_list(2000)
         for r in ricette_casa:
@@ -792,7 +790,6 @@ async def get_prodotti_disponibili(catalogo: bool = False, solo_acquistati: bool
                 continue
             if reparto == "rosticceria" and not includi_rosticceria:
                 continue
-            semilavorato = "semilavorati" in (r.get("categorie_rapide") or [])
             out.append({
                 "id": r["id"],
                 "nome": r.get("nome"),
@@ -801,12 +798,10 @@ async def get_prodotti_disponibili(catalogo: bool = False, solo_acquistati: bool
                 "categoria": r.get("reparto"),
                 "prezzo_vendita": r.get("prezzo_vendita") or 0,
                 "pezzi_cartone": None,
-                "gia_acquistato": None if semilavorato else True,
-                "fonte": "rivendita" if semilavorato else "casa",
-                "fornitore": r.get("fornitore_rivendita") or "",
+                "gia_acquistato": True,
+                "fonte": "casa",
                 "reparto": reparto,
                 "categorie_rapide": r.get("categorie_rapide") or [],
-                "categorie_rapide_aggiornate_il": r.get("categorie_rapide_aggiornate_il"),
                 "ammesso_colazione": reparto == "pasticceria",
             })
 

@@ -153,7 +153,7 @@ async def applica_movimento_stock(prod: dict, delta_pezzi: float, tipo: str,
     from app.lotti.eventi import publish
     await publish("STOCK_MOVIMENTATO", {
         "prodotto": prod.get("nome", ""), "tipo": tipo,
-        "quantita": delta_pezzi, "stock_dopo": nuovo,
+        "quantita": delta_pezzi, "stock_dopo": prod.get("stock"),
     })
     return nuovo, mov
 

@@ -16,7 +16,7 @@ parcella con ritenuta si paga al netto della ritenuta, che va in F24
 """
 from __future__ import annotations
 
-from typing import Any, Mapping
+from typing import Any, Dict, Mapping
 
 from app.services.payment_allocation_validator import is_credit_note
 from app.services.prima_nota_integrity import totale_pagabile_al_fornitore

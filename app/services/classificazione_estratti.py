@@ -52,7 +52,7 @@ _ANNO = re.compile(r"(?<!\d)(19|20)\d{2}(?!\d)")
 
 
 def _pulisci(nome: str) -> str:
-    return re.sub(r"\s+", " ", str(nome or "")).strip().lower()
+    return str(nome or "").strip().lower()
 
 
 def anno_del_nome(nome: str) -> Optional[int]:
@@ -202,20 +202,16 @@ def route_da_testo(testo: str) -> Optional[str]:
     )):
         return PAYPAL
 
-    # Una rata citata fra i movimenti non cambia la natura dell'estratto.
-    # Servono le intestazioni del documento mutuo, non una parola in causale.
-    if any(segno in testo for segno in ("piano di ammortamento", "numero delibera")) or (
-        "capitale iniziale al" in testo and "capitale finale al" in testo
-    ):
+    if "mutuo" in testo:
         return MUTUO
 
     if "carta di debito" in testo and "conto appoggio" in testo:
         return BANCA
 
-    if (any(segno in testo for segno in (
+    if any(segno in testo for segno in (
         "banca nazionale del lavoro", "banco bpm", "banca popolare di milano",
         "bnl bnp paribas",
-    )) or ("estratto conto" in testo and "05034" in testo)) and ha_struttura_di_estratto(testo):
+    )) and ha_struttura_di_estratto(testo):
         return BANCA
 
     # Intestazione dell'export movimenti della banca: le colonne sono sue e

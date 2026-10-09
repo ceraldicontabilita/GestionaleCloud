@@ -5,7 +5,6 @@ IMPORTANTE: Tutto va salvato su Drive/Supabase, NIENTE filesystem!
 Supporta: F24, Fatture, Buste Paga, Estratti Conto, Quietanze
 """
 
-import asyncio
 import imaplib
 import email
 from email.header import decode_header
@@ -95,14 +94,25 @@ FILE_TECNICI_PEC_RE = re.compile(
     re.IGNORECASE,
 )
 
-def is_relevant_email_document(doc: Dict[str, Any]) -> bool:
-    """Acquisisce anche gli originali non classificabili, per revisione umana.
+# Nome file di una fattura SDI (es. IT07135891211_JUF1T.xml.p7m): la fattura
+# viene importata in `invoices` dalla pipeline dedicata; il file grezzo non
+# deve restare nell'archivio documenti.
+FILE_FATTURA_SDI_RE = re.compile(
+    r"^IT[A-Z0-9]{11,16}_[A-Z0-9]{4,5}\.xml(\.p7m)?$", re.IGNORECASE
+)
 
-    La classificazione decide il trattamento, non se il file esiste. Esclude
-    soltanto i metadati tecnici PEC, mai un documento per il suo nome generico.
+
+def is_relevant_email_document(doc: Dict[str, Any]) -> bool:
+    """Accetta solo allegati con una classificazione amministrativa certa.
+
+    I nomi SDI sono l'unica eccezione: non contengono la parola ``fattura``
+    ma identificano in modo strutturato una FatturaPA. Un PDF/ZIP generico non
+    entra nel gestionale solo perche' proviene da un mittente autorizzato.
     """
-    filename = str((doc or {}).get("filename") or "").strip()
-    return bool(filename) and not bool(FILE_TECNICI_PEC_RE.search(filename))
+    category = str((doc or {}).get("category") or "altro").strip().lower()
+    if category and category != "altro":
+        return True
+    return bool(FILE_FATTURA_SDI_RE.fullmatch(str((doc or {}).get("filename") or "").strip()))
 
 for cat_dir in CATEGORIES.values():
     (DOCUMENTS_DIR / cat_dir).mkdir(exist_ok=True)
@@ -237,33 +247,6 @@ def categorize_document(filename: str, subject: str = "", sender: str = "", sear
 
     # Default: altro (accetta comunque il documento)
     return "altro"
-
-
-def category_from_content(filename: str, content: bytes) -> str:
-    """Categoria definitiva ricavata dal documento, mai dai metadati email."""
-    from app.routers.documenti import detect_document_type
-
-    tipo = detect_document_type(filename, content)
-    if tipo == "fattura" and filename.lower().endswith((".xml", ".p7m")):
-        return "fattura_xml"
-    return {
-        "fattura": "fattura",
-        "f24": "f24",
-        "quietanza_f24": "quietanza",
-        "cedolino": "busta_paga",
-        "estratto_conto": "estratto_conto",
-        "estratto_conto_nexi": "estratto_conto",
-        "estratto_conto_paypal": "paypal_statement",
-        "estratto_conto_sumup": "estratto_conto",
-        "bonifici": "bonifico",
-        "verbale_codice_strada": "verbale",
-        "cartella_pagamento": "cartella_esattoriale",
-        "comunicazione_irregolarita": "avviso_bonario",
-        "dichiarazione_fiscale": "dichiarazione_iva",
-        "ricevuta_pagopa": "ricevuta_pagopa",
-        "ricevuta_cbill": "ricevuta_cbill",
-        "ricevuta_mav": "ricevuta_mav",
-    }.get(tipo, tipo if tipo not in ("auto", "archivio_zip", "") else "altro")
 
 
 def calculate_file_hash(content: bytes) -> str:
@@ -658,12 +641,9 @@ class EmailDocumentDownloader:
         Ritorna lista di documenti scaricati.
         """
         if allowed_extensions is None:
-            allowed_extensions = [
-                '.pdf', '.xml', '.xlsx', '.xls', '.csv', '.p7m', '.zip',
-                '.doc', '.docx', '.png', '.jpg', '.jpeg', '.webp',
-            ]
+            allowed_extensions = ['.pdf', '.xml', '.xlsx', '.xls', '.csv', '.p7m']
         if not self.connection:
-            raise RuntimeError("Connessione email non disponibile per il download allegati")
+            return []
 
         documents = []
 
@@ -671,7 +651,7 @@ class EmailDocumentDownloader:
             status, msg_data = self.connection.fetch(email_id, '(RFC822)')
 
             if status != 'OK':
-                raise RuntimeError(f"Download messaggio email non riuscito: {status}")
+                return []
 
             for response_part in msg_data:
                 if isinstance(response_part, tuple):
@@ -717,20 +697,12 @@ class EmailDocumentDownloader:
                         # Calcola hash per evitare duplicati
                         file_hash = calculate_file_hash(content)
 
-                        # La categoria operativa nasce dal contenuto. Nome,
-                        # oggetto, mittente e parole di ricerca restano una
-                        # proposta visibile per la revisione umana.
-                        classification_error = None
-                        try:
-                            category = category_from_content(filename, content)
-                        except Exception as exc:
-                            # Un lettore guasto non può far sparire l'originale.
-                            logger.exception("Classificazione allegato fallita: %s", filename)
+                        # Categorizza documento
+                        category = categorize_document(filename, subject, sender, search_keywords)
+
+                        # Se non riesce a categorizzare, usa "altro"
+                        if category is None:
                             category = "altro"
-                            classification_error = type(exc).__name__
-                        proposed_category = categorize_document(
-                            filename, subject, sender, search_keywords,
-                        )
 
                         # NUOVO: Estrai periodo dal documento per identificazione intelligente
                         # Applica a TUTTI i PDF, non solo categorie specifiche
@@ -761,18 +733,6 @@ class EmailDocumentDownloader:
                             "filename_saved": unique_filename,
                             "pdf_data": pdf_base64,  # Contenuto PDF in Drive/Supabase!
                             "category": category,
-                            "category_proposal": (
-                                proposed_category
-                                if category == "altro" and proposed_category != "altro"
-                                else None
-                            ),
-                            "classification_source": (
-                                "document_content" if category != "altro" else "unclassified"
-                            ),
-                            "classification_error": classification_error,
-                            "stato_elaborazione": (
-                                "classificato" if category != "altro" else "da_verificare"
-                            ),
                             "category_label": CATEGORIES.get(category, category.replace("_", " ").title()),
                             "size_bytes": len(content),
                             "file_hash": file_hash,
@@ -791,13 +751,10 @@ class EmailDocumentDownloader:
                             "processed_to": None  # dove è stato caricato
                         })
 
-                        logger.info("Allegato acquisito, in attesa di persistenza: %s -> %s", filename, category)
+                        logger.info(f"Salvato su Drive/Supabase: {filename} -> {category}")
 
         except Exception as e:
             logger.error(f"Errore download allegati: {e}")
-            # Un guasto non equivale a un messaggio senza allegati. Non
-            # restituire risultati parziali che farebbero confermare l'email.
-            raise
 
         return documents
 
@@ -890,7 +847,7 @@ async def download_documents_from_email(
 
     downloader = EmailDocumentDownloader(email_user, email_password)
 
-    if not await asyncio.to_thread(downloader.connect):
+    if not downloader.connect():
         return {
             "success": False,
             "error": "Impossibile connettersi al server email",
@@ -919,8 +876,8 @@ async def download_documents_from_email(
             logger.warning(f"Errore caricamento dizionario email: {e}")
 
         # Ottieni lista email IDs dal server (già ordinati per data - più recente prima)
-        await asyncio.to_thread(downloader.connection.select, folder)
-        all_email_ids = await asyncio.to_thread(downloader.search_emails_with_attachments,
+        downloader.connection.select(folder)
+        all_email_ids = downloader.search_emails_with_attachments(
             folder=folder,
             since_date=since_date,
             limit=max_emails,
@@ -934,7 +891,7 @@ async def download_documents_from_email(
         skipped_by_dict = 0
 
         for email_id in all_email_ids:
-            msg_id = await asyncio.to_thread(downloader.fetch_message_id, email_id)
+            msg_id = downloader.fetch_message_id(email_id)
             if not ignore_dict and msg_id and msg_id in seen_message_ids:
                 skipped_by_dict += 1
                 logger.debug(f"Già nel dizionario: {msg_id}")
@@ -945,9 +902,8 @@ async def download_documents_from_email(
 
         # Scarica allegati solo per email nuove
         all_docs_raw = []
-        messages_to_index = []
         for email_id, msg_id in new_email_ids:
-            docs = await asyncio.to_thread(downloader.download_attachments_from_email,
+            docs = downloader.download_attachments_from_email(
                 email_id,
                 search_keywords=search_keywords
             )
@@ -956,22 +912,41 @@ async def download_documents_from_email(
                 doc["email_message_id"] = msg_id or doc.get("email_message_id", "")
             all_docs_raw.extend(docs)
 
-            # Il Message-ID si conferma solo dopo il salvataggio degli allegati:
-            # un errore di persistenza deve permettere di riprovare la scansione.
+            # Aggiungi al dizionario anche se non ha allegati (per non ri-controllare)
             if msg_id:
-                messages_to_index.append({
-                    "message_id": msg_id,
-                    "allegati": len(docs),
-                    "subject": (docs[0].get("email_subject", "") if docs else "")[:100],
-                    "from": (docs[0].get("email_from", "") if docs else "")[:100],
-                })
+                subject = ""
+                sender = ""
+                if docs:
+                    subject = docs[0].get("email_subject", "")
+                    sender = docs[0].get("email_from", "")
+                try:
+                    await db["email_message_index"].update_one(
+                        {"message_id": msg_id},
+                        {"$set": {
+                            "message_id": msg_id,
+                            "seen_at": datetime.now(timezone.utc).isoformat(),
+                            "allegati": len(docs),
+                            "subject": subject[:100],
+                            "from": sender[:100]
+                        }},
+                        upsert=True
+                    )
+                    seen_message_ids.add(msg_id)
+                except Exception as e:
+                    logger.debug(f"Errore salvataggio dizionario: {e}")
 
-        # Gli sconosciuti restano in inbox da verificare; la tipizzazione XML
-        # deriva dal contenuto, non da un nome apparentemente FatturaPA.
+        # Gli allegati senza una classificazione amministrativa certa non
+        # entrano nel gestionale. Il Message-ID e' gia' nel dizionario: il
+        # messaggio non verra' riscaricato a ogni scansione. I nomi FatturaPA
+        # SDI restano ammessi e vengono tipizzati per la pipeline XML.
         documenti_ignorati = sum(
             1 for doc in all_docs_raw if not is_relevant_email_document(doc)
         )
         all_docs_raw = [doc for doc in all_docs_raw if is_relevant_email_document(doc)]
+        for doc in all_docs_raw:
+            if FILE_FATTURA_SDI_RE.fullmatch(str(doc.get("filename") or "").strip()):
+                doc["category"] = "fattura_xml"
+                doc["category_label"] = "Fattura elettronica XML"
 
         stats = {
             "emails_found": len(all_email_ids),
@@ -985,24 +960,52 @@ async def download_documents_from_email(
             cat = doc.get("category", "altro")
             stats["by_category"][cat] = stats["by_category"].get(cat, 0) + 1
 
-        # Un'unica deduplica per inbox e altri canali, verificata dal contenuto.
-        from app.services.deduplica import esiste_documento_cross_canale
-
+        # Salva nel database evitando duplicati con logica intelligente
         new_documents = []
         duplicates = 0
+        period_duplicates = 0
 
         for doc in all_docs_raw:
-            content = base64.b64decode(doc.get("pdf_data") or "")
-            existing = await esiste_documento_cross_canale(
-                db, doc["file_hash"], contenuto=content,
-            )
-            if existing:
-                logger.info(f"[dedup cross-canale] {doc['filename']} già "
-                            f"presente in {existing['collezione']} — salto")
+            is_duplicate = False
+
+            # METODO 1: Controllo hash (file identico byte per byte)
+            existing_hash = await db["documents_inbox"].find_one({"file_hash": doc["file_hash"]})
+            if existing_hash:
+                is_duplicate = True
+
+            # METODO 1-bis (P2-1): dedup CROSS-CANALE — stesso md5 già scaricato
+            # nelle collezioni *_email_attachments dall'altra pipeline.
+            if not is_duplicate:
+                from app.services.deduplica import esiste_documento_cross_canale
+                altrove = await esiste_documento_cross_canale(
+                    db, doc["file_hash"], escludi_collezione="documents_inbox",
+                    contenuto=base64.b64decode(doc.get("pdf_data") or ""),
+                )
+                if altrove:
+                    is_duplicate = True
+                    logger.info(f"[dedup cross-canale] {doc['filename']} già "
+                                f"presente in {altrove['collezione']} — salto")
+
+            # METODO 2: Controllo periodo (stesso documento per stesso periodo)
+            if not is_duplicate and doc.get("identificatore_periodo"):
+                existing_period = await db["documents_inbox"].find_one({
+                    "category": doc["category"],
+                    "identificatore_periodo": doc["identificatore_periodo"],
+                    "$or": [
+                        {"filename": doc["filename"]},
+                        {"filename": {"$regex": doc["filename"].replace(".pdf", "").replace(".PDF", ""), "$options": "i"}}
+                    ]
+                })
+                if existing_period:
+                    size_diff = abs(existing_period.get("size_bytes", 0) - doc["size_bytes"])
+                    size_ratio = size_diff / max(existing_period.get("size_bytes", 1), doc["size_bytes"])
+                    if size_ratio < 0.1:
+                        is_duplicate = True
+                        period_duplicates += 1
+
+            if is_duplicate:
                 duplicates += 1
                 continue
-
-            doc["content_sha256"] = hashlib.sha256(content).hexdigest()
 
             from app.constants.tipi_documento import set_tassonomia_documento
             doc_to_insert = set_tassonomia_documento(
@@ -1034,25 +1037,9 @@ async def download_documents_from_email(
 
             new_documents.append(doc)
 
-        # Anche email senza allegati supportati sono confermate. In caso di
-        # errore sopra nessun Message-ID del batch impedisce il nuovo tentativo;
-        # gli allegati gia' salvati vengono riconosciuti dalla deduplica.
-        for message in messages_to_index:
-            try:
-                await db["email_message_index"].update_one(
-                    {"message_id": message["message_id"]},
-                    {"$set": {
-                        **message,
-                        "seen_at": datetime.now(timezone.utc).isoformat(),
-                    }},
-                    upsert=True,
-                )
-            except Exception as e:
-                logger.debug(f"Errore salvataggio dizionario: {e}")
-
         stats["new_documents"] = len(new_documents)
         stats["duplicates_skipped"] = duplicates
-        stats["period_duplicates"] = 0
+        stats["period_duplicates"] = period_duplicates
         stats["search_keywords"] = search_keywords
 
         # === PARSING AUTOMATICO CON AI ===
@@ -1102,7 +1089,7 @@ async def download_documents_from_email(
         }
 
     finally:
-        await asyncio.to_thread(downloader.disconnect)
+        downloader.disconnect()
 
 
 def get_document_content(filepath: str) -> Optional[bytes]:
