@@ -40,6 +40,7 @@ from app.parsers.busta_paga_multi_template import (
 from app.parsers.cedolino_voci import (
     acconto_recuperato_in_busta, anticipo_tfr_in_busta, importi_ratei_da_coordinate, leggi_corpo_cedolino,
     leggi_foglio_presenze,
+    componenti_busta_da_coordinate,
 )
 
 logger = logging.getLogger(__name__)
@@ -309,6 +310,26 @@ def _con_voci(busta: Dict[str, Any]) -> Dict[str, Any]:
              or (k in {"tfr_mese", "tfr_quota_anno"} and v is None)}
     if extra:
         busta["dati_extra"] = extra
+    if busta.get("_pdf_data"):
+        try:
+            componenti = componenti_busta_da_coordinate(base64.b64decode(busta["_pdf_data"]))
+        except Exception as exc:
+            logger.warning("Componenti documentali non lette (%s)", type(exc).__name__)
+            componenti = None
+    else:
+        componenti = None
+    if componenti is not None:
+        busta.setdefault("dati_chiave", {})["componenti_busta"] = componenti
+        busta["dati_chiave"]["componenti_versione"] = 1
+        for tipo, campo in (("13", "rateo_13ma"), ("14", "rateo_14ma")):
+            quote = [v["importo"] for v in componenti if v["tipo"] == tipo]
+            if quote:
+                busta["dati_chiave"][campo + "_presente"] = True
+                busta["dati_chiave"][campo + "_importo"] = round(sum(quote), 2)
+        for tipo, campo in (("tfr_quota_mese", "tfr_mese"), ("tfr_quota_anno", "tfr_quota_anno")):
+            quote = [v["importo"] for v in componenti if v["tipo"] == tipo]
+            if len(quote) == 1:
+                busta.setdefault("dati_extra", {})[campo] = quote[0]
     if busta.get("_pdf_data"):
         # La chiave documentale del gestionale usa l'MD5 dei byte della busta
         # (`chiave_cedolino`): conservarla fa ritrovare la stessa busta.

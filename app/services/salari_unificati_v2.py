@@ -359,9 +359,9 @@ async def processa_cedolino_v2(
         dati_extra = {}
         if pdf_text:
             dati_extra = estrai_ferie_rol_from_text(pdf_text)
-        elif cedolino_data.get("dati_extra"):
+        if cedolino_data.get("dati_extra"):
             # Ricarica dalla scheda Markdown: i dati del testo sono gia' letti.
-            dati_extra = dict(cedolino_data["dati_extra"])
+            dati_extra.update(cedolino_data["dati_extra"])
         
         # Merge con dati dal parser multi-template se presenti
         ferie_permessi = cedolino_data.get("ferie_permessi", {})
@@ -522,7 +522,7 @@ async def processa_cedolino_v2(
             "created_at": (cedolino_esistente or {}).get("created_at") or datetime.now(timezone.utc).isoformat(),
             "updated_at": datetime.now(timezone.utc).isoformat(),
         }
-        for field in ("drive_file_id", "drive_md5", "blob_key", "pdf_source_scope", "source_file_hash", "canale", "voci", "dati_chiave", "retribuzione"):
+        for field in ("drive_file_id", "drive_md5", "blob_key", "pdf_source_scope", "source_file_hash", "canale", "voci", "dati_chiave", "dati_extra", "retribuzione"):
             if cedolino_data.get(field):
                 cedolino_record[field] = cedolino_data[field]
         cedolino_record["stato_netto"] = stato_netto

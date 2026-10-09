@@ -621,3 +621,119 @@ def importi_ratei_da_coordinate(pdf_bytes: bytes) -> Dict[str, str]:
     finally:
         documento.close()
     return trovati
+
+
+def componenti_busta_da_coordinate(pdf_bytes: bytes) -> List[Dict]:
+    """Voci 13ª/14ª e TFR con importo e posizione verificabili sul PDF.
+
+    Le mensilità/anticipazioni richiedono la colonna COMPETENZE. Le quote
+    TFR restano distinte da base imponibile, progressivo annuo e fondo.
+    """
+    import fitz
+
+    denaro = re.compile(r"^[+-]?(?:\d{1,3}(?:\.\d{3})*|\d+),\d{2}[+-]?$")
+    mensilita = re.compile(r"\b(13|14)(?:MA|ESIMA|A|ª|°)?\s+(?:MENSILIT|MENS\.)|\b(TREDICESIMA|QUATTORDICESIMA)\b", re.I)
+    trovati = []
+    with fitz.open(stream=pdf_bytes, filetype="pdf") as doc:
+        for numero, pagina in enumerate(doc, 1):
+            words = pagina.get_text("words")
+            righe = []
+            for w in sorted(words, key=lambda p: ((p[1] + p[3]) / 2, p[0])):
+                y = (w[1] + w[3]) / 2
+                if not righe or abs(righe[-1][0] - y) > 3:
+                    righe.append((y, [w]))
+                else:
+                    righe[-1][1].append(w)
+            headers = [w for w in words if w[4].upper() == 'COMPETENZE']
+            testo_pagina = pagina.get_text().upper()
+            for y, row in righe:
+                row.sort(key=lambda p: p[0])
+                testo = ' '.join(w[4] for w in row)
+                alto = testo.upper()
+                tipo, colonna = None, None
+                match = mensilita.search(alto)
+                if match and not re.search(r'RESIDU|MATURAT|GODUT|RATEI', alto):
+                    tipo = '13' if match.group(1) == '13' or match.group(2) == 'TREDICESIMA' else '14'
+                elif re.search(r'ANTICIP\w*\s+T\.?\s*F\.?\s*R', alto):
+                    tipo = 'tfr_anticipo'
+                elif re.search(r"TOTALE\s+INDENNIT[AÀ]['’]?\s+LORDA", alto) and 'FINE RAPPORTO' in testo_pagina:
+                    tipo = 'tfr_liquidazione'
+                amounts = [w for w in row if denaro.fullmatch(w[4])]
+                if tipo:
+                    precedenti = [h for h in headers if h[1] < y]
+                    if not precedenti:
+                        continue
+                    h = max(precedenti, key=lambda w: w[1])
+                    centro = (h[0] + h[2]) / 2
+                    vicini = [(w[0] + w[2]) / 2 for w in words
+                              if w[4].upper() in {'BASE', 'TRATTENUTE', 'QUANTITA', "QUANTITA'", 'RIFERIMENTO'}
+                              and abs((w[1] + w[3] - h[1] - h[3]) / 2) < 4]
+                    left = max([(centro + x) / 2 for x in vicini if x < centro] or [h[0] - 25])
+                    right = min([(centro + x) / 2 for x in vicini if x > centro] or [pagina.rect.width])
+                    amounts = [w for w in amounts if left <= (w[0] + w[2]) / 2 < right]
+                    colonna = 'competenze'
+                elif re.search(r'\bQUOTA\s+T\.?\s*F\.?\s*R\.?\s*(?:DEL\s+MESE)?\s+[\d.,]+', alto):
+                    tipo, colonna = 'tfr_quota_mese', 'quota TFR'
+                elif re.search(r'ACCANTONAMENTO\s+TFR\s+DAL', alto):
+                    tipo, colonna = 'tfr_fondo_pregresso', 'accantonamento pregresso'
+                elif "INDENNITA' MATURATA NELL'ANNO" in alto and 'FINE RAPPORTO' in testo_pagina:
+                    tipo, colonna = 'tfr_quota_anno', 'progressivo annuo'
+                if not tipo or len(amounts) != 1:
+                    continue
+                w = amounts[0]
+                value = w[4].rstrip('+-').replace('.', '').replace(',', '.')
+                if w[4].endswith('-'):
+                    value = '-' + value.lstrip('+')
+                trovati.append({'tipo': tipo, 'importo': float(Decimal(value)), 'descrizione': testo,
+                                'pagina': numero, 'colonna': colonna,
+                                'bbox': [round(v, 2) for v in w[:4]]})
+            # Riquadro Zucchetti: valori sotto le rispettive intestazioni,
+            # senza prendere il numero di una colonna vicina quando è vuota.
+            for y, row in righe:
+                row.sort(key=lambda p: p[0])
+                alto = ' '.join(w[4] for w in row).upper()
+                if '31/12' not in alto or 'QUOTA ANNO' not in alto or 'RIVAL' not in alto:
+                    continue
+                labels = [('F.do 31/12', 'tfr_fondo_pregresso'), ('Rivalutaz.', None),
+                          ('Imp.rival.', None), ('Quota anno', 'tfr_quota_anno'),
+                          ('TFR a fondi', None), ('Anticipi', None)]
+                bounds = []
+                for label, kind in labels:
+                    rects = [r for r in pagina.search_for(label) if abs((r.y0 + r.y1) / 2 - y) < 5]
+                    if len(rects) == 1:
+                        bounds.append((rects[0].x0, kind, label))
+                bounds.sort()
+                if len(bounds) != 6:
+                    continue
+                for i, (x, kind, label) in enumerate(bounds):
+                    if not kind:
+                        continue
+                    right = bounds[i + 1][0] - 3 if i + 1 < len(bounds) else pagina.rect.width
+                    vals = [w for w in words if x - 3 <= w[0] and w[2] <= right
+                            and 4 < (w[1] + w[3]) / 2 - y < 18 and denaro.fullmatch(w[4])]
+                    if len(vals) == 1:
+                        w = vals[0]
+                        trovati.append({'tipo': kind, 'importo': float(Decimal(w[4].replace('.', '').replace(',', '.'))),
+                                        'descrizione': label, 'pagina': numero, 'colonna': label,
+                                        'bbox': [round(v, 2) for v in w[:4]]})
+            # TeamSystem: TFR MESE è una cella sotto l'intestazione. I bordi
+            # del riquadro escludono imponibili e presenze nelle colonne vicine.
+            for label in pagina.search_for('TFR MESE'):
+                verticali = [item[1] for drawing in pagina.get_drawings() for item in drawing['items']
+                             if item[0] == 're' and item[1].width < 1
+                             and item[1].y0 <= label.y0 < item[1].y1]
+                left = [r for r in verticali if r.x1 <= label.x0]
+                right = [r for r in verticali if r.x0 >= label.x1]
+                if not left or not right:
+                    continue
+                l, r = max(left, key=lambda r: r.x1), min(right, key=lambda r: r.x0)
+                bottom = min(l.y1, r.y1)
+                vals = [w for w in words if l.x1 < w[0] and w[2] < r.x0
+                        and label.y1 < w[1] and w[3] < bottom and denaro.fullmatch(w[4])]
+                if len(vals) == 1:
+                    w = vals[0]
+                    trovati.append({'tipo': 'tfr_quota_mese',
+                                    'importo': float(Decimal(w[4].replace('.', '').replace(',', '.'))),
+                                    'descrizione': 'TFR MESE', 'pagina': numero, 'colonna': 'TFR MESE',
+                                    'bbox': [round(v, 2) for v in w[:4]]})
+    return trovati

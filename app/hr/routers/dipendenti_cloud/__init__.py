@@ -3438,33 +3438,11 @@ async def correggi_acconti_cedolino():
 
 
 @router.post("/cedolini/riscansiona")
-async def riscansiona_cedolini(anno: Optional[int] = None, dipendente_id: Optional[str] = None):
-    """Ri-estrae tutte le voci dai cedolini storici (2023→oggi) che hanno il PDF salvato,
-    così il motore di ricerca trova ogni codice anche sulle buste già importate."""
-    import io
-    import pdfplumber
-    db = get_db()
-    q: dict = {"pdf_data": {"$exists": True}}
-    if anno:
-        q["anno"] = anno
-    if dipendente_id:
-        q["dipendente_id"] = dipendente_id
-    aggiornati, errori = 0, 0
-    async for c in db.cedolini.find(q, {"_id": 0, "id": 1, "pdf_data": 1}):
-        try:
-            raw = base64.b64decode(c["pdf_data"])
-            text = ""
-            with pdfplumber.open(io.BytesIO(raw)) as pdf:
-                for p in pdf.pages:
-                    text += (p.extract_text() or "") + "\n"
-            dati = _lul_dati_busta(text)
-            if dati:
-                await db.cedolini.update_one({"id": c["id"]}, {"$set": dati})
-                aggiornati += 1
-        except Exception:
-            errori += 1
-    return {"aggiornati": aggiornati, "errori": errori,
-            "nota": "I cedolini senza PDF salvato non possono essere riscansionati: vanno re-importati dal Libro Unico."}
+async def riscansiona_cedolini(anno: Optional[int] = None, dipendente_id: Optional[str] = None,
+                               dopo_id: str = ""):
+    """Rilegge le componenti documentali senza modificare netti o pagamenti."""
+    from app.services.cedolini_hr_riverifica import riscansiona_componenti
+    return await riscansiona_componenti(get_db(), anno=anno, dipendente_id=dipendente_id, dopo_id=dopo_id)
 
 
 # ============ IMPORT PRIMA NOTA SALARI (Excel) ============

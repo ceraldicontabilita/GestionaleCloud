@@ -175,6 +175,20 @@ async def _registra_busta(db, ced: Dict[str, Any], *, filename: str, pdf_data: O
             "source_file_hash": ced.get("source_file_hash"),
         }}})
         originale = await db["cedolini"].find_one({"id": gia["id"]}, {"_id": 0, "pdf_data": 0})
+        # Arricchire soltanto lo stesso originale, non una variante con il
+        # medesimo netto. Il nuovo parser non sovrascrive importi confermati.
+        stessa_fonte = bool(ced.get("source_file_hash")) and all(
+            ced.get(k) == originale.get(k)
+            for k in ("source_file_hash", "source_page_start", "source_page_end")
+        )
+        nuove_voci = ced.get("dati_chiave") or {}
+        if stessa_fonte and nuove_voci.get("componenti_versione") == 1:
+            patch = {"dati_chiave.componenti_busta": nuove_voci["componenti_busta"],
+                     "dati_chiave.componenti_versione": 1}
+            await db["cedolini"].update_one({"id": gia["id"]}, {"$set": patch})
+            originale["dati_chiave"] = {**(originale.get("dati_chiave") or {}),
+                                        "componenti_busta": nuove_voci["componenti_busta"],
+                                        "componenti_versione": 1}
         deposito = await deposita_cedolino_in_hr(originale)
         if deposito.get("esito") not in {"inserito", "gia_presente", "aggiornato", "sostituita"}:
             results["errori"].append(f"{chi}: busta in ERP, deposito HR non completato ({deposito.get('esito')})")

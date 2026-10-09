@@ -63,3 +63,42 @@ class SaldoDipendenteTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ComponentiDocumentaliTests(unittest.TestCase):
+    def cedolino(self, tipo="ordinario", **extra):
+        return dict(id="c", codice_fiscale="CF", anno=2026, mese=8, tipo_cedolino=tipo,
+                    netto=1000, dati_chiave={"componenti_busta": [
+                        {"tipo": "14", "importo": 234.49, "pagina": 1, "bbox": [1, 2, 3, 4]},
+                        {"tipo": "tfr_quota_anno", "importo": 450, "pagina": 1, "bbox": [1, 8, 3, 9]},
+                    ], "componenti_versione": 1}, **extra)
+
+    def test_quote_lorde_non_creano_secondo_debito(self):
+        from app.services.mensilita_aggiuntive import componenti_documentate
+        c = self.cedolino()
+        voci = componenti_documentate([c], 2026, {"14"})
+        self.assertEqual(voci[0]["importo"], 234.49)
+        m = componi_movimenti(paghe=[{"anno": 2026, "mese": 8, "importo_busta": 1000}],
+                              cedolini=[c], esiti=[], acconti=[], conciliazioni=[])
+        self.assertEqual(prima_nota_mensile(m)["saldo_finale"], 1000)
+
+    def test_mensilita_autonoma_e_versioni_superate_non_sono_quote_ordinarie(self):
+        from app.services.mensilita_aggiuntive import componenti_documentate
+        cs = [self.cedolino("quattordicesima"), self.cedolino(status="sostituito", sostituito_da="nuova"),
+              self.cedolino(varianti_da_decidere=True)]
+        self.assertEqual(componenti_documentate(cs, 2026, {"14"}), [])
+
+    def test_rilettura_non_modifica_netto_o_acconti(self):
+        from app.services.cedolini_hr_riverifica import componenti_della_riga
+        c = self.cedolino()
+        originale = self.cedolino() | {"netto": 990}
+        patch = componenti_della_riga(c, [originale])
+        self.assertEqual(set(patch), {"dati_chiave.componenti_busta", "dati_chiave.componenti_versione"})
+        self.assertEqual(c["netto"], 1000)
+
+    def test_pdf_di_altro_dipendente_o_periodo_non_aggiorna_componenti(self):
+        from app.services.cedolini_hr_riverifica import componenti_della_riga
+        c = self.cedolino()
+        for modifica in ({"codice_fiscale": "ALTRO"}, {"mese": 7}, {"anno": 2025}):
+            with self.assertRaises(ValueError):
+                componenti_della_riga(c, [c | modifica])
