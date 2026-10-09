@@ -139,6 +139,12 @@ async def get_situazione_tfr(dipendente_id: str) -> Dict[str, Any]:
     ).sort("data", -1).to_list(100)
 
     totale_liquidato = sum(l.get("importo_lordo", 0) for l in liquidazioni)
+    from app.services.mensilita_aggiuntive import componenti_documentate
+    cedolini = await db["cedolini"].find(
+        {"dipendente_id": dipendente_id}, {"_id": 0, "pdf_data": 0}
+    ).to_list(10000)
+    componenti = componenti_documentate(cedolini, tipi={
+        "tfr_quota_mese", "tfr_quota_anno", "tfr_fondo_pregresso", "tfr_anticipo", "tfr_liquidazione"})
 
     return {
         "dipendente_id": dipendente_id,
@@ -153,6 +159,7 @@ async def get_situazione_tfr(dipendente_id: str) -> Dict[str, Any]:
         "quota_da_buste_disponibile": bool(buste.get("disponibile")),
         "quota_da_buste_motivo": buste.get("motivo"),
         "accantonamenti_buste": buste.get("righe") or [],
+        "componenti_documentali": componenti,
         # La liquidazione aggiorna già il fondo manuale: non sottrarla due
         # volte. Le quote documentali invece sono maturazione lorda storica.
         "tfr_disponibile": (round(tfr_accantonato - (

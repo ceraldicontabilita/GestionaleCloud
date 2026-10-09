@@ -60,7 +60,10 @@ def ratei_maturati(cedolini: List[Dict[str, Any]], anno: int) -> Dict[str, Dict[
     out = {"13": {"totale": ZERO, "buste_con_rateo": 0, "buste_mensili": 0},
            "14": {"totale": ZERO, "buste_con_rateo": 0, "buste_mensili": 0}}
     viste = set()
+    from app.services.cedolini_versioni import attiva
     for c in cedolini:
+        if not attiva(c) or c.get("varianti_da_decidere"):
+            continue
         if str(c.get("tipo_cedolino") or "").strip().lower() not in TIPI_ORDINARI:
             continue
         a, m = pos._intero(c.get("anno")), pos._intero(c.get("mese"))
@@ -82,6 +85,33 @@ def ratei_maturati(cedolini: List[Dict[str, Any]], anno: int) -> Dict[str, Dict[
                 out[f]["totale"] += valore
                 out[f]["buste_con_rateo"] += 1
     return out
+
+
+def componenti_documentate(cedolini, anno=None, tipi=None):
+    """Voci lorde già comprese nei cedolini; non sono altri debiti/pagamenti."""
+    from app.services.cedolini_versioni import attiva
+
+    out = []
+    viste = set()
+    for c in cedolini:
+        if not attiva(c) or c.get("varianti_da_decidere") or (anno and pos._intero(c.get("anno")) != anno):
+            continue
+        if tipi and set(tipi) <= {"13", "14"} and str(c.get("tipo_cedolino") or "").strip().lower() not in TIPI_ORDINARI:
+            continue  # le mensilità autonome hanno già la loro busta netta
+        for voce in (c.get("dati_chiave") or {}).get("componenti_busta") or []:
+            if tipi and voce.get("tipo") not in tipi:
+                continue
+            imp = pos.importo(voce.get("importo"))
+            if imp is None:
+                continue
+            key = (c.get("anno"), c.get("mese"), c.get("tipo_cedolino"), voce.get("tipo"),
+                   voce.get("pagina"), tuple(voce.get("bbox") or []), imp)
+            if key in viste:
+                continue
+            viste.add(key)
+            out.append({**voce, "cedolino_id": c.get("id"), "anno": c.get("anno"),
+                        "mese": c.get("mese"), "importo": pos._eur(imp)})
+    return sorted(out, key=lambda v: (pos._intero(v.get("anno")) or 0, pos._intero(v.get("mese")) or 0), reverse=True)
 
 
 # ── riepilogo ────────────────────────────────────────────────────────────────
@@ -130,8 +160,13 @@ async def riepilogo(db, anno: int) -> Dict[str, Any]:
         ratei = ratei_maturati(dati.get("cedolini", []), anno)
         tredicesima = _blocco(mov, ratei["13"], anno, 13)
         quattordicesima = _blocco(mov, ratei["14"], anno, 14)
+        for tipo, blocco in (("13", tredicesima), ("14", quattordicesima)):
+            voci = componenti_documentate(dati.get("cedolini", []), anno, {tipo})
+            blocco["componenti_ordinarie"] = voci
+            blocco["componenti_lorde"] = round(sum(v["importo"] for v in voci), 2) if voci else None
         if not any((tredicesima["busta"], tredicesima["pagato"], tredicesima["rateo_maturato"],
-                    quattordicesima["busta"], quattordicesima["pagato"], quattordicesima["rateo_maturato"])):
+                    quattordicesima["busta"], quattordicesima["pagato"], quattordicesima["rateo_maturato"],
+                    tredicesima["componenti_lorde"] is not None, quattordicesima["componenti_lorde"] is not None)):
             continue
         righe.append({"dipendente_id": dip["id"], "nome": dip.get("nome_completo"),
                       "stato": dip.get("stato"), "tredicesima": tredicesima,
@@ -139,7 +174,9 @@ async def riepilogo(db, anno: int) -> Dict[str, Any]:
     totali = {}
     for chiave in ("tredicesima", "quattordicesima"):
         totali[chiave] = {campo: round(sum(r[chiave][campo] or 0 for r in righe), 2)
-                          for campo in ("rateo_maturato", "busta", "pagato", "saldo")}
+                          for campo in ("rateo_maturato", "busta", "pagato", "saldo", "componenti_lorde")}
+        if not any(r[chiave]["componenti_lorde"] is not None for r in righe):
+            totali[chiave]["componenti_lorde"] = None
     return {"anno": anno, "anni": sorted(anni | {anno}), "valuta": pos.VALUTA, "righe": righe, "totali": totali}
 
 

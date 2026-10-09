@@ -252,7 +252,7 @@ def mappa_cedolino_per_hr(cedolino: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     }
     for chiave in ("drive_file_id", "source_file_hash", "source_path", "source_container",
                    "drive_md5", "blob_key", "pdf_source_scope", "source_page_start", "source_page_end", "source_document_pages",
-                   "canale", "stato_netto", "netto_fonte", "dati_chiave"):
+                   "canale", "stato_netto", "netto_fonte", "dati_chiave", "dati_extra", "voci"):
         if cedolino.get(chiave):
             doc[chiave] = cedolino[chiave]
     formato = str(cedolino.get("formato") or cedolino.get("formato_rilevato")
@@ -333,7 +333,7 @@ async def _segui_vincitore(con, esistente: Dict[str, Any], doc: Dict[str, Any], 
     for campo in ("filename", "pdf_filename", "pdf_data", "stato_netto", "netto_fonte", "lordo",
                   "competenze", "trattenute", "gestionale_cedolino_id", "cedolino_dedup_key",
                   "drive_file_id", "drive_md5", "blob_key", "pdf_source_scope", "source_page_start", "source_page_end", "source_document_pages",
-                  "source_file_hash", "canale", "dati_chiave"):
+                  "source_file_hash", "canale", "dati_chiave", "dati_extra", "voci"):
         if doc.get(campo) is not None:
             patch[campo] = doc[campo]
     if dry_run:
@@ -405,6 +405,18 @@ async def deposita_cedolino_in_hr(
                     "SELECT doc FROM " + TABELLA_CEDOLINI + " WHERE id = $1", esistente["id"],
                 )
                 corrente = _json(corrente["doc"]) if corrente else {}
+                nuove_voci = doc.get("dati_chiave") or {}
+                stessa_fonte = (doc.get("gestionale_cedolino_id") and
+                                doc["gestionale_cedolino_id"] == corrente.get("gestionale_cedolino_id"))
+                if stessa_fonte and nuove_voci.get("componenti_versione") == 1 and not dry_run:
+                    # SQL fonde solo questi due sottocampi, senza perdere una
+                    # verifica/acconto aggiunto nel frattempo da un altro import.
+                    await con.execute(
+                        "UPDATE " + TABELLA_CEDOLINI + " SET doc = jsonb_set(doc, '{dati_chiave}', "
+                        "coalesce(nullif(doc->'dati_chiave', 'null'::jsonb), '{}'::jsonb) || $2::jsonb) WHERE id = $1",
+                        esistente["id"], json.dumps({"componenti_busta": nuove_voci["componenti_busta"],
+                                                    "componenti_versione": 1}),
+                    )
                 if not corrente.get("dipendente_id") and _codice_fiscale(corrente) == doc["codice_fiscale"]:
                     dip = await _trova_dipendente_hr(con, doc["codice_fiscale"])
                     if dip and not dry_run:

@@ -3576,6 +3576,28 @@ un elenco o una ricevuta senza riscontro bancario non imposta `bonifico_ricevuto
 né trasforma una semplice quadratura in `pagato`. Le conferme manuali già
 presenti restano separate dalla riconciliazione automatica.
 
+### Componenti 13ª, 14ª e TFR nei cedolini
+
+Il lettore unico conserva `dati_chiave.componenti_busta`: tipo, importo,
+pagina, colonna e coordinate sul PDF della stessa busta. Le mensilità e le
+anticipazioni richiedono la colonna competenze; Zucchetti, CSC e TeamSystem
+mantengono distinti quota TFR mensile, progressivo annuo, fondo precedente,
+anticipazione e liquidazione. Celle vuote non prendono i valori vicini.
+Una base imponibile TFR non è la quota accantonata.
+
+13ª/14ª incluse nella busta ordinaria compaiono come quote lorde documentali
+nella relativa pagina, con apertura dell'originale da «Gestisci». Non creano
+un secondo cedolino o debito e non si sommano di nuovo al netto mensile.
+Le mensilità autonome restano separate. La pagina TFR espone le voci dei
+cedolini distinguendo i progressivi dalle quote del mese: non li somma né
+li trasforma automaticamente in fondo disponibile o prova di bonifico.
+
+«Riscansiona storico» legge anche gli originali Drive e il deposito protetto
+in lotti limitati e riprendibili. Richiede stessa persona, competenza e tipo;
+non sovrascrive netti confermati, acconti o pagamenti. Il reimport arricchisce
+un duplicato solo se proviene dallo stesso originale. Una variante con il
+medesimo netto non è automaticamente la stessa prova documentale.
+
 ### Bonifici HR e importazione bancaria
 
 La pagina Bonifici mostra il nome dell'anagrafica collegata al movimento,

@@ -3828,6 +3828,12 @@ ${rate?.rate?.length ? `<h2>Ripartizione indicativa in ${rate.numero_rate} rate<
                 <div><div className="dc-muted" style={{ fontSize: 12.5 }}>Già liquidato</div><div style={{ fontWeight: 700, fontSize: 20 }}>€ {eur(situazione.totale_liquidato)}</div></div>
                 <div><div className="dc-muted" style={{ fontSize: 12.5 }}>Disponibile</div><div style={{ fontWeight: 700, fontSize: 20, color: "#3d8168" }}>{eurOpt(situazione.tfr_disponibile)}</div></div>
               </div>
+              {situazione.componenti_documentali?.length > 0 && <details style={{ marginTop: 12 }}>
+                <summary style={{ cursor: "pointer" }}>Voci TFR nei cedolini ({situazione.componenti_documentali.length})</summary>
+                <p className="dc-muted">Quote del mese, progressivi annui, fondo precedente e anticipi sono valori distinti.
+                  I progressivi non si sommano tra mesi; questi importi non attestano un bonifico.</p>
+                <ComponentiCedolino voci={situazione.componenti_documentali} />
+              </details>}
               {situazione.accantonamenti_buste?.length > 0 && (
                 <details style={{ marginTop: 10 }}>
                   <summary className="dc-muted" style={{ cursor: "pointer", fontSize: 13 }}>
@@ -5021,6 +5027,42 @@ function ModuloAnnullaConciliazione({ conc, onClose, onFatto }) {
 // (app/services/mensilita_aggiuntive.py): qui solo vista e tendine.
 const NOME_MENSILITA = { "13": "13ª", "14": "14ª" };
 
+const COMPONENTE_CEDOLINO = {
+  "13": "13ª in busta (lordo)", "14": "14ª in busta (lordo)",
+  tfr_quota_mese: "Quota TFR del mese", tfr_quota_anno: "Quota TFR progressiva dell’anno",
+  tfr_fondo_pregresso: "Fondo TFR precedente", tfr_anticipo: "Anticipo TFR (lordo)",
+  tfr_liquidazione: "Liquidazione TFR (lordo)",
+};
+
+function ComponentiCedolino({ voci = [] }) {
+  const [busy, setBusy] = useState(null);
+  const apri = async (voce) => {
+    const finestra = window.open("", "_blank");
+    if (finestra) finestra.opener = null;
+    setBusy(voce.cedolino_id);
+    try {
+      const r = await axios.get(`/hr/api/cedolini/${encodeURIComponent(voce.cedolino_id)}/download`,
+        { responseType: "blob", timeout: 60000 });
+      const blob = new Blob([r.data], { type: "application/pdf" });
+      const url = URL.createObjectURL(blob);
+      if (finestra) finestra.location.href = `${url}#page=${voce.pagina || 1}`;
+      else toast("Consenti l’apertura del PDF nel browser", "err");
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
+    } catch (e) { finestra?.close(); toast(erroreApi(e, "PDF non disponibile"), "err"); }
+    finally { setBusy(null); }
+  };
+  if (!voci.length) return null;
+  return <div style={{ overflowX: "auto" }}><table className="dc-table">
+    <thead><tr><th>Cedolino</th><th>Voce documentata</th><th>Importo €</th><th>Originale</th></tr></thead>
+    <tbody>{voci.map((v, i) => <tr key={`${v.cedolino_id}-${i}`}>
+      <td>{String(v.mese).padStart(2, "0")}/{v.anno}</td>
+      <td>{COMPONENTE_CEDOLINO[v.tipo] || v.tipo}</td><td>{eurPos(v.importo)}</td>
+      <td><button type="button" className="dc-btn" disabled={busy !== null} onClick={() => apri(v)}>
+        {busy === v.cedolino_id ? "Apro…" : "Apri PDF"}</button></td>
+    </tr>)}</tbody>
+  </table></div>;
+}
+
 function BloccoMensilita({ blocco, etichetta }) {
   const incompleto = blocco.buste_mensili > 0 && blocco.buste_con_rateo < blocco.buste_mensili;
   return (
@@ -5029,6 +5071,7 @@ function BloccoMensilita({ blocco, etichetta }) {
         {blocco.buste_con_rateo ? eurPos(blocco.rateo_maturato) : "—"}
         {incompleto && <div style={{ color: "#c4894a", fontSize: 11 }}>{blocco.buste_con_rateo} buste su {blocco.buste_mensili}</div>}
       </td>
+      <td data-label={`${etichetta} quote lorde in busta`} style={{ textAlign: "right" }}>{blocco.componenti_lorde == null ? "—" : eurPos(blocco.componenti_lorde)}</td>
       <td data-label={`${etichetta} busta`} style={{ textAlign: "right" }}>{blocco.busta_presente ? eurPos(blocco.busta) : "—"}</td>
       <td data-label={`${etichetta} pagato`} style={{ textAlign: "right" }}>{eurPos(blocco.pagato)}</td>
       <td data-label={`${etichetta} saldo`} style={{ textAlign: "right" }}>{blocco.busta_presente || blocco.pagato ? <SaldoValore valore={blocco.saldo} /> : "—"}</td>
@@ -5074,6 +5117,7 @@ function SpostaMensilitaModal({ riga, anno, onClose, onFatto }) {
       <p className="dc-muted" style={{ marginTop: 0, fontSize: 13 }}>
         Scegli il bonifico o l'acconto e a quale mensilità appartiene: il pagamento si sposta, non si copia, e lo puoi riportare dov'era.
       </p>
+      <ComponentiCedolino voci={[...(riga.tredicesima.componenti_ordinarie || []), ...(riga.quattordicesima.componenti_ordinarie || [])]} />
       {cand === null ? <p className="dc-muted">Carico…</p> : (
         <>
           <div className="dc-card" style={{ padding: 12, marginBottom: 14 }}>
@@ -5138,8 +5182,8 @@ function MensilitaAggiuntivePage() {
       <div className="dc-page-header">
         <div>
           <h1>13ª e 14ª</h1>
-          <p>Per ogni dipendente: ratei maturati letti dalle buste mensili (13ª gennaio-dicembre, 14ª luglio-giugno), busta della mensilità,
-            pagato e saldo. Un pagamento dato come acconto o senza indicazione si sposta qui dalla scheda «Gestisci».</p>
+          <p>Quote lorde di 13ª e 14ª incluse nei cedolini e mensilità autonome. Le quote già in busta sono comprese nel netto del mese:
+            non aumentano di nuovo il saldo. «Gestisci» apre gli originali e l’attribuzione dei pagamenti.</p>
         </div>
       </div>
       <div className="dc-card" style={{ padding: 12, display: "flex", gap: 12, flexWrap: "wrap", alignItems: "flex-end", marginBottom: 14 }}>
@@ -5158,9 +5202,9 @@ function MensilitaAggiuntivePage() {
         <div className="dc-card" style={{ padding: 0 }}>
           <table className="dc-table dc-table--cards">
             <thead>
-              <tr><th rowSpan={2}>Dipendente</th><th colSpan={4} style={{ textAlign: "center" }}>13ª {anno}</th>
-                <th colSpan={4} style={{ textAlign: "center" }}>14ª {anno}</th><th rowSpan={2}></th></tr>
-              <tr>{["Ratei €", "Busta €", "Pagato €", "Saldo €", "Ratei €", "Busta €", "Pagato €", "Saldo €"].map((t, i) => <th key={i} style={{ textAlign: "right" }}>{t}</th>)}</tr>
+              <tr><th rowSpan={2}>Dipendente</th><th colSpan={5} style={{ textAlign: "center" }}>13ª {anno}</th>
+                <th colSpan={5} style={{ textAlign: "center" }}>14ª {anno}</th><th rowSpan={2}></th></tr>
+              <tr>{["Ratei €", "In busta (lordo) €", "Busta autonoma €", "Pagato €", "Saldo €", "Ratei €", "In busta (lordo) €", "Busta autonoma €", "Pagato €", "Saldo €"].map((t, i) => <th key={i} style={{ textAlign: "right" }}>{t}</th>)}</tr>
             </thead>
             <tbody>
               {dati.righe.map(r => (
@@ -5180,6 +5224,7 @@ function MensilitaAggiuntivePage() {
                 {["tredicesima", "quattordicesima"].map(k => (
                   <React.Fragment key={k}>
                     <td data-label="Ratei" style={{ textAlign: "right" }}>{eurPos(tot[k].rateo_maturato)}</td>
+                    <td data-label="Quote lorde in busta" style={{ textAlign: "right" }}>{tot[k].componenti_lorde == null ? "—" : eurPos(tot[k].componenti_lorde)}</td>
                     <td data-label="Busta" style={{ textAlign: "right" }}>{eurPos(tot[k].busta)}</td>
                     <td data-label="Pagato" style={{ textAlign: "right" }}>{eurPos(tot[k].pagato)}</td>
                     <td data-label="Saldo" style={{ textAlign: "right" }}>{eurPos(tot[k].saldo)}</td>
@@ -5437,6 +5482,8 @@ function PagheBonificiPage({ dipendenti = [] }) {
   const [showStrumenti, setShowStrumenti] = useState(false);
   const [cercaQ, setCercaQ] = useState(""); const [cercaRes, setCercaRes] = useState(null); const [cercaBusy, setCercaBusy] = useState(false);
   const [rescanMsg, setRescanMsg] = useState("");
+  const [rescanBusy, setRescanBusy] = useState(false);
+  const rescanRunning = useRef(false);
   const [f24, setF24] = useState(null); const [f24Busy, setF24Busy] = useState(false);
   const [pnDett, setPnDett] = useState(null);
 
@@ -5749,10 +5796,24 @@ function PagheBonificiPage({ dipendenti = [] }) {
     finally { setCercaBusy(false); }
   };
   const riscansiona = async () => {
-    if (!window.confirm("Riscansiona i cedolini storici con PDF salvato? Può richiedere fino a un minuto.")) return;
-    setRescanMsg("Riscansione in corso…");
-    try { const r = await axios.post(`${API}/cedolini/riscansiona`); setRescanMsg(`✓ Riscansione completata: ${r.data.aggiornati} cedolini aggiornati, ${r.data.errori} senza PDF/errore.`); }
-    catch (e) { setRescanMsg("⚠ " + (e?.response?.data?.detail || "Errore riscansione")); }
+    if (rescanRunning.current) return;
+    if (!window.confirm("Rileggi 13ª, 14ª e TFR dai PDF originali? Netti e pagamenti restano invariati. Le voci già rilette vengono saltate.")) return;
+    rescanRunning.current = true;
+    setRescanBusy(true);
+    setRescanMsg("Rilettura originali in corso…");
+    let dopoId = "", aggiornati = 0, errori = 0;
+    try {
+      do {
+        const r = await axios.post(`${API}/cedolini/riscansiona`, null,
+          { params: { ...(anno ? { anno } : {}), dopo_id: dopoId }, timeout: 120000 });
+        aggiornati += r.data.aggiornati;
+        errori += r.data.errori;
+        dopoId = r.data.prossimo_id;
+        setRescanMsg(`Originali riletti: ${aggiornati}. Da verificare: ${errori}.${dopoId ? " Rilettura in corso…" : " Completata."}`);
+      } while (dopoId);
+      await load();
+    } catch (e) { setRescanMsg("⚠ " + (e?.response?.data?.detail || "Rilettura interrotta; puoi riprenderla senza perdere i risultati.")); }
+    finally { rescanRunning.current = false; setRescanBusy(false); }
   };
   const correggiAcconti = async () => {
     if (!window.confirm("Togliere gli 'acconto dal cedolino' implausibili (poche decine di euro, probabile errore di lettura) e ricalcolare il saldo? Non tocca gli acconti registrati a mano.")) return;
@@ -5945,7 +6006,7 @@ function PagheBonificiPage({ dipendenti = [] }) {
             <input className="dc-input" style={{ flex: "1 1 240px" }} placeholder="Codice (es. F09081) o testo (es. 730, 13ma, L.207)"
               value={cercaQ} onChange={e => setCercaQ(e.target.value)} onKeyDown={e => e.key === "Enter" && cercaVoce()} />
             <button className="dc-btn-primary" disabled={cercaBusy} onClick={cercaVoce}>{cercaBusy ? "Cerco…" : "Cerca"}</button>
-            <button className="dc-btn" onClick={riscansiona} title="Rilegge i PDF dei cedolini già caricati per popolare la ricerca sullo storico">Riscansiona storico</button>
+            <button className="dc-btn" onClick={riscansiona} disabled={rescanBusy} title="Rilegge voci, 13ª, 14ª e TFR dagli originali, senza cambiare netti o pagamenti">Riscansiona storico</button>
             <button className="dc-btn" onClick={correggiAcconti} title="Toglie gli 'acconto dal cedolino' di poche decine di euro (probabile errore del parser) e ricalcola il saldo">🔧 Correggi acconti cedolino</button>
           </div>
           {rescanMsg && <div className="dc-muted" style={{ marginTop: 8 }}>{rescanMsg}</div>}
