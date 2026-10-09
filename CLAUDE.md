@@ -5607,8 +5607,22 @@ XML con piu' fatture parzialmente importati. Cambiando anno, ritornano
 in coda senza duplicare le fatture gia' presenti. Anche i vecchi falsi
 errori con l'anno documentato nel messaggio vengono ripresi o rinviati.
 Recupero limitato a 25 spostamenti per lotto per non fermare i nuovi PDF;
-62 test di regressione superati. Questa seconda correzione e' locale
-fino alla verifica del relativo deploy.
+62 test di regressione superati. PR #1184 live dalle 09:21 UTC, commit
+`7bf46a85`; health Supabase verificato. Il registro successivo alle 09:23
+conferma i rinvii in ARRETRATO e il recupero in coda degli anni pertinenti.
+
+Ottimizzazione successiva dei bonifici: Import documenti perdeva il Drive ID
+del PDF appena scaricato; l'archiviazione di transfer e inbox rieseguiva
+ricerca, verifica e talvolta download dello stesso originale. Nel campione
+live di 66 bonifici l'archivio ritrovava lo stesso ID, quindi non e' provata
+la creazione di copie nuove: il costo osservato e' nei passaggi ripetuti.
+Il job ora trasmette riferimento e MD5 del contenuto scaricato, solo con
+SHA-256 corrispondente e contesto interno della cartella unica. I membri
+ZIP e gli header degli upload non riusano l'ID del contenitore. La ricerca
+doppioni legge solo metadati e il testo PDF viene estratto una sola volta.
+66 test passano, inclusa riapertura byte-identica, rifiuto di originali
+modificati e archiviazione verificata per gli altri ingressi. Quest'ultima
+ottimizzazione resta da verificare nel relativo deploy.
 
 08/10/2026: recupero acconto collegato al dovuto di Archivio paghe, posizione
 dipendente ed export. Il netto PDF resta distinto: Dias marzo 2023 stampa
