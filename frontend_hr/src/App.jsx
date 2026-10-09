@@ -6204,7 +6204,15 @@ function PagheBonificiPage({ dipendenti = [] }) {
                             : <span style={{ color: "#9aa295", fontSize: 12 }}>—</span>}
                       </td>
                       <td style={td}>
-                        {r.cedolino_pdf && r.cedolino_id
+                        {r.cedolini?.length > 1 ? <div style={{ display: "grid", gap: 6 }}>
+                          {r.cedolini.map((c, index) => <div key={c.cedolino_id}>
+                            <span style={{ fontSize: 12 }}>{c.rapporto?.descrizione || `Cedolino ${index + 1}`} · € {c.netto == null ? "da verificare" : eur(c.netto)}</span>
+                            {c.cedolino_pdf && <span style={{ display: "flex", gap: 4 }}>
+                              <button className="dc-btn" onClick={() => apriCedolino({ ...r, ...c })}>Apri PDF {index + 1}</button>
+                              <button className="dc-btn" onClick={() => apriCedolino({ ...r, ...c }, { scarica: true })}>Scarica {index + 1}</button>
+                            </span>}
+                          </div>)}
+                        </div> : r.cedolino_pdf && r.cedolino_id
                           ? <span style={{ display: "inline-flex", gap: 6, flexWrap: "wrap" }}>
                               <button className="dc-btn" disabled={busy === `cedolino_${k}`} onClick={() => apriCedolino(r)} style={{ fontSize: 12, padding: "4px 8px", color: "#234d3d", fontWeight: 600 }}>
                                 {busy === `cedolino_${k}` ? "Apro…" : "📄 Apri PDF"}

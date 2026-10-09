@@ -207,6 +207,18 @@ def dovuto_busta(paga: Dict[str, Any], ced: Optional[Dict[str, Any]]) -> Dict[st
     if not ced:
         return {"dovuto": registro, "netto_busta": registro, "acconto": ZERO, "fonte_acconto": None,
                 "manuale": bool(paga.get("importo_busta_manuale"))}
+    componenti = ced.get("cedolini_componenti")
+    if componenti:
+        parti = [dovuto_busta({}, c) for c in componenti]
+        acconto = sum((d["acconto"] for d in parti), ZERO)
+        completo = not ced.get("varianti_da_decidere") and all(d["dovuto"] is not None for d in parti)
+        netto = sum((d["netto_busta"] or ZERO for d in parti), ZERO) if completo else None
+        manuale = bool(paga.get("importo_busta_manuale"))
+        confermato = importo(paga.get("netto_confermato"))
+        dovuto = ((confermato + acconto if confermato is not None else registro) if manuale
+                  else sum((d["dovuto"] for d in parti), ZERO) if completo else None)
+        return {"dovuto": dovuto, "netto_busta": netto, "acconto": acconto,
+                "fonte_acconto": "voci dei cedolini" if acconto else None, "manuale": manuale}
     netto = importo(ced.get("netto"))
     if netto is None:
         netto = registro
@@ -389,7 +401,8 @@ def componi_movimenti(*, paghe: Iterable[Dict[str, Any]], esiti: Iterable[Dict[s
     ced_idx: Dict[Tuple[int, int], Dict[str, Any]] = {}
     from app.services.cedolini_versioni import attiva
 
-    for c in cedolini:
+    from app.services.cedolini_rapporti import raggruppa_cedolini
+    for c in raggruppa_cedolini(cedolini).values():
         tipo = str(c.get("tipo_cedolino") or "").strip().lower() or None
         # una versione superata della busta (`sostituito`) non e' un dovuto
         if tipo not in TIPI_BUSTA_DOVUTO or not attiva(c):
@@ -407,7 +420,7 @@ def componi_movimenti(*, paghe: Iterable[Dict[str, Any]], esiti: Iterable[Dict[s
     for chiave in sorted(set(paghe_idx) | set(ced_idx)):
         a, m = chiave
         paga = paghe_idx.get(chiave) or {}
-        ced = ced_per_id.get(paga.get("cedolino_id")) or ced_idx.get(chiave)
+        ced = ced_idx.get(chiave) or ced_per_id.get(paga.get("cedolino_id"))
         d = dovuto_busta(paga, ced)
         link = {"cedolino_id": (ced or {}).get("id") or paga.get("cedolino_id"), "anno": a, "mese": m}
         if d["dovuto"] is None:

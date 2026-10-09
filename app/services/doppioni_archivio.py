@@ -69,8 +69,16 @@ def identita_cedolino(doc: Dict[str, Any]) -> Optional[Tuple]:
     if not cf or netto is None or not doc.get("anno") or not doc.get("mese"):
         return None
     tipo = _testo(doc.get("tipo_cedolino") or "mensile").lower()
+    source = doc.get("impronta_contenuto") or doc.get("cedolino_dedup_key")
+    if not source and doc.get("source_file_hash"):
+        source = (doc["source_file_hash"], doc.get("source_page_start"), doc.get("source_page_end"))
+    # Importi uguali da soli non provano che sia lo stesso documento.
+    if not source:
+        return None
     return (cf, int(doc["anno"]), int(doc["mese"]), tipo, netto,
-            centesimi(doc.get("lordo")), centesimi(doc.get("totale_trattenute")))
+            centesimi(doc.get("lordo")), centesimi(doc.get("totale_trattenute")),
+            doc.get("rapporto_id") or "", source)
+
 
 
 def identita_quietanza(doc: Dict[str, Any]) -> Optional[Tuple]:

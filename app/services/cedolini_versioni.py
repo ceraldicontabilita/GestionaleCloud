@@ -63,6 +63,7 @@ ESITO_UNICA = "unica"
 
 _VARIANTE = re.compile(r"VARIANTE\s*(\d+)", re.IGNORECASE)
 _PROIEZIONE = {
+    "rapporto_id": 1, "rapporto_lavoro": 1, "impronta_contenuto": 1,
     "_id": 0, "id": 1, "codice_fiscale": 1, "anno": 1, "mese": 1, "tipo_cedolino": 1,
     "netto": 1, "netto_mese": 1, "lordo": 1, "totale_trattenute": 1, "stato_netto": 1,
     "netto_fonte": 1, "filename": 1, "canale": 1, "pagato": 1, "importo_pagato": 1,
@@ -71,7 +72,7 @@ _PROIEZIONE = {
     "created_at": 1, "variante": 1, "stampa_di_controllo": 1, "varianti_da_decidere": 1,
 }
 
-Chiave = Tuple[str, int, int, str]
+Chiave = Tuple[str, int, int, str, str]
 
 
 def _ora() -> str:
@@ -99,13 +100,13 @@ def netto_di(doc: Dict[str, Any]) -> Optional[Decimal]:
 
 
 def chiave_busta(doc: Dict[str, Any]) -> Optional[Chiave]:
-    """(CF, anno, mese, tipo): la busta di cui una riga e' una versione."""
+    """(CF, anno, mese, tipo, rapporto): revisioni dello stesso contratto."""
     cf = str(doc.get("codice_fiscale") or "").strip().upper()
     anno, mese = _intero(doc.get("anno")), _intero(doc.get("mese"))
     if not (cf and anno and mese):
         return None
     tipo = str(doc.get("tipo_cedolino") or "mensile").strip().lower()
-    return cf, anno, mese, tipo
+    return cf, anno, mese, tipo, str(doc.get("rapporto_id") or "")
 
 
 def attiva(doc: Dict[str, Any]) -> bool:
