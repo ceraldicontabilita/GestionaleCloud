@@ -41,8 +41,8 @@ def workbook_paghe(dati):
     pag = wb.create_sheet('Pagamenti recuperati')
     pag.append(['Dipendente', 'Anno competenza', 'Mese competenza', 'Data pagamento', 'Importo EUR',
                 'Tipo', 'Riferimento', 'Fonte', 'Associazione confermata', 'Nota'])
-    missing = wb.create_sheet('Cedolini mancanti')
-    missing.append(['Dipendente', 'Anno', 'Mese', 'Importo noto EUR', 'Cosa manca'])
+    missing = wb.create_sheet('PDF non collegati')
+    missing.append(['Dipendente', 'Anno', 'Mese', 'Importo noto EUR', 'Da verificare'])
     rec = wb.create_sheet('Mesi riconciliati')
     rec.append(['Dipendente', 'Anno', 'Mese', 'Dovuto EUR', 'Pagamenti EUR', 'Residuo EUR', 'Fonte', 'Riferimenti'])
     keys = set()
@@ -63,7 +63,7 @@ def workbook_paghe(dati):
         ced.append(ident + [r.get('netto_stampato'), r.get('netto_confermato'), r.get('acconto_recuperato'),
                            r.get('busta'), 'Sì' if r.get('cedolino_pdf') else 'No', r.get('cedolino_id'), '; '.join(avvisi)])
         if not r.get('cedolino_pdf'):
-            missing.append(ident + [r.get('busta'), 'PDF del cedolino'])
+            missing.append(ident + [r.get('busta'), 'Nessun PDF collegato al periodo; disponibilità da verificare. Il pagamento resta nel saldo.'])
         bonifici = r.get('bonifici') or []
         riferimenti = ', '.join(dict.fromkeys(str(b['riferimento']) for b in bonifici if b.get('riferimento')))
         for b in bonifici:

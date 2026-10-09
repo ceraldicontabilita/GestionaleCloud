@@ -17,7 +17,7 @@ Decisione del titolare (28/09/2026). Per ogni dipendente:
   e saldo: non entra nel conto delle paghe.
 
 Lo stesso elenco di movimenti alimenta anche la vecchia «prima nota salari»
-(``GET /paghe/prima-nota``), raggruppata per mese di competenza: non esiste un
+(``GET /paghe/prima-nota``), ordinata per data del movimento: non esiste un
 secondo registro. Gli importi si contano in ``Decimal``; diventano numeri solo
 nella risposta JSON (``valuta`` = EUR).
 """
@@ -369,6 +369,7 @@ def _mov(data: str, tipo: str, descrizione: str, *, dare: Optional[Decimal] = No
 def componi_movimenti(*, paghe: Iterable[Dict[str, Any]], esiti: Iterable[Dict[str, Any]],
                       cedolini: Iterable[Dict[str, Any]], acconti: Iterable[Dict[str, Any]],
                       conciliazioni: Iterable[Dict[str, Any]],
+                      pagamenti_senza_competenza: Iterable[Dict[str, Any]] = (),
                       eccedenze: Iterable[Dict[str, Any]] = (),
                       rapporto: Optional[Dict[str, Any]] = None) -> Dict[str, List[Dict[str, Any]]]:
     """Tutti i movimenti di UN dipendente: ``registro`` (paghe) e ``bonus`` a parte.
@@ -436,17 +437,55 @@ def componi_movimenti(*, paghe: Iterable[Dict[str, Any]], esiti: Iterable[Dict[s
                                  f"Bonifico {_nome_periodo(a, m)} (registro paghe)", avere=bon,
                                  competenza=chiave, fonte="registro_paghe", link={"anno": a, "mese": m}))
 
-    # AVERE: bonifici reali
+    # AVERE alla data del pagamento. Il mese attribuito e la riconciliazione
+    # non sono condizioni per ridurre il saldo personale.
     for e in esiti:
         imp = importo(e.get("importo"))
         a, m = _intero(e.get("anno")), _intero(e.get("mese"))
-        if not imp or not a or not m:
+        comp = (a, m) if a and m and 1 <= m <= 14 else None
+        data = _data_iso(e.get("data"))
+        if not imp or imp <= 0 or not data:
             continue
         causale = str(e.get("causale") or "").strip()
-        registro.append(_mov(_data_iso(e.get("data")) or _fine_mese(a, m), "bonifico",
-                             f"Bonifico per {_nome_periodo(a, m)}" + (f" — {causale[:80]}" if causale else ""),
-                             avere=imp, competenza=(a, m), fonte="pagamenti_esiti",
-                             link={"key": e.get("key"), "anno": a, "mese": m}))
+        descr = f"Bonifico per {_nome_periodo(a, m)}" if comp else "Bonifico — competenza da attribuire"
+        registro.append(_mov(data, "bonifico", descr + (f" — {causale[:80]}" if causale else ""),
+                             avere=imp, competenza=comp, fonte="pagamenti_esiti",
+                             link={"key": e.get("key"), "anno": a, "mese": m},
+                             avviso=None if comp else "Già scalato dal saldo; mese da attribuire"))
+
+    # Una coda con identità certa e periodo assente è già un pagamento al
+    # dipendente. Gli abbinamenti soltanto proposti restano esclusi. La stessa
+    # operazione, poi trasferita agli esiti, non si conta una seconda volta.
+    from app.services.conferma_bonifico import chiavi_bonifico
+
+    chiavi_esiti = set().union(*(chiavi_bonifico(e) for e in esiti))
+    code_consumate = {e.get("bonifico_da_associare_id") for e in esiti if e.get("bonifico_da_associare_id")}
+    for e in pagamenti_senza_competenza:
+        if (e.get("stato") not in (None, "da_associare") or e.get("associazione_certa") is not True
+                or not e.get("dipendente_id") or e.get("id") in code_consumate):
+            continue
+        chiavi = chiavi_bonifico(e)
+        if chiavi & chiavi_esiti:
+            continue
+        imp, data = importo(e.get("importo")), _data_iso(e.get("data"))
+        if not imp or imp <= 0 or not data:
+            continue
+        # L'elenco del titolare può descrivere la stessa disposizione poi
+        # arrivata in PDF, senza riportare CRO/hash. Data e importo uguali non
+        # provano un duplicato, ma nemmeno autorizzano a sottrarre due volte:
+        # il pagamento già registrato vale, la nuova prova resta da verificare.
+        possibili = [p for p in esiti if p.get("dipendente_id") == e.get("dipendente_id")
+                     and _data_iso(p.get("data")) == data and importo(p.get("importo")) == imp
+                     and p.get("origine") == "elenco-pagamenti-titolare"]
+        if possibili:
+            registro.append(_mov(data, "verifica_bonifico", f"Ricevuta di {imp:.2f} € da confrontare con il pagamento già registrato",
+                                 fonte="bonifici_da_associare", link={"bonifico_da_associare_id": e.get("id")},
+                                 avviso="Stesso dipendente, data e importo dell'elenco: verificare se è la stessa operazione. Non sottratto due volte"))
+            continue
+        chiavi_esiti |= chiavi
+        registro.append(_mov(data, "bonifico", "Bonifico — competenza da attribuire", avere=imp,
+                             fonte="bonifici_da_associare", link={"bonifico_da_associare_id": e.get("id")},
+                             avviso="Già scalato dal saldo; mese da attribuire"))
 
     # AVERE: acconti in contanti del registro paghe e acconti del registro acconti.
     # Dal 01/07/2018 i contanti non entrano nel saldo durante un rapporto in
@@ -588,9 +627,9 @@ def posizione(movimenti: Dict[str, List[Dict[str, Any]]], anno: Optional[int] = 
     nell_anno = [mv for mv in registro if int(mv["data"][:4]) == anno]
     mancanti = mesi_mancanti(registro, anno, rapporto)
     nell_anno = sorted(nell_anno + [
-        _mov(_fine_mese(a, m), "mese_mancante", f"Busta {_nome_periodo(a, m)}: mese mancante",
+        _mov(_fine_mese(a, m), "mese_mancante", f"{_nome_periodo(a, m)}: nessun cedolino collegato",
              competenza=(a, m), fonte="controllo_archivio", ordine=0,
-             avviso="busta non trovata in archivio né su Drive")
+             avviso="Nessun cedolino collegato al periodo; disponibilità da verificare. Non modifica il saldo")
         for a, m in mancanti], key=lambda x: (x["data"], x["ordine"], x["tipo"], x["descrizione"]))
     _, apertura = _con_saldo(prima)
     righe, chiusura = _con_saldo(nell_anno, apertura)
@@ -623,10 +662,14 @@ def posizione(movimenti: Dict[str, List[Dict[str, Any]]], anno: Optional[int] = 
 
 
 def prima_nota_mensile(movimenti: Dict[str, List[Dict[str, Any]]]) -> Dict[str, Any]:
-    """Vista per mese di competenza dello stesso registro (modale «Prima nota»)."""
+    """Riepilogo per mese contabile e dettaglio cronologico dello stesso registro.
+
+    Le buste maturano a fine competenza, i pagamenti incidono alla loro data,
+    anche quando la competenza è diversa o ancora sconosciuta.
+    """
     mesi: Dict[Tuple[int, int], Dict[str, Decimal]] = {}
     for mv in movimenti["registro"]:
-        comp = mv["competenza"] or (int(mv["data"][:4]), int(mv["data"][5:7]))
+        comp = (int(mv["data"][:4]), int(mv["data"][5:7]))
         r = mesi.setdefault(comp, {"busta": ZERO, "acconto_in_busta": ZERO, "bonifico": ZERO,
                                    "acconti": ZERO, "altro_dare": ZERO, "altro_avere": ZERO})
         if mv["tipo"] == "busta":
@@ -649,7 +692,9 @@ def prima_nota_mensile(movimenti: Dict[str, List[Dict[str, Any]]]) -> Dict[str, 
         righe.append({"anno": a, "mese": m, "busta": _eur(dovuto), "bonifico": _eur(r["bonifico"]),
                       "acconti": _eur(r["acconti"]), "erogato": _eur(erogato),
                       "saldo_progressivo": _eur(saldo)})
-    return {"righe": righe, "saldo_finale": _eur(saldo), "valuta": VALUTA}
+    dettaglio, saldo = _con_saldo(movimenti["registro"])
+    return {"righe": righe, "movimenti": [_riga_json(mv) for mv in dettaglio],
+            "saldo_finale": _eur(saldo), "valuta": VALUTA}
 
 
 # ── lettura dall'archivio HR ─────────────────────────────────────────────────
@@ -659,6 +704,9 @@ async def carica_movimenti(db, dipendente_id: str) -> Dict[str, List[Dict[str, A
     senza_pdf = {"_id": 0, "pdf_data": 0}
     paghe = await db.paghe_mensili.find({"dipendente_id": dipendente_id}, {"_id": 0}).to_list(5000)
     esiti = await db.pagamenti_esiti.find({"dipendente_id": dipendente_id}, senza_pdf).to_list(5000)
+    in_coda = await db.bonifici_da_associare.find(
+        {"dipendente_id": dipendente_id, "associazione_certa": True, "stato": "da_associare"},
+        senza_pdf).to_list(5000)
     cedolini = await db.cedolini.find({"dipendente_id": dipendente_id}, senza_pdf).to_list(5000)
     acconti = await db.acconti_dipendenti.find({"dipendente_id": dipendente_id}, {"_id": 0}).to_list(2000)
     conc = await db[COLL_CONCILIAZIONI].find(
@@ -671,7 +719,8 @@ async def carica_movimenti(db, dipendente_id: str) -> Dict[str, List[Dict[str, A
          "data_dimissione": 1, "data_cessazione_prevista": 1},
     ) or {}
     return componi_movimenti(paghe=paghe, esiti=esiti, cedolini=cedolini, acconti=acconti,
-                             conciliazioni=conc, eccedenze=ecc, rapporto=rapporto)
+                             conciliazioni=conc, eccedenze=ecc, rapporto=rapporto,
+                             pagamenti_senza_competenza=in_coda)
 
 
 def vista_eccedenza(ecc: Dict[str, Any]) -> Dict[str, Any]:
