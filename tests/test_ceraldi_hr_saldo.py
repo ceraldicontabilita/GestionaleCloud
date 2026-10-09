@@ -1,5 +1,16 @@
 """Regressioni contabili: data del pagamento distinta dalla competenza."""
 import unittest
+import sys
+from pathlib import Path
+from types import ModuleType
+
+# Il saldo è un motore puro: caricare il package non deve avviare auth/email.
+ROOT = Path(__file__).resolve().parents[1]
+for package in ("app", "app.services", "app.hr", "app.hr.services"):
+    if package not in sys.modules:
+        module = ModuleType(package)
+        module.__path__ = [str(ROOT / package.replace(".", "/"))]
+        sys.modules[package] = module
 
 from app.services.posizione_dipendente import componi_movimenti, posizione, prima_nota_mensile
 
