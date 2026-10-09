@@ -8,7 +8,6 @@ Supporta 4 formati diversi usati nel tempo:
 """
 import re
 from typing import Dict, Any, Optional
-import fitz  # PyMuPDF
 
 from app.utils.numeri_italiani import parse_importo_ita
 
@@ -1145,6 +1144,10 @@ def parse_busta_paga_multi(pdf_path: str) -> Dict[str, Any]:
     Returns:
         Dizionario con tutti i dati estratti
     """
+    # Il motore PDF serve solo quando si apre un file; i lettori di testo
+    # e celle possono essere usati e verificati senza caricare PyMuPDF.
+    import fitz
+
     doc = fitz.open(pdf_path)
 
     # Estrai testo da tutte le pagine
