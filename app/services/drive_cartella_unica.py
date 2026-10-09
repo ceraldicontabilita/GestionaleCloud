@@ -444,6 +444,10 @@ def file_tecnico_da_cestinare(contenuto: bytes) -> Optional[str]:
 
 def esito_del_risultato(risultato: Dict[str, Any]) -> tuple[str, str]:
     """(cartella di destinazione, motivo). Registrato o gia' presente → archivio."""
+    if risultato.get("skipped_altro_anno"):
+        anni = ", ".join(str(a) for a in risultato.get("anni_in_attesa") or [])
+        return ARRETRATO, (f"In attesa dell'anno di importazione {anni}" if anni
+                           else str(risultato.get("message") or "Anno di importazione non attivo"))
     if risultato.get("fuori_contabilita") and risultato.get("tipo_rilevato") in (
             "non_riconosciuto", "fattura_pdf"):
         return ARRETRATO, risultato["fuori_contabilita"]
@@ -561,23 +565,60 @@ _BUSTE_GIA_PRESENTI = re.compile(r"^Cedolino non registrato: \d+ buste lette$")
 # Un guasto di connessione durante la lettura non e' un difetto del file: si rilegge.
 _GUASTO_DI_RETE = re.compile(r"^(SSLError|ConnectionError|ConnectionResetError|TimeoutError|timeout|"
                              r"RemoteDisconnected|BrokenPipeError|IncompleteRead)\b")
-async def rimetti_in_coda_buste_gia_presenti(db, service, cartelle: Dict[str, str],
-                                             limite: Optional[int] = None) -> int:
-    """Riporta in DA ELABORARE le buste finite in ERRORI solo perche' gia' registrate.
 
-    Tutte in una volta (decisione del titolare): spostarle costa solo metadati,
-    la lettura poi la fa il giro a lotti.
+
+def anni_in_attesa_del_registro(riga: Dict[str, Any]) -> List[int]:
+    """Anno estratto dal documento, mai dal nome file o dalla data Drive."""
+    anni = riga.get("anni_in_attesa") or []
+    if anni:
+        return sorted({int(a) for a in anni if str(a).isdigit() and 2000 <= int(a) <= 2100})
+    # Compatibilita' con gli scarti precedenti: questo messaggio veniva
+    # composto esclusivamente dall'anno letto nel corpo XML.
+    match = re.match(r"^Fattura del (\d{4}): l'anno attivo e' il \d{4},", str(riga.get("motivo") or ""))
+    return [int(match[1])] if match else []
+
+
+async def rimetti_in_coda_buste_gia_presenti(db, service, cartelle: Dict[str, str],
+                                          limite: Optional[int] = None,
+                                          anno_attivo: Optional[int] = None) -> int:
+    """Riprende scarti correggibili e separa i documenti di un altro anno.
+
+    Restituisce il numero di spostamenti. Il chiamante limita ogni passaggio
+    per lasciare avanzare anche i file nuovi durante il recupero storico.
     """
     righe = await db[REGISTRO].find(
         {"cartella": {"$in": [ERRORI, ARRETRATO]}},
         {"_id": 0, "id": 1, "nome": 1, "motivo": 1, "tipo": 1, "cartella": 1,
-         "regole_non_riconosciuti": 1, "regole_classificazione": 1, "rinvii": 1},
+         "regole_non_riconosciuti": 1, "regole_classificazione": 1, "rinvii": 1,
+         "anni_in_attesa": 1},
     ).to_list(None)
+    if anno_attivo is None:
+        from app.services.config_import import get_anno_importazione_attivo
+
+        anno_attivo = await get_anno_importazione_attivo(db)
     rimessi = 0
     for riga in righe:
         if limite is not None and rimessi >= limite:
             break
         motivo = str(riga.get("motivo") or "")
+        anni_in_attesa = anni_in_attesa_del_registro(riga)
+        if anni_in_attesa:
+            destinazione = INBOX if anno_attivo in anni_in_attesa else ARRETRATO
+            if riga.get("cartella") == destinazione:
+                continue
+            motivo_anno = (f"Riprende l'import dell'anno {anno_attivo}" if destinazione == INBOX
+                           else "In attesa dell'anno di importazione " + ", ".join(map(str, anni_in_attesa)))
+            try:
+                await asyncio.to_thread(_sposta, service, riga["id"], cartelle[riga["cartella"]],
+                                        cartelle[destinazione], motivo_anno)
+                await _registra(db, riga["id"], cartella=destinazione,
+                                esito="rimesso_in_coda" if destinazione == INBOX else "arretrato",
+                                motivo=motivo_anno, anni_in_attesa=anni_in_attesa)
+                rimessi += 1
+            except Exception as exc:
+                logger.warning("[cartella-unica] rinvio per anno non completato id=%s: %s",
+                               riga["id"], type(exc).__name__)
+            continue
         da_rileggere = False
         transitorio = False
         if riga.get("cartella") == ARRETRATO:
@@ -804,12 +845,21 @@ async def _giro(db) -> Dict[str, Any]:
             service = await asyncio.to_thread(_service)
         with _fase(esito, "cartelle"):
             cartelle = await _cartelle_in_cache(service)
-        if time.monotonic() - _cache.get("rimessa_ts", -RIMESSA_OGNI_S) >= RIMESSA_OGNI_S:
+        from app.services.config_import import get_anno_importazione_attivo
+
+        anno_attivo = await get_anno_importazione_attivo(db)
+        if (anno_attivo != _cache.get("anno_rimessa")
+                or time.monotonic() - _cache.get("rimessa_ts", -RIMESSA_OGNI_S) >= RIMESSA_OGNI_S):
             # Rilegge dal registro migliaia di righe ERRORI/ARRETRATO: una volta
             # ogni dieci minuti, non a ogni lotto di cento file.
             with _fase(esito, "rimessa_in_coda"):
-                esito["buste_rimesse_in_coda"] = await rimetti_in_coda_buste_gia_presenti(db, service, cartelle)
-            _cache["rimessa_ts"] = time.monotonic()
+                spostati = await rimetti_in_coda_buste_gia_presenti(
+                    db, service, cartelle, limite=25, anno_attivo=anno_attivo)
+                esito["documenti_ripresi_o_rinviati"] = spostati
+            # Il recupero storico non blocca il lotto per migliaia di spostamenti.
+            # Se ha esaurito i posti, continua dopo aver elaborato il lotto corrente.
+            _cache["rimessa_ts"] = -RIMESSA_OGNI_S if spostati >= 25 else time.monotonic()
+            _cache["anno_rimessa"] = anno_attivo
         campi = "id, name, md5Checksum, size, mimeType, createdTime, modifiedTime"
         # Prima i file lasciati sciolti nella radice, poi DA ELABORARE
         # (decisione del titolare, 26/09/2026): la cartella unica si usa come
@@ -945,6 +995,7 @@ async def _giro(db) -> Dict[str, Any]:
                     gia_presente=bool(risultato.get("duplicate")), motivo=motivo or None,
                     riferimenti=riferimenti, regole_non_riconosciuti=REGOLE_NON_RICONOSCIUTI,
                     regole_classificazione=REGOLE_CLASSIFICAZIONE,
+                    anni_in_attesa=risultato.get("anni_in_attesa") or [],
                 )
             if destinazione == ARCHIVIO:
                 esito["elaborati"] += 1

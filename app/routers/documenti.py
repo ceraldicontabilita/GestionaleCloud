@@ -3043,6 +3043,10 @@ async def upload_documento_automatico(
                         ultimo_errore_duplicato = exc
                         corpo_duplicato = body
 
+                if altro_anno:
+                    result["skipped_altro_anno"] = len(altro_anno)
+                    result["anni_in_attesa"] = sorted(set(altro_anno))
+                    result["anno_import_attivo"] = anno_attivo
                 if importati:
                     # L'id della fattura creata sale nel risultato: il registro
                     # della cartella unica lo conserva in `riferimenti` (fino al
