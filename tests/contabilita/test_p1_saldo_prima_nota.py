@@ -1,0 +1,317 @@
+"""P1 §6.4 — Funzione UNICA di saldo Prima Nota (segno, riporto/saldo iniziale,
+saldo finale). Test di caratterizzazione: la funzione condivisa riproduce ESATTAMENTE
+la formula preesistente (entrate−uscite + riporto anni precedenti)."""
+import asyncio
+
+from app.routers.prima_nota_module import common
+from app.services.archivio_documenti_memoria import ClientArchivioMemoria
+
+
+class _Agg:
+    def __init__(self, res):
+        self._res = res
+
+    async def to_list(self, n):
+        return list(self._res)
+
+
+class _Coll:
+    def __init__(self, movimenti):
+        self.movimenti = movimenti
+
+    async def find_one(self, query, *a, **k):
+        # Lookup del saldo iniziale manuale (16/07/2026): questi test coprono
+        # il riporto CALCOLATO, quindi nessun saldo manuale impostato.
+        return None
+
+    def aggregate(self, pipeline):
+        # emula $match + $group entrate/uscite della pipeline reale,
+        # incluso il $convert dell'importo (onError/onNull → 0)
+        def _num(d):
+            try:
+                return float(d.get("importo", 0))
+            except (TypeError, ValueError):
+                return 0.0
+        match = pipeline[0]["$match"]
+        docs = [d for d in self.movimenti if _match(d, match)]
+        entrate = sum(_num(d) for d in docs if d.get("tipo") == "entrata")
+        uscite = sum(_num(d) for d in docs if d.get("tipo") == "uscita")
+        if not docs:
+            return _Agg([])
+        return _Agg([{"_id": None, "entrate": entrate, "uscite": uscite}])
+
+
+def _match(doc, query):
+    for k, v in query.items():
+        if k == "$or":
+            if not any(_match(doc, sub) for sub in v):
+                return False
+        elif isinstance(v, dict):
+            if "$nin" in v and doc.get(k) in v["$nin"]:
+                return False
+            if "$ne" in v and doc.get(k) == v["$ne"]:
+                return False
+            if "$lt" in v and not (doc.get(k) is not None and doc.get(k) < v["$lt"]):
+                return False
+            if "$gte" in v and not (doc.get(k) is not None and doc.get(k) >= v["$gte"]):
+                return False
+            if "$lte" in v and not (doc.get(k) is not None and doc.get(k) <= v["$lte"]):
+                return False
+            if "$exists" in v and (k in doc) != v["$exists"]:
+                return False
+        else:
+            if doc.get(k) != v:
+                return False
+    return True
+
+
+class _Db:
+    def __init__(self, coll):
+        self._coll = coll
+
+    def __getitem__(self, name):
+        return self._coll
+
+
+def _run(c):
+    loop = asyncio.new_event_loop()
+    try:
+        return loop.run_until_complete(c)
+    finally:
+        loop.close()
+
+
+def test_saldo_segno_entrate_uscite():
+    movimenti = [
+        {"tipo": "entrata", "importo": 100.0, "data": "2026-03-01", "status": "ok"},
+        {"tipo": "uscita", "importo": 30.0, "data": "2026-03-02", "status": "ok"},
+    ]
+    db = _Db(_Coll(movimenti))
+    query = {"status": {"$nin": ["deleted", "archived"]},
+             "categoria": {"$nin": common.CATEGORIE_ESCLUSE}}
+    s = _run(common.aggrega_saldo_prima_nota(db, "prima_nota_cassa", query, anno=None))
+    assert s["totale_entrate"] == 100.0
+    assert s["totale_uscite"] == 30.0
+    assert s["saldo_anno"] == 70.0
+    assert s["saldo_precedente"] == 0.0
+    assert s["saldo"] == 70.0
+
+
+def test_saldo_con_riporto_anni_precedenti():
+    movimenti = [
+        # anno precedente (2025): riporto = 200 - 50 = 150
+        {"tipo": "entrata", "importo": 200.0, "data": "2025-06-01", "status": "ok"},
+        {"tipo": "uscita", "importo": 50.0, "data": "2025-07-01", "status": "ok"},
+        # anno corrente (2026)
+        {"tipo": "entrata", "importo": 80.0, "data": "2026-02-01", "anno": 2026, "status": "ok"},
+    ]
+    db = _Db(_Coll(movimenti))
+    # query anno 2026 come la costruisce cassa/banca
+    query = {
+        "status": {"$nin": ["deleted", "archived"]},
+        "categoria": {"$nin": common.CATEGORIE_ESCLUSE},
+        "$or": [
+            {"anno": 2026},
+            {"anno": {"$exists": False}, "data": {"$gte": "2026-01-01", "$lte": "2026-12-31"}},
+        ],
+    }
+    s = _run(common.aggrega_saldo_prima_nota(db, "prima_nota_cassa", query, anno=2026))
+    assert s["saldo_anno"] == 80.0
+    assert s["saldo_precedente"] == 150.0   # riporto 2025
+    assert s["saldo"] == 230.0              # 150 + 80
+
+
+def test_esclusioni_generali_non_contano_in_cassa():
+    """Le esclusioni generali rimuovono copie e righe tecniche.
+
+    In Cassa una riga POS valida può essere una scrittura reale; il saldo Banca
+    usa invece il filtro più stretto verificato nel test successivo.
+    """
+    movimenti = [
+        {"tipo": "entrata", "importo": 100.0, "data": "2026-03-01", "status": "ok"},
+        {"tipo": "entrata", "importo": 999.0, "data": "2026-03-01", "status": "deleted"},
+        # Scrittura POS valida in Cassa: conta.
+        {"tipo": "entrata", "importo": 888.0, "data": "2026-03-01", "status": "ok",
+         "categoria": "Corrispettivi POS", "source": "corrispettivo_pos"},
+        # Chiusura POS serale di verifica: esclusa (non è un secondo incasso).
+        {"tipo": "entrata", "importo": 777.0, "data": "2026-03-01", "status": "ok",
+         "categoria": "Corrispettivi POS", "source": "chiusura_pos_mobile"},
+        # Copia legacy dell'estratto conto reale: esclusa (duplicherebbe
+        # pagamenti fatture e accrediti POS già registrati altrove).
+        {"tipo": "entrata", "importo": 666.0, "data": "2026-03-01", "status": "ok",
+         "categoria": "Ricavi - Incasso tramite POS", "source": "estratto_conto_sync"},
+        # POS_DUPLICATO resta escluso per categoria.
+        {"tipo": "entrata", "importo": 555.0, "data": "2026-03-01", "status": "ok",
+         "categoria": "POS_DUPLICATO"},
+    ]
+    db = _Db(_Coll(movimenti))
+    query = common.filtro_saldo_prima_nota("prima_nota_cassa")
+    s = _run(common.aggrega_saldo_prima_nota(db, "prima_nota_cassa", query, anno=None))
+    assert s["saldo"] == 988.0  # 100 + 888; deleted/verifica/legacy-EC/duplicato esclusi
+
+
+def test_saldo_banca_reale_esclude_crediti_pos_virtuali():
+    """Il saldo bancario espone solo movimenti reali dell'estratto conto.
+
+    I crediti POS lordi restano disponibili per la riconciliazione, ma non sono
+    liquidità BPM e non devono gonfiare saldo o riepiloghi finanziari.
+    """
+    movimenti = [
+        {"tipo": "entrata", "importo": 100.0, "data": "2026-03-01", "status": "ok",
+         "source": "proiezione_bancaria"},
+        {"tipo": "entrata", "importo": 50.0, "data": "2026-03-02", "status": "ok",
+         "source": "manuale"},
+        {"tipo": "entrata", "importo": 888.0, "data": "2026-03-03", "status": "ok",
+         "categoria": "Corrispettivi POS", "source": "corrispettivo_pos"},
+        {"tipo": "entrata", "importo": 777.0, "data": "2026-03-04", "status": "ok",
+         "categoria": "Corrispettivi POS", "source": "trasferimento_pos"},
+        {"tipo": "entrata", "importo": 666.0, "data": "2026-03-05", "status": "ok",
+         "categoria": "Corrispettivi POS", "source": "corrispettivi_sync"},
+        {"tipo": "entrata", "importo": 555.0, "data": "2026-03-06", "status": "ok",
+         "natura": common.NATURA_CREDITO_POS, "source": "altro_generatore"},
+    ]
+    db = _Db(_Coll(movimenti))
+    query = common.filtro_saldo_prima_nota("prima_nota_banca")
+    s = _run(common.aggrega_saldo_prima_nota(db, "prima_nota_banca", query, anno=None))
+    assert s["saldo"] == 150.0
+
+
+def test_filtro_saldo_distingue_cassa_e_banca():
+    cassa = common.filtro_saldo_prima_nota("prima_nota_cassa")
+    banca = common.filtro_saldo_prima_nota("prima_nota_banca")
+
+    assert "natura" not in cassa
+    assert banca["natura"]["$nin"] == [common.NATURA_CREDITO_POS, "costo"]
+    assert "corrispettivo_pos" not in cassa["source"]["$nin"]
+    assert "corrispettivo_pos" in banca["source"]["$nin"]
+    assert "trasferimento_pos" in banca["source"]["$nin"]
+    assert "corrispettivi_sync" in banca["source"]["$nin"]
+
+
+def test_riporto_banca_esclude_crediti_pos_virtuali_anni_precedenti():
+    movimenti = [
+        {"tipo": "entrata", "importo": 100.0, "data": "2025-06-01", "status": "ok",
+         "source": "proiezione_bancaria"},
+        {"tipo": "entrata", "importo": 500.0, "data": "2025-06-02", "status": "ok",
+         "source": "corrispettivo_pos", "natura": common.NATURA_CREDITO_POS},
+        {"tipo": "entrata", "importo": 50.0, "data": "2026-02-01", "anno": 2026,
+         "status": "ok", "source": "proiezione_bancaria"},
+    ]
+    db = _Db(_Coll(movimenti))
+    query = common.filtro_saldo_prima_nota(
+        "prima_nota_banca",
+        **{
+            "$or": [
+                {"anno": 2026},
+                {"anno": {"$exists": False},
+                 "data": {"$gte": "2026-01-01", "$lte": "2026-12-31"}},
+            ]
+        },
+    )
+    s = _run(common.aggrega_saldo_prima_nota(db, "prima_nota_banca", query, anno=2026))
+    assert s["saldo_anno"] == 50.0
+    assert s["saldo_precedente"] == 100.0
+    assert s["saldo"] == 150.0
+
+
+def test_importo_stringa_convertito():
+    """§6.4 estratto conto: alcuni doc storici hanno importo come STRINGA.
+    Il motore li somma comunque ($convert onError/onNull → 0)."""
+    movimenti = [
+        {"tipo": "entrata", "importo": "100.50", "data": "2026-03-01"},
+        {"tipo": "uscita", "importo": 30.0, "data": "2026-03-02"},
+        {"tipo": "entrata", "importo": "non-un-numero", "data": "2026-03-03"},  # → 0
+        {"tipo": "entrata", "importo": None, "data": "2026-03-04"},             # → 0
+    ]
+    db = _Db(_Coll(movimenti))
+    s = _run(common.aggrega_saldo_prima_nota(db, "estratto_conto_movimenti", {}, anno=None))
+    assert s["totale_entrate"] == 100.50
+    assert s["totale_uscite"] == 30.0
+    assert s["saldo"] == 70.50
+
+
+def test_importo_stringa_convertito_nel_runtime_documentale_reale():
+    """Il document store condiviso da entrambi i backend (base di
+    SupabaseRuntimeDatabase) converte anche gli importi serializzati come
+    testo, non solo le fake `_Db`/`_Coll` di questo file."""
+    runtime = ClientArchivioMemoria()["test"]
+    runtime.loading = True
+    _run(runtime["prima_nota_banca"].insert_many([
+        {"tipo": "entrata", "importo": "100.50", "data": "2026-03-01"},
+        {"tipo": "uscita", "importo": 30, "data": "2026-03-02"},
+        {"tipo": "entrata", "importo": "non-un-numero", "data": "2026-03-03"},
+    ]))
+
+    saldo = _run(common.aggrega_saldo_prima_nota(
+        runtime, "prima_nota_banca", {}, anno=None,
+    ))
+
+    assert saldo["totale_entrate"] == 100.50
+    assert saldo["totale_uscite"] == 30.0
+    assert saldo["saldo"] == 70.50
+
+
+def test_riporto_query_base_esplicita_estratto_conto():
+    """§6.4 estratto conto sul motore unico: con query_base_precedente={} il
+    riporto considera TUTTI i movimenti prima dell'anno (comportamento storico
+    dell'estratto conto, che non ha soft-delete né categorie escluse); con il
+    default (None) restano le esclusioni della Prima Nota."""
+    movimenti = [
+        # anno precedente: uno "deleted" (in EC non esiste, ma verifica la semantica)
+        {"tipo": "entrata", "importo": 200.0, "data": "2025-06-01", "status": "deleted"},
+        {"tipo": "entrata", "importo": 100.0, "data": "2025-07-01"},
+        # anno corrente
+        {"tipo": "entrata", "importo": 50.0, "data": "2026-02-01"},
+    ]
+    db = _Db(_Coll(movimenti))
+    query_anno = {"data": {"$gte": "2026-01-01", "$lte": "2026-12-31"}}
+
+    # Semantica estratto conto: riporto su TUTTO (300)
+    s_ec = _run(common.aggrega_saldo_prima_nota(
+        db, "estratto_conto_movimenti", query_anno, anno=2026, query_base_precedente={}))
+    assert s_ec["saldo_precedente"] == 300.0
+    assert s_ec["saldo"] == 350.0
+
+    # Semantica Prima Nota (default): il "deleted" resta escluso dal riporto (100)
+    s_pn = _run(common.aggrega_saldo_prima_nota(
+        db, "prima_nota_banca", query_anno, anno=2026))
+    assert s_pn["saldo_precedente"] == 100.0
+    assert s_pn["saldo"] == 150.0
+
+
+def test_pagamento_cassa_senza_metodo_fornitore_non_entra_nei_saldi():
+    """Caso reale 19/09/2026 (Leasys Italia S.p.A, fattura 0000202611470021).
+
+    Fino al 15/09/2026 una fattura il cui fornitore non aveva il metodo di
+    pagamento in anagrafica veniva instradata d'ufficio in Prima Nota Cassa
+    con `metodo_pagamento="cassa"`, pur essendo marcata provvisoria. Il ramo
+    e' spento (PR #461 "Fase 0"), ma le 497 righe gia' scritte restavano nei
+    saldi: uscite di contante mai avvenute, per 197.632,93 EUR, che
+    portavano la cassa a -84.183,91 EUR. Una cassa non puo' essere negativa.
+
+    Contano solo i movimenti provati: la riga provvisoria resta in archivio
+    per audit ma non tocca elenco, saldi, bilancio, liquidita' e chiusura.
+    """
+    movimenti = [
+        {"tipo": "entrata", "importo": 2000.0, "data": "2026-09-01", "status": "ok"},
+        {"tipo": "uscita", "importo": 300.0, "data": "2026-09-02", "status": "ok",
+         "categoria": "Fatture", "source": "fattura_pagata"},
+        # La riga di Leasys: provvisoria, fornitore senza metodo in anagrafica.
+        {"tipo": "uscita", "importo": 1119.48, "data": "2026-09-08", "status": "ok",
+         "categoria": "Fatture", "stato": "DA_VERIFICARE", "provvisorio": True,
+         "canonico": False, "metodo_pagamento": "cassa",
+         "source": "metodo_fornitore_assente_provvisorio",
+         "motivo_provvisorio": "metodo_pagamento_fornitore_assente"},
+    ]
+    db = _Db(_Coll(movimenti))
+    query = common.filtro_saldo_prima_nota("prima_nota_cassa")
+    s = _run(common.aggrega_saldo_prima_nota(db, "prima_nota_cassa", query, anno=None))
+    assert s["totale_uscite"] == 300.0
+    assert s["saldo"] == 1700.0
+
+
+def test_source_provvisorio_escluso_sia_in_cassa_sia_in_banca():
+    cassa = common.filtro_saldo_prima_nota("prima_nota_cassa")
+    banca = common.filtro_saldo_prima_nota("prima_nota_banca")
+    assert "metodo_fornitore_assente_provvisorio" in cassa["source"]["$nin"]
+    assert "metodo_fornitore_assente_provvisorio" in banca["source"]["$nin"]

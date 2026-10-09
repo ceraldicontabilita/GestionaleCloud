@@ -6,7 +6,7 @@ import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { toast } from '../../hooks/use-toast';
 
-import { MENU_BACKEND_URL as BACKEND_URL } from '@/lib/backend';
+const BACKEND_URL = process.env.REACT_APP_MENU_BACKEND_URL;
 
 /**
  * Indirizzo pubblico del menu clienti e il suo QR code, nella dashboard.

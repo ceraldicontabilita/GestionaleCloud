@@ -9,6 +9,7 @@ from datetime import datetime, timezone
 from app.database import Database
 from app.services.parser_f24 import confronta_codici_tributo
 from app.services.alert_engine import genera_alert
+import os
 import uuid
 import logging
 from app.utils.dependencies import get_current_admin_user
@@ -21,6 +22,10 @@ from app.constants.codici_ravvedimento import CODICI_RAVVEDIMENTO
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
+
+# DEPRECATED: Directory per compatibilità legacy
+UPLOAD_DIR = "/tmp/uploads/f24_commercialista"
+os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 # Collections
 COLL_F24_COMMERCIALISTA = "f24_unificato"  # unificato 13/07/2026

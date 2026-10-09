@@ -179,7 +179,7 @@ async def merge_fornitori(payload: MergeRequest, _admin=Depends(require_admin)):
                 update_master["updated_at"] = datetime.now(timezone.utc).isoformat()
                 try:
                     await db.fornitori.update_one(_q_nome(keep), {"$set": update_master})
-                except Exception:
+                except Exception as _ue:
                     # Se l'update fallisce (conflitto), prova senza campi che potrebbero collidere
                     safe_update = {
                         k: v for k, v in update_master.items() if k not in ("partita_iva", "piva")

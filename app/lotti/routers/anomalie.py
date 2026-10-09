@@ -173,6 +173,15 @@ async def get_statistiche(anno: int = None):
     }
 
 
+@router.get("/{anomalia_id}")
+async def get_anomalia(anomalia_id: str):
+    """Ottiene una singola anomalia"""
+    anomalia = await db.anomalie.find_one({"id": anomalia_id}, {"_id": 0})
+    if not anomalia:
+        raise HTTPException(status_code=404, detail="Anomalia non trovata")
+    return anomalia
+
+
 @router.post("/registra")
 async def registra_anomalia(data: NuovaAnomaliaRequest):
     """Registra una nuova anomalia"""
@@ -768,13 +777,3 @@ async def genera_report_pdf_range(start_anno: int, end_anno: int):
     """
 
     return HTMLResponse(content=html)
-
-
-# Registrare il dettaglio dopo i percorsi statici: report-pdf-range non è un ID.
-@router.get("/{anomalia_id}")
-async def get_anomalia(anomalia_id: str):
-    """Ottiene una singola anomalia."""
-    anomalia = await db.anomalie.find_one({"id": anomalia_id}, {"_id": 0})
-    if not anomalia:
-        raise HTTPException(status_code=404, detail="Anomalia non trovata")
-    return anomalia

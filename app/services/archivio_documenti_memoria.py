@@ -1189,3 +1189,31 @@ class ArchivioDocumenti:
             if callable(closer):
                 closer()
         self._tables.clear()
+
+
+class ClientArchivioMemoria:
+    """Client effimero per test: stessa API del registro, nessuna I/O remota."""
+
+    def __init__(self):
+        self._databases: dict[str, ArchivioDocumenti] = {}
+
+    def __getitem__(self, name: str) -> ArchivioDocumenti:
+        return self._databases.setdefault(name, ArchivioDocumenti(name))
+
+    def __getattr__(self, name: str) -> ArchivioDocumenti:
+        if name.startswith("_"):
+            raise AttributeError(name)
+        return self[name]
+
+    async def list_database_names(self) -> list[str]:
+        return list(self._databases)
+
+    async def drop_database(self, name: str) -> None:
+        database = self._databases.pop(name, None)
+        if database is not None:
+            database.close()
+
+    def close(self) -> None:
+        for database in self._databases.values():
+            database.close()
+        self._databases.clear()

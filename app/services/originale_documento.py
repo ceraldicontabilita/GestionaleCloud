@@ -101,16 +101,6 @@ _ESTENSIONI = {"pdf": "application/pdf", "xml": "application/xml", "png": "image
 
 def mime_dai_byte(contenuto: bytes, nome: str = "", dichiarato: Optional[str] = None) -> str:
     """Il tipo guarda prima i byte (un PDF resta PDF anche con un nome sbagliato)."""
-    if contenuto.startswith(b"PK\x03\x04"):
-        import io
-        import zipfile
-
-        try:
-            with zipfile.ZipFile(io.BytesIO(contenuto)) as archive:
-                if "xl/workbook.xml" in archive.namelist() and "[Content_Types].xml" in archive.namelist():
-                    return _ESTENSIONI["xlsx"]
-        except (zipfile.BadZipFile, OSError):
-            pass
     for firma, mime in _MAGIC:
         if contenuto.startswith(firma):
             return mime
@@ -382,10 +372,6 @@ async def _fattura(db, ident: str, indice: int) -> Originale:
     fattura, xml = await _trova_fattura_e_xml_originale(ident)
     if fattura is None:
         raise DocumentoNonTrovato("Fattura non trovata", {"id": ident})
-    if not xml and fattura.get("documento_inbox_id"):
-        doc = await db["documents_inbox"].find_one({"id": fattura["documento_inbox_id"]})
-        if doc:
-            return await _da_record(doc, predefinito="fattura.pdf", tipo="fattura", ident=ident)
     if not xml:
         raise OriginaleNonDisponibile("Originale non disponibile", {
             "tipo": "fattura", "id": ident, "provato": ["xml_file_path", "xml_raw", "xml_content"]})

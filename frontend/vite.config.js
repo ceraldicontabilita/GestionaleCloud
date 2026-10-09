@@ -5,10 +5,25 @@ import { fileURLToPath } from 'url'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
+// Plugin keepalive: invia WebSocket ping ogni 20s
+// per evitare che il proxy Kubernetes (timeout 30s) chiuda la connessione
+const wsKeepalivePlugin = {
+  name: 'ws-keepalive',
+  configureServer(server) {
+    const iv = setInterval(() => {
+      try {
+        server.ws.clients.forEach(client => {
+          if (client.readyState === 1) client.ping();
+        });
+      } catch (_) { }
+    }, 20000);
+    server.httpServer?.on('close', () => clearInterval(iv));
+  }
+};
+
 export default defineConfig({
   plugins: [react()],
   resolve: {
-    dedupe: ['react', 'react-dom'],
     alias: {
       '@': path.resolve(__dirname, 'src'),
     },
@@ -42,6 +57,16 @@ export default defineConfig({
         changeOrigin: true,
       }
     }
+  },
+  test: {
+    environment: 'jsdom',
+    globals: true,
+    setupFiles: ['./src/test/setup.js'],
+    // Le pagine ERP montano tabelle e contesti articolati: troppi worker jsdom
+    // saturano la macchina CI e producono timeout casuali su test che, isolati,
+    // passano. Due worker mantengono la suite parallela ma deterministica.
+    minWorkers: 1,
+    maxWorkers: 2,
   },
   build: {
     chunkSizeWarningLimit: 700,

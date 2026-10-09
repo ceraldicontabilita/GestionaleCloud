@@ -224,5 +224,13 @@ async def _sincronizza(db, anno: int = None) -> Dict[str, Any]:
             creati += 1
         esistenti_idx[(dip, anno_c, mese_c)] = {**(esistente or {}), **doc}
 
+    # Gli esiti con destinazioni_salari possono non avere anno/mese propri.
+    # Dopo l'arrivo delle buste il registro canonico ricalcola tutte le quote,
+    # compresi gli acconti e i pagamenti che attraversano più anni.
+    from app.services.associazione_salari import aggiorna_proiezioni, _allinea_cedolini_erp
+    for dip in {c["dipendente_id"] for c in cedolini}:
+        await aggiorna_proiezioni(db, dip)
+        await _allinea_cedolini_erp(db, dip)
+
     return {"cedolini_considerati": len(cedolini), "creati": creati,
             "aggiornati": aggiornati, "saltati_manuali": saltati_manuali, "invariati": invariati}

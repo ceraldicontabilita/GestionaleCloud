@@ -6,8 +6,8 @@ fuso Europe/Rome e rispettano domeniche e festivita' nazionali italiane.
 """
 from __future__ import annotations
 
-from datetime import datetime, time, timedelta
-from typing import Any, Dict
+from datetime import date, datetime, time, timedelta
+from typing import Any, Dict, Iterable, Tuple
 from zoneinfo import ZoneInfo
 
 from app.services.calendario_lavorativo import festivita_nazionali

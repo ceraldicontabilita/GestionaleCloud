@@ -8,6 +8,7 @@ Supporta 4 formati diversi usati nel tempo:
 """
 import re
 from typing import Dict, Any, Optional
+import fitz  # PyMuPDF
 
 from app.utils.numeri_italiani import parse_importo_ita
 
@@ -102,6 +103,20 @@ def parse_importo(value_str: str) -> float:
     return parse_importo_ita(value_str, keep_sign=False)
 
 
+def _natura_tfr_dedicato(text: str) -> Optional[str]:
+    """Distingue il prospetto TFR autonomo dalle voci TFR di una busta mensile."""
+    alto = re.sub(r"[’']", "", text.upper())
+    if re.search(r"TOTALE\s+COMPETENZE|\b(?:Z00001|0*001)\s+RETRIBUZIONE", alto):
+        return None
+    if (re.search(r"^\s*FINE\s+RAPPORTO\s*$", alto, re.MULTILINE)
+            and re.search(r"TOTALE\s+INDENNITA\s+LORDA", alto)):
+        return "liquidazione_tfr"
+    if (re.search(r"^\s*ACCONTO\s*:", alto, re.MULTILINE)
+            and re.search(r"IMPORTI\s+ACCONTI\s+SU\s+TFR", alto)):
+        return "anticipo_tfr"
+    return None
+
+
 def _detect_tipo_cedolino(text: str) -> str:
     """Rileva mensilita speciali solo da intestazioni esplicite.
 
@@ -112,6 +127,8 @@ def _detect_tipo_cedolino(text: str) -> str:
     voci di maturazione e riepilogo. I codici retributivi Zucchetti di 13a/14a
     vengono invece cercati nell'intera busta, anche sulle continuazioni.
     """
+    if _natura_tfr_dedicato(text):
+        return "tfr"
     tutte_le_righe = [re.sub(r'\s+', ' ', riga).strip().upper()
                       for riga in text.splitlines() if riga.strip()]
     righe = tutte_le_righe[:80]
@@ -189,6 +206,11 @@ def _detect_tipo_cedolino(text: str) -> str:
 
     for riga in righe:
         if any(parola in riga for parola in rumore):
+            continue
+        # Una voce retributiva a codice non e' una testata. Le competenze
+        # CSC sono gia' valutate insieme sopra: accanto alla retribuzione
+        # ordinaria la voce di 13a/14a non cambia il tipo dell'intera busta.
+        if re.match(r"^\d{3,4} [A-Z0-9]", riga):
             continue
         for tipo, pattern in tipi:
             match = pattern.search(riga)
@@ -486,22 +508,9 @@ def parse_template_teamsystem(text: str) -> Dict[str, Any]:
         tratt_str = f"{lordo_match.group(5)},{lordo_match.group(6)}"
         result["totali"]["trattenute"] = parse_importo(tratt_str)
 
-    # NETTO BUSTA - cerca pattern finale
-    # Pattern: cerca numero seguito da "GIORNO DI RIPOSO" o simile
-    netto_match = re.search(r'(\d{2,4})[,\.](\d{2})\s*R?\s*GIORNO', text)
-    if netto_match:
-        netto_str = f"{netto_match.group(1)},{netto_match.group(2)}"
-        result["totali"]["netto"] = parse_importo(netto_str)
-    else:
-        # Pattern alternativo: cerca in fondo al documento
-        lines = text.split('\n')
-        for line in reversed(lines[-20:]):
-            netto_alt = re.search(r'(\d{2,4})[,\.](\d{2})\s*$', line)
-            if netto_alt:
-                val = parse_importo(f"{netto_alt.group(1)},{netto_alt.group(2)}")
-                if 100 < val < 5000:  # Range ragionevole per netto
-                    result["totali"]["netto"] = val
-                    break
+    # NETTO BUSTA si legge esclusivamente dalla sua cella in
+    # _parse_teamsystem_layout. L'ultimo importo del testo, anche se vicino
+    # a GIORNO DI RIPOSO, puo' appartenere a un progressivo o a un rateo.
 
     # Se non abbiamo lordo ma abbiamo netto, usa netto come riferimento
     if "netto" in result["totali"] and "lordo" not in result["totali"]:
@@ -582,33 +591,15 @@ def _parse_zucchetti_worked_layout(page_words) -> Dict[str, float]:
     return {}
 
 
-def _parse_zucchetti_totals_layout(page_words) -> Dict[str, float]:
-    """Totali nel riquadro Zucchetti nuovo, sulla riga dell'etichetta.
-
-    Il testo PDF può mettere prima due importi del corpo o l'IRPEF: non
-    sono il totale delle competenze/trattenute. Una cella assente o con
-    più valori resta sconosciuta, senza ricostruirla dal netto.
-    """
-    labels = {"TOTALECOMPETENZE": "lordo", "TOTALETRATTENUTE": "trattenute"}
-    values = {}
-    for words in page_words:
-        for label in words:
-            name = re.sub(r"\s+", "", str(label[4]).replace("s", "")).upper()
-            field = labels.get(name)
-            if not field:
-                continue
-            candidates = {
-                parse_importo(str(w[4])) for w in words
-                if re.fullmatch(r"[-+]?\d[\d.]*,\d{2}", str(w[4]))
-                and 0 < float(w[0]) - float(label[2]) < 120
-                and abs((float(w[1]) + float(w[3]) - float(label[1]) - float(label[3])) / 2) <= 3
-            }
-            if len(candidates) == 1:
-                values[field] = candidates.pop()
-    return values
+def _prova_importo(etichetta, importo, *, pagina: int, metodo: str) -> Dict[str, Any]:
+    return {"pagina": pagina, "etichetta": str(etichetta[4]),
+            "importo_testo": str(importo[4]) if importo else None,
+            "rettangolo_etichetta": [round(float(v), 2) for v in etichetta[:4]],
+            "rettangolo_importo": [round(float(v), 2) for v in importo[:4]] if importo else None,
+            "metodo": metodo}
 
 
-def _parse_teamsystem_layout(page_words) -> Dict[str, float]:
+def _parse_teamsystem_layout(page_words, *, with_source: bool = False, page_offset: int = 0) -> Dict[str, Any]:
     """Legge i totali TeamSystem dalle celle, non dall'ordine del testo.
 
     PyMuPDF estrae spesso prima tutte le etichette e poi i valori: una regex
@@ -629,10 +620,12 @@ def _parse_teamsystem_layout(page_words) -> Dict[str, float]:
             return None
         return parse_importo(token)
 
-    for words in page_words:
+    prove = []
+    netti = set()
+    for pagina, words in enumerate(page_words, start=page_offset + 1):
         normalizzati = [tuple(w[:5]) for w in words]
         for campo, (prime, seconda) in labels.items():
-            if campo in importi:
+            if campo in importi and campo != "netto":
                 continue
             coppia = None
             for w1 in normalizzati:
@@ -665,17 +658,27 @@ def _parse_teamsystem_layout(page_words) -> Dict[str, float]:
                     label_y1 <= float(word[1]) <= label_y1 + 28
                     and label_x0 - 12 <= centro_x <= label_x1 + 28
                 ):
-                    candidati.append((float(word[1]) - label_y1, abs(centro_x - (label_x0 + label_x1) / 2), valore))
+                    candidati.append((float(word[1]) - label_y1, abs(centro_x - (label_x0 + label_x1) / 2), valore, word))
             if candidati:
-                importi[campo] = min(candidati, key=lambda item: (item[0], item[1]))[2]
+                scelta = min(candidati, key=lambda item: (item[0], item[1]))
+                importi[campo] = scelta[2]
+                if campo == "netto":
+                    netti.add(scelta[2])
+                    prove.append(_prova_importo((*w1[:4], "NETTO BUSTA"), scelta[3],
+                                               pagina=pagina, metodo="cella_teamsystem_v1"))
+    if len(netti) > 1:
+        importi["netto"] = None
+        importi["netto_candidati"] = sorted(netti)
+    if with_source:
+        importi["netto_provenienza"] = prove
     return importi
 
 
 _ETICHETTA_NETTO_ZUCCHETTI = re.compile(r"^NETTO(?:sDELsMESE)?$")
-_IMPORTO_CELLA = re.compile(r"^([-+]?)(\d[\d.]*,\d{2}|0)([+-]?)$")
+_IMPORTO_CELLA = re.compile(r"^([-+]?)(\d[\d.]*,\d{2})([+-]?)$")
 
 
-def _netto_dalla_cella(page_words) -> Dict[str, Any]:
+def _netto_dalla_cella(page_words, *, with_source: bool = False, page_offset: int = 0) -> Dict[str, Any]:
     """Il netto Zucchetti dalla cella sotto la sua etichetta, mai da un conto.
 
     Nel classico la cella sta sotto «NETTO» (``1.018,00+``), nel tracciato
@@ -683,7 +686,9 @@ def _netto_dalla_cella(page_words) -> Dict[str, Any]:
     vuota -> ``None``; due valori diversi alla stessa distanza -> ``multipli``,
     e non si sceglie.
     """
-    for words in page_words:
+    valori_documento = set()
+    prove = []
+    for pagina, words in enumerate(page_words, start=page_offset + 1):
         normalizzati = [tuple(w[:5]) for w in words]
         for etichetta in normalizzati:
             if not _ETICHETTA_NETTO_ZUCCHETTI.match(str(etichetta[4])):
@@ -701,15 +706,22 @@ def _netto_dalla_cella(page_words) -> Dict[str, Any]:
                 valore = parse_importo(m.group(2))
                 if "-" in (m.group(1), m.group(3)):
                     valore = -valore
-                candidati.append((round(float(w[1]) - y1, 1), valore))
+                candidati.append((round(float(w[1]) - y1, 1), valore, w))
             if not candidati:
+                prove.append(_prova_importo(etichetta, None, pagina=pagina, metodo="cella_netto_v1"))
                 continue
-            vicino = min(d for d, _ in candidati)
-            valori = sorted({v for d, v in candidati if d == vicino})
-            if len(valori) > 1:
-                return {"netto": None, "multipli": valori}
-            return {"netto": valori[0]}
-    return {"netto": None}
+            vicino = min(d for d, _, _ in candidati)
+            valori = sorted({v for d, v, _ in candidati if d == vicino})
+            valori_documento.update(valori)
+            prove.extend(_prova_importo(etichetta, w, pagina=pagina, metodo="cella_netto_v1")
+                         for d, _, w in candidati if d == vicino)
+    if len(valori_documento) > 1:
+        risultato = {"netto": None, "multipli": sorted(valori_documento)}
+    else:
+        risultato = {"netto": next(iter(valori_documento)) if valori_documento else None}
+    if with_source:
+        risultato["netto_provenienza"] = prove
+    return risultato
 
 
 def parse_template_zucchetti_classic(text: str) -> Dict[str, Any]:
@@ -718,6 +730,7 @@ def parse_template_zucchetti_classic(text: str) -> Dict[str, Any]:
     """
     result = {
         "template": "zucchetti_classic",
+        "tipo_cedolino": _detect_tipo_cedolino(text),
         "dipendente": {},
         "periodo": {},
         "totali": {},
@@ -1121,9 +1134,10 @@ def _normalize_data(d: str) -> Optional[str]:
         return d
 
 
-def _applica_cella_netto(result: Dict[str, Any], page_words) -> None:
+def _applica_cella_netto(result: Dict[str, Any], page_words, *, page_offset: int = 0) -> None:
     """La cella stampata vince sul testo: il netto e' quello della cella."""
-    cella = _netto_dalla_cella(page_words)
+    cella = _netto_dalla_cella(page_words, with_source=True, page_offset=page_offset)
+    result.setdefault("dati_chiave", {})["netto_provenienza"] = cella["netto_provenienza"]
     totali = result.setdefault("totali", {})
     if cella.get("multipli"):
         totali["netto_candidati"] = cella["multipli"]
@@ -1131,6 +1145,65 @@ def _applica_cella_netto(result: Dict[str, Any], page_words) -> None:
     elif cella.get("netto") is not None:
         totali["netto"] = cella["netto"]
         totali["netto_da_cella"] = True
+
+
+def _totali_tfr_dedicato(result: Dict[str, Any], text: str, page_words, *, page_offset: int = 0) -> None:
+    """Legge le righe esplicite del prospetto TFR, senza ricavare un pagamento."""
+    natura = _natura_tfr_dedicato(text)
+    if not natura:
+        return
+    result["tipo_cedolino"] = "tfr"
+    chiave = result.setdefault("dati_chiave", {})
+    chiave["tfr_documento_natura"] = natura
+    campi = {
+        "TOTALE INDENNITA LORDA": ("lordo", "competenza"),
+        "IMPORTI ACCONTI SU TFR": ("lordo", "competenza"),
+        "TOTALE TRATTENUTE": ("trattenute", "trattenuta"),
+        "ANTICIPAZIONI GIA EROGATI": ("tfr_anticipazioni_gia_erogate", "trattenuta"),
+    }
+    letti = {}
+    voci = []
+    for pagina, words in enumerate(page_words, start=page_offset + 1):
+        righe = {}
+        for word in words:
+            righe.setdefault(round(float(word[1]), 1), []).append(tuple(word[:5]))
+        for row in righe.values():
+            row.sort(key=lambda w: float(w[0]))
+            numeri = [w for w in row if _IMPORTO_CELLA.fullmatch(str(w[4]))]
+            if not numeri:
+                continue
+            importo = max(numeri, key=lambda w: float(w[0]))
+            label_words = [w for w in row if float(w[2]) <= float(importo[0])]
+            label = " ".join(str(w[4]) for w in label_words)
+            normalizzata = re.sub(r"[’']", "", re.sub(r"\s+", " ", label.upper())).strip()
+            if normalizzata not in campi:
+                continue
+            campo, tipo = campi[normalizzata]
+            valore = parse_importo(str(importo[4]).strip("+-"))
+            letti.setdefault(campo, set()).add(valore)
+            etichetta = (min(w[0] for w in label_words), min(w[1] for w in label_words),
+                         max(w[2] for w in label_words), max(w[3] for w in label_words), label)
+            voci.append({"codice": None, "descrizione": label, "tipo": tipo,
+                         "importo": str(importo[4]).strip("+-"),
+                         "provenienza": _prova_importo(etichetta, importo, pagina=pagina,
+                                                      metodo="riga_tfr_v1")})
+    for campo, valori in letti.items():
+        if len(valori) != 1:
+            # Il parser testuale puo' aver preso il primo candidato: non
+            # deve sopravvivere a due righe stampate discordanti.
+            result.setdefault("totali", {}).pop(campo, None)
+            if campo == "lordo":
+                result["totali"].pop("competenze", None)
+            chiave.setdefault("totali_tfr_da_verificare", {})[campo] = sorted(valori)
+            continue  # Importi discordanti restano nelle voci, da verificare sull'originale.
+        valore = next(iter(valori))
+        if campo in {"lordo", "trattenute"}:
+            result.setdefault("totali", {})[campo] = valore
+            if campo == "lordo":
+                result["totali"]["competenze"] = valore
+        else:
+            chiave[campo] = valore
+    chiave["voci_tfr_documento"] = voci
 
 
 def parse_busta_paga_multi(pdf_path: str) -> Dict[str, Any]:
@@ -1144,10 +1217,6 @@ def parse_busta_paga_multi(pdf_path: str) -> Dict[str, Any]:
     Returns:
         Dizionario con tutti i dati estratti
     """
-    # Il motore PDF serve solo quando si apre un file; i lettori di testo
-    # e celle possono essere usati e verificati senza caricare PyMuPDF.
-    import fitz
-
     doc = fitz.open(pdf_path)
 
     # Estrai testo da tutte le pagine
@@ -1206,21 +1275,16 @@ def parse_busta_paga_multi(pdf_path: str) -> Dict[str, Any]:
         result = parse_template_zucchetti_presenze(text)
     elif template == "csc_napoli":
         result = parse_template_csc_napoli(cedolino_text)
-        _applica_cella_netto(result, page_words[cedolino_page_idx:])
+        _applica_cella_netto(result, page_words[cedolino_page_idx:], page_offset=cedolino_page_idx)
     elif template == "zucchetti_new":
         result = parse_template_zucchetti_new(cedolino_text)
-        # Solo le celle dei totali: mai una coppia casuale di cifre del corpo.
-        for field in ("lordo", "competenze", "trattenute"):
-            result["totali"].pop(field, None)
-        layout = _parse_zucchetti_totals_layout(page_words[cedolino_page_idx:])
-        result["totali"].update(layout)
-        if "lordo" in layout:
-            result["totali"]["competenze"] = layout["lordo"]
         result["periodo"].update(_parse_zucchetti_worked_layout(page_words[cedolino_page_idx:]))
-        _applica_cella_netto(result, page_words[cedolino_page_idx:])
+        _applica_cella_netto(result, page_words[cedolino_page_idx:], page_offset=cedolino_page_idx)
     elif template == "teamsystem":
         result = parse_template_teamsystem(cedolino_text)
-        layout = _parse_teamsystem_layout(page_words[cedolino_page_idx:])
+        layout = _parse_teamsystem_layout(page_words[cedolino_page_idx:], with_source=True,
+                                        page_offset=cedolino_page_idx)
+        result.setdefault("dati_chiave", {})["netto_provenienza"] = layout["netto_provenienza"]
         if layout.get("lordo") is not None:
             result.setdefault("totali", {})["lordo"] = layout["lordo"]
             result["totali"]["competenze"] = layout["lordo"]
@@ -1229,11 +1293,18 @@ def parse_busta_paga_multi(pdf_path: str) -> Dict[str, Any]:
         if layout.get("netto") is not None:
             result.setdefault("totali", {})["netto"] = layout["netto"]
             result["totali"]["netto_da_cella"] = True
+        if layout.get("netto_candidati"):
+            result.setdefault("totali", {})["netto_candidati"] = layout["netto_candidati"]
+            result["totali"].pop("netto", None)
         if layout.get("tfr_quota_mese") is not None:
             result.setdefault("tfr", {})["quota_mese"] = layout["tfr_quota_mese"]
     else:
         result = parse_template_zucchetti_classic(cedolino_text)
-        _applica_cella_netto(result, page_words[cedolino_page_idx:])
+        _applica_cella_netto(result, page_words[cedolino_page_idx:], page_offset=cedolino_page_idx)
+
+    if cedolino_page_idx is not None and result.get("tipo_documento") != "foglio_presenze":
+        _totali_tfr_dedicato(result, cedolino_text, page_words[cedolino_page_idx:],
+                            page_offset=cedolino_page_idx)
 
     # Se ci sono altre pagine di cedolino, estrai dati aggiuntivi
     # (pagina 2 dei PDF nuovi contiene ferie/permessi dettagliati)
@@ -1432,6 +1503,7 @@ def extract_summary(parsed_data: Dict[str, Any]) -> Dict[str, Any]:
         "netto_fonte": totali.get("netto_fonte"),
         "netto_letto": totali.get("netto_letto"),
         "netto_calcolato": totali.get("netto_calcolato"),
+        "dati_chiave": parsed_data.get("dati_chiave") or {},
         "retribuzione": parsed_data.get("retribuzione") or {},
         "ore_lavorate": (periodo.get("ore_lavorate") if periodo.get("ore_lavorate") is not None
                           else ore_ferie.get("ore_lavorate_mese")),
@@ -1574,10 +1646,9 @@ def _acconti_e_anticipazioni(result: Dict[str, Any], text: str) -> None:
     """Legge acconti sulla retribuzione e anticipi TFR erogati o recuperati.
 
     Il campo "TFR a fondi / Anticipi" e' presente su quasi ogni busta ma quasi
-    sempre vicino allo zero (mediana 0,50 su 425 buste controllate): e' un
-    residuo tecnico, non un anticipo del mese. Un anticipo TFR vero fa
-    schizzare quel valore molto piu' in alto (undici casi sopra i 50 euro,
-    fino a 5.300) — la soglia di 50 euro separa il rumore dall'evento reale.
+    sempre vicino allo zero: e' un progressivo/residuo, non la prova di
+    un anticipo del mese. Un anticipo richiede la voce esplicita letta dal
+    medesimo helper canonico usato da cedolini_motore, senza soglie.
 
     "ACCONTO TRATT. RETRIB." e "Recupero acconto" sono voci distinte e ben
     popolate (21 e 47 occorrenze, importi tondi: 500, 600, 1.000...): il primo
@@ -1601,8 +1672,13 @@ def _acconti_e_anticipazioni(result: Dict[str, Any], text: str) -> None:
     if m:
         valore = parse_importo(m.group(1))
         out["tfr_anticipi_residuo"] = valore
-        if valore >= 50:
-            out["tfr_anticipo_erogato"] = valore
+
+    from app.parsers.cedolino_voci import anticipo_tfr_in_busta
+
+    anticipo = anticipo_tfr_in_busta(text)
+    if anticipo:
+        out["tfr_anticipo_erogato"] = parse_importo(anticipo["importo"])
+        out["tfr_anticipo_voce"] = anticipo["codice"]
 
     if result.get("tipo_cedolino") == "acconto":
         out["intero_cedolino_acconto"] = True

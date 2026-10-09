@@ -1,0 +1,248 @@
+import asyncio
+from datetime import datetime, timezone
+
+from app.services.archivio_documenti_memoria import ClientArchivioMemoria
+
+from app.services import paypal_api_sync as sync_module
+from app.routers import paypal_api as api_router
+
+
+def _run(coro):
+    loop = asyncio.new_event_loop()
+    try:
+        return loop.run_until_complete(coro)
+    finally:
+        loop.close()
+
+
+def _api_row(balance_affecting="Y"):
+    return {
+        "transaction_info": {
+            "transaction_id": "PAYPAL-OFFICIAL-1",
+            "transaction_event_code": "T0006",
+            "transaction_status": "S",
+            "transaction_initiation_date": "2026-07-12T10:00:00Z",
+            "transaction_amount": {"value": "-42.62", "currency_code": "EUR"},
+            "fee_amount": {"value": "-1.20", "currency_code": "EUR"},
+            "invoice_id": "FT-PP-42",
+            "bank_reference_id": "BANK-REF-42",
+            "balance_affecting": balance_affecting,
+        },
+        "payer_info": {
+            "email_address": "amministrazione@example.com",
+            "payer_name": {"alternate_full_name": "FORNITORE TEST SRL"},
+        },
+    }
+
+
+def test_extract_conserva_stato_evento_riferimento_banca_e_balance_affecting():
+    doc = sync_module.extract_enriched_fields(_api_row())
+    assert doc["transaction_status"] == "S"
+    assert doc["transaction_event_code"] == "T0006"
+    assert doc["bank_reference_id"] == "BANK-REF-42"
+    assert doc["balance_affecting"] == "Y"
+    assert doc["invoice_id_fornitore"] == "FT-PP-42"
+    assert doc["gross_amount_cents"] == -4262
+    assert doc["gross_currency"] == "EUR"
+    assert doc["fee_amount_cents"] == -120
+
+
+def test_sync_scarto_riga_tecnica_duplicata_non_balance_affecting(monkeypatch):
+    async def scenario():
+        db = ClientArchivioMemoria().db
+
+        async def fake_sync_period(start, end):
+            return [_api_row("Y"), _api_row("N")]
+
+        monkeypatch.setattr(sync_module.paypal_client, "sync_period", fake_sync_period)
+        result = await sync_module.sync_paypal_period(
+            db,
+            datetime(2026, 7, 1, tzinfo=timezone.utc),
+            datetime(2026, 7, 31, tzinfo=timezone.utc),
+        )
+
+        assert result["total"] == 1
+        assert await db.paypal_transactions.count_documents({}) == 1
+        stored = await db.paypal_transactions.find_one({"transaction_id": "PAYPAL-OFFICIAL-1"})
+        assert stored["balance_affecting"] == "Y"
+
+    _run(scenario())
+
+
+def test_riconcilia_intervallo_che_attraversa_due_anni(monkeypatch):
+    async def scenario():
+        db = ClientArchivioMemoria().db
+        anni = []
+        link_calls = []
+
+        async def fake_links(_db, **kwargs):
+            link_calls.append(kwargs)
+            return {"associate": 0}
+
+        async def fake_bank(_db, anno=None, applica=False):
+            anni.append((anno, applica))
+            return {"riconciliati": 1, "proposte": 1, "ambigui": 0}
+
+        from app.routers import paypal_statements
+
+        monkeypatch.setattr(
+            "app.services.paypal_reconciliation_links.riprocessa_collegamenti_paypal",
+            fake_links,
+        )
+        monkeypatch.setattr(paypal_statements, "_auto_riconcilia", fake_bank)
+        result = await api_router._riconcilia_intervallo_paypal(
+            db,
+            datetime(2025, 12, 1, tzinfo=timezone.utc),
+            datetime(2026, 1, 31, tzinfo=timezone.utc),
+        )
+
+        assert anni == [(2025, True), (2026, True)]
+        assert len(link_calls) == 2
+        assert set(result["banca"]["per_anno"]) == {"2025", "2026"}
+        assert result["banca"]["riconciliati"] == 2
+        assert result["banca"]["proposte"] == 2
+
+    _run(scenario())
+
+
+def test_sync_api_applica_la_stessa_riconciliazione(monkeypatch):
+    async def scenario():
+        calls = []
+
+        async def sync(db, start, end):
+            calls.append("sync")
+            assert start.isoformat() == "2026-04-01T00:00:00+00:00"
+            assert end.isoformat() == "2026-04-30T23:59:59+00:00"
+            return {"total": 1}
+
+        async def reconcile(db, start, end):
+            calls.append("reconcile")
+            return {"banca": {"riconciliati": 1}}
+
+        monkeypatch.setattr(api_router.Database, "get_db", staticmethod(lambda: object()))
+        monkeypatch.setattr(api_router, "sync_paypal_period", sync)
+        monkeypatch.setattr(api_router, "_riconcilia_intervallo_paypal", reconcile)
+
+        result = await api_router.sync_period({
+            "start_date": "2026-04-01", "end_date": "2026-04-30",
+        })
+
+        assert calls == ["sync", "reconcile"]
+        assert result["reconciliation_applied"] is True
+        assert result["reconciliation"]["banca"]["riconciliati"] == 1
+
+    _run(scenario())
+
+
+def test_sync_incrementale_non_interroga_paypal_per_finestre_di_pochi_secondi(monkeypatch):
+    """Apertura pagina subito dopo una sync riuscita: nessuna chiamata a PayPal,
+    checkpoint invariato (14/09/2026: finestra di 6 s -> 404 -> 500)."""
+    async def scenario():
+        from datetime import timedelta
+
+        db = ClientArchivioMemoria().db
+        chiamate = []
+
+        async def fake_period(_db, start, end):
+            chiamate.append((start, end))
+            return {"total": 0, "enriched": 0}
+
+        monkeypatch.setattr(sync_module, "sync_paypal_period", fake_period)
+        recente = (datetime.now(timezone.utc) - timedelta(seconds=30)).isoformat()
+        await db[sync_module.CHECKPOINT_COLL].insert_one({
+            "id": "paypal_default_account",
+            "lock_until": "2000-01-01T00:00:00+00:00",
+            "last_success_end": recente,
+        })
+
+        esito = await sync_module.sync_paypal_incremental(db)
+
+        assert esito["status"] == "up_to_date"
+        assert esito["last_success_end"] == recente
+        assert chiamate == []
+        dopo = await db[sync_module.CHECKPOINT_COLL].find_one({"id": "paypal_default_account"}, {"_id": 0})
+        assert dopo["last_success_end"] == recente
+        assert dopo["status"] == "up_to_date"
+
+        # intervallo piu' vecchio del minimo + 3 ore di ritardo dati: PayPal viene interrogato
+        vecchio = (datetime.now(timezone.utc) - timedelta(hours=5)).isoformat()
+        await db[sync_module.CHECKPOINT_COLL].update_one(
+            {"id": "paypal_default_account"},
+            {"$set": {"last_success_end": vecchio, "lock_until": "2000-01-01T00:00:00+00:00"}},
+        )
+        esito = await sync_module.sync_paypal_incremental(db)
+        assert esito["status"] == "updated"
+        assert len(chiamate) == 1
+
+    _run(scenario())
+
+
+def test_endpoint_sync_incrementale_risponde_502_su_errore_paypal(monkeypatch):
+    import httpx
+    from fastapi import HTTPException
+
+    async def scenario():
+        async def fallisce(_db):
+            request = httpx.Request("GET", "https://api.paypal.com/v1/reporting/transactions")
+            raise httpx.HTTPStatusError("404", request=request, response=httpx.Response(404, request=request))
+
+        monkeypatch.setattr(api_router, "sync_paypal_incremental", fallisce)
+        monkeypatch.setattr(api_router.Database, "get_db", staticmethod(lambda: ClientArchivioMemoria().db))
+        try:
+            await api_router.sync_incremental()
+        except HTTPException as exc:
+            assert exc.status_code == 502
+            assert "PayPal" in exc.detail
+        else:
+            raise AssertionError("atteso HTTPException 502")
+
+    _run(scenario())
+
+
+def test_sync_incrementale_chiude_la_finestra_tre_ore_prima_di_adesso(monkeypatch):
+    async def scenario():
+        from datetime import timedelta
+
+        db = ClientArchivioMemoria().db
+        finestre = []
+
+        async def fake_period(_db, start, end):
+            finestre.append((start, end))
+            return {"total": 0, "enriched": 0}
+
+        monkeypatch.setattr(sync_module, "sync_paypal_period", fake_period)
+        await sync_module.sync_paypal_incremental(db)
+
+        assert finestre
+        assert datetime.now(timezone.utc) - finestre[0][1] >= timedelta(hours=3) - timedelta(seconds=5)
+
+    _run(scenario())
+
+
+def test_sync_incrementale_con_404_non_e_un_errore_e_non_sposta_il_checkpoint(monkeypatch):
+    async def scenario():
+        import httpx
+        from datetime import timedelta
+
+        db = ClientArchivioMemoria().db
+        precedente = (datetime.now(timezone.utc) - timedelta(hours=9)).isoformat()
+        await db[sync_module.CHECKPOINT_COLL].insert_one({
+            "id": "paypal_default_account",
+            "lock_until": "2000-01-01T00:00:00+00:00",
+            "last_success_end": precedente,
+        })
+
+        async def non_trovato(_db, start, end):
+            richiesta = httpx.Request("GET", "https://api.paypal.com/v1/reporting/transactions")
+            raise httpx.HTTPStatusError("404", request=richiesta, response=httpx.Response(404, request=richiesta))
+
+        monkeypatch.setattr(sync_module, "sync_paypal_period", non_trovato)
+
+        esito = await sync_module.sync_paypal_incremental(db)
+
+        assert esito["status"] == "nessun_dato"
+        dopo = await db[sync_module.CHECKPOINT_COLL].find_one({"id": "paypal_default_account"}, {"_id": 0})
+        assert dopo["last_success_end"] == precedente
+        assert dopo["status"] == "nessun_dato"
+
+    _run(scenario())

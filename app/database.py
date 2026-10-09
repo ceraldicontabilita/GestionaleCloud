@@ -141,7 +141,7 @@ class Database:
         failures = []
 
         async def _safe_index(collection_name, keys, **kwargs):
-            nonlocal created, skipped
+            nonlocal created, skipped, failures
             try:
                 await db[collection_name].create_index(keys, **kwargs)
                 created += 1

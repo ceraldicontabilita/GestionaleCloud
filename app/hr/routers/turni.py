@@ -58,7 +58,7 @@ def _ricalcola_totali(doc: Dict[str, Any]) -> None:
 
 @router.post("/genera", summary="Genera bozza turni (responsabile/admin)")
 async def genera(
-    payload: Dict[str, Any] = Body(..., examples=[{"settimana_inizio": "2026-06-15"}]),
+    payload: Dict[str, Any] = Body(..., example={"settimana_inizio": "2026-06-15"}),
     identity: Dict[str, Any] = Depends(require_roles("responsabile_turni", "admin")),
 ):
     settimana = str(payload.get("settimana_inizio", "")).strip()
@@ -117,10 +117,30 @@ async def miei(identity: Dict[str, Any] = Depends(get_identity)):
     return {"settimana_inizio": doc["settimana_inizio"], "stato": doc["stato"], "giorni": giorni}
 
 
+@router.get("/{settimana_inizio}", summary="Dettaglio settimana")
+async def dettaglio(settimana_inizio: str, identity: Dict[str, Any] = Depends(get_identity)):
+    db = Database.get_db()
+    doc = await db[COLL].find_one({"id": _sid(settimana_inizio)}, {"_id": 0})
+    if not doc:
+        raise HTTPException(404, "Settimana non trovata")
+    if identity.get("role") in ("admin", "responsabile_turni"):
+        return doc
+    # dipendente: vede la griglia completa di tutti, ma solo se pubblicata
+    # e senza le note gestionali (avvisi/metadati interni)
+    if doc["stato"] != "pubblicato":
+        raise HTTPException(403, "Turni non ancora pubblicati")
+    return {
+        "settimana_inizio": doc["settimana_inizio"],
+        "stato": doc["stato"],
+        "giorni": doc["giorni"],
+        "totali": doc.get("totali", {}),
+    }
+
+
 @router.put("/{settimana_inizio}/cella", summary="Modifica una cella (responsabile/admin) + rivalida")
 async def modifica_cella(
     settimana_inizio: str,
-    payload: Dict[str, Any] = Body(..., examples=[{"data": "2026-06-16", "dipendente_id": "dip-1", "turno": "lunga"}]),
+    payload: Dict[str, Any] = Body(..., example={"data": "2026-06-16", "dipendente_id": "dip-1", "turno": "lunga"}),
     _: Dict[str, Any] = Depends(require_roles("responsabile_turni", "admin")),
 ):
     data = payload.get("data")
@@ -375,22 +395,3 @@ async def salva_preferenza(payload: Dict[str, Any] = Body(...),
     except Exception:
         logger.warning("Notifica preferenza riposo non inviata")
     return {"ok": True, "settimana": settimana, "giorno": giorno}
-
-
-# Il parametro settimana non deve intercettare disponibilita-bar/preferenza-riposo.
-@router.get("/{settimana_inizio}", summary="Dettaglio settimana")
-async def dettaglio(settimana_inizio: str, identity: Dict[str, Any] = Depends(get_identity)):
-    db = Database.get_db()
-    doc = await db[COLL].find_one({"id": _sid(settimana_inizio)}, {"_id": 0})
-    if not doc:
-        raise HTTPException(404, "Settimana non trovata")
-    if identity.get("role") in ("admin", "responsabile_turni"):
-        return doc
-    if doc["stato"] != "pubblicato":
-        raise HTTPException(403, "Turni non ancora pubblicati")
-    return {
-        "settimana_inizio": doc["settimana_inizio"],
-        "stato": doc["stato"],
-        "giorni": doc["giorni"],
-        "totali": doc.get("totali", {}),
-    }

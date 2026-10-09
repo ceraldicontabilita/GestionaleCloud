@@ -1,11 +1,7 @@
 import React, { useState, useCallback, useRef } from 'react';
-import { useLocation } from 'react-router-dom';
 import { toast } from 'sonner';
 import { COLORS, SHADOWS, BORDER_RADIUS } from '../lib/utils';
 import api from '../api';
-import { inviaFileImport } from '../lib/importRequests';
-import { createUseImportSession } from '../../../frontend_shared/importSession';
-import { useAnnoGlobale } from '../contexts/AnnoContext';
 import { PageLayout } from '../components/PageLayout';
 import { useConfirm } from '../components/ui/ConfirmDialog';
 import { Button, Badge, Card, RowActionButton } from '../components/ds';
@@ -23,6 +19,7 @@ import {
   Upload,
   Sparkles,
   Mail,
+  Users,
   XCircle,
 } from 'lucide-react';
 
@@ -35,17 +32,19 @@ export function classificaEsitoUpload(data = {}) {
   const duplicate =
     data?.action === 'duplicate' ||
     data?.duplicate === true ||
-    (data?.imported === 0 && Number(data?.duplicates) > 0);
+    (data?.imported === 0 && /duplicat/i.test(message));
   const partial = data?.partial === true;
-  const skipped = !partial && (data?.action === 'skipped' || Number(data?.skipped_altro_anno) > 0
-    || (data?.success !== false && data?.imported === 0 && !duplicate && !data?.accounting_repaired && data?.action !== 'updated'));
   const failed = data?.success === false && !duplicate && !partial;
 
   return {
-    status: partial ? 'partial' : skipped ? 'skipped' : duplicate ? 'duplicate' : failed ? 'error' : 'success',
-    message: partial ? message || 'Import parziale: controllare gli errori' : skipped ? message || 'Nessun documento importato' : duplicate
+    status: duplicate ? 'duplicate' : partial ? 'partial' : failed ? 'error' : 'success',
+    message: duplicate
       ? message || 'Documento duplicato ignorato'
-      : failed ? message || 'Import non riuscito' : message || 'Importato',
+      : failed
+        ? message || 'Import non riuscito'
+        : partial
+          ? message || 'Import parziale: controllare gli errori'
+          : message || 'Importato',
   };
 }
 
@@ -103,7 +102,7 @@ export async function attendiImportDocumentale(jobId, maxWaitMs = 15 * 60 * 1000
     });
     const job = response.data || {};
     if (job.status === 'completed') return job.result || {};
-    if (job.status === 'failed') throw Object.assign(new Error(job.error || 'Import non riuscito'), { jobFailed: true });
+    if (job.status === 'failed') throw new Error(job.error || 'Import non riuscito');
     await sleep(2000);
   }
   throw new Error('Import ancora in corso oltre il tempo previsto. Puoi ricaricare la pagina senza duplicare i dati.');
@@ -136,22 +135,13 @@ export function statoArchivio(preview) {
   return 'Già in archivio';
 }
 
-const useImportSession = createUseImportSession(React);
-
 export default function ImportDocumenti() {
-  const location = useLocation();
-  const ingresso = new URLSearchParams(location.search);
-  const tipoBanca = ingresso.get('origine') === 'hr-bonifici' && ['bonifici', 'estratti-conto'].includes(ingresso.get('documenti')) ? ingresso.get('documenti') : null;
   const confirm = useConfirm();
-  const { setAnno } = useAnnoGlobale();
-  const session = useImportSession('erp-documenti', { files: [], uploading: false, uploadProgress: { current: 0, total: 0, filename: '' }, results: [], previewComplete: false });
-  const { files, uploading, uploadProgress, results, previewComplete } = session.state;
-  const setFiles = value => session.setField('files', value);
-  const setUploading = value => session.setField('uploading', value);
-  const setUploadProgress = value => session.setField('uploadProgress', value);
-  const setResults = value => session.setField('results', value);
-  const setPreviewComplete = value => session.setField('previewComplete', value);
-  const onWait = seconds => session.setField('attesa', seconds);
+  const [files, setFiles] = useState([]);
+  const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState({ current: 0, total: 0, filename: '' });
+  const [results, setResults] = useState([]);
+  const [previewComplete, setPreviewComplete] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const fileInputRef = useRef(null);
 
@@ -183,11 +173,11 @@ export default function ImportDocumenti() {
     setDragOver(false);
   }, []);
 
-  const handleDrop = async e => {
+  const handleDrop = useCallback(async e => {
     e.preventDefault();
     setDragOver(false);
     await processIncomingFiles(Array.from(e.dataTransfer.files));
-  };
+  }, []);
 
   const handleFileSelect = async e => {
     await processIncomingFiles(Array.from(e.target.files));
@@ -195,7 +185,6 @@ export default function ImportDocumenti() {
   };
 
   const processIncomingFiles = async incomingFiles => {
-    if (uploading || !session.ready) return;
     // Gli ZIP vengono inviati interi al backend: soltanto il server puo
     // applicare limiti affidabili anti zip-bomb e di dimensione non compressa.
     const filesWithInfo = incomingFiles.map(file => ({
@@ -210,31 +199,25 @@ export default function ImportDocumenti() {
   };
 
   const removeFile = index => {
-    if (uploading) return;
     setFiles(prev => prev.filter((_, i) => i !== index));
     setPreviewComplete(false);
   };
 
   const handlePreview = async () => {
-    if (files.length === 0 || uploading || !session.ready) return;
+    if (files.length === 0) return;
     setUploading(true);
-    session.setField('interrupted', false);
     setUploadProgress({ current: 0, total: files.length, filename: '' });
     let blocked = false;
     const analyzed = [];
     for (let i = 0; i < files.length; i++) {
       const fileInfo = files[i];
-      if (fileInfo.previewToken && fileInfo.status !== 'error') {
-        analyzed.push(fileInfo);
-        continue;
-      }
       setUploadProgress({ current: i + 1, total: files.length, filename: fileInfo.name });
       try {
         const formData = new FormData();
         formData.append('file', fileInfo.file);
-        const res = await inviaFileImport('/api/documenti/upload-auto/preview', formData, {
+        const res = await api.post('/api/documenti/upload-auto/preview', formData, {
           headers: { 'Content-Type': 'multipart/form-data' },
-        }, onWait);
+        });
         const preview = res.data || {};
         const hasErrors = (preview.blocking_errors || []).length > 0;
         blocked = blocked || hasErrors;
@@ -251,7 +234,6 @@ export default function ImportDocumenti() {
         const rawError = e.response?.data?.detail || e.response?.data?.message || e.message;
         analyzed.push({ ...fileInfo, status: 'error', error: String(rawError) });
       }
-      setFiles([...analyzed, ...files.slice(i + 1)]);
     }
     setFiles(analyzed);
     setPreviewComplete(!blocked && analyzed.length === files.length);
@@ -262,18 +244,18 @@ export default function ImportDocumenti() {
   // scaduto) si rifa' l'anteprima dello stesso file e si riprova una volta,
   // invece di marcare «errore» nove estratti conto buoni (07/10/2026).
   const inviaConAnteprima = async (endpoint, formData, fileInfo) => {
-    const invia = token => inviaFileImport(endpoint, formData, {
+    const invia = token => api.post(endpoint, formData, {
       headers: { 'Content-Type': 'multipart/form-data', 'X-Document-Preview-Token': token },
-    }, onWait);
+    });
     try {
       return await invia(fileInfo.previewToken);
     } catch (e) {
       if (e.response?.status !== 428) throw e;
       const anteprima = new FormData();
       anteprima.append('file', fileInfo.file);
-      const res = await inviaFileImport('/api/documenti/upload-auto/preview', anteprima, {
+      const res = await api.post('/api/documenti/upload-auto/preview', anteprima, {
         headers: { 'Content-Type': 'multipart/form-data' },
-      }, onWait);
+      });
       const nuovoToken = res.data?.confirmation_token;
       if (!nuovoToken || (res.data?.blocking_errors || []).length > 0) throw e;
       return await invia(nuovoToken);
@@ -282,16 +264,14 @@ export default function ImportDocumenti() {
 
   // Upload automatico - il backend rileva tutto
   const handleUpload = async () => {
-    if (files.length === 0 || uploading || !session.ready) return;
+    if (files.length === 0) return;
 
     setUploading(true);
-    session.setField('interrupted', false);
     setUploadProgress({ current: 0, total: files.length, filename: '' });
-    const uploadResults = results.filter(r => ['success', 'duplicate'].includes(r.status));
+    const uploadResults = [];
 
     for (let i = 0; i < files.length; i++) {
       const fileInfo = files[i];
-      if (['success', 'duplicate'].includes(fileInfo.status)) continue;
 
       setUploadProgress({ current: i + 1, total: files.length, filename: fileInfo.name });
       setFiles(prev => prev.map((f, idx) => (idx === i ? { ...f, status: 'uploading' } : f)));
@@ -309,14 +289,11 @@ export default function ImportDocumenti() {
         // superano i 2 minuti del browser e i 5 del proxy: vanno in coda e la
         // pagina ne segue l'esito.
         const tipoInCoda = fileInfo.preview?.tipo_rilevato;
-        const usaCodaLunga = ['archivio_zip', 'estratto_conto', 'cedolino'].includes(tipoInCoda);
+        const usaCodaLunga = tipoInCoda === 'archivio_zip' || tipoInCoda === 'estratto_conto';
         const endpoint = usaCodaPos || usaCodaLunga
           ? '/api/documenti/upload-auto/queue'
           : '/api/documenti/upload-auto';
-        const res = fileInfo.jobId
-          ? { data: { job_id: fileInfo.jobId, status: 'running' } }
-          : await inviaConAnteprima(endpoint, formData, fileInfo);
-        if (res.data?.job_id) setFiles(prev => prev.map((f, idx) => idx === i ? { ...f, jobId: res.data.job_id } : f));
+        const res = await inviaConAnteprima(endpoint, formData, fileInfo);
 
         let importData = res.data || {};
         if (usaCodaLunga && importData.job_id) {
@@ -361,7 +338,7 @@ export default function ImportDocumenti() {
         });
         setFiles(prev =>
           prev.map((f, idx) =>
-            idx === i ? { ...f, status: esito.status, tipo, jobId: ['partial', 'error'].includes(esito.status) ? null : f.jobId } : f
+            idx === i ? { ...f, status: esito.status, tipo } : f
           )
         );
       } catch (e) {
@@ -380,12 +357,12 @@ export default function ImportDocumenti() {
         });
         setFiles(prev =>
           prev.map((f, idx) =>
-            idx === i ? { ...f, jobId: e.jobFailed || e.response?.status === 404 ? null : f.jobId, status: isDuplicate ? 'duplicate' : 'error', error: errMsg } : f
+            idx === i ? { ...f, status: isDuplicate ? 'duplicate' : 'error', error: errMsg } : f
           )
         );
       }
 
-      setResults([...uploadResults]);
+      if (i < files.length - 1) await new Promise(r => setTimeout(r, 100));
     }
 
     setResults(uploadResults);
@@ -393,8 +370,6 @@ export default function ImportDocumenti() {
   };
 
   const handleReset = () => {
-    if (uploading) return;
-    session.setField('interrupted', false);
     setFiles([]);
     setResults([]);
     setPreviewComplete(false);
@@ -407,7 +382,6 @@ export default function ImportDocumenti() {
   const duplicateCount = results.filter(r => r.status === 'duplicate').length;
   const errorCount = results.filter(r => r.status === 'error').length;
   const partialCount = results.filter(r => r.status === 'partial').length;
-  const skippedCount = results.filter(r => r.status === 'skipped').length;
 
   // Variante Badge per tipo rilevato (mappata sui token del design system)
   const getTipoVariant = tipo => {
@@ -415,7 +389,6 @@ export default function ImportDocumenti() {
       f24: 'danger',
       cedolino: 'accent',
       fattura: 'danger',
-      fattura_estera_pdf: 'warning',
       estratto_conto: 'success',
       estratto_conto_pdf: 'success',
       bonifici: 'info',
@@ -449,8 +422,7 @@ export default function ImportDocumenti() {
     const labels = {
       f24: 'F24',
       cedolino: 'Libro Unico',
-      fattura: 'Fattura',
-      fattura_estera_pdf: 'Fattura estera da verificare',
+      fattura: 'Fattura XML',
       estratto_conto: 'Estratto Conto',
       estratto_conto_pdf: 'Estratto PDF',
       bonifici: 'Bonifici',
@@ -503,17 +475,8 @@ export default function ImportDocumenti() {
   ];
 
   return (
-    <PageLayout title={tipoBanca === "bonifici" ? "Importa bonifici" : tipoBanca ? "Importa estratti conto" : "Importa documenti"}>
+    <PageLayout title="Importa documenti">
       <div style={{ maxWidth: 900, margin: '0 auto' }}>
-        {tipoBanca && <Card style={{ marginBottom: 16 }}>
-          <p>{tipoBanca === 'bonifici' ? 'Carica le ricevute dei bonifici o gli elenchi bancari.' : 'Carica l’estratto conto PDF, Excel o CSV: saranno estratti i movimenti e individuati i bonifici.'} Controlla l’anteprima e conferma l’importazione.</p>
-          <p>Le disposizioni e gli addebiti restano distinti. Dopo l’importazione verifica il dipendente e la competenza nei bonifici da associare.</p>
-          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-            <a href="/hr/dipendenti/bonifici-banca">Torna ai bonifici HR</a>
-            <a href="/hr/dipendenti/bonifici-da-associare">Apri bonifici da associare</a>
-            <a href="/riconciliazione/movimenti-banca">Movimenti estratti dal conto</a>
-          </div>
-        </Card>}
         {/* Una domanda sola: da dove arriva il documento? Tre risposte, non
             otto bottoni di quattro colori. Il riquadro per trascinare i file
             e' l'unica azione piena: e' quella che si usa nove volte su dieci. */}
@@ -541,7 +504,7 @@ export default function ImportDocumenti() {
             ref={fileInputRef}
             type="file"
             multiple
-            accept=".pdf,.xlsx,.xls,.xml,.p7m,.csv,.zip"
+            accept=".pdf,.xlsx,.xls,.xml,.csv,.zip"
             onChange={handleFileSelect}
             style={{ display: 'none' }}
             data-testid="file-input"
@@ -569,7 +532,7 @@ export default function ImportDocumenti() {
         >
           <DriveFattureImportCard />
           <AnnoImportazioneCard />
-          <EstrattiContoOriginali key={results.length} />
+          <EstrattiContoOriginali />
         </div>
 
         <h2 style={TITOLO_ORIGINE}>Dalla posta</h2>
@@ -639,6 +602,30 @@ export default function ImportDocumenti() {
             F24 dalla posta
           </Button>
 
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            iconLeft={<Users size={14} />}
+            onClick={async () => {
+              const r = await previewAndApply({
+                previewUrl: '/api/documenti-inbox/import-dipendenti-from-cu?dry_run=true',
+                applyUrl: '/api/documenti-inbox/import-dipendenti-from-cu?dry_run=false',
+                title: 'Conferma proposte dipendenti da CU',
+                describe: p => `Analizzate ${p.cu_analizzate || 0} CU; ${p.dipendenti_creati || 0} nuove anagrafiche proposte, ${p.gia_presenti || 0} già presenti. Nessuna anagrafica è stata ancora creata.`,
+              });
+              if (r) {
+                toast.success('Import dipendenti da CU completato', {
+                  description:
+                    `CU analizzate: ${r.cu_analizzate} • Dipendenti creati: ${r.dipendenti_creati} • ` +
+                    `Già presenti: ${r.gia_presenti} • Filename non riconosciuti: ${r.non_riconosciuti}`,
+                });
+              }
+            }}
+            data-testid="import-dipendenti-cu-btn"
+          >
+            Dipendenti dalle CU
+          </Button>
         </div>
 
         {/* Lista File in coda */}
@@ -658,14 +645,14 @@ export default function ImportDocumenti() {
                 {files.length} file in coda
               </div>
               <div style={{ display: 'flex', gap: 8 }}>
-                <Button variant="danger" size="sm" onClick={handleReset} disabled={uploading} data-testid="reset-btn">
+                <Button variant="danger" size="sm" onClick={handleReset} data-testid="reset-btn">
                   Svuota
                 </Button>
                 <Button
                   variant="primary"
                   size="sm"
                   onClick={canConfirm ? handleUpload : handlePreview}
-                  disabled={uploading || !session.ready}
+                  disabled={uploading}
                   data-testid="upload-btn"
                   iconLeft={
                     uploading ? (
@@ -678,16 +665,13 @@ export default function ImportDocumenti() {
                   {uploading
                     ? 'Elaborazione...'
                     : canConfirm
-                      ? '2. Conferma importazione'
+                      ? '2. Importa ora in Prima Nota'
                       : '1. Controlla e prepara importazione'}
                 </Button>
               </div>
             </div>
 
             {/* Progress bar */}
-            {session.error && <div role="alert" style={{ padding: 14 }}>{session.error}</div>}
-            {session.state.attesa > 0 && uploading && <div role="status" style={{ padding: 14 }}>Pausa richiesta dal server: riprendo lo stesso file tra {session.state.attesa} secondi. I file restano in coda.</div>}
-            {session.state.interrupted && !uploading && <div role="status" style={{ padding: 14 }}>File e risultati recuperati. Riprendi con il pulsante di importazione; i documenti già acquisiti vengono conservati.</div>}
             {uploading && uploadProgress.total > 0 && (
               <div
                 style={{
@@ -749,7 +733,7 @@ export default function ImportDocumenti() {
                         ? COLORS.successLight
                         : f.status === 'preview'
                           ? COLORS.infoLight
-                        : ['duplicate', 'partial', 'skipped'].includes(f.status)
+                        : f.status === 'duplicate' || f.status === 'partial'
                           ? COLORS.warningLight
                           : f.status === 'error'
                             ? COLORS.dangerLight
@@ -766,7 +750,7 @@ export default function ImportDocumenti() {
                           ? COLORS.successLight
                           : f.status === 'preview'
                             ? COLORS.infoLight
-                          : ['duplicate', 'partial', 'skipped'].includes(f.status)
+                          : f.status === 'duplicate' || f.status === 'partial'
                             ? COLORS.warningLight
                             : f.status === 'error'
                               ? COLORS.dangerLight
@@ -787,7 +771,7 @@ export default function ImportDocumenti() {
                       <CheckCircle size={16} color={COLORS.success} />
                     ) : f.status === 'preview' ? (
                       <CheckCircle size={16} color={COLORS.info} />
-                    ) : ['duplicate', 'partial', 'skipped'].includes(f.status) ? (
+                    ) : f.status === 'duplicate' || f.status === 'partial' ? (
                       <AlertCircle size={16} color={COLORS.warning} />
                     ) : f.status === 'error' ? (
                       <AlertCircle size={16} color={COLORS.danger} />
@@ -825,14 +809,6 @@ export default function ImportDocumenti() {
                           ? ' | Quadratura verificata'
                           : ''}
                         {` | ${statoArchivio(f.preview)}`}
-                        {(f.preview.parsed?.fatture || []).map((invoice, invoiceIndex) => (
-                          <div key={invoiceIndex}>
-                            Fattura {invoice.invoice_number} · {invoice.invoice_date} · {invoice.supplier_name}
-                            {invoice.total_amount != null ? ` · € ${invoice.total_amount}` : ''}
-                          </div>
-                        ))}
-                        {f.preview.parsed?.destinazione && <div>Destinazione: {f.preview.parsed.destinazione}</div>}
-                        {Number.isInteger(f.preview.parsed?.movimenti_letti) && <div>Movimenti letti: {f.preview.parsed.movimenti_letti}</div>}
                       </div>
                     )}
                   </div>
@@ -863,8 +839,7 @@ export default function ImportDocumenti() {
             }}
           >
             <strong>Controllo completato: i file sono pronti.</strong>{' '}
-            Premi "2. Conferma importazione" per salvare i documenti nelle rispettive sezioni.
-            Le fatture caricate dal computer mantengono l’anno indicato nel documento.
+            Premi ora "2. Importa ora in Prima Nota" per salvare corrispettivi e scritture contabili.
           </div>
         )}
 
@@ -897,7 +872,7 @@ export default function ImportDocumenti() {
               }}
             >
               <div style={{ fontWeight: 700, fontSize: 15, color: COLORS.gray[700] }}>
-                {skippedCount === results.length ? 'Nessun documento importato' : partialCount > 0 || skippedCount > 0
+                {partialCount > 0
                   ? 'Import parziale: controllare i dettagli'
                   : duplicateCount === results.length
                   ? 'Nessun nuovo documento: duplicati ignorati'
@@ -911,7 +886,7 @@ export default function ImportDocumenti() {
               </div>
               <div style={{ display: 'flex', gap: 12, fontSize: 13 }}>
                 <span style={{ color: COLORS.success, display: 'inline-flex', alignItems: 'center', gap: 4 }}><CheckCircle size={14} aria-hidden /> Importati: {successCount}</span>
-                <span style={{ color: COLORS.warning, display: 'inline-flex', alignItems: 'center', gap: 4 }}><AlertCircle size={14} aria-hidden /> Duplicati, parziali o saltati: {duplicateCount + partialCount + skippedCount}</span>
+                <span style={{ color: COLORS.warning, display: 'inline-flex', alignItems: 'center', gap: 4 }}><AlertCircle size={14} aria-hidden /> Duplicati o parziali: {duplicateCount + partialCount}</span>
                 <span style={{ color: COLORS.danger, display: 'inline-flex', alignItems: 'center', gap: 4 }}><XCircle size={14} aria-hidden /> Errori: {errorCount}</span>
               </div>
             </div>
@@ -924,7 +899,7 @@ export default function ImportDocumenti() {
                     background:
                       r.status === 'success'
                         ? COLORS.successLight
-                        : ['duplicate', 'partial', 'skipped'].includes(r.status)
+                        : r.status === 'duplicate' || r.status === 'partial'
                           ? COLORS.warningLight
                           : COLORS.dangerLight,
                     borderRadius: BORDER_RADIUS.md,
@@ -936,7 +911,7 @@ export default function ImportDocumenti() {
                 >
                   {r.status === 'success' ? (
                     <CheckCircle size={18} color={COLORS.success} />
-                  ) : ['duplicate', 'partial', 'skipped'].includes(r.status) ? (
+                  ) : r.status === 'duplicate' || r.status === 'partial' ? (
                     <AlertCircle size={18} color={COLORS.warning} />
                   ) : (
                     <AlertCircle size={18} color={COLORS.danger} />
@@ -963,7 +938,7 @@ export default function ImportDocumenti() {
                         color:
                           r.status === 'success'
                             ? COLORS.success
-                            : ['duplicate', 'partial', 'skipped'].includes(r.status)
+                            : r.status === 'duplicate' || r.status === 'partial'
                               ? COLORS.warning
                               : COLORS.danger,
                       }}
@@ -975,34 +950,7 @@ export default function ImportDocumenti() {
                         {r.evidenceSummary}
                       </div>
                     )}
-                    {r.details?.fattura_id && (
-                      <a
-                        href={`/fatture?invoice_id=${encodeURIComponent(r.details.fattura_id)}`}
-                        onClick={() => {
-                          const year = Number(String(r.details.invoice_date || '').slice(0, 4));
-                          if (year >= 2018 && year <= new Date().getFullYear() + 5) setAnno(year);
-                        }}
-                        style={{ display: 'inline-flex', alignItems: 'center', minHeight: 44, fontWeight: 600 }}
-                      >
-                        Apri fattura{r.details.invoice_date ? ` del ${r.details.invoice_date.slice(0, 4)}` : ''}
-                      </a>
-                    )}
-                    {r.details?.doc_id && (
-                      <a href="/documenti" style={{ display: 'inline-flex', alignItems: 'center', minHeight: 44, fontWeight: 600 }}>
-                        Apri archivio documenti
-                      </a>
-                    )}
-                    {r.details?.receipt_id && (
-                      <a href="/riconciliazione/pagopa" style={{ display: 'inline-flex', alignItems: 'center', minHeight: 44, fontWeight: 600 }}>
-                        Apri ricevute di pagamento
-                      </a>
-                    )}
-                    {r.details?.data?.quietanza_id && (
-                      <a href="/riconciliazione/f24" style={{ display: 'inline-flex', alignItems: 'center', minHeight: 44, fontWeight: 600 }}>
-                        Apri F24 e quietanze
-                      </a>
-                    )}
-                    {r.tipo === 'fattura_estera_pdf' && ['success', 'duplicate'].includes(r.status) && (
+                    {r.tipo === 'fattura_estera_pdf' && r.status === 'success' && (
                       // I dati letti dall'AI li conferma il titolare: senza un
                       // collegamento qui la coda restava introvabile.
                       <a

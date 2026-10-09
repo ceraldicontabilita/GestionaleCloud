@@ -48,26 +48,6 @@ def _drive_ref(doc: dict[str, Any], field: str) -> dict[str, Any]:
     return {}
 
 
-def reference_from_download(content: bytes, source: dict[str, Any]) -> dict[str, Any]:
-    """Riusa il PDF appena scaricato dal job Drive, verificandone l'impronta.
-
-    Il contesto del job e' interno: header dell'upload, file estratti da ZIP
-    o contenuti trasformati non attestano che quel Drive ID contenga il PDF.
-    In questi casi resta attiva l'archiviazione verificata ordinaria.
-    """
-    if (source.get("channel") != "drive_cartella_unica"
-            or not source.get("drive_file_id")
-            or source.get("archive_filename") or source.get("archive_member")
-            or source.get("archive_path")
-            or source.get("source_sha256") != hashlib.sha256(content).hexdigest()
-            or _pdf_bytes(content) is None):
-        return {}
-    return {
-        "drive_file_id": source["drive_file_id"],
-        "drive_md5": hashlib.md5(content, usedforsecurity=False).hexdigest(),
-    }
-
-
 async def externalize_documents(collection: str, documents: list[dict[str, Any]]) -> None:
     """Sposta i soli payload che sono davvero PDF e muta i record in-place.
 

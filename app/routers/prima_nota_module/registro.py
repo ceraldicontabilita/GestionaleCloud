@@ -26,7 +26,7 @@ from __future__ import annotations
 import re
 from collections import defaultdict
 from decimal import Decimal, InvalidOperation
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from .common import CATEGORIE_ESCLUSE, SOURCES_CREDITO_POS, SOURCES_ESCLUSE
 

@@ -13,7 +13,6 @@ import { norm } from "../../utils/textNormalize";
 import { linkEmailOrdine, linkWhatsAppOrdine } from "../../utils/invioOrdine";
 import { chiediMigliore, messaggioMigliore, versoIlMigliore } from "../../utils/confrontoFornitori";
 import { getOperatoreNome } from "../../auth";
-import { avviaPollingVisibile } from "../../utils/visiblePolling";
 import { Search, ShoppingCart, Package, Send, Plus, Check, X, Minus, AlertTriangle, Scale } from "lucide-react";
 // UN solo confronto prezzi in tutta l'app (prima Ordini usava un componente
 // diverso dalla pagina «Confronto prezzi» del menu → due schermate per la
@@ -181,7 +180,7 @@ export default function OrdiniView({ initialTab = "riordini" }) {
     }).catch(() => {});
   }, [mergeCarrelloCataloghi]);
   useEffect(() => {
-    return avviaPollingVisibile(async () => {
+    const timer = setInterval(async () => {
       try {
         const response = await axios.get(`${API}/ordini-fornitori/carrello-sospesi`);
         const arrivate = response.data?.richieste || [];
@@ -193,6 +192,7 @@ export default function OrdiniView({ initialTab = "riordini" }) {
         setRichiesteAcquisto(arrivate);
       } catch { /* riprova al prossimo aggiornamento */ }
     }, 15000);
+    return () => clearInterval(timer);
   }, []);
   useEffect(() => {
     mergeCarrelloCataloghi();

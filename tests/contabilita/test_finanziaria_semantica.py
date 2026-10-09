@@ -1,0 +1,124 @@
+"""Regressioni semantiche della pagina Finanziaria.
+
+La variazione dei flussi dell'anno e la disponibilita contabile finale hanno
+grane diverse: la seconda include i riporti iniziali. Non devono essere
+presentate come lo stesso saldo.
+"""
+
+import asyncio
+
+from app.services.archivio_documenti_memoria import ClientArchivioMemoria
+
+from app.routers import finanziaria
+
+
+def _run(coro):
+    loop = asyncio.new_event_loop()
+    try:
+        return loop.run_until_complete(coro)
+    finally:
+        loop.close()
+
+
+def test_summary_distingue_flussi_riporti_e_disponibilita(monkeypatch):
+    db = ClientArchivioMemoria()["test_finanziaria"]
+    _run(db["prima_nota_cassa"].insert_many([
+        {"data": "2026-01-10", "tipo": "entrata", "importo": 100.0,
+         "categoria": "Corrispettivi", "source": "manuale", "status": "active"},
+        {"data": "2026-01-11", "tipo": "uscita", "importo": 40.0,
+         "categoria": "Fatture", "source": "manuale", "status": "active"},
+        {"data": "2026-01-12", "tipo": "uscita", "importo": 20.0,
+         "categoria": "Versamento Banca", "source": "trasferimento_interno", "status": "active"},
+    ]))
+    _run(db["prima_nota_banca"].insert_many([
+        {"data": "2026-01-10", "tipo": "entrata", "importo": 300.0,
+         "categoria": "Corrispettivi POS", "source": "corrispettivo_pos", "status": "active"},
+        {"data": "2026-01-11", "tipo": "uscita", "importo": 50.0,
+         "categoria": "Fatture", "source": "manuale", "status": "active"},
+        {"data": "2026-01-12", "tipo": "entrata", "importo": 20.0,
+         "categoria": "Versamento Banca", "source": "trasferimento_interno", "status": "active"},
+    ]))
+    async def saldi_canonici(_db, collection, _query, _anno):
+        if collection == "prima_nota_cassa":
+            return {"saldo_precedente": 10.0, "saldo": 50.0}
+        return {"saldo_precedente": -100.0, "saldo": 170.0}
+
+    monkeypatch.setattr(finanziaria.Database, "get_db", staticmethod(lambda: db))
+    # Il motore di saldo canonico ha test dedicati alla conversione numerica.
+    # dedicati, qui si verifica come Finanziaria usa i valori restituiti.
+    monkeypatch.setattr(finanziaria, "aggrega_saldo_prima_nota", saldi_canonici)
+
+    # La Banca passa dai saldi per conto (BPM e SumUp separati).
+    async def saldi_per_conto(_db, _data, anno):
+        bpm = await saldi_canonici(_db, "prima_nota_banca", None, anno)
+        zero = {"saldo_precedente": 0.0, "saldo": 0.0}
+        return {"bpm": bpm, "sumup": zero, "altri": zero, "totale": bpm["saldo"]}
+
+    monkeypatch.setattr(finanziaria, "saldi_banca_per_conto", saldi_per_conto)
+
+    result = _run(finanziaria.get_financial_summary(anno=2026))
+
+    # Il credito POS lordo da 300 resta prova di riconciliazione ma non è una
+    # disponibilità bancaria reale; la Finanziaria conta solo l'entrata Cassa.
+    assert result["total_income"] == 100.0
+    assert result["total_expenses"] == 90.0
+    assert result["balance"] == result["flow_balance"] == 10.0
+    assert result["opening_balance"] == -90.0
+    assert result["saldo_cassa"] == 50.0
+    assert result["saldo_banca"] == 170.0
+    assert result["saldo_totale"] == result["available_balance"] == 220.0
+    assert result["balance"] != result["saldo_totale"]
+
+
+def test_summary_non_inventa_crediti_clienti(monkeypatch):
+    db = ClientArchivioMemoria()["test_finanziaria_crediti"]
+    monkeypatch.setattr(finanziaria.Database, "get_db", staticmethod(lambda: db))
+
+    result = _run(finanziaria.get_financial_summary(anno=2026))
+
+    assert result["receivables"] is None
+    assert result["receivables_available"] is False
+    assert "fonte canonica" in result["receivables_note"]
+
+
+def test_summary_dice_fino_a_quando_e_aggiornato_e_avvisa_se_manca_l_estratto(monkeypatch):
+    from app.middleware import performance
+    from app.services import fonti_ferme
+
+    _run(performance.cache.clear_all())
+    db = ClientArchivioMemoria()["test_finanziaria_aggiornato"]
+    _run(db["prima_nota_cassa"].insert_many([
+        {"data": "2026-09-18", "tipo": "entrata", "importo": 10.0,
+         "categoria": "Corrispettivi", "source": "manuale", "status": "active"},
+        {"data": "2026-09-10", "tipo": "uscita", "importo": 5.0,
+         "categoria": "Fatture", "source": "manuale", "status": "active"},
+    ]))
+
+    async def saldi(_db, _collection, _query, _anno):
+        return {"saldo_precedente": 0.0, "saldo": 5.0}
+
+    async def saldi_per_conto(_db, _data, _anno):
+        zero = {"saldo_precedente": 0.0, "saldo": 0.0}
+        return {"bpm": zero, "sumup": zero, "altri": zero, "totale": 0.0}
+
+    async def fonti(_db, **_):
+        return [
+            {"fonte": "estratto_conto", "ultima_data": "2026-03-31", "giorni_fermi": 183, "ferma": True},
+            {"fonte": "corrispettivi", "ultima_data": "2026-09-18", "giorni_fermi": 1, "ferma": False},
+        ]
+
+    monkeypatch.setattr(finanziaria.Database, "get_db", staticmethod(lambda: db))
+    monkeypatch.setattr(finanziaria, "aggrega_saldo_prima_nota", saldi)
+    monkeypatch.setattr(finanziaria, "saldi_banca_per_conto", saldi_per_conto)
+    monkeypatch.setattr(fonti_ferme, "stato_fonti", fonti)
+
+    result = _run(finanziaria.get_financial_summary(anno=2026))
+
+    assert result["cassa"]["aggiornato_al"] == "2026-09-18"
+    # Nessun movimento BPM in Prima Nota: la data non si inventa.
+    assert result["banca"]["aggiornato_al"] is None
+    assert result["banca"]["ultimo_estratto_conto"] == "2026-03-31"
+    avvisi = {a["conto"]: a for a in result["avvisi_aggiornamento"]}
+    assert set(avvisi) == {"banca"}
+    assert "31/03/2026" in avvisi["banca"]["messaggio"]
+    assert avvisi["banca"]["azione"]["percorso"] == "/documenti/import"

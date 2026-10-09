@@ -88,8 +88,8 @@ async def create_order(payload: OrderCreate, authorization: str = Header(None)):
     )
     order.total = round(compute_total(payload.items) + totale_coperto, 2)
 
-    doc = order.model_dump()
-    doc['items'] = [i if isinstance(i, dict) else i.model_dump() for i in order.items]
+    doc = order.dict()
+    doc['items'] = [i if isinstance(i, dict) else i.dict() for i in order.items]
     row = order_in(doc)
     supabase.table("menu_orders").insert(row).execute()
     return order_out(row)

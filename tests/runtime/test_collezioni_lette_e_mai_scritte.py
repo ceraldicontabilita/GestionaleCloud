@@ -1,0 +1,105 @@
+"""Una collezione letta e mai scritta e' una lettura che non risponde mai.
+
+Il censimento del 19/09/2026 ha contato 196 nomi di collezione usati dal
+codice contro 61 esistenti davvero. La differenza da sola non e' un difetto:
+in questo archivio una collezione **nasce alla prima scrittura**, quindi
+«non esiste» spesso vuol dire solo «funzione mai usata».
+
+Il difetto vero e' un altro, ed e' silenzioso: una collezione che qualcuno
+**legge** e che **nessuno scrive**, in nessun punto del codice. Quella query
+non potra' mai restituire niente, non dara' mai un errore, e chi la usa
+prende il vuoto per una risposta. Cosi' l'email delle scadenze F24 non e'
+mai partita: cercava il destinatario in `configurazioni` e in `users`.
+
+Questa guardia non pretende di azzerare la lista di colpo: sono decisioni di
+dominio, una per una. Pretende che la lista **possa solo accorciarsi**: un
+nome nuovo fa fallire la CI, e uno risolto va tolto da qui.
+"""
+import re
+from pathlib import Path
+
+RADICE = Path(__file__).resolve().parents[2]
+
+SCRITTURE = (
+    "insert_one", "insert_many", "update_one", "update_many", "replace_one",
+    "find_one_and_update", "find_one_and_replace", "bulk_write",
+    "delete_one", "delete_many",
+)
+
+#: Lette da `app/` e mai scritte da `app/`, misurate il 19/09/2026.
+#:
+#: Le collezioni con dati possono essere alimentate da trigger o da servizi
+#: esterni: l'assenza di writer Python non ne autorizza la cancellazione.
+#: I commenti sui conteggi sono la fotografia storica, non un inventario live.
+NOTE = {
+    "entity_relations",            # la scrive il trigger, non Python
+    "fiscal_documents",            # 22 righe nel censimento storico
+    "piano_conti",                 # piano ufficiale definito in Python
+    "cartelle_email_attachments",
+    "contratti_noleggio",
+    "dati_isa_snapshot",
+    "dizionario_articoli",
+    "documenti_scaricati",
+    "email_download_log",
+    "libro_unico_presenze",
+    "pagamenti_esiti",
+    "prima_nota_saldi_iniziali",
+    "quietanze",
+    "tax_collection_claims",
+    "tfr_acconti",
+    "verbali_autovelox",
+}
+
+#: Non e' un nome di collezione: compare dentro una docstring che spiega
+#: l'adattatore HR (`db["coll"]`).
+FALSI_POSITIVI = {"coll"}
+
+
+def _lette_e_mai_scritte() -> set:
+    lette, scritte = set(), set()
+    for py in RADICE.glob("app/**/*.py"):
+        if "__pycache__" in str(py):
+            continue
+        src = py.read_text(encoding="utf-8", errors="ignore")
+        # Molti moduli non scrivono il nome inline ma tengono una costante
+        # (`COLLECTION_OPERAZIONI_DA_CONFERMARE = "operazioni_da_confermare"`)
+        # e poi fanno `db[COSTANTE].insert_one(...)`. Senza risolverle, la
+        # guardia dichiarava orfana una collezione scritta davvero.
+        costanti = dict(
+            re.findall(r'^([A-Z][A-Z0-9_]*)\s*=\s*["\']([a-z0-9_]+)["\']', src, re.M)
+        )
+        for m in re.finditer(
+            r'(?<![\w.])db\[\s*["\']([a-z0-9_]+)["\']\s*\]\s*\.?\s*(\w+)?', src
+        ):
+            (scritte if m.group(2) in SCRITTURE else lette).add(m.group(1))
+        for m in re.finditer(r'(?<![\w.])db\[\s*([A-Z][A-Z0-9_]*)\s*\]\s*\.?\s*(\w+)?', src):
+            nome = costanti.get(m.group(1))
+            if nome:
+                (scritte if m.group(2) in SCRITTURE else lette).add(nome)
+    # Una collezione popolata solo dai test resta vuota in produzione:
+    # qui conta soltanto cio' che scrive `app/`.
+    return lette - scritte - FALSI_POSITIVI
+
+
+def test_nessuna_collezione_letta_e_mai_scritta_in_piu() -> None:
+    nuove = sorted(_lette_e_mai_scritte() - NOTE)
+    assert not nuove, (
+        "Collezioni lette che nessuno scrive: la query non potra' mai "
+        f"restituire niente e non dara' errore. {nuove}"
+    )
+
+
+def test_la_lista_puo_solo_accorciarsi() -> None:
+    risolte = sorted(NOTE - _lette_e_mai_scritte())
+    assert not risolte, (
+        "Queste non sono piu' orfane: toglierle da NOTE, cosi' la guardia "
+        f"resta stretta. {risolte}"
+    )
+
+
+def test_il_destinatario_f24_non_dipende_piu_solo_da_quelle_due() -> None:
+    """L'email ha una fonte configurabile, non solo le vecchie collezioni."""
+    sorgente = (RADICE / "app" / "services" / "f24_scadenze_notifiche.py").read_text(
+        encoding="utf-8"
+    )
+    assert "ADMIN_EMAIL" in sorgente

@@ -2,7 +2,7 @@
 
 <!-- gestionalecloud-doc
 status: current
-reviewed_at: 2026-10-08
+reviewed_at: 2026-10-06
 storage_architecture: supabase
 consolidated_source: single-claude-md
 -->
@@ -32,7 +32,7 @@ Contiene:
 
 Il `README.md` è soltanto una guida d'ingresso.
 
-Il codice, le migrazioni realmente applicate e la configurazione live vincono sempre sulla documentazione.
+Il codice, i test, le migrazioni realmente applicate e la configurazione live vincono sempre sulla documentazione.
 
 Se codice e questo file non concordano:
 
@@ -215,7 +215,7 @@ Aggiungere solo i file pertinenti.
 - Procedere per micro-tranche verificabili.
 - Non riscrivere l'intero sistema in una volta.
 - Prima di eliminare un percorso controllare import statici e dinamici, route, frontend, job, API e dati persistiti.
-- Un riferimento statico a un modulo non dimostra che il modulo sia raggiungibile in produzione.
+- Un test che cita un modulo non dimostra che il modulo sia raggiungibile in produzione.
 - Una risposta HTTP 200 non dimostra che il flusso funzioni.
 - Testare dati, relazioni, deduplica e stato finale.
 - Quando serve una scelta del titolare, proporre opzioni e mettere per prima quella consigliata.
@@ -275,9 +275,9 @@ Una modifica dello schema può invalidare temporaneamente la cache PostgREST.
 
 ## APERTO
 
-L'audit dell'08/10/2026 ha recuperato 11 migrazioni strutturali Cassa/Catalogo dal registro reale e allineato 36 nomi/versioni locali. Gli export non ripopolano prodotti, vecchie stampanti, sale o tavoli operativi.
+Esistono strutture/migrazioni Cassa e Catalogo applicate al database che devono ancora essere esportate correttamente nel repository.
 
-Restano 39 voci del registro non rappresentate da un file locale con lo stesso nome/versione. La ricostruzione completa da zero NON è ancora verificata: parsing SQL riuscito non equivale a replay completo, e le dipendenze iniziali HR/B&B devono essere recuperate prima di dichiararla chiusa.
+Questa incoerenza va eliminata.
 
 ---
 
@@ -1604,13 +1604,11 @@ La presenza in `ELABORATE` non dimostra che il documento sia stato acquisito cor
 
 Serve il registro applicativo.
 
-Il Message-ID dell'email si conferma solo dopo il salvataggio degli allegati: un guasto deve consentire un nuovo tentativo senza duplicare quelli già acquisiti.
+## APERTO
 
-## PRODUZIONE
+Esistono ancora classificazioni che consultano nome file o percorso prima del contenuto.
 
-La categoria operativa nasce dal contenuto del documento. Nome file, percorso,
-oggetto e mittente possono produrre soltanto una proposta da verificare e non
-creano fatti contabili, fiscali o HR. I file illeggibili restano da verificare.
+Devono essere eliminate una alla volta.
 
 ---
 
@@ -1638,8 +1636,6 @@ Esempi:
 - verbale: numero/IUV/targa.
 
 I possibili duplicati non vengono eliminati automaticamente.
-
-L'acquisizione email usa `app/services/deduplica.py::esiste_documento_cross_canale`, come gli altri ingressi: nessuna deduplica locale per nome, periodo o dimensione.
 
 ---
 
@@ -1723,7 +1719,7 @@ Una riga entra quando possiede significato contabile sufficiente.
 
 Il libro giornale è **spento** per decisione del titolare (07/10/2026): non gli serve. Il registro operativo è la Prima Nota cassa/banca (§23).
 
-Interruttore unico nel motore: `LIBRO_GIORNALE_ATTIVO` (difetto spento). Con l'interruttore spento `registra_fattura`, `registra_corrispettivo`, `registra_scrittura_semplice`, storni, pregresso e job rispondono `stato = disattivato` e non scrivono nulla; `_scrivi_movimento` rifiuta comunque (`GiornaleDisattivato`). Le letture delle scritture già esistenti non cambiano.
+Interruttore unico nel motore: `LIBRO_GIORNALE_ATTIVO` (difetto spento). Con l'interruttore spento `registra_fattura`, `registra_corrispettivo`, `registra_scrittura_semplice`, storni, pregresso e job rispondono `stato = disattivato` e non scrivono nulla; `_scrivi_movimento` rifiuta comunque (`GiornaleDisattivato`). Le letture delle scritture già esistenti non cambiano. I test accendono l'interruttore per collaudare il motore.
 
 Non riaccenderlo senza decisione del titolare. Le regole che seguono valgono quando è acceso.
 
@@ -2048,8 +2044,6 @@ Una fattura bancaria è riconciliata solo se esiste una prova coerente.
 Importo al centesimo.
 
 Identità coerente.
-
-Un incasso o rimborso non salda un debito fornitore. La quota ammessa usa il netto da pagare della fattura; la ritenuta resta dovuta all'Erario. Un beneficiario o IBAN incompatibile impedisce la riconciliazione automatica anche quando il numero fattura coincide.
 
 Quando ambiguo mostrare candidati.
 
@@ -3476,24 +3470,6 @@ Il giornale è quello del gestionale.
 
 Non creare un secondo giornale HR.
 
-La pagina `/hr/dipendenti/tfr` usa le API `/hr/api/tfr/simulazione/...`,
-non il vecchio `POST /hr/api/tfr/liquidazione`: quest'ultimo applicava una
-ritenuta fissa del 23%, senza determinarla dai dati fiscali del dipendente.
-L'endpoint inutilizzato e la costante `ALIQUOTA_TFR` sono rimossi dal codice.
-
-Il simulatore restituisce stime lorde e `tassazione_calcolata: false`, non un
-netto fiscale. UI e stampa devono dirlo esplicitamente; la ripartizione in
-rate non è un piano di pagamento definitivo né una quietanza. Non inventare
-un'aliquota sostitutiva: ritenute, conguagli e netto effettivo richiedono il
-prospetto del consulente. Il calcolatore IRPEF dello stipendio, separato nella
-stessa pagina, non è la tassazione separata del TFR.
-
-Errori di lettura e ferie mancanti devono impedire il riepilogo completo e le
-rate, non azzerare le componenti. Uno zero documentato o inserito esplicitamente
-resta ammesso. La data di un acconto non ne prova la competenza: senza
-competenza esplicita, i pagamenti salariali seguono i residui più antichi (§65A);
-questa regola non assegna automaticamente la natura TFR o conciliazione.
-
 ---
 
 # 65. Fork HR
@@ -3502,11 +3478,11 @@ Due copie dello stesso modulo non si mantengono manualmente.
 
 ## PRODUZIONE
 
-Il router TFR è uno solo: `app/hr/routers/tfr.py` (montato su `/hr/api/tfr`). `app/routers/tfr.py` espone due alias di lettura verso le stesse funzioni HR per Gestione Cespiti; non mantiene un secondo calcolo né scrive.
+Il router TFR è uno solo: `app/hr/routers/tfr.py` (montato su `/hr/api/tfr`). `app/routers/tfr.py` espone soltanto due letture del fondo sull'archivio del gestionale per Gestione Cespiti e re-esporta il resto; non scrive.
 
 ## APERTO
 
-Fork di logica residui fra `app/` e `app/hr/` (stesso sottopercorso, nessun re-export): `routers/employees/dipendenti.py`, `routers/pin_login.py`, `utils/dependencies.py`. Il fondo TFR riepilogativo ora usa l'anagrafica HR e le quote documentate; liquidazione e tassazione richiedono ancora verifica specifica (vedi §108).
+Fork di logica residui fra `app/` e `app/hr/` (stesso sottopercorso, nessun re-export; `tests/runtime/test_fork_app_hr.py` ne impedisce la crescita): `routers/employees/dipendenti.py`, `routers/pin_login.py`, `utils/dependencies.py`. Il fondo TFR letto dal gestionale (`gestionale.dipendenti.tfr_maturato`) non deriva ancora dall'anagrafica canonica HR.
 
 Ogni modifica a quei tre file deve controllare il gemello finché non viene consolidato.
 
@@ -3533,158 +3509,6 @@ distinti. Nessuno dei tre implica automaticamente gli altri.
 
 Drive conserva gli originali; Supabase conserva dati, stati e relazioni.
 Excel è un formato di importazione, non un secondo archivio operativo.
-
-### Ripartizione dei pagamenti salariali — 09/10/2026
-
-Regola richiesta dal titolare: prima la mensilità scelta o documentata nella
-causale; in mancanza, il residuo del cedolino più antico non saldato. Il
-pagamento prosegue sulle buste successive e l'eccedenza rimane acconto.
-Le quote non cambiano la data bancaria né moltiplicano il fatto di pagamento.
-Il saldo cronologico sottrae l'intero pagamento una volta alla data effettiva.
-I netti sconosciuti non diventano zero; le chiusure cumulative documentate
-restano «pagato con bonifico del…», senza suddivisioni inventate.
-
-ERP e HR usano la stessa anteprima e conferma. La conferma verifica nuovamente
-l'archivio in transazione; una ricevuta può arricchire un pagamento già
-registrato. Stessa persona/data/importo senza riferimento bancario comporta
-una scelta esplicita fra collegare e registrare un'altra operazione.
-Il ritiro conserva il pagamento originale se esisteva prima dell'associazione.
-
-Verifiche locali: conteggi, residui, idempotenza e ritiro provati; la verifica
-in produzione richiede il rilascio di questa modifica.
-
-### Griglia ed esportazione dell'Archivio paghe
-
-La spunta «Griglia annuale» alterna elenco e tabella compatta, anche con
-«Tutti gli anni»: una riga per dipendente/anno, mesi 1–14 in colonne, nessuna
-scheda a riquadri. La scelta persiste durante la navigazione. Un dato non
-letto resta sconosciuto, uno zero documentato resta zero; periodi ambigui
-non sovrascrivono altri valori e i totali incompleti non diventano completi.
-Il riepilogo esteso degli import conclusi non occupa la pagina; gli errori
-restano consultabili nella sezione richiudibile «Segnalazioni dell'import».
-
-Il saldo personale segue la data effettiva dei movimenti, con riporto fra
-anni: ogni pagamento attribuito con certezza al dipendente riduce il saldo
-alla data del bonifico, anche senza mese o riconciliazione. Non si inventa
-la competenza dalla data. La scheda aperta dal nome del dipendente mostra
-come vista iniziale una riga per mensilità, con dovuto, tutti i pagamenti
-attribuiti (date e importi), totale pagato e differenza. Il dettaglio
-cronologico con saldo progressivo resta consultabile in una sezione chiusa.
-I pagamenti senza competenza alimentano i residui secondo la regola precedente;
-i cumulativi compaiono una sola volta con rimandi dai mesi coperti, senza
-quote inventate. La vista raggruppata non modifica dati, date o associazioni.
-La coda conserva l'identità certa anche quando resta da decidere il periodo;
-i soli candidati non incidono sul saldo. Ricevuta ed esito con la stessa
-identità bancaria si contano una volta. Se una ricevuta coincide per persona,
-data e importo con l'elenco del titolare privo di riferimento bancario,
-il pagamento già registrato resta nel saldo e la ricevuta viene segnalata
-come possibile copia da confrontare: nessuna fusione o doppia sottrazione
-automatica. La riconciliazione del mese resta un controllo distinto.
-
-L'esportazione di controllo usa gli stessi filtri del reader e quattro fogli:
-`Importi cedolini`, `Pagamenti recuperati`, `PDF non collegati`, `Mesi riconciliati`.
-«PDF non collegati» indica solo periodi presenti nel registro senza PDF
-collegato, non dimostra l'assenza del cedolino e non modifica alcun saldo.
-Riporta netto PDF, netto confermato da elenco e recupero acconto separati.
-Il foglio pagamenti contiene le operazioni attribuite ai periodi esportati;
-per tutti i pagamenti del dipendente, anche senza competenza, fa fede la
-posizione cronologica. Un buco nel calendario non prova una busta mancante.
-Il foglio riconciliati esclude mere uguaglianze di importo, associazioni non
-confermate, importi da leggere, anomalie e mesi privi di PDF o riscontro
-bancario. I filtri di stato non cancellano pagamenti dal saldo personale.
-
-I report ricostruiti dagli allegati dell'utente affiancano le fonti originali:
-il foglio «Cedolini» dell'allegato con i pagamenti del mese successivo è una
-ricostruzione delle attribuzioni, non prova del netto retributivo.
-Un'autorizzazione di distinta non dimostra da sola l'addebito sul conto.
-Anche la sincronizzazione periodica del registro conserva questa distinzione:
-un elenco o una ricevuta senza riscontro bancario non imposta `bonifico_ricevuto`
-né trasforma una semplice quadratura in `pagato`. Le conferme manuali già
-presenti restano separate dalla riconciliazione automatica.
-
-### Bonifici cumulativi e conferma acconti — 09/10/2026
-
-Un bonifico che salda più mensilità esplicitamente confermate dal titolare
-resta un solo pagamento in `pagamenti_esiti`, alla data bancaria. I mesi
-sono conservati in `periodi_saldati`: la vista paghe, la sincronizzazione e
-l'Excel li indicano «Stipendio pagato con bonifico del …», con saldo mensile
-zero, esclusi dai non pagati, anche se il netto non è disponibile. Nessuna
-quota mensile è inventata; il progressivo sottrae l'intero bonifico una volta.
-`pagato_documentato` distingue questa copertura dalla ripartizione numerica.
-
-La conferma di un candidato conserva il tipo scelto (anche acconto). Non
-deduce la competenza dalla data bancaria: senza mese/anno espliciti l'acconto
-riduce il progressivo alla data reale e resta da attribuire. La griglia
-mostra gli importi noti anche se manca il riscontro bancario, con dettaglio
-toccabile del controllo necessario, senza sostituirli con un «?» generico.
-
-Il foglio presenze Zucchetti Aut. 301, anche chiamato «Busta paga … (1).pdf»,
-passa allo stesso motore da HR, Drive e Import documenti: esito `presenze`,
-zero buste, nessun errore. Nel cedolino Zucchetti nuovo competenze e trattenute
-si leggono dalle celle etichettate, non da coppie di cifre nel testo.
-
-### Più rapporti nello stesso mese e reimport — 09/10/2026
-
-Due cedolini dello stesso dipendente e mese possono appartenere a contratti
-diversi: rimangono due originali, con matricola e data di assunzione proprie.
-Il parser separa le buste complete anche nello stesso PDF. Archivio, griglia,
-sincronizzazione e prima nota sommano i netti e i recuperi acconto una sola
-volta; la riga mensile permette di aprire ogni PDF. Se un netto manca, il
-totale resta incompleto; le revisioni da decidere non vengono sommate.
-
-CF, mese e importo uguali non provano un duplicato. Il reimport confronta
-l'impronta del contenuto o la stessa fonte/pagine: la pagina caricata da sola
-e quella estratta dal fascicolo sono la stessa prova. I metadati dei rapporti
-si conservano sia nel registro ERP sia nel deposito HR.
-
-La competenza confermata dal titolare o scritta in causale collega il bonifico
-al cedolino, anche quando il pagamento avviene il mese dopo. La prima nota
-mantiene la data effettiva. I pagamenti dell'elenco che il titolare ha
-esplicitamente confermato possono chiudere il mese e apparire «Pagato —
-confermato dal titolare»; non diventano per questo riconciliati con l'estratto
-conto. La data, da sola, non assegna una competenza.
-
-### Componenti 13ª, 14ª e TFR nei cedolini
-
-Il lettore unico conserva `dati_chiave.componenti_busta`: tipo, importo,
-pagina, colonna e coordinate sul PDF della stessa busta. Le mensilità e le
-anticipazioni richiedono la colonna competenze; Zucchetti, CSC e TeamSystem
-mantengono distinti quota TFR mensile, progressivo annuo, fondo precedente,
-anticipazione e liquidazione. Celle vuote non prendono i valori vicini.
-Una base imponibile TFR non è la quota accantonata.
-
-13ª/14ª incluse nella busta ordinaria compaiono come quote lorde documentali
-nella relativa pagina, con apertura dell'originale da «Gestisci». Non creano
-un secondo cedolino o debito e non si sommano di nuovo al netto mensile.
-Le mensilità autonome restano separate. La pagina TFR espone le voci dei
-cedolini distinguendo i progressivi dalle quote del mese: non li somma né
-li trasforma automaticamente in fondo disponibile o prova di bonifico.
-
-«Riscansiona storico» legge anche gli originali Drive e il deposito protetto
-in lotti limitati e riprendibili. Richiede stessa persona, competenza e tipo;
-non sovrascrive netti confermati, acconti o pagamenti. Il reimport arricchisce
-un duplicato solo se proviene dallo stesso originale. Una variante con il
-medesimo netto non è automaticamente la stessa prova documentale.
-
-### Bonifici HR e importazione bancaria
-
-La pagina Bonifici mostra il nome dell'anagrafica collegata al movimento,
-conservando separatamente il beneficiario originale quando differente.
-La competenza è quella registrata: non si deduce automaticamente dalla data
-del bonifico. Se manca resta «Da attribuire».
-I pulsanti «Importa bonifici» e «Importa estratto conto», disponibili anche
-nel menu Importa dell'Archivio paghe, aprono il flusso documentale ERP con
-anteprima e conferma. Non usano il parser dei cedolini e non introducono un
-secondo archivio bancario. La pagina consente il ritorno ai bonifici HR,
-alla coda da associare e ai movimenti estratti dal conto.
-
-### Missioni
-
-La pagina permette elenco, inserimento, modifica, approvazione e cancellazione
-delle missioni in attesa. Dipendente esistente, destinazione, scopo, date
-coerenti e rimborso non negativo sono verificati anche dal backend.
-Le missioni già approvate non sono modificabili o eliminabili dalla pagina.
-Gli errori di caricamento sono visibili e non diventano elenchi vuoti.
 
 ## Identità, rapporto e periodo
 
@@ -3864,8 +3688,7 @@ Distinguere due fatti:
 
 L'acconto versato conserva dipendente, importo, data, natura,
 periodo di destinazione e prova del pagamento.
-Se la competenza è sconosciuta, la ripartizione segue i residui salariali più antichi;
-la competenza documentale resta sconosciuta e non si ricava dalla data.
+Se la competenza è sconosciuta, resta da attribuire.
 
 Un bonifico già importato si classifica come acconto:
 non si ricrea come movimento manuale.
@@ -4007,16 +3830,6 @@ Il Gestionale e i comandi riservati restano protetti anche lato server.
 ### Operatore
 
 L'operatore entra dal tablet con il proprio PIN personale.
-
-Correzione accesso Lotti (08/10/2026): con HR vuoto il PIN centrale del
-Gestionale non è un PIN personale e non può identificare un dipendente.
-Il titolare apre anche i reparti ordinari tramite la sessione ERP, senza
-scheda HR fittizia; le firme personali continuano a richiedere un'identità HR.
-Il tastierino offre «Sono il titolare: entra dal Gestionale», non reinvia
-richieste concorrenti e annulla quelle pendenti quando viene chiuso.
-Un archivio HR vuoto/non configurato non incrementa i tentativi di PIN errato.
-Il blocco PIN conserva la protezione server e restituisce Retry-After; il
-tablet mostra il conto alla rovescia reale e consente di riprovare alla scadenza.
 
 Vede soltanto le card previste dalla sua mansione e dai suoi permessi.
 
@@ -4540,43 +4353,6 @@ Disponibilità commerciale ≠ giacenza teorica.
 
 “Esaurito oggi” è una scelta commerciale esplicita.
 
-Le categorie rapide si salvano per singola ricetta: una richiesta in corso
-blocca solo quella card, senza ignorare i clic sulle altre. Ogni salvataggio
-conferma nome e categoria. Assegnare una categoria mantiene la card visibile,
-allargando soltanto i filtri che la escluderebbero; un filtro cambiato durante
-la richiesta non viene sovrascritto. Aprire una categoria azzera il filtro
-reparto, così i due filtri non nascondono le ricette appena classificate.
-
-Le scelte manuali prevalgono sulle deduzioni dal nome, anche dopo aver tolto
-l'ultima spunta: `categorie_rapide_aggiornate_il` distingue questa scelta da
-una ricetta mai classificata. Il catalogo Colazione conserva questo campo.
-«Secchi» alimenta il filtro «Dolci secchi». Pasticceria classica e Rosticceria
-del giorno aggiornano anche il reparto; Natale, Pasqua, Colazione e Secchi
-sono categorie, non ordini di produzione.
-
-«Semilavorati» raccoglie prodotti acquistati, con filtro per fornitore e
-«Aggiungi semilavorato». Riusa la scheda e il writer delle ricette: il
-fornitore è obbligatorio, foto e tre visibilità restano quelle canoniche e
-indipendenti. La creazione invia `categorie_rapide=["semilavorati"]`; le
-modifiche successive della scheda non riscrivono le categorie dalla copia
-caricata in precedenza. Nessuna proposta automatica degli ingredienti.
-Non importa interi cataloghi e non crea nuovi prodotti nel database per prova.
-
-Categorie aggiunte: Bagne, Panini, Insalate, Primi piatti e Contorni.
-La scheda Semilavorati conserva anche confezione, P.IVA del fornitore in
-fattura e codice articolo. «Acquisti dal gestionale» legge `invoices` in
-sola lettura, con guardia amministratore, nell'anno `annoGlobale` condiviso
-con ERP. Collega soltanto P.IVA e codice esatti: il marchio del prodotto
-non basta. Il link apre la fattura canonica nell'anno corretto. Nessun
-risultato è trasformato in pagamento, giacenza o acquisto confermato quando
-la fattura è ancora da verificare.
-
-Collegamento ai cataloghi da completare: «Usa nelle ricette» di Acquaviva e
-Sammontana alimenta il dizionario ingredienti, non il ricettario pubblicabile.
-Un futuro «Aggiungi ai Semilavorati» deve essere distinto, conservare codice
-e riferimento al prodotto fornitore e riusare la scheda già collegata ai tre
-canali, senza duplicarla a ogni importazione.
-
 ---
 
 # 72. HACCP
@@ -4602,33 +4378,6 @@ Lotti spinge nel Menu.
 Il Menu non è un secondo proprietario della ricetta.
 
 Le righe `origine="lotti"` sono gestite da Lotti.
-
-Le tre scelte della ricetta sono indipendenti: `menu_pubblico` controlla la
-carta pubblica, `menu_bb` il catalogo colazioni e `visibile_tablet` le ricette
-operative. Bevande, liquori e cocktail senza ricetta restano prodotti gestiti
-dal Menu. Il ponte usa la stessa foto Storage, senza ripristinare Qromo.
-
-Il riallineamento massivo deve conservare anche `menu_bb`, gli ID di
-associazione e destinazione Menu, canali di vendita, esaurito, aggiunte e
-rimozioni: omettere questi campi dalla proiezione riapplica i default invece
-delle scelte del titolare. Gli import Excel, CSV, tracciabilità e Cartel1
-avviano il riallineamento canonico in background, senza `pubblica_tutte=true`.
-Se un import termina durante un giro già in corso, viene accodato un altro
-giro per includere gli aggiornamenti successivi alla prima lettura.
-
-La migrazione `20261008131251_complete_recipe_menu_sales_bridge.sql`,
-applicata e verificata il 08/10/2026, completa prezzo al banco, canali,
-disponibilità, aggiunte e rimozioni e aggiorna la vista pubblica con
-`security_invoker=true`, conservando le policy del backend. I prezzi mancanti
-restano mancanti. Il B&B ricarica il catalogo Menu all'apertura delle pagine
-di composizione colazioni e selezione prodotti hotel.
-
-«Apri scheda» mostra ingredienti e preparazione, con dati/foto/destinazioni
-in una sezione espandibile. Il form usa l'API canonica di Lotti anche senza
-variabile di build. Verificate le 25 chiamate dei componenti di scheda,
-modifica, dosaggio e produzione rispetto ai router montati; controllati in
-browser layout a 390/1024 px, espansione, Produci e payload del salvataggio.
-Questi controlli non registrano produzioni o operazioni reali per prova.
 
 ---
 
@@ -5220,11 +4969,13 @@ Non crearne altri.
 
 # 104. Ricerca web Lotti
 
-## PRODUZIONE
+Un solo motore finale.
 
-Il motore automatico unico è `app/lotti/servizi/lettura_articoli_ai.py::identifica_col_web`, eseguito dal solo job `lotti_identifica_col_web`. Usa il dizionario prodotti, un tetto giornaliero e una finestra di ripetizione.
+## APERTO
 
-`POST /api/schede-tecniche/ricerca-web` resta un comando manuale puntuale protetto da ruolo amministratore; non mantiene una seconda coda.
+Esistono ancora due code/giri.
+
+Fonderli.
 
 ---
 
@@ -5266,287 +5017,227 @@ eliminare lo schema.
 
 # 107. Stato produzione verificato
 
-Verificato il 08/10/2026 sul progetto Supabase `lohczjdiawjryuopncwc`.
+Questa sezione contiene solo ciò che serve a capire il comportamento corrente.
 
-## Dati operativi
+Non è un diario.
 
-Il database era stato azzerato. Dall'08/10/2026 pomeriggio contiene anche gli originali reali e i dati importati per la verifica richiesta dal titolare (§108, audit import). **Non eliminarli**: il titolare ha chiesto di conservarli fino a una successiva pulizia esplicitamente autorizzata. Non descrivere più l'archivio come vuoto.
+## Servizio
 
-Conseguenze obbligatorie:
+- Render serve `main`.
+- Supabase è backend dati.
+- cartella Drive unica attiva.
+- scheduler attivo.
+- protocollo incrementale attivo.
+- protocollo completo spento per memoria.
 
-- il nuovo popolamento parte dagli originali portati nelle cartelle `DA ELABORARE`;
-- nessun job deve ricostruire o scartare file usando una memoria del vecchio popolamento;
-- nessuna bonifica storica deve inventare fatture, pagamenti, relazioni, dipendenti o movimenti assenti;
-- gli ID nuovi sono generati dai writer canonici; gli helper per ID misti restano soltanto ai confini di importazione.
+## Fatture
 
-HR non contiene dati operativi pregressi. Lotti contiene soltanto i cataloghi correnti e lo stato tecnico necessario; non contiene ricette o foto legacy. B&B contiene le due strutture reali, senza dati demo.
+Il 06/10/2026 (02:14–03:18 UTC) le collezioni contabili `invoices`, `corrispettivi`, `movimenti_contabili`, `prima_nota_cassa` e `prima_nota_banca` sono state azzerate e ricreate da zero; la causa non è nel log applicativo. Al 07/10 `invoices` ha 21 fatture, il report AdE 2026 (`fatture_report_ae`) ne conta 902, di cui 795 con `invoice_id` che non esiste più e 888 con pagamento dichiarato dal titolare. Gli XML sono su Drive in `ELABORATE`: la ricostruzione passa da `POST /api/admin/documenti/rimetti-in-coda` (dry-run, poi reale) e dal giro della cartella unica; i pagamenti dichiarati si applicano da soli all'arrivo di ogni fattura. Non creare un secondo importatore.
 
-## Runtime e job
+Persistono ID storici misti testo/numero.
 
-- Render serve un solo servizio `main`.
-- Supabase è il backend dati; Drive conserva gli originali documentali.
-- La cartella unica Drive e il protocollo incrementale sono attivi.
-- Il protocollo completo resta spento per memoria.
-- Esiste un solo job email Verbali, tramite `scan_verbali_email_task`.
-- Esiste un solo giro automatico di ricerca web Lotti, `lotti_identifica_col_web`.
-- I job di migrazione foto Drive/`foto_files` sono eliminati: le nuove immagini nascono direttamente su Supabase Storage.
-- Non esistono job keep-warm o self-ping.
+Il pregresso non è completamente normalizzato.
 
-## Sicurezza database
+Esistono partite e relazioni da riallineare.
 
-- tutte le tabelle applicative hanno RLS attiva; quelle senza policy sono volutamente fail-closed e si usano tramite RPC protette;
-- le funzioni applicative hanno `search_path` fissato;
-- nessuna funzione B&B concede `EXECUTE` a `PUBLIC`;
-- le RPC esposte ad `anon` sono soltanto ingressi applicativi intenzionali e applicano sessione, voucher, capability o segreto runtime;
-- le chiavi `service_role` e i segreti runtime non vanno mai nel browser.
+## Banca
 
-**Rettifica dell'audit più critico:** RLS attiva non prova accessi protetti. Dieci tabelle Menu e il bucket `menu-images` avevano policy `ALL TO anon` senza controllo del backend; una vista aggiuntiva non era `security_invoker`. La correzione `20261008083801_secure_menu_runtime_access.sql` è stata applicata il 08/10/2026 alle 10:38 (Europa/Roma), dopo il rilascio del backend con header `x-gc-api-key`. Verifica reale: senza header o con segreto errato PostgREST risponde 401/42501 e Storage 400 «accesso negato»; il client autorizzato legge entrambi, una foto WebP pubblica risponde 200, le quattro app e la carta Menu rispondono correttamente. Conteggi invariati: 5 prodotti, 0 ordini, 404 immagini. Nessun dato operativo inserito dalla verifica.
+Banco BPM è collegato via Enable Banking (consenso PSD2 fino al 25/12/2026): il giro automatico delle 07:15 e 09:00 (Europe/Rome) legge gli ultimi `ENABLE_BANKING_GIORNI_GIRO` giorni (difetto 7) e importa solo i movimenti certamente nuovi; `ENABLE_BANKING_DAL=AAAA-MM-GG` fa rileggere da quella data una volta sola (usato dopo l'azzeramento del 06/10/2026 per il 2026 intero). La fonte API resta provvisoria finché non arriva l'estratto conto ufficiale.
 
-Il controllo Supabase rimane informativo su 108 tabelle RLS senza policy (accesso via RPC) e segnala funzioni `SECURITY DEFINER` eseguibili da `anon`/`authenticated`: questi avvisi richiedono verifica delle guardie applicative, non l'apertura delle tabelle. Nessuna segnalazione residua di policy Menu permissive o vista Menu con privilegi del proprietario. Riferimenti: [RLS senza policy](https://supabase.com/docs/guides/database/database-linter?lint=0008_rls_enabled_no_policy), [RPC anon](https://supabase.com/docs/guides/database/database-linter?lint=0028_anon_security_definer_function_executable), [RPC authenticated](https://supabase.com/docs/guides/database/database-linter?lint=0029_authenticated_security_definer_function_executable).
+Persistono:
 
-## Verifiche che richiedono dati reali
+- movimenti senza categoria;
+- relazioni incomplete;
+- fatture con stato di riconciliazione incoerente.
 
-Sul nuovo popolamento controllare, senza correggere per supposizione:
+## Contabilità
 
-1. documenti non classificabili dal contenuto;
-2. associazioni bancarie o fiscali ambigue;
-3. unità Lotti non convertibili e mapping da confermare;
-4. dati HR mancanti nei documenti originali;
-5. quadrature contabili e IVA prodotte dal nuovo popolamento.
+Persistono scritture storiche non quadrate.
 
-## Attività esterne non risolvibili dal codice
+Il pagamento non chiude ancora tutti i debiti nel giornale.
 
-- attivazione produzione A-Cube/Cassetto fiscale con il fornitore;
-- eventuale rotazione dei segreti esistiti nella cronologia Git;
-- verifica completa periodica di eliminazioni e spostamenti Drive quando sarà sostenibile in memoria.
+Il bilancio non usa ancora la competenza in tutti i percorsi.
+
+## HR
+
+Persistono:
+
+- bonifici da associare;
+- riferimenti cedolino orfani;
+- moduli duplicati.
+
+## Menu / prodotto unico
+
+Non considerare completata l'unificazione finché le migrazioni non risultano applicate e collaudate sul database reale.
+
+## Drive
+
+L'incrementale non vede tutte le eliminazioni/spostamenti.
+
+## AI
+
+Client unico raggiunto.
+
+Pipeline duplicate ancora presenti.
+
+## Flotta / verbali
+
+Lo storico dei veicoli e degli utilizzatori deve essere completato e consolidato nel gestionale.
+
+Le assegnazioni storiche documentate sono la base per individuare il conducente alla data del verbale.
+
+Le presenze non sono oggi una fonte per decidere il conducente.
 
 ---
 
-# 108. Audit critico del monorepo — revisione 08/10/2026
+# 108. Aperto — priorità critica
 
-Il perimetro è il gestionale ERP, HR, Lotti/HACCP, Menu/Cassa e Convenzioni B&B, non la sola anteprima `frontend_colazioni/index.html`. `CODEX.md` non esiste in questo checkout: le regole confrontate sono quelle di questo documento. Le prime correzioni dell'audit sono state pubblicate il 08/10/2026 dopo CI verde, con controllo del commit servito da ERP, HR, Lotti e Menu. Le prime verifiche non avevano ripopolato il database; le successive prove di import qui sotto usano invece dati reali da conservare.
+## P1 — Contabilità
 
-## Difetti dimostrati e correzioni
+Libro giornale spento dal 07/10/2026 (§24): i punti 1, 4 e 5 restano fermi finché il titolare non lo riaccende; la priorità operativa è la Prima Nota cassa/banca alimentata dalle fatture (§29) e dai pagamenti dichiarati.
 
-| Pagina o flusso | Difetto verificato | Stato e limite della correzione |
-| --- | --- | --- |
-| ERP Importa / Email / Archivio | Allegati validi scartati perché senza classificazione riconosciuta; categoria fattura imposta dal nome; IMAP sincrono nell'event loop | Acquisizione degli allegati ammessi, categoria `altro`/da verificare conservata, classificazione dal contenuto, IMAP in thread. Da verificare ingestione reale dei tre file Drive segnalati: nessuna conferma di malware deriva da questi controlli locali. |
-| ERP Documenti da classificare | Il giro dei soli non classificati saltava i documenti già marcati `altro` | `altro` e `auto` inclusi nel giro; errori di classificazione non cancellano l'originale. |
-| ERP Cespiti / Fondo TFR | Secondo fondo letto da dipendenti ERP anziché HR; totale sconosciuto rappresentato come zero | Alias delle letture HR; `totale_fondo` ignoto se mancano dati, `totale_fondo_noto` separato. Verifica in memoria riuscita, non certificazione fiscale. |
-| HR TFR / Riepilogo | Fonti diverse fra riepilogo e dettaglio, query ripetute per dipendente, liquidazioni sottratte due volte alla fonte manuale netta | Prefetch delle quote, distinzione fondo lordo documentale/manuale già netto. La successiva verifica mirata ha trovato ancora lettori di storico/acconti basati sul solo campo piatto e differenze sui fondi già liquidati: non dichiarare completato il saldo canonico. |
-| HR TFR / Simulatore / Stampa / Rate | Endpoint inutilizzato con ritenuta fissa 23%; simulatore chiamava netto il lordo; errori e ferie mancanti azzerati nelle rate; vecchi dati visibili dopo cambio dipendente | Rimosso `POST /hr/api/tfr/liquidazione` e la costante, nessuna nuova aliquota. Stime esplicitamente non fiscali anche nelle API e nel report; errori propagati, ferie obbligatorie per il totale completo, risposte obsolete scartate, rate invalidate dopo modifica e ripartite al centesimo. Verifiche mirate sotto. Il netto fiscale reale non è implementato dal simulatore. |
-| HR Acconti / Modifica / Competenza | Fondo rettificato prima della validazione di tutti i campi; stato riconciliato assegnabile dalla modifica generica; mese dedotto dalla data del pagamento | Validazione prima degli effetti, stati con prova riservati ai comandi dedicati, dati riconciliati protetti, valori non finiti/date invalide respinti. Eliminata la deduzione della competenza nel writer e nei lettori posizione/mensilità. Restano da correggere atomicità/idempotenza del fondo, annullamento degli acconti e deduplica basata su data/importo nei lettori. |
-| HR Importa paghe / Documenti | Primo omonimo scelto automaticamente; anno/mese dedotti dalla data o dall'importo; PDF disposizione segnato riconciliato | Alias ambigui non assegnati; deposito senza competenza esplicita va in verifica; PDF nel deposito canonico, non conferma automatica. Errore di registrazione import non silenziato. |
-| HR Paghe / Associazioni bonifici | Identità certa scambiata per prova di addebito; esiti PDF etichettati banca; riscontro bancario successivo non ricalcolava il periodo; due pagamenti uguali a date vicine fusi | Criterio unico: identità certa + movimento/estratto bancario per conferma automatica. PDF solo → `da_verificare`; arricchimento con banca ricalcola. Dedup tra fonti richiede hash/chiave/riferimento comune, non solo importo e data. Conferma manuale esplicita preservata. Diagnostica in memoria riuscita. |
-| HR Cedolini / Portale documenti | Ricerca cedolino per solo cognome; `/regolamento/file` intercettato da `/{doc_id}/file`; `/simulazione-f24` da `/{cedolino_id}` | Nessun cedolino di altro dipendente per omonimia; route statiche precedono quelle dinamiche. Verificato matching delle route senza avviare job. |
-| HR Turni | Route disponibilità/preferenze intercettate dal parametro settimana | Handler generico dopo le route statiche; matching corretto. Restano da verificare permessi e calendario con dati reali. |
-| HR Avvio / Scadenze / Paghe | Vecchi seed TFR e fix nominativi potevano alterare il nuovo archivio; bonifica storica automatica; scheduler senza lease condivisa | Eliminati i due moduli legacy e i richiami all'avvio; rimossa bonifica automatica; scheduler con lease. Non disabilitati i job operativi necessari al nuovo import. |
-| Lotti Anomalie / Report | Report per intervallo intercettato da `/{anomalia_id}` | Route generica spostata alla fine. |
-| Lotti Pipeline / Manuale HACCP | Rebuild catalogo/manuale fallito ma esito generale `OK` | Esito `PARZIALE` e step falliti espliciti. Errore simulato riprodotto senza scritture reali. |
-| Lotti / Menu Magazzino bar | Menu chiamava `public.lotti_documents` obsoleta e manteneva movimenti separati | Stesso archivio e motore stock Lotti; movimenti e rettifiche condivisi. Risposte consentono stock negativo reale senza errore 500; stock iniziale negativo e numeri non finiti respinti. |
-| Menu Carta / Login / Admin / Ordini / Cassa / Cucina / Sale | API dipendenti da variabile ambiente, altrimenti URL `undefined`; seed demo ancora montato | Base API canonica `/menu`; router seed non chiamato eliminato. Build Menu riuscita; stampa, ordini e cassa reali non verificati dal solo build. |
-| Menu Prodotti / Immagini / Ponte Lotti | Policy anonime consentivano modifica diretta del catalogo e Storage | RLS con segreto runtime e vista invoker applicata e verificata live (§107): accesso diretto negato senza segreto, backend e immagini pubbliche funzionanti; dati invariati. |
-| Convenzioni B&B / Cassa condivisa | Migrazioni strutturali live assenti o con versioni non corrispondenti nel repository | Recuperati 11 export strutturali e 36 nomi reali; niente reimport dei dati legacy. Base completa ancora incompleta (§10), flusso voucher/portafoglio reale da verificare. |
-| Build / CI / Job ERP | ERP compilava le sotto-app due volte; job cedolini supplementare ad ogni riavvio; configurazione runner test rimasta dopo rimozione suite | Build ERP separata dal ciclo app, eliminato avvio cedolini duplicato e residui runner/fallback di test. Nessuna suite permanente ricreata. |
-| ERP Tabelle / Tablet / Telefono | La PR #1158 adattava le tabelle allo spazio disponibile ma non rilevava il solo ridimensionamento del contenitore | Modifiche grafiche conservate per scelta esplicita del titolare. Aggiunto ResizeObserver sulla larghezza, aggiornamento delle etichette quando cambia il testo e disconnessione degli osservatori. Prova Chromium con CSS compilato: 390–1600 px, contenitore 300–1200 px, matrici escluse, nessun overflow orizzontale nei casi verificati e nessun errore JavaScript. Non è una verifica di ogni pagina autenticata. |
+1. Fare in modo che ogni pagamento chiuda il debito nel libro giornale (sospeso: giornale spento).
+2. Correggere il bilancio affinché usi `data_competenza`.
+3. Ricostruire debiti/crediti alla data di chiusura.
+4. Rettificare note di credito storiche errate (sospeso: giornale spento).
+5. Analizzare scritture non quadrate (sospeso: giornale spento).
 
-## Cosa non è dimostrato
+---
 
-### Audit import con originali reali — 08/10/2026 pomeriggio
+# 109. Aperto — fatture e banca
 
-Fonte autorizzata: cartella Drive `1ez8hULDsBzZMyQpiPq5AftICmBaOKgvZ`.
-Le prove browser usano i componenti React effettivi in un adattatore locale,
-con writer canonici sul Supabase reale; dove indicato, il writer è quello
-pubblicato su Render, chiamato con la credenziale di ingest già configurata.
-Non è una sessione amministratore del sito pubblico: non prova login/PIN,
-né tutti i pulsanti del gestionale. Nessun dato sintetico è stato scritto
-nel database reale; le prove di errore e dei collegamenti usano memoria isolata.
+1. Riallineare fatture riconciliate senza prova coerente.
+2. Riparare relazioni senza `fattura_id`.
+3. Recuperare fatture senza partita.
+4. Ridurre stati pagamento duplicati.
+5. Uniformare gli ID futuri.
+6. Classificare movimenti senza categoria.
 
-| Pagina / originale / azione | Evidenza e correzione | Limite / destinazione |
-|---|---|---|
-| Importa → XML 2025 `IT0526289001425121_9OV5Y.xml` | Log Render delle 15:35 UTC: anteprima e conferma HTTP 200, nessuna fattura persistita. Il writer manuale applicava l'anno automatico 2026 e rispondeva successo con zero importati. Eliminato il filtro dai caricamenti manuali, anche ZIP; rimane sui canali automatici. | Il contenuto di quello specifico XML non è stato recuperato da Drive: non dichiararlo ripristinato. Routing 2025/2026 e ZIP verificato in memoria. Il risultato XML collega la fattura e imposta il suo anno globale. |
-| Importa → SumUp `1000492833`, 22/09/2026, €454 | Clic reali anteprima/conferma, writer locale con database reale: fattura `157d5e6f-fa05-4be3-9f7c-8805896fbc77`. Corretto riconoscimento PDF estero; conservati hash e collegamento all'originale Drive. | Visibile nella coda Fatture estere da verificare. La lettura AI non è una conferma del titolare o una prova bancaria. Le nuove fatture AI attendono conferma prima dei derivati contabili. |
-| Importa → Any Lamp `2025230802`, 07/10/2025, €364,29 | Clic anteprima/conferma sul writer pubblicato dopo PR #1166: fattura `fceac0a0-7ad7-4807-9cbb-d9377fad8fd2`; anno, totale e collegamento all'originale verificati in Supabase. | Il nome del file contiene 2026, ma il contenuto è del 2025. Disponibile nella coda estere da verificare, senza derivati contabili o pagamento inventati. |
-| Importa → bonifico 07/01/2025 €1.500 | Clic e writer pubblicato: transfer `149e5fd8-2bff-4e39-ba93-651d95cd7083`, data/importo verificati in Supabase. Il writer rifiuta esiti di archiviazione falliti; il reimport riusa l'inbox del transfer senza creare/eliminare copie provvisorie. | Beneficiario/associazione HR da verificare; non riconciliato in banca. Commissione €1,10 distinta dall'importo. |
-| Importa → `Dettaglio_Movimenti_04523831214_20260923.xlsx` | Writer pubblicato iniziale: 0 letti, falso successo. Lettore corretto per intestazioni ripetute, importo EUR, data e segno esplicito dell'export Carta Business. Clic anteprima/conferma con coda canonica locale: 1 movimento reale €527,40 del 10/08/2026; job completato, originale conservato. | `EC-2026-08-10-527.40-08f2cdcc964f`, tipo carta_credito, evidenza provvisoria, non riconciliato. Le spese carta non generano anche uscite sul conto corrente; rimborsi mantengono segno opposto. |
-| Importa → secondo caricamento / coda | La coda riusava il vecchio risultato «1 importato», anche senza nuovi inserimenti. Ora dichiara duplicato e zero nuovi; un vecchio job completato con errore, parziale o zero letti è riprovabile. | Nessuna cancellazione delle prove conservate. Restano separati tentativo corrente e primo risultato persistito. |
-| Importa → `movimenti_carta_credito_Nexi.xlsx` | 402 righe, di cui 359 importi positivi, nessuna uscita con segno; include saldi precedenti. L'anteprima ora esegue la stessa validazione del writer e blocca prima della conferma. | Nessun movimento importato da questo riepilogo ambiguo; serve l'originale della carta con verso/importi verificabili. Non convertire tutto in entrate o negare tutti gli importi per supposizione. |
-| Importa → PDF Ayvens FIR0133977, 22/12/2025 | Numero `FIR0133977` erroneamente compatibile col vecchio riconoscitore di P.IVA finlandese. Regex per formati nazionali corretta; anteprima blocca la copia PDF italiana e richiede XML/P7M. | Nessuna fattura artificiale derivata dalla copia di cortesia. |
-| Importa → dimissioni del 2023 | Clic e writer pubblicato: originale `upload_dimissioni_telematiche_84a981c86e0a04ea` conservato, CF estratto; HR risponde dipendente_non_trovato. Corretto esito UI: documento archiviato ma collegamento HR parziale, con motivo. | Nessuna nuova anagrafica inventata. L'attuale motore scadenze può creare una scadenza arretrata per persona non presente: caso da riesaminare, non attestazione di un adempimento ancora dovuto. |
-| Importa → Ceraldi Valerio, LUL giugno 2022 | Clic e writer pubblicato: cedolino ERP `7b0a59e5-0fd8-4a81-9cd6-1aa91d15b62b`, proiezione HR `5c72d369-597e-437d-91db-31b8b9d3272b`; netto €902 e periodo 06/2022 verificati contro il PDF e le due basi dati. | Nessuna Prima Nota salari creata e nessun pagamento dedotto dal cedolino; l'anagrafica HR non è ancora collegata. |
-| Importa → PagoPA €124,60 del 23/08/2026 | Prima archiviato come non riconosciuto. Dopo PR #1166, clic e writer pubblicato: ricevuta `479b0c64-50a0-43ba-9edd-1fb2fd88b3e5`, €123,10 ente + €1,50 commissione = €124,60 verificati in Supabase. | Originale iniziale conservato e collegato alla ricevuta; non è più «Da classificare». `banca_verificata=false`. Il risultato collega la pagina Ricevute di pagamento. |
-| Importa → `DetF24Sel_04523831214 (4).pdf` | Anteprima iniziale bloccata: zero tributi, differenza −€2.153. Il lettore quietanza ora riusa la griglia canonica con stesso CF e quadratura obbligatori. Dopo PR #1166, clic e writer pubblicato: quietanza `c10a48d8-b4ed-4cd0-b22b-9655ab175f2d`, una riga 3931/2019, €2.153, pagamento 14/11/2019; stampa 16/01/2025. | Modello F24 e riscontro bancario mancanti; proposta contabile bloccata per revisione del codice tributo. Il messaggio «importata e riconciliata» era falso: sostituito con acquisizione, avviso del modello mancante e collegamento alla pagina F24. |
-| Importa → `estratto_conto_unico_aggiornato.xlsx` | Il contenuto è un riepilogo fornitore di canoni/contratti/NC, non un estratto bancario. | Non importato come movimenti bancari. Manca un flusso guidato dedicato alla riconciliazione di questo riepilogo. |
-| Lotti → Ricette → categorie / scheda | 12 categorie verificate nel browser, assegnazione/rimozione/reload, richieste concorrenti, errori remoti, scheda e tre flag indipendenti. Semilavorati conserva fornitore, foto, confezione, P.IVA e codice articolo. | Prove su API simulate e writer in memoria: nessuna ricetta di prova inserita nel catalogo reale. |
-| ERP ↔ Lotti → Acquisti semilavorato | Nuova lettura amministratore delle fatture canoniche nell'anno globale ERP, con P.IVA e codice articolo esatti. Escluse cancellate, archiviate, collisioni, DDT, emesse e AI da verificare anche dal feed ERP→Lotti. | Non associa per marchio o somiglianza del nome; senza identità esplicita mostra i campi da completare. Non è una prova di pagamento o giacenza. |
-| Lotti ↔ Menu ↔ B&B | Le nuove categorie mantengono i tre flag canonici; il catalogo Colazione riceve le categorie manuali e il fornitore. Errori del ponte Menu restano visibili nel salvataggio. | Ordini, cassa, stampa e voucher B&B con dati reali non sono certificati da questi controlli; nessun acquisto o ordine cliente simulato in produzione. |
+---
 
-La matrice rimane aperta per gli altri layout F24/quietanze/PagoPA e LUL,
-corrispettivi, export POS, posta e giro Drive completo con dati reali. Non avviare un giro
-massivo che sposta/elimina file per chiamarlo «test di ogni pulsante».
-Registrare per ogni prova originale, writer, destinazione, esito e limiti.
+# 110. Aperto — documenti
 
-### Segnalazioni successive: anagrafiche, diagnostica HR e vista fattura
+1. Eliminare decisioni basate sul nome file.
+2. Completare backfill relazioni.
+3. Bonificare collegamenti protocollo.
+4. Verificare blob non referenziati.
+5. Non creare nuovi endpoint originali paralleli.
 
-- `/hr/dipendenti/anagrafica`: il precedente import compilava solo schede
-  esistenti; con archivio vuoto rifiutava tutte le persone. Il titolare ha
-  richiesto l'import di `Lista dipendenti Ceraldi_Group_SRL.xlsx`: 30 righe,
-  16 attive e 14 non attive. L'opzione esplicita `crea_mancanti` consente
-  nuove schede dopo anteprima e conferma dello stesso SHA-256, con CF, nome,
-  cognome e stato leggibili. Writer condiviso con la creazione manuale,
-  identità deterministica per CF. Matricola, gruppo, mansione, sede e note
-  sono conservati. I record già presenti mantengono stato e valori diversi;
-  i conflitti restano visibili. Non si inventano PIN, contratto, paga o data
-  di cessazione. Prove browser e handler sul file originale in archivio
-  isolato: 30 create, 16/14, secondo import 30 invariate, filtri, scheda,
-  annulla e schermo mobile verificati. La prova isolata non ha inserito le
-  schede in produzione; il successivo import dell'utente delle 17:24 UTC
-  dell'08/10 è registrato nei log e le 30 schede risultano ora in HR reale.
-- `/hr/dipendenti/diagnostica`: `db.command("ping")` apparteneva al vecchio
-  adattatore e generava «SupabaseCollection object is not callable» pur con
-  tabelle leggibili. Usa ora il `ping()` Postgres effettivo con timeout.
-  Il conteggio in forza usa la stessa regola della pagina anagrafica.
-  IMAP considera gli alias effettivi; la conversione PDF considera anche
-  LibreOffice. Servizi opzionali assenti e funzioni soltanto presenti nel
-  codice sono informazioni, configurazioni parziali sono avvisi. Non
-  dichiarare un flusso funzionante perché esiste una funzione Python.
-- `/fatture` → Vedi: gli XML vengono trasformati dal foglio
-  `FoglioStileAssoSoftware.xsl`; i PDF esteri aprono il proprio originale
-  attraverso il reader unico. Rimosso il ripiego con riepilogo incompleto.
-  XML non renderizzabile e originale mancante producono un errore visibile.
-  Il download mantiene il nome e il formato reali del file, senza chiamare
-  XML un PDF. Il reimport per hash può ripristinare il collegamento
-  all'originale senza ripetere l'estrazione AI o creare una seconda fattura.
+---
 
+# 111. Aperto — HR
 
-### Cedolini, importazioni persistenti e originali — 08/10/2026
+1. Eliminare fork residui.
+2. Riparare bonifici con cedolino orfano.
+3. Ridurre coda bonifici.
+4. Verificare doppio conteggio acconto.
+5. Portare tutti gli ingressi cedolino sul motore unico.
 
-I log di produzione mostravano ripetuti `service_account_storage_quota`:
-ogni pagina retributiva del Libro Unico tentava di creare una copia Drive.
-Il riepilogo HR nascondeva gli errori e presentava «20 documenti, 2 buste»
-come successo completo. La correzione conserva un solo originale per PDF;
-se arriva da Drive ne riusa il riferimento. L'upload manuale usa direttamente
-`gestionale.blobs`, deposito protetto già presente, con chiave SHA-256:
-non attende ricerche e tentativi di upload Drive destinati al rifiuto per quota.
-Questa eccezione al Drive-only è necessaria per il caricamento manuale
-richiesto dal titolare. Il binario non viene copiato su ciascuna busta né
-nei JSON HR; ogni cedolino conserva solo riferimento e intervallo di pagine.
-Le risposte PDF autenticate espongono soltanto le pagine della persona.
-Un mancato deposito persistente blocca l'acquisizione e viene segnalato.
-Manuale e Drive usano lo stesso writer e la stessa deduplica. Il reimport
-di una busta ERP riprova il deposito HR e completa il collegamento a una
-nuova anagrafica con lo stesso CF, senza cambiare importi o pagamenti.
+---
 
-HR accoda PDF/ZIP e conserva gli identificativi dei job. La coda ERP copre
-anche i cedolini; il job è salvato prima della risposta 202. I file delle
-operazioni lunghe sono conservati per la ripresa dopo riavvio. I job HR ed
-ERP dello stesso file hanno identificativi e copie temporanee distinti;
-un risultato parziale non blocca un nuovo tentativo. Nessun cedolino
-importato comporta l'affermazione di un bonifico realmente pagato.
+# 112. Aperto — Menu / B&B / Cassa
 
-File, anteprime e riepiloghi delle due pagine restano disponibili fuori dal
-componente e in IndexedDB per la scheda del browser, anche al ricaricamento.
-Il logout elimina queste copie locali. Cambiando applicazione, un job già
-accodato prosegue sul server; i file non ancora ricevuti sono riprendibili
-dalla pagina. Il throttling ERP attende `Retry-After` sullo stesso file,
-invece di trasformare in errori tutta la selezione dopo un 429.
+1. Applicare migrazioni prodotto unico.
+2. Verificare registro migrazioni.
+3. Verificare `public.menu_products`.
+4. Verificare `bb_prodotti`.
+5. Verificare codice PRD.
+6. Provare voucher.
+7. Provare ordine hotel.
+8. Ripubblicare Menu da Lotti.
+9. Collegare ricette senza doppioni.
+10. Esportare migrazioni Cassa/Catalogo mancanti.
 
-Lo ZIP allegato dall'utente è byte-identico all'Excel movimenti già caricato:
-il MIME riconosce ora la struttura XLSX. Il visualizzatore non apre Excel
-in un iframe che provoca download automatici; Scarica conserva nome,
-formato e byte originali e scarta risposte riferite al documento precedente.
+---
 
-La posta HR usa credenziali e mittenti del gestionale, con downloader comune
-(ultimi 90 giorni, massimo 200 messaggi per lettura) e writer canonico delle
-buste. L'assenza delle vecchie variabili IMAP HR non costituisce più un
-errore quando la casella centrale è configurata. Accesso reale alla casella
-non attestato dalla diagnostica o dalle prove isolate.
+# 113. Aperto — IVA / LIPE
 
-Verifiche locali: PDF reale Ceraldi Valerio; archivio unico e fallback
-persistente, isolamento delle pagine, errori parziali, deduplica e riparazione
-del legame HR. Browser sui componenti reali con API simulate: 20 file,
-2 successi/18 errori visibili; navigazione e reload con file conservati;
-429 e ripresa; download dell'Excel allegato e PDF identici agli originali.
-Le prove non equivalgono a una sessione amministratore nel browser live.
+1. Completare 6013.
+2. Completare 6099.
+3. Credito annuale.
+4. Compensazione orizzontale.
+5. Conguaglio dicembre.
+6. Unificare credito precedente.
+7. Implementare confronto LIPE con soglia di piccolo scostamento configurata.
+8. Evidenziare le componenti dello scarto.
+9. Creare attese tributo da LIPE quando F24 manca.
+10. Collegare quietanza con protocollo alle attese LIPE senza creare F24 fittizi.
 
-PIN richiesti dal titolare: assegnati e verificati su Supabase 23 hash
-bcrypt delle ultime quattro cifre del cellulare; nessuna collisione fra i
-numeri presenti. Sette schede senza telefono restano senza PIN. I lookup
-sono calcolati dal servizio al primo accesso; ruoli e stato del rapporto
-non sono stati modificati. Non riportare PIN o telefoni in questo documento.
+---
 
-Riattivazione selettiva richiesta: `SCHEDULER_JOB_ALLOWLIST` abilita soltanto
-`drive_cartella_unica`, `import_cartelle_drive`, `enable_banking_giro`,
-anche se l'interruttore generale resta spento. Gli altri job e gli scheduler
-HR/Lotti restano sospesi. Drive unico ogni 15 minuti, cartelle configurate
-ogni 30 minuti, Banca alle 07:15 e 09:00 Europe/Rome. Il job bancario richiede
-anche credenziali e consenso valido: abilitare il job non ricollega un conto.
+# 114. Aperto — F24
 
-Rilascio PR #1168 (`4899691`) live alle 18:17 UTC, health ERP/HR/Lotti/Menu
-allineati e CI/controllo produzione verdi. Reimport reale di Ceraldi Valerio
-06/2022: una busta già presente, zero duplicati nuovi, netto €902 invariato,
-legame HR prima assente ora presente. Il successivo caricamento manuale
-ha usato realmente il deposito protetto; snapshot Supabase: 20 cedolini,
-tutti collegati all'anagrafica. Non è il conteggio di un singolo batch utente.
-Prova Chromium con 655 file e un 429 superata, inclusa persistenza dopo reload.
-Scheduler selettivo avviato nei log; consenso Banca assente nel database.
-La scheda Drive legge lo stato del job e la prossima esecuzione effettiva:
-non deve mostrare una frase fissa che dice «automatico disattivato».
+1. Consolidare F24 ↔ banca.
+2. Eliminare matching duplicati.
+3. Gestire modelli senza data/saldo.
+4. Completare riscontro contributi.
+5. Correggere parser storici solo con PDF reali.
+6. Mai forzare F24 non quadrato.
 
-Difetto verificato dopo il rilascio: il deposito SQL dei cedolini non
-invalidava la cache HR di 15 secondi; la sincronizzazione immediata poteva
-ignorare la busta appena acquisita. Un import successivo la recuperava,
-rendendo il risultato intermittente. Sincronizzazione e lettura Archivio paghe
-rileggono ora le collection interessate. Anche l'ingestione ERP/Drive aggiorna
-il registro mensile; le righe invariate non vengono riscritte. La pagina
-conserva anno/mese/stato, offre Tutti gli anni dal 2018 e ignora risposte
-arrivate dopo un cambio di filtro. I PDF senza netto restano consultabili
-separatamente e non sono descritti come buste da zero euro. Il PDF di ogni
-riga segue il cedolino collegato, comprese 13a e 14a.
+---
 
-Prova isolata con snapshot reale di 27 cedolini: cache inizialmente calda,
-inserimento SQL esterno di Ariante 08/2022, sincronizzazione e risposta della
-pagina restituiscono €251 con PDF. Secondo giro: zero scritture su 19 righe.
-Chromium sul componente reale verifica Ariante, cambio rapido 2026/2022,
-persistenza filtri, import seguito dal periodo corretto e anno 2018.
-Questa prova usa dati reali copiati e API locali; non equivale a una sessione
-amministratore aperta nel browser di produzione.
+# 115. Aperto — Drive
 
-### Verifica mirata TFR dell'08/10/2026
+1. Rendere sostenibile una verifica completa periodica.
+2. Continuare bonifica relazioni.
+3. Collegare originali HR quando determinabili.
+4. Eliminare vecchi sync non canonici.
 
-Il dominio `impresasemplice.online` e il servizio Render esponevano entrambi
-il commit `eb34b7586a4d14ac66a73abbbdc87b74c0f3a626` prima della correzione.
-La ricerca dei chiamanti non ha trovato frontend o job che usino il vecchio
-POST con il 23%; la pagina attiva chiama situazione, simulazione, componenti
-di liquidazione e registro acconti. Nessun dato operativo è stato inserito.
+---
 
-Controlli locali: compilazione e analisi statica Python, build HR, diagnostica
-in memoria su route rimossa, numeri/date invalidi, competenza assente,
-validazione prima delle rettifiche, errori delle componenti, ferie mancanti,
-somma rate al centesimo e scadenze di fine mese. Prova Chromium sul componente
-TFR reale con sole API simulate: render completo, errore acconti visibile,
-ferie mancanti che bloccano rate/stampa, risposte del dipendente precedente
-scartate, vecchie rate rimosse se il ricalcolo fallisce, report esplicitamente
-non fiscale e note stampate come testo. Non è una certificazione
-delle formule fiscali/contrattuali o del saldo del fondo. Non sono state
-ricreate suite permanenti. Pubblicazione e controllo del commit online sono
-passaggi distinti dalle verifiche locali.
+# 116. Aperto — Lotti
 
-La revisione ha controllato codice e dispatch di route, non ha eseguito ogni pagina nel browser autenticato né ogni operazione economica. Il vecchio conteggio di pagine non va usato come prova di copertura completa: i registri di navigazione ERP, HR, Lotti e Menu hanno viste e sottoschede ulteriori.
+1. Smaltire arretrato.
+2. Consolidare ricerca web.
+3. Risolvere unità non convertibili.
+4. Confermare mapping.
+5. Migrare foto residue a Storage.
+6. Non inventare scadenze o lotti.
 
-Restano da completare: matrice esaustiva pagina → chiamate → endpoint → writer, riconciliazione universale (§119A), fork PIN/identità (§65), liquidazione TFR, ricostruzione completa delle migrazioni, controlli end-to-end su documenti reali nel nuovo archivio. I conteggi di `except`, cancellazioni o endpoint dell'analizzatore sono indicatori da esaminare, non automaticamente bug né prova di correttezza.
+---
 
-La chiusura di ogni voce richiede una prova pertinente: build per compilazione, dispatch per route, diagnostica per la logica, controllo live per RLS/Storage, quadratura documentata per contabilità. Nessun HTTP 200 o schermata vuota certifica queste ultime.
+# 117. Aperto — Flotta e verbali
+
+1. Popolare l'anagrafica veicoli con i contratti documentati.
+2. Registrare lo storico assegnazioni con `dal/al`.
+3. Marcare `GW980EP` come targa corretta e non creare `QW980EP`.
+4. Tenere `GG473WT` da verificare perché compare in un verbale ma non nella flotta nota.
+5. Escludere i verbali personali `DW730ZF`.
+6. Confermare le date non provate, in particolare GA304TA e FR788JG.
+7. Collegare le fatture del noleggiatore ai relativi verbali quando documentato.
+8. Conservare separate sanzione e spesa gestione/rinotifica.
+9. Generare proposta trattenuta soltanto dopo pagamento documentato e conducente certo.
+10. Inviare al consulente la nota nel mese successivo al pagamento.
+11. Valutare in futuro un controllo presenze come alert, mai come assegnazione automatica del conducente.
+
+---
+
+# 118. Aperto — B&B
+
+1. Attivare SumUp solo con chiave configurata.
+2. Chiudere SQL obsolete quando possibile.
+3. Logout sessione titolare DB.
+4. Configurare URL recensioni.
+5. Configurare WhatsApp solo per recensioni.
+6. Completare varianti.
+7. Rivedere prezzi extra tavolo.
+8. Rimuovere demo al lancio.
 
 ---
 
 # 119. Aperto — sicurezza Git
 
-Nella cronologia sono esistiti segreti reali. La loro rotazione resta da completare: riscrivere Git non revoca le credenziali.
+Nella cronologia sono esistiti segreti reali.
 
-Il 08/10/2026 il titolare ha autorizzato esplicitamente di mantenere soltanto la versione finale, eliminando anche la cronologia Git. Ha inoltre richiesto di conservare e verificare prima le modifiche grafiche della PR #1158. Dopo integrazione e verifica del rilascio, la pulizia deve mantenere lo stesso albero di file in un unico commit radice, eliminando i vecchi branch e tag con verifica dei riferimenti remoti. Le migrazioni necessarie rimangono nel codice finale.
+Prima:
 
-La pulizia dei riferimenti Git non garantisce la cancellazione delle copie locali altrui, dei riferimenti interni alle PR o delle cache conservate da GitHub.
+ruotare credenziali.
+
+Solo dopo autorizzazione:
+
+eventuale riscrittura cronologia.
+
+Riscrivere Git non revoca le credenziali.
 
 ---
 
@@ -5567,175 +5258,22 @@ La pulizia dei riferimenti Git non garantisce la cancellazione delle copie local
 
 # 120. Verifica delle modifiche
 
-09/10/2026: PR #1182 pubblicata su Render (commit `889d7397`, deploy live
-08:36 UTC). Ripartizione salari condivisa fra ERP e HR: quote su piu'
-cedolini, residuo/acconto, priorita' alla competenza esplicita e poi al
-residuo piu' antico, senza duplicare pagamenti gia' presenti. Verifiche
-isolate con dati reali e browser; asset HR pubblicato e health confermati.
-Applicata successivamente la rettifica documentata: 124 causali rilette
-dalle ricevute originali, 60 associazioni (17 a pagamenti gia' registrati),
-13 date BNL recuperate da numero assegno e importo; 859 proiezioni mensili
-riallineate. Nessun netto cedolino modificato. Verifica SQL successiva:
-zero chiavi pagamento duplicate. Le date prive di prova restano aperte.
-
-09/10/2026, verifica locale successiva: la cartella DA ELABORARE indicata
-dal titolare contiene 11.384 file, dei quali 7.822 PDF. La precedenza di
-tutti gli XML impediva ai PDF senza parole chiave nel nome di avanzare.
-Il lotto ora riserva turni a estratti, cedolini, XML e altri documenti;
-sulla coda reale il lotto da 50 comprende 25 XML e 25 PDF. I log live
-mostrano inoltre tre ricerche di riconciliazione che caricavano gli originali
-di tutte le fatture candidate; ora usano soltanto i metadati necessari.
-Corretto anche il contratto difensivo `movement_ids=[]`: non esegue letture
-ne' scritture. Il chiamante import fatture aveva gia' una guardia sulla
-lista vuota: questo caso non e' la causa osservata nei suoi log.
-Sui tre ZIP (122 file) riprodotti e corretti 12 estratti BPM classificati
-come mutui e un BNL rifiutato per il codice alfabetico ZI allineato a destra.
-Il BNL verifica 36 movimenti e saldo 640,71 + 7.345,00 - 6.694,79 =
-1.290,92 EUR; il piano di ammortamento autentico resta classificato mutuo.
-Non tutti i formati dei tre ZIP sono gia' supportati: carte BNL, alcuni
-export storici e documenti accessori richiedono ancora verifica dedicata.
-PR #1183 live su Render dalle 09:06 UTC, commit `ff7f4587`; health
-Supabase verificato. Primo lotto online 09:08-09:13: 50 file in 287,4 s,
-con 25 PDF e 25 XML; 23 documenti acquisiti, un arretrato e 26 segnalazioni.
-Di queste, 25 sono fatture 2026 escluse dall'anno automatico 2025 scelto
-alle 08:20; l'altra e' un regolamento aziendale preso per cedolino.
-Il riconoscimento di questo documento amministrativo resta da correggere.
-
-Correzione successiva del rinvio per anno: i corpi XML non importati
-conservano i propri anni nel registro e vanno in ARRETRATO, anche negli
-XML con piu' fatture parzialmente importati. Cambiando anno, ritornano
-in coda senza duplicare le fatture gia' presenti. Anche i vecchi falsi
-errori con l'anno documentato nel messaggio vengono ripresi o rinviati.
-Recupero limitato a 25 spostamenti per lotto per non fermare i nuovi PDF;
-62 test di regressione superati. PR #1184 live dalle 09:21 UTC, commit
-`7bf46a85`; health Supabase verificato. Il registro successivo alle 09:23
-conferma i rinvii in ARRETRATO e il recupero in coda degli anni pertinenti.
-
-Ottimizzazione successiva dei bonifici: Import documenti perdeva il Drive ID
-del PDF appena scaricato; l'archiviazione di transfer e inbox rieseguiva
-ricerca, verifica e talvolta download dello stesso originale. Nel campione
-live di 66 bonifici l'archivio ritrovava lo stesso ID, quindi non e' provata
-la creazione di copie nuove: il costo osservato e' nei passaggi ripetuti.
-Il job ora trasmette riferimento e MD5 del contenuto scaricato, solo con
-SHA-256 corrispondente e contesto interno della cartella unica. I membri
-ZIP e gli header degli upload non riusano l'ID del contenitore. La ricerca
-doppioni legge solo metadati e il testo PDF viene estratto una sola volta.
-66 test passano, inclusa riapertura byte-identica, rifiuto di originali
-modificati e archiviazione verificata per gli altri ingressi. PR #1185 live
-dalle 09:34 UTC (`17e1c69d`). Campione live 09:38-09:40: 11 bonifici PDF,
-mediana 4,63 s contro 9,34 s su 46 bonifici del campione 09:08-09:18.
-Sono campioni diversi, non un benchmark controllato ne' una stima della
-durata dell'intera coda. Verifica SQL dei primi 4: riferimento originale
-conservato e canale Drive corretto per tutti.
-
-Un successivo log live mostra un XML con fattura numero 41 che impiega
-116,87 secondi e riesamina 76 movimenti. La selezione cercava "41" come
-sottostringa di causali e riferimenti bancari: al controllo SQL 74 movimenti
-ancora aperti contenevano la sottostringa, uno solo passa il nuovo filtro
-senza cifre adiacenti.
-La query ora esclude le cifre adiacenti; mantiene FT41, 41/A, citazioni
-cumulative e ricerca per importo esatto. Il motore di riconciliazione resta
-lo stesso. 67 regressioni e tutti i controlli CI superati. PR #1186 live
-dalle 09:40 UTC (`d44f5106`), health delle 09:41: Supabase connesso,
-archivio verificato, zero errori di hydration. Il beneficio specifico
-del filtro sui prossimi XML non e' ancora misurato. Ultimo lotto completo
-del job precedente (09:23-09:32): 50 file, 39 elaborati e 11 rinviati per
-anno, zero errori. L'arretrato non e' esaurito; lo scheduler continua i
-lotti sul server, indipendentemente dalla pagina aperta.
-
-08/10/2026: recupero acconto collegato al dovuto di Archivio paghe, posizione
-dipendente ed export. Il netto PDF resta distinto: Dias marzo 2023 stampa
-7,00 EUR e recupera 800,00 EUR con voce 000306, quindi il dovuto e' 807,00 EUR.
-Nessun pagamento viene creato da quella trattenuta. Rimosse le deduzioni di
-acconto dalla differenza competenze/trattenute. Il parser unico verifica la
-voce e l'importo nella stessa riga della colonna TRATTENUTE, conserva pagina
-e voce come prova e segnala valori ambigui o negativi. Prestiti e anticipi
-TFR restano separati. Riletti 21 PDF originali Zucchetti, TeamSystem e CSC:
-12 recuperi espliciti confermati; nessuna variazione dei netti stampati.
-Verificati su snapshot SQL di 210 cedolini: dovuto Dias 807 EUR anche prima
-del riallineamento della proiezione, secondo sync zero scritture, pagamenti
-invariati, importi manuali preservati. Chromium conferma dettaglio netto,
-recupero e dovuto. Nell'import XLSX il foglio Cedolini viene scelto anche se
-preceduto da Pagamenti: 623 righe lette dal file reale del titolare. I netti
-Excel si confrontano con il netto PDF; gli importi ricostruiti con il dovuto.
-Gli importi confermati dal titolare conservano il netto separato dal dovuto;
-un PDF successivo aggiunge soltanto il recupero esplicito, senza perdere
-il valore confermato. Due netti diversi nello stesso file per dipendente,
-mese e anno restano entrambi in verifica: nessun valore viene scelto in
-base all'ordine delle righe. Importi vuoti non diventano zero.
-
-08/10/2026: recuperati nel Menu canonico 320 prodotti, cinque categorie e
-29 sottocategorie dal registro originale CeraldiERP. Conservati gli ID e i
-prezzi documentati, senza sovrascrivere i 247 prodotti provenienti da Lotti.
-193 foto sono disponibili negli asset WebP del sito e collegate ai prodotti;
-le altre non sono state inventate. Verificato il menu pubblico live: 320
-prodotti e 193 immagini. Questo recupero non ripristina dipendenze da Qromo.
-Frigoriferi, congelatori e temperature storiche non sono stati ritrovati
-nelle fonti controllate: il recupero di questi dati resta aperto.
-
-Gli import delle sottocartelle Drive conservano per ogni file ID, percorso e
-hash dell'originale fino al writer: gli F24 non tentano più un secondo upload
-perché è stato perso il contesto della cartella. I membri ZIP non ricevono
-l'ID dell'archivio come se fosse il loro PDF. Verificato il passaggio del
-contesto nei due casi. La riconciliazione stipendi riusa i token dei nomi in
-una cache limitata e cede il loop ogni 50 movimenti, per lasciare proseguire
-le richieste web anche durante confronti che non producono scritture.
-La PR #1171 è live dalle 19:21 UTC, commit `b256b2c`.
-La rilettura dell'originale di giugno 2020 ha ripristinato lo zero esplicito
-anche nella riga HR e nella proiezione mensile. Un secondo caricamento di
-una busta già presente a zero o senza netto viene contato come duplicato,
-non come nuovo inserimento; gli aggiornamenti del deposito sono esiti validi.
-
-08/10/2026: import importi HR esteso a XLSX, CSV, TSV e tabella incollata,
-con anteprima e conferma in coda persistente. Il documento del titolare
-contiene 623 righe di importi attribuiti dai bonifici: sono confronti da
-verificare, non netti certificati né nuovi pagamenti. Identità ambigue/non
-trovate restano segnalate; dipendente, anno, mese, tipo e importo rendono
-idempotente il caricamento anche cambiando nome o formato al file. Un netto
-esplicito può riempire una casella mancante; un netto esistente non viene
-sovrascritto. Gli scostamenti rimangono accanto alla riga in Archivio paghe,
-con fonte e verifica esplicita; cambiare poi il netto riapre il confronto.
-Importo e saldo sconosciuti rimangono vuoti anche nell'Excel esportato.
-Verifiche isolate sul testo reale e sul suo equivalente XLSX: 555 righe
-associabili, 68 senza identità univoca, secondo import zero nuove scritture;
-nessuna modifica ai netti o ai bonifici presenti nello snapshot.
-Chromium verifica incolla, anteprima, conferma, avviso per riga e permanenza
-del file cambiando pagina/ricaricando. I riepiloghi locali precedenti vengono
-normalizzati solo per il motivo esatto di foglio presenze riconosciuto;
-altri errori e netti illeggibili non vengono nascosti.
-Riletti dieci originali con netto mancante: Capezzuto giugno 2020 stampa
-`0+` nella casella netto; il parser ora riconosce quello zero esplicito.
-Gli altri nove PDF controllati non espongono un valore nella casella:
-non si ricava un netto arbitrario dalle competenze o dal nome del file.
-PR #1170 live dalle 19:02 UTC, commit `321143b`.
-
-08/10/2026, controllo live import: i PDF di Murolo con sola pagina presenze
-venivano riletti 4–5 volte e segnalati come buste fallite. Ora l'import HR
-restituisce `saltati_presenze`, senza errore né importi inventati; riprendere
-la coda riusa il risultato. Le letture illeggibili restano riprovabili.
-I log della coda distinguono esito, tempo di attesa e durata di elaborazione.
-Il trasferimento degli originali su Drive non occupa più il lock delle
-scritture di tutte le collezioni. F24 e quietanze ricevuti da Drive conservano
-il riferimento originale, evitando un nuovo upload che falliva per quota.
-Prova isolata: trasferimento Drive bloccato e aggiornamento della coda HR
-completato indipendentemente; import parziale riprovabile, skip riusato.
-La PR #1169 è live su Render dal 08/10/2026 18:50 UTC (commit `0637944`).
-
 Per ogni modifica pertinente:
 
-1. compilazione Python;
-2. analisi statica;
-3. build frontend;
-4. `git diff --check`;
-5. revisione avversariale;
-6. commit dei soli file pertinenti;
-7. push branch;
-8. PR finale;
-9. merge su `main`;
-10. verifica CI;
-11. verifica health;
-12. verifica commit pubblicato;
-13. controllo live del flusso.
+1. test mirati;
+2. suite backend quando necessaria;
+3. test frontend;
+4. build;
+5. `git diff --check`;
+6. revisione avversariale;
+7. commit dei soli file pertinenti;
+8. push branch;
+9. PR finale;
+10. merge su `main`;
+11. verifica CI;
+12. verifica health;
+13. verifica commit pubblicato;
+14. controllo live del flusso.
 
 ---
 
@@ -5775,7 +5313,7 @@ il flusso è difettoso.
 Non dichiarare completato perché:
 
 - compila;
-- build verde;
+- test verdi;
 - HTTP 200;
 - pagina visibile.
 
@@ -5789,80 +5327,6 @@ Verificare:
 - prova;
 - scrittura;
 - risultato UI.
-
----
-
-# 123A. Applicazione Ceraldi collegata al gestionale
-
-## REGOLA
-
-`/primanota-ceraldi.html` conserva l'interfaccia dell'applicazione del titolare
-e usa esclusivamente la sessione e le API del gestionale. I dati strutturati
-rimangono nel Supabase canonico. Nessuna chiave Supabase nel frontend, nessun
-database parallelo, nessuna copia delle vecchie sessioni o cache contabili.
-Fiscale, paghe e menu sono pannelli della stessa applicazione e leggono i
-domini ERP, HR, Lotti e Menu attraverso il relativo handoff autenticato.
-
-Le azioni della pagina devono richiamare i writer esistenti. Un pagamento
-banca manuale resta in attesa di riscontro: solo un movimento effettivo di
-estratto conto può confermare il pagamento. Corrispettivo XML, chiusura POS e
-accredito banca sono prove distinte. Un importo o uno stato assente rimane
-assente; non diventa zero o pagato. Operazioni non collegate espongono un
-errore, senza simulare salvataggi riusciti.
-
-Il pannello Automazioni mostra esiti e log dei motori esistenti, le relative
-anteprime e i comandi disponibili. Non avvia un secondo scheduler o un secondo
-writer nel browser. Aggiornamenti periodici dei pannelli sono solo letture.
-Lo stato dello scheduler distingue esplicitamente l'esecuzione periodica
-attiva da quella sospesa; una risposta HTTP riuscita non significa che i job
-siano attivi. Il mancato accesso a un singolo endpoint non chiude la sessione
-ERP finché la verifica centrale non conferma che non è più autorizzata.
-La cancellazione definitiva automatica del vecchio cestino è disabilitata:
-si usano archivio, storno o quarantena canonici.
-
-Il codice utile dell'originale è conservato in
-`reference/ceraldi/automazioni-originali.js` come stringhe con hash del sorgente
-originale, senza credenziali e senza esecuzione/import nella pagina. Serve a
-confrontare e migliorare i motori canonici, non a riattivare il vecchio backend.
-
-L'aggancio note di credito dell'importatore richiede un'unica fattura attiva
-dello stesso fornitore e riferimento XML esplicito. Rispetta `[NC-NO-AUTO]`,
-relazioni manuali già salvate e fatture pagate. Importi decimali documentati,
-senza arrotondamento binario. Quando arriva l'originale, il medesimo motore
-recupera le note precedenti ancora senza collegamento; non crea nuovi fatti
-contabili. Il reader fatture deduplica per prova originale prima di paginare,
-senza il vecchio tetto silenzioso di 5000 righe; i corpi file si aprono dal
-dettaglio e non vengono caricati nell'elenco.
-
-## VERIFICA CODICE
-
-Regressioni dei contratti frontend, sessioni, ruoli, provenienza dei dati,
-aggancio NC e paginazione sono incluse in CI. Nessun test inventa una prova
-bancaria a partire da uno stato legacy. La build ERP include la pagina e i
-moduli statici. La verifica con dati operativi richiede una sessione del
-titolare; non è dimostrata dai soli test con fixture.
-La dependency di autenticazione ERP accetta il cookie httpOnly già usato dal
-middleware, con precedenza al Bearer esplicito e senza ripiegare su cookie se
-l'header è invalido. I reader HR applicano filtro, ordinamento, offset e limite
-nel cursore Supabase; l'archivio vuoto non deve generare un errore di pagina.
-
-## APERTO
-
-Gli storici del vecchio Supabase non sono contenuti nel file HTML recuperato
-e non sono stati migrati. Import JSON generici, AI e integrazioni esterne del
-vecchio progetto non possono passare come scritture REST: usare gli import e
-i moduli canonici disponibili, oppure adattare il motore esistente prima di
-abilitare un comando. Le elaborazioni HR massive e la fiscalità avanzata si
-aprono nei rispettivi moduli canonici. Le relazioni NC nel pannello di stato
-sono limitate alle ultime 100 fatture, con perimetro esplicito.
-L'archivio legacy `incassi` rappresenta transazioni POS SumUp/Numia: i
-riepiloghi giornalieri canonici non sono singole transazioni e le entrate
-contanti di Prima Nota non possono sostituirle. Finché manca un reader delle
-transazioni originali, questo collegamento resta esplicitamente indisponibile.
-I riepiloghi originali sommano soltanto importi disponibili: se mancano
-importi documentali, la pagina segnala che i totali sono parziali e il valore
-del documento rimane assente. Per una quadratura definitiva completare gli
-originali e verificare i prospetti del dominio contabile canonico.
 
 ---
 
@@ -5887,3 +5351,33 @@ Non aggiungere:
 - secondo endpoint equivalente.
 
 L'obiettivo di GestionaleCloud è che ogni evento reale esista una sola volta e che documenti, obblighi, pagamenti, prove, contabilità e interfaccia siano collegati attraverso la stessa catena di dati.
+
+
+## Ripristino richiesto dal titolare — 09/10/2026
+
+Codice applicativo recuperato dal commit a821ffb7dd433b29289a415a2ee8b7c2169499f1 del 07/10/2026, precedente alla PR #1159. Le dichiarazioni di produzione precedenti in questo documento descrivono quello stato storico, non certificano il database attuale. Conservati registro migrazioni attuale, accesso Menu compatibile con le policy attuali, cursore/cache HR e protezioni di avvio/scheduler attuali: nessuna riattivazione implicita di seed TFR, cessazioni anagrafiche, riparazioni o job fuori allowlist. Il ripristino del codice non recupera dati cancellati. Nessuna migrazione o scrittura SQL eseguita per questo ripristino. Verifica import reali e dati collegati ancora da completare.
+
+### Logica pagamenti–cedolini conservata
+
+Salvataggio completo prima del ripristino: branch `codex/salvataggio-prima-ripristino-20261009`, commit `e6ca817c84aaaf60f0a6133167d66bc9322e7cb2`.
+Identità dipendente da CF, nome completo o cognome univoco; ambiguità in verifica. Competenza dichiarata o unica mensilità esplicita, mai ricavata automaticamente dalla sola data bancaria. Un pagamento unico alla sua data reale; quote prima sui cedolini scelti, altrimenti sul periodo esplicito, poi sui residui più antichi; eccedenza come acconto. Netto mancante resta assente. Dovuto = netto stampato + recupero acconto esplicito; la trattenuta non crea un nuovo pagamento. PDF e riscontro bancario sono prove distinte; conferma titolare registrata separatamente. Deduplica per riferimenti/hash/ID, non solo importo/data/nome. Anteprima versionata e conferma transazionale, senza doppio utilizzo per altri dipendenti. Conservata UI HR e comando ERP di ripartizione per questi contratti. Il motore può riutilizzare un acconto su un cedolino successivamente acquisito: non limita tutte le quote alle sole buste anteriori al pagamento. Nessun nuovo dato creato per provare il flusso in produzione.
+
+### Lettura cedolini: requisiti del titolare del 09/10/2026
+
+Riconoscere le pagine dal contenuto, non dal solo numero: solo presenze da escludere dall'import contabile; due pagine presenze + retribuzioni, lettura dalla seconda; tre pagine prima presenze, seconda retribuzioni e terza da includere quando è continuazione o contiene totali; PDF collettivi da separare per CF, periodo e tipo, senza mescolare persone o mensilità; modelli a una pagina da leggere integralmente secondo intestazioni e colonne. Conservare il PDF originale; escludere presenze dall'estrazione salariale non significa cancellare l'originale.
+
+Estrarre separatamente netto stampato, trattenuta/recupero acconto stipendio e anticipo TFR, indicando voce e pagina di origine. Distinguere voce TFR del mese da progressivo del fondo. Una trattenuta non crea da sola un pagamento bancario. Nessun netto ricavato dalla cifra massima o dall'ultimo importo generico; nessun acconto esplicito scartato per una soglia arbitraria. Dati ambigui o mancanti in verifica. Migliorare il parser/writer canonico esistente, senza un secondo archivio: il file CSV/Excel/JSON letto dalla chat per lo storico deve arrivare agli stessi campi e writer. Questi sono requisiti da implementare e collaudare sui modelli reali, non una dichiarazione che tutti siano già supportati.
+
+### Verifica dei modelli reali da Drive
+
+Cartella indicata dal titolare: https://drive.google.com/drive/folders/1y9akDFY3hGPb9uk0QhpIcKMJW3_chTW3. Per il confronto offline sono stati recuperati 15 PDF originali (67 pagine), comprendenti CSC, Zucchetti classico/nuovo, TeamSystem, presenze sole, continuazione retributiva e documenti TFR autonomi. Non sono stati spostati o modificati i file Drive, né importati questi campioni nel database produttivo. Nessun PDF privato aggiunto al repository.
+
+Il fascicolo denominato “taiano febbraio 2026” contiene 26 pagine: il confronto mantiene 13 buste e 13 presenze separate. La busta Lubrano febbraio 2023 contiene due pagine retributive: il netto è unico (1.400,59) e le voci della continuazione fanno parte dello stesso documento. Un file l000165404 è un prospetto contabile aziendale senza CF individuale: il suo totale netto non è uno stipendio. Il titolare ha richiesto lo storico dal 2005 e che i parser non saltino dati: il precedente limite operativo dal 2018 viene quindi sostituito dal 2005. Anche il documento trasmesso nel 2015, che contiene la tredicesima di dicembre 2014, deve restare nel risultato delle buste; i documenti anteriori al 2005 ricevono un esito esplicito fuori_periodo. Questo è un aggiornamento del perimetro di lettura richiesto dal titolare, non un avvio di recuperi/importazioni automatiche.
+
+Regressioni provate: un progressivo generico non può diventare netto; netti discordanti nelle celle delle continuazioni richiedono verifica; un progressivo TFR non è un anticipo erogato; una trattenuta “anticipazioni già erogati” non è un nuovo pagamento. Il documento TFR autonomo deve restare in ERP/HR senza creare stipendio, evento salari o aggiornare l'ultimo netto dello stipendio. I dati ambigui conservano candidati e documento e non riattivano un vecchio netto tramite fallback. Le prove della cella e le voci lette devono passare dal parser al writer canonico. Gli esiti di salvataggio restano da verificare sul deploy; questi campioni non attestano il recupero di dati cancellati.
+
+Il secondo Libro Unico reale (27 pagine) contiene il caso a tre pagine: per Lubrano febbraio 2023 la pagina 19 è presenze, le pagine 20–21 sono retribuzioni/continuazione. Devono restare una sola busta, con netto unico e tutte le voci, separata dalle buste degli altri dipendenti. Il nome del file e la data di invio non sostituiscono il periodo stampato: il file TREDICESIMA inviato nel 2015 riporta dicembre 2014.
+
+Collaudo locale del ripristino: suite completa backend offline 7.959 passati, 102 esclusi e 2 xfail; frontend ERP 665 passati. Build ERP/HR/Lotti/Menu riuscite, test HR 23, Lotti 253 e Menu 29 passati. I successivi aggiustamenti dei parser sono verificati separatamente con la suite Documenti e la peer review prima della pubblicazione. Questi esiti sono collaudi isolati: il deploy e l’importazione dei documenti reali non sono attestati da questi test.
+
+Le righe codificate vengono conservate con codice, descrizione, valori ordinati, pagina, testo delle celle e rettangoli di origine. CSC/TeamSystem con codici numerici richiedono intestazione della tabella e posizione nella colonna CODICE: non vengono interpretati come voci i codici anagrafici o gli importi della tabella presenze a destra. Le colonne recuperate senza una classificazione semantica certa hanno stato `colonne_non_classificate`; una riga senza importi decifrabili conserva il testo e ha stato `da_verificare`. Nessun valore di una voce grezza diventa automaticamente pagamento, netto o anticipo. Anche il caso di una base già presente nel testo deve conservare quantità e importo delle altre colonne.

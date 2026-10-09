@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import re
 import unicodedata
-from functools import lru_cache
 
 
 _FORME_GIURIDICHE = (
@@ -34,14 +33,7 @@ _STOP_WORDS = {
 
 def nome_tokens(nome: str) -> frozenset[str]:
     """Token stabili, senza accenti e con forme societarie normalizzate."""
-    return _nome_tokens(str(nome or ""))
-
-
-@lru_cache(maxsize=2048)
-def _nome_tokens(nome: str) -> frozenset[str]:
-    # Ogni movimento viene confrontato con tutti i dipendenti: lo stesso
-    # nome e la stessa causale non vanno normalizzati a ogni confronto.
-    text = nome.casefold()
+    text = str(nome or "").casefold()
     for pattern, replacement in _FORME_GIURIDICHE:
         text = re.sub(pattern, f" {replacement} ", text, flags=re.IGNORECASE)
     text = "".join(

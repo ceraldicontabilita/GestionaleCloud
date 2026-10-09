@@ -1,0 +1,271 @@
+"""Tributi per codice e ritenute pagate dalla quietanza (casi reali 2026, anonimi)."""
+import asyncio
+
+from mongomock_motor import AsyncMongoMockClient
+
+from app.routers import ritenute as rit_router
+from app.services import tributi_per_codice as tributi
+
+
+def run(coro):
+    return asyncio.run(coro)
+
+
+def _riga(codice, periodo, debito=0, credito=0):
+    return {"codice_tributo": codice, "periodo_riferimento": periodo,
+            "importo_debito_cents": debito, "importo_credito_cents": credito}
+
+
+def _quietanza(id_, data, protocollo, erario=(), regioni=(), locali=(), **kw):
+    righe = list(erario) + list(regioni) + list(locali)
+    saldo = sum(r["importo_debito_cents"] - r["importo_credito_cents"] for r in righe)
+    return {
+        "id": id_, "data_pagamento": data, "protocollo_telematico": protocollo,
+        "sezione_erario": list(erario), "sezione_regioni": list(regioni),
+        "sezione_tributi_locali": list(locali), "sezione_inps": [],
+        "totali": {"saldo_netto_cents": saldo}, "f24_associati": [], **kw,
+    }
+
+
+def _ritenuta(id_, fornitore, data_fattura, cents, numero="1"):
+    periodo = data_fattura[:7]
+    anno, mese = int(periodo[:4]), int(periodo[5:7]) + 1
+    if mese == 13:
+        anno, mese = anno + 1, 1
+    return {"id": id_, "fattura_id": f"fatt-{id_}", "numero_fattura": numero, "fornitore": fornitore,
+            "data_fattura": data_fattura, "periodo_ritenuta": periodo, "importo_cents": cents,
+            "importo": f"{cents / 100:.2f}", "scadenza": f"{anno}-{mese:02d}-16"}
+
+
+def _db(quietanze=(), f24=(), ritenute=()):
+    db = AsyncMongoMockClient()["tributi"]
+    if quietanze:
+        run(db["quietanze_f24"].insert_many([dict(q) for q in quietanze]))
+    if f24:
+        run(db["f24_unificato"].insert_many([dict(f) for f in f24]))
+    if ritenute:
+        run(db["ritenute_acconto"].insert_many([dict(r) for r in ritenute]))
+    return db
+
+
+# Quietanza del 16/04/2026: tre parcelle di marzo pagate con due righe 1040
+# (210 + 490) e, nella stessa delega, il ravvedimento di 02/2025 e 09/2025.
+Q_APRILE = _quietanza("q-apr", "2026-04-16", "26041535212746370/000001", erario=[
+    _riga("1040", "03/2026", 49000), _riga("1040", "09/2025", 22194), _riga("1040", "02/2025", 21430),
+    _riga("1040", "03/2026", 21000), _riga("8948", "02/2025", 750), _riga("8948", "09/2025", 688),
+], ravvedimento_di=["f24-originale"])
+Q_LUGLIO = _quietanza("q-lug", "2026-07-21", "26072135472143961/000001", erario=[
+    _riga("1040", "06/2026", 28400), _riga("8948", "06/2026", 200),
+])
+Q_COMPENSATA = _quietanza("q-comp", "2026-05-18", "26051510373019398/000001", erario=[
+    _riga("9001", "2023", 39510), _riga("6099", "2025", 0, 39510),
+])
+
+RITENUTE_MARZO = [
+    _ritenuta("r-marotta", "STUDIO A", "2026-03-04", 21000),
+    _ritenuta("r-puma", "STUDIO B", "2026-03-20", 28000),
+    _ritenuta("r-ferrantini", "STUDIO C", "2026-03-25", 21000),
+]
+
+
+def _voce(voci, codice, periodo):
+    return next(v for v in voci if v["codice"] == codice and v["periodo"] == periodo)
+
+
+def test_voci_in_ordine_di_codice_con_colonne_separate():
+    db = _db([Q_APRILE, Q_LUGLIO, Q_COMPENSATA], ritenute=RITENUTE_MARZO)
+    dati = run(tributi.carica_voci(db))
+    voci = dati["voci"]
+    codici = [v["codice"] for v in voci]
+    assert codici == sorted(codici, key=lambda c: (0 if c.isdigit() else 1, c.zfill(6)))
+
+    marzo = _voce(voci, "1040", "03/2026")
+    # Stessa delega del ravvedimento ma periodo senza sanzione: pagamento ordinario.
+    assert marzo["quietanza_cents"] == 70000 and marzo["ravvedimento_cents"] == 0
+    assert marzo["atteso_cents"] == 70000 and marzo["residuo_cents"] == 0
+    assert marzo["stato"] == tributi.PAGATO
+    assert {d["tipo"] for d in marzo["documenti"]} == {"quietanza", "ritenuta"}
+
+    feb25 = _voce(voci, "1040", "02/2025")
+    assert feb25["ravvedimento_cents"] == 21430 and feb25["stato"] == tributi.RAVVEDUTO
+    sanzione = _voce(voci, "8948", "02/2025")
+    assert sanzione["natura"] == "sanzione" and sanzione["stato"] == tributi.SANZIONE
+
+    credito = _voce(voci, "6099", "2025")
+    assert credito["credito_cents"] == 39510 and credito["stato"] == tributi.CREDITO
+    compensazione = next(d for d in credito["documenti"] if d["tipo"] == "credito")
+    assert compensazione["compensato_con"] == [{"codice": "9001", "periodo": "2023", "importo_cents": 39510}]
+
+
+def test_il_modello_del_commercialista_non_pagato_resta_da_pagare():
+    f24 = {"id": "f24-ago", "status": "da_pagare", "dati_generali": {"data_versamento": "2026-09-16"},
+           "sezione_erario": [_riga("1001", "08/2026", 120000)], "totali": {"saldo_netto_cents": 120000}}
+    voci = run(tributi.carica_voci(_db(f24=[f24])))["voci"]
+    voce = _voce(voci, "1001", "08/2026")
+    assert voce["inviato_cents"] == 120000 and voce["residuo_cents"] == 120000
+    assert voce["stato"] in (tributi.DA_PAGARE, tributi.SCADUTO)
+    assert voce["documenti"][0]["tipo"] == "commercialista"
+
+
+def test_la_ritenuta_senza_f24_e_attesa_e_resta_da_pagare():
+    rit = _ritenuta("r-ago", "STUDIO A", "2026-08-10", 31000)
+    voci = run(tributi.carica_voci(_db(ritenute=[rit])))["voci"]
+    voce = _voce(voci, "1040", "08/2026")
+    assert voce["atteso_cents"] == 31000 and voce["residuo_cents"] == 31000
+    assert voce["stato"] in (tributi.ATTESO, tributi.SCADUTO)
+    r = tributi.riepilogo(voci, stato="APERTO")
+    assert r["totali"]["residuo_cents"] == 31000
+
+
+def test_la_quietanza_paga_le_ritenute_aggregate_e_avvisa_una_volta(monkeypatch):
+    inviati = []
+
+    async def finto_telegram(testo, *a, **k):
+        inviati.append(testo)
+        return True
+
+    import app.services.telegram_notifications as tg
+    monkeypatch.setattr(tg, "send_notification", finto_telegram)
+    monkeypatch.setattr(rit_router, "GIORNI_AVVISO_VERSAMENTO", 100000)
+    db = _db([Q_APRILE, Q_LUGLIO], ritenute=RITENUTE_MARZO + [_ritenuta("r-giu", "STUDIO A", "2026-06-04", 28400)])
+
+    run(rit_router.riconcilia_ritenute_esistenti(db))
+    puma = run(db["ritenute_acconto"].find_one({"id": "r-puma"}))
+    assert puma["stato_obbligazione"] == "VERSATA"
+    assert puma["stato"] == "pagata_puntuale"
+    assert puma["quietanza_protocollo"] == "26041535212746370/000001"
+    assert puma["f24_associazione_tipo"] == "aggregata"
+    giugno = run(db["ritenute_acconto"].find_one({"id": "r-giu"}))
+    assert giugno["stato"] == "pagata_con_ravvedimento" and giugno["data_pagamento"] == "2026-07-21"
+    assert len(inviati) == 4 and all("Ritenuta pagata" in t for t in inviati)
+    assert "26072135472143961/000001" in giugno["avviso_versamento_testo"]
+
+    # Il secondo giro non riavvisa.
+    run(rit_router.riconcilia_ritenute_esistenti(db))
+    assert len(inviati) == 4
+
+
+def test_due_quietanze_candidate_non_scelgono():
+    doppia = _quietanza("q-bis", "2026-07-22", "26072299999999999/000001", erario=[_riga("1040", "06/2026", 28400)])
+    db = _db([Q_LUGLIO, doppia], ritenute=[_ritenuta("r-giu", "STUDIO A", "2026-06-04", 28400)])
+    run(rit_router.riconcilia_ritenute_esistenti(db))
+    r = run(db["ritenute_acconto"].find_one({"id": "r-giu"}))
+    assert r["stato"] == "da_verificare_associazione_f24"
+    assert r.get("stato_obbligazione") != "VERSATA"
+
+
+def test_ritenuta_con_importo_versato_diverso_dalle_fatture_non_e_pagata():
+    quietanza = _quietanza("q-x", "2026-04-16", "26041500000000000/000001",
+                           erario=[_riga("1040", "03/2026", 50000)])
+    ritenute = [_ritenuta("r1", "Prof A", "2026-03-04", 21000, "1"),
+                _ritenuta("r2", "Prof B", "2026-03-20", 28000, "2")]
+
+    voci = run(tributi.carica_voci(_db(quietanze=[quietanza], ritenute=ritenute)))["voci"]
+    voce = next(v for v in voci if v["codice"] == "1040" and v["mese"] == 3)
+
+    assert voce["stato"] == "NON_TORNA" and voce["scarto_cents"] == 1000
+    assert voce["atteso_cents"] == 49000 and voce["pagato_cents"] == 50000
+
+
+def test_1040_versato_senza_fatture_in_archivio_chiede_di_associarle():
+    quietanza = _quietanza("q-y", "2026-04-16", "26041500000000001/000001",
+                           erario=[_riga("1040", "09/2025", 22194)])
+
+    voci = run(tributi.carica_voci(_db(quietanze=[quietanza])))["voci"]
+    voce = next(v for v in voci if v["codice"] == "1040")
+
+    assert voce["fatture_da_associare"] is True and voce["stato"] == "PAGATO"
+
+
+def test_stesso_tributo_in_due_deleghe_diverse_e_segnalato():
+    # Caso reale 16/06/2026: IMU 3918 2026 3.574,00 in due deleghe (protocolli diversi),
+    # entrambe addebitate in banca.
+    imu = lambda: [{"codice_tributo": "3918", "periodo_riferimento": "2026", "codice_comune": "F839",
+                    "importo_debito_cents": 357400, "importo_credito_cents": 0}]
+    q1 = _quietanza("q-imu-1", "2026-06-16", "26060212304532735/000001", locali=imu(),
+                    erario=[_riga("6099", "2025", 0, 160490)])
+    q2 = _quietanza("q-imu-2", "2026-06-16", "26061631545528157/000001", locali=imu(),
+                    erario=[_riga("1040", "05/2026", 21000), _riga("6099", "2025", 0, 160490)])
+    voci = run(tributi.carica_voci(_db([q1, q2])))["voci"]
+    voce = _voce(voci, "3918", "2026")
+    assert voce["quietanza_cents"] == 714800
+    assert voce["versato_due_volte_cents"] == 357400
+    assert _voce(voci, "1040", "05/2026")["versato_due_volte_cents"] == 0
+
+
+# F24 del 05/10/2020 (prot. 20100536070838682): saldo zero, 12 righe. I
+# debiti (1012, 8906, 3802, 3848, 3847) sono pagati dai crediti 1655, 1701 e
+# 1631 della stessa delega: nessun addebito in banca.
+def _q_compensazione_2020(**kw):
+    return {
+        "id": "q-2020-10", "data_pagamento": "2020-10-05", "saldo": 0,
+        "protocollo_telematico": "20100536070838682-000001", "fonte": "drive_quietanze",
+        "drive_file_id": "drv-1",
+        "source_occurrences": [{"source": "documenti_upload_auto", "md5": "x"}],
+        "sezione_erario": [
+            _riga("1012", "09/2020", 39573), _riga("1655", "09/2020", 0, 2630),
+            _riga("1701", "09/2020", 0, 4538), _riga("1631", "09/2020", 0, 96000),
+        ],
+        "sezione_regioni": [_riga("3802", "2020", 35294), _riga("3802", "2019", 7575)],
+        "sezione_tributi_locali": [_riga("3848", "2020", 11591), _riga("3848", "2019", 1105),
+                                   _riga("3847", "2020", 2856), _riga("3847", "2019", 497)],
+        "sezione_inps": [], "totali": {"saldo_netto": 0}, "f24_associati": [], **kw,
+    }
+
+
+def test_f24_a_saldo_zero_e_pagato_in_compensazione():
+    voci = run(tributi.carica_voci(_db([_q_compensazione_2020()])))["voci"]
+    irpef = _voce(voci, "1012", "09/2020")
+    assert irpef["compensazione_cents"] == 39573 and irpef["residuo_cents"] == 0
+    assert irpef["stato"] == tributi.COMPENSATO
+    doc = irpef["documenti"][0]
+    assert doc["tipo"] == "compensazione" and doc["origini"] == ["drive", "caricato"]
+    assert {c["codice"] for c in doc["crediti_usati"]} == {"1655", "1701", "1631"}
+    assert _voce(voci, "1631", "09/2020")["stato"] == tributi.CREDITO
+
+    # Con la sanzione 8906 nella stessa delega il periodo e' ravveduto, e il
+    # ravvedimento e' pagato anch'esso in compensazione.
+    q = _q_compensazione_2020()
+    q["sezione_erario"] += [_riga("8906", "09/2020", 3878)]
+    voci = run(tributi.carica_voci(_db([q])))["voci"]
+    irpef = _voce(voci, "1012", "09/2020")
+    assert irpef["stato"] == tributi.RAVVEDUTO and irpef["documenti"][0]["in_compensazione"] is True
+
+
+def test_saldo_zero_non_cerca_addebito_in_banca():
+    from app.services import f24_controllo_incrociato as reg
+
+    q = reg._quietanza_legacy(_q_compensazione_2020())
+    assert q["importo_cents"] == 0 and q["origini"] == ["drive", "caricato"]
+    esito = reg.riscontri_quietanze_banca([q], [])
+    assert esito["conteggi"]["compensate_saldo_zero"] == 1
+    assert esito["conteggi"]["quietanze_incomplete"] == 0
+    # Due copie (Drive e upload) dello stesso F24 a zero sono un pagamento solo.
+    copia = reg._quietanza_legacy({**_q_compensazione_2020(), "id": "q-copia"})
+    assert len(reg.pagamenti_da_quietanze([q, copia])) == 1
+
+
+def test_registro_versamenti_dare_avere_crediti_e_mesi_mancanti():
+    from app.services import f24_controllo_incrociato as reg
+    from app.services import registro_versamenti_f24 as versamenti
+
+    mensili = [
+        _quietanza(f"q-{m}", f"2026-{m + 1:02d}-16", f"P{m}", erario=[_riga("1001", f"{m:02d}/2026", 100000)],
+                   fonte="documenti_upload_auto")
+        for m in (1, 2, 4, 5)
+    ]
+    quietanze = [reg._quietanza_legacy(d) for d in mensili + [Q_COMPENSATA]]
+    r = versamenti.costruisci(reg.pagamenti_da_quietanze(quietanze), anno=2026, oggi="2026-09-30")
+    c1001 = next(c for c in r["codici"] if c["codice"] == "1001")
+    assert c1001["mensile"] and c1001["mancanti"] == [3, 6, 7, 8]
+    assert c1001["mesi"][1]["debito_cents"] == 100000 and c1001["debito_cents"] == 400000
+    c6099 = next(c for c in r["codici"] if c["codice"] == "6099")
+    assert c6099["credito_cents"] == 39510 and c6099["mesi"][4]["credito_cents"] == 39510
+    credito = next(k for k in r["crediti"] if k["codice"] == "6099")
+    assert credito["utilizzato_cents"] == 39510
+    assert credito["utilizzi"][0]["compensazione_totale"] is True
+    assert credito["utilizzi"][0]["debiti_compensati"] == [{"codice": "9001", "periodo": "2023", "importo_cents": 39510}]
+    assert r["totali"]["compensate_saldo_zero"] == 1
+    solo_caricati = versamenti.costruisci(reg.pagamenti_da_quietanze(quietanze), anno=2026,
+                                          origine="caricato", oggi="2026-09-30")
+    assert solo_caricati["totali"]["deleghe"] == 4

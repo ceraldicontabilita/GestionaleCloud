@@ -29,9 +29,9 @@ numerici, ``tipo_cedolino`` ``ordinario``/``tredicesima``/``quattordicesima``,
 il mapping qui sotto produce esattamente quella forma.
 
 Regole:
-* dedup sulla prova documentale (contenuto, fonte o chiave conservata):
-  CF/anno/mese/tipo delimitano la ricerca, ma non provano una copia;
-  due rapporti distinti nello stesso mese restano due cedolini;
+* dedup su (CF maiuscolo, anno, mese, tipo) e su ``cedolino_dedup_key``
+  (chiave documentale del gestionale, conservata anche nel documento HR):
+  un cedolino gia' presente in HR NON viene mai sovrascritto;
 * ``dipendente_id``/``dipendente_nome`` risolti da ``app_dipendenti`` per
   codice fiscale (mai dagli id del gestionale, che sono un altro spazio);
 * se nessuna DSN e' configurata il deposito e' un no-op segnalato una volta
@@ -94,8 +94,7 @@ _SQL_DIPENDENTE = (
 
 _SQL_ESISTENTI = (
     "SELECT id, doc->>'tipo_cedolino' AS tipo, doc->>'cedolino_dedup_key' AS dedup_key,"
-    " doc->>'netto' AS netto, doc->'storico_netto' AS storico_netto,"
-    " doc - ARRAY['pdf_data', 'file_data', 'pdf_text'] AS metadata"
+    " doc->>'netto' AS netto, doc->'storico_netto' AS storico_netto"
     " FROM " + TABELLA_CEDOLINI +
     " WHERE (upper(doc->>'codice_fiscale') = $1"
     "        AND doc->>'anno' ~ '^[0-9]+$' AND (doc->>'anno')::int = $2"
@@ -251,11 +250,19 @@ def mappa_cedolino_per_hr(cedolino: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         "gestionale_source": cedolino.get("source") or cedolino.get("import_source"),
         "cedolino_dedup_key": cedolino.get("cedolino_dedup_key") or cedolino.get("dedup_key"),
     }
-    for chiave in ("rapporto_id", "rapporto_lavoro", "impronta_contenuto", "drive_file_id", "source_file_hash", "source_path", "source_container",
-                   "drive_md5", "blob_key", "pdf_source_scope", "source_page_start", "source_page_end", "source_document_pages",
-                   "canale", "stato_netto", "netto_fonte", "dati_chiave", "dati_extra", "voci"):
+    for chiave in ("drive_file_id", "source_file_hash", "source_path", "source_container",
+                   "canale", "stato_netto", "netto_fonte", "dati_chiave"):
         if cedolino.get(chiave):
             doc[chiave] = cedolino[chiave]
+    from app.constants.stati_netto import STATI_NON_UTILIZZABILI
+    if str(cedolino.get("stato_netto") or "").strip().upper() in STATI_NON_UTILIZZABILI:
+        # Conserva i candidati per la verifica, senza convertirli in un debito.
+        dati = dict(doc.get("dati_chiave") or {})
+        dati["netto_non_verificato"] = {k: cedolino[k] for k in
+            ("netto", "netto_mese", "netto_pagato", "netto_in_busta", "netto_stampato", "netto_busta")
+            if k in cedolino}
+        doc["dati_chiave"] = dati
+        doc["netto"] = None
     formato = str(cedolino.get("formato") or cedolino.get("formato_rilevato")
                   or cedolino.get("parser_template") or "").strip().lower()
     if formato in PARSER_TEMPLATE_HR:
@@ -269,7 +276,7 @@ def mappa_cedolino_per_hr(cedolino: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     if isinstance(cedolino.get("retribuzione"), dict):
         doc["retribuzione"] = cedolino["retribuzione"]
     pdf = _pdf_base64(cedolino.get("pdf_data"))
-    if pdf and not (doc.get("drive_file_id") or doc.get("blob_key")):
+    if pdf:
         doc["pdf_data"] = pdf
     return doc
 
@@ -288,20 +295,16 @@ async def _trova_dipendente_hr(con, cf: str) -> Optional[Dict[str, Any]]:
 
 
 async def _cerca_esistente_hr(con, cf: str, anno: int, mese: int,
-                              tipo: str, dedup_key: str, doc=None, rettificato=False) -> Optional[Dict[str, Any]]:
-    """Stessa prova documentale o revisione esplicita dello stesso rapporto."""
+                              tipo: str, dedup_key: str) -> Optional[Dict[str, Any]]:
+    """Primo cedolino HR con stessa chiave documentale, oppure stesso
+    (CF, anno, mese) e stesso tipo (13a/14a restano distinte dall'ordinario)."""
     righe = await con.fetch(_SQL_ESISTENTI, cf, int(anno), int(mese), dedup_key or "")
     for riga in righe:
         if dedup_key and riga["dedup_key"] == dedup_key:
             return {"id": riga["id"], "motivo": "cedolino_dedup_key", **_netto_hr(riga)}
-    from app.services.cedolini_rapporti import stessa_busta
     for riga in righe:
-        old = _json(riga.get("metadata"))
-        if tipo_cedolino_hr(riga["tipo"]) != tipo:
-            continue
-        same_revision = (rettificato and (doc or {}).get("rapporto_id") == old.get("rapporto_id"))
-        if stessa_busta(doc or {}, old) or same_revision:
-            return {"id": riga["id"], "motivo": "stesso_documento_o_revisione", **_netto_hr(riga)}
+        if tipo_cedolino_hr(riga["tipo"]) == tipo:
+            return {"id": riga["id"], "motivo": "cf_anno_mese_tipo", **_netto_hr(riga)}
     return None
 
 
@@ -323,7 +326,9 @@ async def _segui_vincitore(con, esistente: Dict[str, Any], doc: Dict[str, Any], 
                            *, dry_run: bool) -> Dict[str, Any]:
     """La riga HR prende il netto della versione vincente; il vecchio resta in ``storico_netto``."""
     prima, dopo = esistente.get("netto"), doc.get("netto")
-    if dopo is None or prima == dopo:
+    from app.constants.stati_netto import STATI_NON_UTILIZZABILI
+    invalido = str(doc.get("stato_netto") or "").strip().upper() in STATI_NON_UTILIZZABILI
+    if not invalido and (dopo is None or prima == dopo):
         return {"esito": "gia_presente", "id": esistente["id"], **_riepilogo(doc)}
     now = datetime.now(timezone.utc).isoformat()
     patch: Dict[str, Any] = {
@@ -335,12 +340,16 @@ async def _segui_vincitore(con, esistente: Dict[str, Any], doc: Dict[str, Any], 
         # Il PDF e' quello della versione che vale: la riverifica dei netti lo rilegge.
         "netto_riverificato_versione": None,
     }
-    for campo in ("rapporto_id", "rapporto_lavoro", "impronta_contenuto", "filename", "pdf_filename", "pdf_data", "stato_netto", "netto_fonte", "lordo",
+    for campo in ("filename", "pdf_filename", "pdf_data", "stato_netto", "netto_fonte", "lordo",
                   "competenze", "trattenute", "gestionale_cedolino_id", "cedolino_dedup_key",
-                  "drive_file_id", "drive_md5", "blob_key", "pdf_source_scope", "source_page_start", "source_page_end", "source_document_pages",
-                  "source_file_hash", "canale", "dati_chiave", "dati_extra", "voci"):
+                  "drive_file_id", "source_file_hash", "canale", "dati_chiave"):
         if doc.get(campo) is not None:
             patch[campo] = doc[campo]
+    if prima == dopo:
+        # Lo stato/prova possono cambiare anche senza cambiare importo;
+        # non aggiungere una finta rettifica numerica a ogni replay.
+        for campo in ("storico_netto_ultimo", "storico_netto", "rettificato"):
+            patch.pop(campo, None)
     if dry_run:
         return {"esito": "da_aggiornare", "id": esistente["id"], "netto_prima": prima, **_riepilogo(doc)}
     await con.execute(_SQL_AGGIORNA, esistente["id"], json.dumps(patch, default=str))
@@ -398,42 +407,11 @@ async def deposita_cedolino_in_hr(
         try:
             esistente = await _cerca_esistente_hr(
                 con, doc["codice_fiscale"], doc["anno"], doc["mese"],
-                doc["tipo_cedolino"], doc.get("cedolino_dedup_key") or "", doc, cedolino.get("rettificato", False),
+                doc["tipo_cedolino"], doc.get("cedolino_dedup_key") or "",
             )
             if esistente and cedolino.get("rettificato"):
                 return await _segui_vincitore(con, esistente, doc, chiave, dry_run=dry_run)
             if esistente:
-                # Il cedolino puo' precedere l'import dell'anagrafica. Il
-                # reimport ripara solo questo legame per CF esatto, senza
-                # cambiare importi, pagamenti o un'identita' gia' assegnata.
-                corrente = await con.fetchrow(
-                    "SELECT doc FROM " + TABELLA_CEDOLINI + " WHERE id = $1", esistente["id"],
-                )
-                corrente = _json(corrente["doc"]) if corrente else {}
-                from app.services.cedolini_rapporti import CAMPI_RAPPORTO
-                metadata = {k: doc[k] for k in CAMPI_RAPPORTO if doc.get(k)}
-                if metadata and not dry_run:
-                    await con.execute(_SQL_AGGIORNA, esistente["id"], json.dumps(metadata))
-                nuove_voci = doc.get("dati_chiave") or {}
-                stessa_fonte = (doc.get("gestionale_cedolino_id") and
-                                doc["gestionale_cedolino_id"] == corrente.get("gestionale_cedolino_id"))
-                if stessa_fonte and nuove_voci.get("componenti_versione") == 1 and not dry_run:
-                    # SQL fonde solo questi due sottocampi, senza perdere una
-                    # verifica/acconto aggiunto nel frattempo da un altro import.
-                    await con.execute(
-                        "UPDATE " + TABELLA_CEDOLINI + " SET doc = jsonb_set(doc, '{dati_chiave}', "
-                        "coalesce(nullif(doc->'dati_chiave', 'null'::jsonb), '{}'::jsonb) || $2::jsonb) WHERE id = $1",
-                        esistente["id"], json.dumps({"componenti_busta": nuove_voci["componenti_busta"],
-                                                    "componenti_versione": 1}),
-                    )
-                if not corrente.get("dipendente_id") and _codice_fiscale(corrente) == doc["codice_fiscale"]:
-                    dip = await _trova_dipendente_hr(con, doc["codice_fiscale"])
-                    if dip and not dry_run:
-                        await con.execute(_SQL_AGGIORNA, esistente["id"], json.dumps({
-                            "dipendente_id": dip["id"],
-                            "dipendente_nome": _nome_da_anagrafica(dip),
-                            "nome_dipendente": _nome_da_anagrafica(dip),
-                        }))
                 logger.info("[HR deposito] gia_presente %s -> id=%s (%s)",
                             chiave, esistente["id"], esistente["motivo"])
                 return {"esito": "gia_presente", "id": esistente["id"], **_riepilogo(doc)}

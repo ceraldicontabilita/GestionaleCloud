@@ -1,0 +1,267 @@
+"""Bug trovato in audit 15/07/2026: DELETE /api/fatture/{id} (default, senza
+hard_delete) fa un soft-delete — CascadeOperations.delete_fattura_cascade
+imposta status="deleted" ed entity_status="deleted" sul documento in
+`invoices`, ma né la query dell'Archivio Fatture né il dettaglio fattura
+escludevano quello stato: una fattura "eliminata" poteva ricomparire in
+lista/dettaglio nonostante il messaggio di conferma dell'UI dica che
+l'operazione non è reversibile."""
+import asyncio
+
+from app.services.archivio_documenti_memoria import ClientArchivioMemoria, matches_filter
+
+from app.routers.fatture_module import crud as mod
+
+
+def _run(c):
+    loop = asyncio.new_event_loop()
+    try:
+        return loop.run_until_complete(c)
+    finally:
+        loop.close()
+
+
+class _FakeCursor:
+    def __init__(self, docs):
+        self._docs = docs
+
+    def sort(self, *a, **k):
+        return self
+
+    async def to_list(self, n=None):
+        return list(self._docs[:n] if n else self._docs)
+
+
+def _matches(doc, query):
+    # Lo stesso motore di filtro dell'archivio in memoria: il filtro «fattura
+    # attiva» usa `$nin`, che un confronto fatto a mano non conosce.
+    return matches_filter(doc, query or {})
+
+
+class _FakeCollection:
+    def __init__(self, docs=None):
+        self.docs = docs or []
+
+    def find(self, query=None, projection=None, *a, **k):
+        return _FakeCursor([d for d in self.docs if _matches(d, query or {})])
+
+    async def find_one(self, query, *a, **k):
+        for d in self.docs:
+            if _matches(d, query):
+                return dict(d)
+        return None
+
+
+class _FakeDb:
+    def __init__(self):
+        self.collections = {}
+
+    def __getitem__(self, name):
+        return self.collections.setdefault(name, _FakeCollection())
+
+
+def test_archivio_fatture_esclude_eliminate(monkeypatch):
+    db = _FakeDb()
+    monkeypatch.setattr(mod.Database, "get_db", staticmethod(lambda: db))
+    db["invoices"].docs = [
+        {"id": "f1", "invoice_number": "1", "invoice_date": "2026-05-10",
+         "supplier_name": "Attiva SRL", "total_amount": 100.0},
+        # Eliminata da DELETE /api/fatture/f2 (default, soft-delete reale).
+        {"id": "f2", "invoice_number": "2", "invoice_date": "2026-05-11",
+         "supplier_name": "Eliminata SRL", "total_amount": 200.0,
+         "status": "deleted", "entity_status": "deleted"},
+    ]
+
+    esito = _run(mod.get_archivio_fatture(
+        anno=None, mese=None, fornitore_piva=None, fornitore_nome=None,
+        stato=None, search=None, limit=200, skip=0,
+    ))
+
+    ids = [f["id"] for f in esito["fatture"]]
+    assert "f1" in ids
+    assert "f2" not in ids
+
+
+def test_archivio_fatture_esclude_ddt_legacy_senza_nascondere_la_fattura(monkeypatch):
+    db = _FakeDb()
+    monkeypatch.setattr(mod.Database, "get_db", staticmethod(lambda: db))
+    db["invoices"].docs = [
+        {
+            "id": 1776931298244, "invoice_number": "69011",
+            "invoice_date": "2026-04-23", "supplier_name": "SAIMA S.p.A.",
+            "total_amount": 87.82, "tipo": "ddt", "fonte": "legacy_staging_2026",
+        },
+        {
+            "id": "653d9a55", "invoice_number": "1/66288",
+            "invoice_date": "2026-04-23", "supplier_name": "SAIMA S.p.A.",
+            "supplier_vat": "01992440618", "total_amount": 87.82,
+            "tipo_documento": "TD24", "file_hash": "xml-saima",
+        },
+    ]
+
+    esito = _run(mod.get_archivio_fatture(
+        anno=2026, mese=None, fornitore_piva=None, fornitore_nome=None,
+        stato=None, search=None, limit=200, skip=0,
+    ))
+
+    assert [fattura["numero_documento"] for fattura in esito["fatture"]] == ["1/66288"]
+
+
+def test_archivio_usa_metodo_canonico_prima_del_legacy(monkeypatch):
+    db = _FakeDb()
+    monkeypatch.setattr(mod.Database, "get_db", staticmethod(lambda: db))
+    db["invoices"].docs = [
+        {"id": "f1", "invoice_number": "1", "invoice_date": "2026-07-16",
+         "supplier_name": "FORNITORE TEST SRL", "supplier_vat": "00000000000",
+         "total_amount": 100.0},
+    ]
+    db["fornitori"].docs = [
+        {"partita_iva": "00000000000", "ragione_sociale": "FORNITORE TEST SRL",
+         "metodo_pagamento": "misto", "metodo_pagamento_predefinito": "cassa"},
+    ]
+
+    esito = _run(mod.get_archivio_fatture(
+        anno=2026, mese=None, fornitore_piva=None, fornitore_nome=None,
+        stato=None, search=None, limit=200, skip=0,
+    ))
+
+    assert esito["fatture"][0]["fornitore_metodo_pagamento"] == "misto"
+
+
+def test_archivio_include_data_fattura_storica_e_non_nasconde_collisioni(monkeypatch):
+    db = _FakeDb()
+    monkeypatch.setattr(mod.Database, "get_db", staticmethod(lambda: db))
+    base = {
+        "invoice_number": "ST-1", "data_fattura": "2026-03-15",
+        "supplier_vat": "00000000000", "total_amount": 122.0,
+    }
+    db["invoices"].docs = [
+        {**base, "id": "f1", "file_hash": "hash-1"},
+        {**base, "id": "f2", "file_hash": "hash-2"},
+        {**base, "id": "fuori-anno", "data_fattura": "2025-03-15"},
+    ]
+
+    esito = _run(mod.get_archivio_fatture(
+        anno=2026, mese=3, fornitore_piva=None, fornitore_nome=None,
+        stato=None, search=None, limit=200, skip=0,
+    ))
+
+    assert {fattura["id"] for fattura in esito["fatture"]} == {"f1", "f2"}
+    assert all(fattura["data_documento"] == "2026-03-15" for fattura in esito["fatture"])
+
+
+def test_dettaglio_fattura_eliminata_ritorna_404(monkeypatch):
+    db = _FakeDb()
+    monkeypatch.setattr(mod.Database, "get_db", staticmethod(lambda: db))
+    db["invoices"].docs = [
+        {"id": "f2", "invoice_number": "2", "status": "deleted", "entity_status": "deleted"},
+    ]
+
+    try:
+        _run(mod.get_fattura_dettaglio("f2"))
+        assert False, "doveva sollevare 404"
+    except Exception as e:
+        assert getattr(e, "status_code", None) == 404
+
+
+def test_dettaglio_fattura_attiva_resta_visibile(monkeypatch):
+    db = _FakeDb()
+    monkeypatch.setattr(mod.Database, "get_db", staticmethod(lambda: db))
+    db["invoices"].docs = [
+        {"id": "f1", "invoice_number": "1"},
+    ]
+
+    esito = _run(mod.get_fattura_dettaglio("f1"))
+
+    assert esito["fattura"]["id"] == "f1"
+
+
+def test_statistiche_restano_disponibili_nel_database_e2e_in_memoria(monkeypatch):
+    db = ClientArchivioMemoria()["fatture_statistiche_e2e"]
+    monkeypatch.setattr(mod.Database, "get_db", staticmethod(lambda: db))
+    _run(db["invoices"].insert_many([
+        {
+            "id": "f1", "invoice_number": "1", "invoice_date": "2026-08-08",
+            "supplier_vat": "00000000001", "total_amount": 122.0,
+        },
+        {
+            "id": "f2", "invoice_number": "2", "invoice_date": "2026-08-07",
+            "supplier_vat": "00000000002", "total_amount": 244.0,
+            # `status` e' lo stato del documento, non del pagamento: la
+            # pagata si dichiara nei campi del pagamento (criterio unico).
+            "stato_pagamento": "pagata",
+        },
+    ]))
+
+    esito = _run(mod.get_statistiche(anno=2026))
+
+    assert esito["totale_fatture"] == 2
+    assert esito["totale_importo"] == 366.0
+    assert esito["pagate"] == 1
+    assert esito["fornitori_unici"] == 2
+
+
+def test_statistiche_contano_nomi_documentati_senza_inventare_piva(monkeypatch):
+    db = ClientArchivioMemoria()["fatture_statistiche_nome_fornitore"]
+    monkeypatch.setattr(mod.Database, "get_db", staticmethod(lambda: db))
+    _run(db["invoices"].insert_many([
+        {
+            "id": "f-name-1", "invoice_number": "1",
+            "invoice_date": "2026-08-08", "supplier_name": "ALFA SRL",
+            "total_amount": 122.0,
+        },
+        {
+            "id": "f-name-2", "invoice_number": "2",
+            "invoice_date": "2026-08-09", "supplier_name": "Alfa S.r.l.",
+            "total_amount": 244.0,
+        },
+        {
+            "id": "f-name-3", "invoice_number": "3",
+            "invoice_date": "2026-08-10", "supplier_name": "BETA SNC",
+            "total_amount": 10.0,
+        },
+    ]))
+
+    esito = _run(mod.get_statistiche(anno=2026))
+
+    assert esito["fornitori_unici"] == 2
+
+
+def test_statistiche_non_nascondono_collisioni_e_escludono_archiviati(monkeypatch):
+    db = ClientArchivioMemoria()["fatture_statistiche_evidenza"]
+    monkeypatch.setattr(mod.Database, "get_db", staticmethod(lambda: db))
+    base = {
+        "invoice_number": "1", "invoice_date": "2026-08-08",
+        "supplier_vat": "00000000001", "total_amount": 100.0,
+    }
+    _run(db["invoices"].insert_many([
+        {**base, "id": "a", "file_hash": "hash-a", "status": "imported"},
+        {**base, "id": "b", "file_hash": "hash-b", "status": "da_verificare"},
+        {**base, "id": "c", "file_hash": "hash-c", "status": "archived"},
+    ]))
+
+    esito = _run(mod.get_statistiche(anno=2026))
+
+    assert esito["totale_fatture"] == 2
+    assert esito["totale_importo"] == 200.0
+
+
+def test_statistiche_includono_schema_storico_data_fattura(monkeypatch):
+    db = ClientArchivioMemoria()["fatture_statistiche_data_storica"]
+    monkeypatch.setattr(mod.Database, "get_db", staticmethod(lambda: db))
+    _run(db["invoices"].insert_many([
+        {
+            "id": "storica", "invoice_number": "ST-1",
+            "data_fattura": "2026-02-10", "anno": "2026",
+            "supplier_vat": "00000000001", "total_amount": 122.0,
+        },
+        {
+            "id": "altro-anno", "invoice_number": "ST-2",
+            "data_fattura": "2025-02-10", "anno": "2025",
+            "supplier_vat": "00000000002", "total_amount": 244.0,
+        },
+    ]))
+
+    esito = _run(mod.get_statistiche(anno=2026))
+
+    assert esito["totale_fatture"] == 1
+    assert esito["totale_importo"] == 122.0

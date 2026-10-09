@@ -7,8 +7,6 @@ from app.utils.dependencies import get_current_admin_user
 from typing import Dict, Any, List, Optional
 from datetime import datetime, date, timezone
 import logging
-import asyncio
-import math
 import io
 import re
 import csv
@@ -22,6 +20,7 @@ from app.routers.prima_nota_module.common import (
     aggrega_saldo_prima_nota,
     entra_in_prima_nota,
 )
+from app.routers.prima_nota_module.sync import costruisci_campi_movimento_fattura
 from app.services.scritture_contabili import scrivi_movimento
 from app.services.bank_evidence import EVIDENZA_UFFICIALE, campi_evidenza
 from app.services.categorizzazione_movimenti import categorizza_movimento_bancario
@@ -33,9 +32,18 @@ from app.services.estratto_conto_bnl_parser import (
     movimenti_per_archivio as movimenti_per_archivio_bnl,
 )
 from app.services.regole_riconoscimento_banca import carica_regole as _carica_regole_riconoscimento
+from app.services.stato_pagamento_fattura import FILTRO_NON_PAGATE
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+# Fase 0 (15/09/2026, PROMPT_CLAUDE_CODE_FASE_0.md punto 11): disattiva il
+# "Motore C" (riconciliazione automatica fatture provvisorie durante
+# l'import estratto conto, righe 942-1025 nell'audit) — un motore parallelo
+# di riconciliazione fatture con proprie tolleranze/regole, separato dallo
+# scrittore canonico persist_bank_invoice_allocations. Rimuovere in Fase 3.
+FASE0_DISATTIVATO = True
+
 
 @asynccontextmanager
 async def _write_batch(db):
@@ -268,12 +276,8 @@ _CAMPI_PASSANTI_FONTE = (
 
 
 def _si_proietta_in_prima_nota(record: Dict[str, Any]) -> bool:
-    """Carte: il conto corrente registra l'addebito mensile, non ogni acquisto."""
-    return (
-        record.get("conto_contabile") not in CONTI_SENZA_PROIEZIONE_PRIMA_NOTA
-        and record.get("tipo") != "carta_credito"
-        and not str(record.get("banca") or "").startswith("Nexi")
-    )
+    """Il conto BNL storico resta solo archivio bancario per le riconciliazioni."""
+    return record.get("conto_contabile") not in CONTI_SENZA_PROIEZIONE_PRIMA_NOTA
 
 
 def segno_assente(movimenti: List[Dict[str, Any]]) -> bool:
@@ -458,59 +462,9 @@ def estrai_fornitore_pulito(descrizione: str) -> Optional[str]:
     return None
 
 
-def _dettaglio_carta_xlsx(contents: bytes):
-    """Export carta Business: importo EUR e segno del debito, non ultimo 'importo'."""
-    import openpyxl
-
-    wb = openpyxl.load_workbook(io.BytesIO(contents), read_only=True, data_only=True)
-    try:
-        sheet = wb.active
-        # Alcuni export dichiarano A1:A1 pur contenendo tutte le colonne.
-        sheet.reset_dimensions()
-        rows = sheet.iter_rows(values_only=True)
-        headers = [str(v or "").strip().lower() for v in next(rows, ())]
-        richiesti = {"codice carta", "data del movimento", "causale movimento", "segno del movimento", "importo spesa in euro", "insegna"}
-        if not richiesti.issubset(headers):
-            return None
-        # Le intestazioni Data valuta/Importo sono ripetute in sezioni accessorie.
-        indici = {h: headers.index(h) for h in set(headers)}
-        movimenti = []
-        for numero, values in enumerate(rows, 2):
-            if not any(v is not None for v in values):
-                continue
-            def valore(h):
-                index = indici.get(h)
-                return values[index] if index is not None and index < len(values) else None
-            data = _date_from_spreadsheet(valore("data del movimento"))
-            importo = _float_from_spreadsheet(valore("importo spesa in euro"))
-            segno = str(valore("segno del movimento") or "").strip()
-            carta = str(valore("codice carta") or "").strip()
-            causale = str(valore("causale movimento") or "").strip().upper()
-            if not data or importo is None or not math.isfinite(importo) or segno not in {"+", "-"} or not carta:
-                raise ValueError(f"Riga carta {numero}: data, importo, segno o carta mancanti/non validi")
-            if causale not in {"SPESO", "STORNO", "RIMBORSO", "ACCREDITO"}:
-                raise ValueError(f"Riga carta {numero}: causale {causale!r} da verificare")
-            if importo < 0 or (causale == "SPESO" and segno != "+") or (causale != "SPESO" and segno != "-"):
-                raise ValueError(f"Riga carta {numero}: segno e causale non coerenti")
-            insegna = str(valore("insegna") or "").strip()
-            if not insegna:
-                raise ValueError(f"Riga carta {numero}: esercente mancante")
-            movimenti.append({
-                "data": data, "data_pagamento": _date_from_spreadsheet(valore("data valuta")),
-                "importo": -importo if segno == "+" else importo,
-                "descrizione_originale": insegna, "identity_description": insegna,
-                "fornitore": insegna, "tipo": "carta_credito", "categoria": "",
-                "banca": "Carta Business", "rapporto": carta,
-                "numero_carta_mascherato": carta, "divisa": "EUR",
-            })
-        return movimenti
-    finally:
-        wb.close()
-
-
 @router.post("/import")
 @handle_errors
-async def import_estratto_conto(file: UploadFile = File(...), dry_run: bool = False) -> Dict[str, Any]:
+async def import_estratto_conto(file: UploadFile = File(...)) -> Dict[str, Any]:
     """
     Importa estratto conto bancario e salva tutti i movimenti con campi strutturati.
     
@@ -542,17 +496,23 @@ async def import_estratto_conto(file: UploadFile = File(...), dry_run: bool = Fa
     evidenza = campi_evidenza(filename_originale)
     fonte_ufficiale = evidenza["livello_evidenza"] == EVIDENZA_UFFICIALE
     contents = await file.read()
+    # L'originale si conserva sempre, per poterlo rivedere e riscaricare.
+    from app.services.estratti_originali import conserva_originale
+    originale_id = await conserva_originale(
+        db, contents, filename_originale, fonte="import_estratto_conto",
+        drive_file_id=drive_file_id,
+    )
     
     movimenti = []
     segno_da_controllare = False
     
-    if filename.endswith('.pdf') and await asyncio.to_thread(e_estratto_bnl_pdf, contents):
+    if filename.endswith('.pdf') and e_estratto_bnl_pdf(contents):
         # Conto BNL 4500/3192 (chiuso): il PDF si riconosce dal contenuto, il
         # lettore prende il verso dalla colonna e rifiuta l'estratto se i saldi
         # non tornano. Nessun ripiego sugli altri lettori: importerebbero
         # righe col verso indovinato.
         try:
-            estratto_bnl = await asyncio.to_thread(leggi_estratto_bnl, contents)
+            estratto_bnl = leggi_estratto_bnl(contents)
         except EstrattoBNLNonValido as exc:
             raise HTTPException(
                 status_code=422, detail=f"Estratto conto BNL non importato: {exc}",
@@ -583,10 +543,7 @@ async def import_estratto_conto(file: UploadFile = File(...), dry_run: bool = Fa
             ("Nexi", EstrattoContoNexiParser().parse_pdf),
         ):
             try:
-                candidate = await asyncio.to_thread(parser, contents)
-                attempts.append(candidate)
-                if candidate.get("success") and candidate.get("transazioni"):
-                    break
+                attempts.append(parser(contents))
             except Exception as exc:
                 # Un formato non riconosciuto da un parser non deve impedire
                 # agli altri parser di esaminare lo stesso PDF.
@@ -786,11 +743,8 @@ async def import_estratto_conto(file: UploadFile = File(...), dry_run: bool = Fa
                 raise HTTPException(status_code=422, detail=(
                     "Questo e' l'export Spese di SumUp (netto, IVA, fornitore), non un estratto conto BPM: "
                     "caricalo da Documenti > Import, arricchisce i movimenti SumUp gia' presenti."))
-            carta_rows = _dettaglio_carta_xlsx(contents)
-            enti_rows = None if carta_rows is not None else parse_enti_file_contabili_xlsx(contents)
-            if carta_rows is not None:
-                movimenti.extend(carta_rows)
-            elif enti_rows is not None:
+            enti_rows = parse_enti_file_contabili_xlsx(contents)
+            if enti_rows is not None:
                 movimenti.extend(enti_rows)
             else:
                 segno_da_controllare = True
@@ -905,17 +859,11 @@ async def import_estratto_conto(file: UploadFile = File(...), dry_run: bool = Fa
     gia_ufficiali = 0
     
     if not movimenti:
-        raise HTTPException(status_code=422, detail="Nessun movimento leggibile: documento non importato.")
-
-    if dry_run:
-        return {"preview_only": True, "movimenti_letti": len(movimenti)}
-
-    # Solo dopo la validazione: l'anteprima non scrive originali o movimenti.
-    from app.services.estratti_originali import conserva_originale
-    originale_id = await conserva_originale(
-        db, contents, filename_originale, fonte="import_estratto_conto",
-        drive_file_id=drive_file_id,
-    )
+        return {
+            "success": True,
+            "stats": {"nuovi": 0, "duplicati": 0, "totale_letti": 0},
+            "message": "Nessun movimento trovato nel file."
+        }
     
     # Ordina per data contabile ASCENDENTE prima di inserire
     movimenti.sort(key=lambda x: x["data"].isoformat()[:10] if hasattr(x["data"], "isoformat") else str(x["data"]))
@@ -981,10 +929,7 @@ async def import_estratto_conto(file: UploadFile = File(...), dry_run: bool = Fa
         
         # Le carte possono arrivare sia dal PDF Nexi sia dal foglio contabile:
         # entrambi devono produrre la stessa identita' e non due movimenti.
-        is_card_movement = mov.get("tipo") == "carta_credito" or str(mov.get("banca") or "").startswith("Nexi")
-        card_amount = -mov["importo"] if is_card_movement else None
-        if is_card_movement:
-            tipo_mov = "carta_credito"
+        is_card_movement = str(mov.get("banca") or "").startswith("Nexi")
         identity_description = mov.get("identity_description") or (
             mov.get("descrizione_originale") or mov.get("descrizione") or ""
         )
@@ -994,14 +939,14 @@ async def import_estratto_conto(file: UploadFile = File(...), dry_run: bool = Fa
 
         if is_card_movement:
             card_base = (
-                data_str, int(round(card_amount * 100)),
+                data_str, int(round(importo_abs * 100)),
                 _nexi_description(identity_description),
             )
             occurrence_counter_key = ("nexi", card_base)
             incoming_occurrences[occurrence_counter_key] += 1
             occurrence = incoming_occurrences[occurrence_counter_key]
             operation_key, operation_id = nexi_operation_identity(
-                data_str, card_amount, identity_description, occurrence,
+                data_str, importo_abs, identity_description, occurrence,
             )
             existing_rows = existing_card_by_base.get(card_base, [])
             identity_version = "nexi_v2"
@@ -1059,7 +1004,7 @@ async def import_estratto_conto(file: UploadFile = File(...), dry_run: bool = Fa
             "data": data_str,
             "ragione_sociale": mov.get("ragione_sociale"),
             "fornitore": mov.get("fornitore"),
-            "importo": card_amount if is_card_movement else importo_abs,
+            "importo": importo_abs,
             "numero_fattura": mov.get("numero_fattura"),
             "data_pagamento": mov["data_pagamento"].isoformat() if mov.get("data_pagamento") else None,
             **campi_categoria,
@@ -1207,6 +1152,90 @@ async def import_estratto_conto(file: UploadFile = File(...), dry_run: bool = Fa
     except Exception as e:
         logger.error(f"Errore riconciliazione paghe: {e}")
     
+    # ===== RICONCILIAZIONE FATTURE PROVVISORIE =====
+    # Cerca pagamenti nell'EC per fatture non ancora pagate.
+    # Il match e la registrazione passano dall'helper condiviso (stessa logica
+    # dell'import fatture): segno importo tollerato, finestra date, movimento
+    # EC consumato (riconciliato=True), flag fattura coerenti.
+    provvisori_riconciliati = 0
+    try:
+        from app.routers.invoices.fatture_upload import find_ec_match_for_invoice
+        provvisori = await db["invoices"].find({
+            "total_amount": {"$gt": 0},
+            # "sospesa" = bloccata manualmente in Prima Nota Provvisoria:
+            # esclusa dal matching automatico, come in riconciliazione_bancaria.
+            "stato_pagamento": {"$nin": ["pagata", "paid", "sospesa"]},
+            **FILTRO_NON_PAGATE,
+            "$or": [{"prima_nota_id": None}, {"prima_nota_id": {"$exists": False}}, {"prima_nota_id": ""}]
+        }, {"_id": 0, "id": 1, "supplier_name": 1, "supplier_vat": 1, "total_amount": 1,
+            "invoice_date": 1, "invoice_number": 1, "tipo_documento": 1}).to_list(500)
+
+        for f in provvisori if (not FASE0_DISATTIVATO and fonte_ufficiale and has_material_changes) else []:
+            importo = float(f.get("total_amount", 0))
+            match = await find_ec_match_for_invoice(
+                db, importo, f.get("supplier_name", ""), f.get("invoice_date", ""),
+                f.get("invoice_number", ""),
+            )
+            if match:
+                # Dedup: se esiste già un movimento prima nota per questa fattura, non duplicare
+                rif = f"FATT-{f['id']}"
+                existing_pn = await db["prima_nota_banca"].find_one({
+                    "$or": [{"riferimento": rif}, {"fattura_id": f["id"]}],
+                    "status": {"$nin": ["deleted", "archived"]},
+                })
+                if existing_pn:
+                    pn_id = existing_pn.get("id")
+                else:
+                    pn_id = str(_uuid.uuid4())
+                    # Nota di credito (TD04/TD08) NON è un pagamento a
+                    # fornitore in uscita: stessa regola già applicata in
+                    # prima_nota_module/sync.py (bug segnalato dall'utente
+                    # 14/07/2026, qui era hardcoded "uscita"/"Fatture").
+                    await scrivi_movimento(db, "banca", {
+                        "id": pn_id, "data": match.get("data") or match.get("data_contabile") or f.get("invoice_date", ""),
+                        **costruisci_campi_movimento_fattura(f, importo),
+                        "fattura_id": f["id"],
+                        "riferimento": rif,
+                        "fornitore_piva": f.get("supplier_vat", ""),
+                        "estratto_conto_id": match.get("id"),
+                        "source": "riconciliazione_ec_auto",
+                        "created_at": datetime.now(timezone.utc).isoformat(),
+                    })
+                await db["invoices"].update_one({"id": f["id"]}, {"$set": {
+                    "prima_nota_id": pn_id, "prima_nota_tipo": "banca", "prima_nota_banca_id": pn_id,
+                    "stato_pagamento": "pagata", "pagato": True, "paid": True,
+                    "data_pagamento": match.get("data") or match.get("data_contabile") or f.get("invoice_date"),
+                    "riconciliato_con_ec": match.get("id"),
+                }})
+                await db["estratto_conto_movimenti"].update_one(
+                    {"id": match.get("id")},
+                    {"$set": {
+                        "riconciliato": True,
+                        "tipo_riconciliazione": "fattura_provvisoria",
+                        "dettagli_riconciliazione": {"fattura_id": f["id"], "prima_nota_id": pn_id},
+                    }}
+                )
+                provvisori_riconciliati += 1
+
+                # --- EVENT BUS: propaga FATTURA_PAGATA (riconciliazione provvisori EC) ---
+                try:
+                    from app.services.event_bus import propagate_event, EventTypes
+                    await propagate_event(EventTypes.FATTURA_PAGATA, {
+                        "fattura_id": f["id"],
+                        "metodo_pagamento": "banca",
+                        "data_pagamento": match.get("data") or match.get("data_contabile") or f.get("invoice_date"),
+                        "movimento_id": match.get("id"),
+                        "importo": importo,
+                    }, db, source_module="ec_riconciliazione_provvisori")
+                except Exception:
+                    logger.exception("Errore propagazione fattura.pagata (riconcilia provvisori EC)")
+
+        if provvisori_riconciliati > 0:
+            logger.info(f"[EC Import] Riconciliate {provvisori_riconciliati} fatture provvisorie con EC")
+    except Exception as e:
+        logger.error(f"Errore riconciliazione provvisori: {e}")
+        riconciliazione_paghe = {"error": str(e)}
+
     # ===== SYNC ASSEGNI DA ESTRATTO CONTO =====
     # Prima era un bottone manuale nella pagina Assegni ("Sync da E/C"):
     # ora scatta automaticamente subito dopo ogni import dell'estratto conto.
@@ -1495,6 +1524,7 @@ async def import_estratto_conto(file: UploadFile = File(...), dry_run: bool = Fa
         "riconciliazione_operativa": riconciliazione_operativa,
         "riconciliazione_summary": (riconciliazione_results or {}).get("summary"),
         "riconciliazione_paghe": riconciliazione_paghe,
+        "provvisori_riconciliati": provvisori_riconciliati,
         "assegni_sync": assegni_sync,
         "sync_prima_nota": sync_generico,
         "recupero_pos_storico": pos_storico,

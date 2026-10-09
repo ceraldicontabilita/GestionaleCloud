@@ -276,8 +276,6 @@ export default function ArchivioFatture() {
   const [ricercaFornitore, setRicercaFornitore] = useState('');
   const [statistiche, setStatistiche] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState('');
-  const fetchSequenceRef = useRef(0);
   const [pagina, setPagina] = useState(1);
 
   // Selezione multipla per export (richiesta utente 16/07/2026: "permettimi
@@ -337,19 +335,18 @@ export default function ArchivioFatture() {
   const highlightedRowRef = useRef(null);
 
   useEffect(() => {
-    if (!invoiceIdFromUrl || loading || loadError) return; // aspetto una lettura riuscita
+    if (!invoiceIdFromUrl || loading) return; // aspetto che il fetch sia finito
+    if (fatture.length === 0) return;
 
-    const indiceFound = fatture.findIndex(f => String(f.id) === invoiceIdFromUrl);
+    const indiceFound = fatture.findIndex(f => f.id === invoiceIdFromUrl);
     const found = indiceFound >= 0 ? fatture[indiceFound] : null;
 
     if (!found) {
-      let attivo = true;
       // La fattura non è nella lista — probabilmente è di un anno diverso
       // da quello attualmente filtrato. Chiedo al backend di che anno è.
       (async () => {
         try {
-          const r = await api.get(`/api/fatture-ricevute/fattura/${encodeURIComponent(invoiceIdFromUrl)}`);
-          if (!attivo) return;
+          const r = await api.get(`/api/fatture-ricevute/fattura/${invoiceIdFromUrl}`);
           const f = r.data;
           const annoFattura = (f.invoice_date || f.data_documento || '').slice(0, 4);
           setInvoiceNotFoundWarning({
@@ -358,27 +355,19 @@ export default function ArchivioFatture() {
             numero: f.invoice_number || f.numero_documento,
             fornitore: f.supplier_name || f.fornitore_ragione_sociale,
           });
-        } catch (err) {
-          if (!attivo) return;
-          // Un servizio indisponibile non dimostra che la fattura sia sparita.
-          const dettaglio = err.response?.data?.detail;
-          setInvoiceNotFoundWarning({
-            id: invoiceIdFromUrl,
-            notExist: err.response?.status === 404,
-            error: err.response?.status === 404 ? null : (
-              typeof dettaglio === 'string' ? dettaglio : dettaglio?.message || err.message || 'Lettura non disponibile'
-            ),
-          });
+        } catch {
+          // Anche il lookup diretto fallisce — fattura inesistente o cancellata
+          setInvoiceNotFoundWarning({ id: invoiceIdFromUrl, notExist: true });
         }
       })();
-      return () => { attivo = false; };
+      return;
     }
 
     // Caso normale: trovata, evidenzio
     setInvoiceNotFoundWarning(null);
     setPagina(Math.floor(indiceFound / PER_PAGINA) + 1);
-    setHighlightedId(found.id);
-    const scrollTimer = setTimeout(() => {
+    setHighlightedId(invoiceIdFromUrl);
+    setTimeout(() => {
       highlightedRowRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }, 100);
     const t = setTimeout(() => {
@@ -388,18 +377,14 @@ export default function ArchivioFatture() {
       p.delete('id');
       setSearchParams(p, { replace: true });
     }, 4000);
-    return () => { clearTimeout(scrollTimer); clearTimeout(t); };
+    return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [invoiceIdFromUrl, fatture, loading, loadError]);
+  }, [invoiceIdFromUrl, fatture, loading]);
 
   // ==================== FETCH FUNCTIONS ====================
 
   const fetchFatture = useCallback(async () => {
-    const sequence = ++fetchSequenceRef.current;
     setLoading(true);
-    setLoadError('');
-    setInvoiceNotFoundWarning(null);
-    setSelezionate(new Set()); // una nuova lettura rende inattiva la selezione precedente
     try {
       const params = new URLSearchParams();
       if (anno) params.append('anno', anno);
@@ -411,7 +396,6 @@ export default function ArchivioFatture() {
       params.append('limit', '6000');
 
       const res = await api.get(`/api/fatture-ricevute/archivio?${params.toString()}`);
-      if (sequence !== fetchSequenceRef.current) return;
       let items = res.data.fatture || res.data.items || [];
 
       // Filtro client: fatture di fornitori SENZA metodo pagamento configurato,
@@ -421,16 +405,11 @@ export default function ArchivioFatture() {
       }
       setFatture(items);
       setPagina(1);
+      setSelezionate(new Set()); // nuova lista → selezione azzerata
     } catch (err) {
-      if (sequence !== fetchSequenceRef.current) return;
       console.error('Errore caricamento fatture:', err);
-      const dettaglio = err.response?.data?.detail;
-      setLoadError(typeof dettaglio === 'string' ? dettaglio : dettaglio?.message || err.message || 'Lettura non disponibile');
-      setFatture([]);
-      setPagina(1);
-    } finally {
-      if (sequence === fetchSequenceRef.current) setLoading(false);
     }
+    setLoading(false);
   }, [anno, mese, fornitore, stato, debouncedSearch]);
 
   const fetchFornitori = async () => {
@@ -580,14 +559,7 @@ export default function ArchivioFatture() {
         }}>
           <TriangleAlert size={20} aria-hidden="true" style={{ color: COLORS.warning, flexShrink: 0 }} />
           <div style={{ flex: 1, fontSize: 13, color: COLORS.warning, lineHeight: 1.5 }}>
-            {invoiceNotFoundWarning.error ? (
-              <>
-                Impossibile verificare la fattura richiesta: {invoiceNotFoundWarning.error}.
-                <div style={{ marginTop: 10 }}>
-                  <Button variant="primary" size="sm" onClick={fetchFatture} style={{ minHeight: 44 }}>Riprova</Button>
-                </div>
-              </>
-            ) : invoiceNotFoundWarning.notExist ? (
+            {invoiceNotFoundWarning.notExist ? (
               <>
                 La fattura che cercavi non esiste più o è stata eliminata
                 (id: <code>{invoiceNotFoundWarning.id}</code>).
@@ -596,13 +568,13 @@ export default function ArchivioFatture() {
               <>
                 La fattura <strong>{invoiceNotFoundWarning.numero}</strong> di{' '}
                 <strong>{invoiceNotFoundWarning.fornitore}</strong>
-                {invoiceNotFoundWarning.anno && String(invoiceNotFoundWarning.anno) !== String(anno) ? (
+                {invoiceNotFoundWarning.anno ? (
                   <>
                     {' '}è dell'anno <strong>{invoiceNotFoundWarning.anno}</strong>, ma stai
                     guardando l'anno <strong>{anno}</strong>.
                   </>
                 ) : (
-                  <> non è nell'elenco con i filtri selezionati.</>
+                  <> non è nell'anno selezionato (<strong>{anno}</strong>).</>
                 )}
                 <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginTop: 10 }}>
                   <Button
@@ -642,7 +614,7 @@ export default function ArchivioFatture() {
       )}
 
       {/* Statistiche */}
-      {statistiche && !loadError && (
+      {statistiche && (
         <div
           style={{
             display: 'grid',
@@ -846,12 +818,6 @@ export default function ArchivioFatture() {
         {loading ? (
           <div style={{ padding: 40, textAlign: 'center', color: COLORS.textMuted }}>
             Caricamento...
-          </div>
-        ) : loadError ? (
-          <div role="alert" style={{ padding: 24, textAlign: 'center', color: COLORS.warning }}>
-            <p>Fatture non disponibili per l'anno e i filtri selezionati.</p>
-            <p style={{ fontSize: 13 }}>{loadError}</p>
-            <Button variant="primary" onClick={fetchFatture} style={{ minHeight: 44 }}>Riprova</Button>
           </div>
         ) : fatture.length === 0 ? (
           <div style={{ padding: 40, textAlign: 'center', color: COLORS.textMuted }}>

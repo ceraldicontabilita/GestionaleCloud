@@ -1,5 +1,9 @@
-# Dopo la fusione su main verifica che Render serva davvero il commit e le
-# quattro applicazioni. Non esegue suite di test né browser automatici.
+# I collaudi isolati (dati finti, browser reale) e la verifica live girano
+# solo dopo la fusione su main, o a mano (workflow_dispatch): sulle PR resta
+# ci.yml, che basta per il verde prima di unire. Decisione del titolare del
+# 02/10/2026: ogni run sulla PR costava quanto quello su main e i minuti di
+# Actions del repository privato sono a consumo. La verifica live parla
+# unicamente con https://gestionalecloud.onrender.com (ERP + HR + Menu + Lotti).
 name: Produzione
 
 on:
@@ -16,6 +20,9 @@ on:
       - "frontend_shared/**"
       - "frontend_colazioni/**"
       - "supabase/migrations/**"
+      - "tests/**"
+      - "scripts/e2e_distruttivo_server.py"
+      - "scripts/smoke_app.py"
       - "scripts/build_frontends.sh"
       - "page_catalog.json"
       - "render.yaml"
@@ -32,14 +39,126 @@ env:
   PROD_URL: https://gestionalecloud.onrender.com
 
 jobs:
+  e2e:
+    name: E2E distruttivo su ERP isolato
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12.10"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+          cache: yarn
+          cache-dependency-path: frontend/yarn.lock
+      - name: Installa backend
+        run: pip install -r backend/requirements.txt
+      - name: Installa frontend e Chromium
+        working-directory: frontend
+        run: |
+          yarn install --frozen-lockfile
+          npx playwright-core install --with-deps chromium
+      - name: Build frontend ERP per il collaudo isolato
+        working-directory: frontend
+        run: yarn build:erp
+      - name: Avvia ERP isolato
+        run: |
+          python -m uvicorn scripts.e2e_distruttivo_server:app \
+            --host 127.0.0.1 --port 8788 --no-access-log \
+            > /tmp/e2e-distruttivo-server.log 2>&1 &
+          for i in $(seq 1 30); do
+            curl -fsS http://127.0.0.1:8788/api/health && break
+            if [ "$i" = "30" ]; then
+              sed -E 's/(token=)[^ &]+/\1[REDACTED]/g' /tmp/e2e-distruttivo-server.log
+              exit 1
+            fi
+            sleep 1
+          done
+      - name: Operazioni distruttive
+        run: |
+          node frontend/scripts/audit-destructive-e2e.cjs || {
+            echo "::group::Log ERP isolato"
+            sed -E 's/(token=)[^ &]+/\1[REDACTED]/g; s/(Authorization: Bearer )[A-Za-z0-9._-]+/\1[REDACTED]/g' /tmp/e2e-distruttivo-server.log || true
+            echo "::endgroup::"
+            exit 1
+          }
+      - name: Tutte le schermate catalogate
+        run: node frontend/scripts/audit-pages-e2e.cjs
+      - name: Conserva prove visive della Prima Nota
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: prima-nota-e2e-${{ github.run_attempt }}
+          path: /tmp/prima-nota-e2e/
+          if-no-files-found: warn
+          retention-days: 7
+
+  browser:
+    name: Audit layout e viewer
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      PLAYWRIGHT_BROWSERS_PATH: ${{ github.workspace }}/.playwright-browsers
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+          cache: yarn
+          cache-dependency-path: frontend/yarn.lock
+      - name: Installa dipendenze
+        run: yarn install --frozen-lockfile
+      - name: Build frontend ERP per il collaudo visivo
+        run: yarn build:erp
+      - name: Cache browser Playwright
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/.playwright-browsers
+          key: playwright-${{ runner.os }}-${{ hashFiles('frontend/yarn.lock') }}
+      - name: Installa Chromium per Playwright
+        # Si e' visto fermarsi per 20 minuti sul download dei pacchetti apt:
+        # due tentativi da 200 secondi, ma fra uno e l'altro si aspetta che l'apt
+        # rimasto vivo liberi il blocco di dpkg (il timeout uccide solo
+        # playwright, non il suo apt-get). Tetto del passo 10 minuti.
+        timeout-minutes: 10
+        run: |
+          for tentativo in 1 2; do
+            timeout -k 10 200 npx playwright-core install --with-deps chromium && exit 0
+            echo "Installazione Chromium: tentativo $tentativo non riuscito"
+            for i in $(seq 1 24); do
+              pgrep -x 'apt-get|apt|dpkg' > /dev/null || break
+              sleep 5
+            done
+          done
+          exit 1
+      - name: Avvia preview
+        run: |
+          npx vite preview --port 4173 &
+          sleep 4
+      - name: Audit layout
+        run: node scripts/audit-layout.cjs
+      - name: Audit viewer documenti
+        run: node scripts/audit-viewer.cjs
+      - name: E2E viste fiscali e del personale
+        run: node scripts/audit-viste-fiscali.cjs
+      - name: E2E apertura dell'originale (F24, quietanza, fattura, cedolino, verbale, PagoPA, protocollo)
+        run: node scripts/audit-originale.cjs
+
   deploy:
     name: GestionaleCloud live serve questo commit
     if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
     runs-on: ubuntu-latest
-    # Fra build, avvio e idratazione i tempi dipendono dai documenti presenti.
-    # L'attesa ha una scadenza sola
+    # Render ricarica ~77.000 righe a ogni deploy: fra build, avvio e
+    # idratazione passano anche 15-20 minuti. L'attesa ha una scadenza sola
     # (ATTESA_MINUTI) condivisa da tutti i controlli qui sotto; il job ha
-    # margine per installazioni, build e verifica di disponibilita.
+    # margine per installazioni, build e smoke.
     timeout-minutes: 50
     concurrency:
       group: produzione-live-gestionalecloud
@@ -164,3 +283,13 @@ jobs:
               sleep 10
             done
           done
+      - name: Smoke runtime
+        if: steps.attesa.outputs.superato != 'true'
+        env:
+          BACKEND_URL: ${{ env.PROD_URL }}
+          FRONTEND_URL: ${{ env.PROD_URL }}
+          SMOKE_TIMEOUT: "20"
+          SMOKE_EXPECTED_COMMIT: ${{ github.sha }}
+          SMOKE_DEPLOY_WAIT_SECONDS: "900"
+          SMOKE_DEPLOY_POLL_SECONDS: "15"
+        run: python scripts/smoke_app.py

@@ -40,15 +40,13 @@ from app.parsers.busta_paga_multi_template import (
 from app.parsers.cedolino_voci import (
     acconto_recuperato_in_busta, anticipo_tfr_in_busta, importi_ratei_da_coordinate, leggi_corpo_cedolino,
     leggi_foglio_presenze,
-    componenti_busta_da_coordinate,
 )
 
 logger = logging.getLogger(__name__)
 
-# Per scelta operativa del 03/08/2026 lo storico autorizzato parte dal 2018.
-# La guardia evita che un file piu' vecchio, caricato per errore, entri nei
-# registri o generi prima nota/partite aperte.
-PAYROLL_MIN_YEAR = 2018
+# Il titolare ha esteso il 09/10/2026 lo storico autorizzato dal 2005.
+# I documenti anteriori restano dichiarati fuori periodo, con l'originale.
+PAYROLL_MIN_YEAR = 2005
 
 ESITO_BUSTE = "buste"
 ESITO_PRESENZE = "presenze"
@@ -73,14 +71,15 @@ def _summary_cedolino(
     document_pages: int,
 ) -> Dict[str, Any]:
     """Converte un riepilogo deterministico conservando provenienza e PDF."""
-    from app.services.cedolini_rapporti import rapporto_da_coordinate, impronta_testo
-    with fitz.open(stream=pdf_bytes, filetype="pdf") as doc:
-        payroll_pages = [page for page in doc if detect_template(page.get_text()) != "zucchetti_presenze"]
-        rapporto = next((r for page in payroll_pages if (r := rapporto_da_coordinate(page.get_text("words")))), {})
-        content_text = "\n".join(page.get_text() for page in payroll_pages)
+    def pagine_originali(value):
+        if isinstance(value, dict):
+            return {key: (item + page_start - 1 if key == "pagina" and isinstance(item, int)
+                          else pagine_originali(item)) for key, item in value.items()}
+        if isinstance(value, list):
+            return [pagine_originali(item) for item in value]
+        return value
+
     return {
-        **rapporto,
-        "impronta_contenuto": impronta_testo(content_text),
         "nome_dipendente": summary.get("dipendente_nome") or "",
         "codice_fiscale": summary.get("codice_fiscale") or "",
         "tipo_cedolino": summary.get("tipo_cedolino") or "mensile",
@@ -101,6 +100,7 @@ def _summary_cedolino(
         "netto_fonte": summary.get("netto_fonte"),
         "netto_letto": summary.get("netto_letto"),
         "netto_calcolato": summary.get("netto_calcolato"),
+        "dati_chiave": pagine_originali(summary.get("dati_chiave") or {}),
         "totale_trattenute": summary.get("trattenute"),
         "tfr_quota": summary.get("tfr_quota"),
         "tfr_quota_anno": summary.get("tfr_quota_anno"),
@@ -146,8 +146,8 @@ def _summary_complete(parsed: Dict[str, Any], summary: Dict[str, Any]) -> bool:
 def _parse_multi_template_units(file_content: bytes) -> List[Dict[str, Any]]:
     """Separa un fascicolo multipagina per dipendente e periodo.
 
-    Le continuazioni restano aggregate. Due buste complete dello stesso
-    dipendente/mese restano distinte, anche quando cambiano contratto.
+    Le pagine di continuazione restano aggregate al cedolino precedente. Se il
+    fascicolo contiene un solo dipendente, viene conservato integralmente.
     """
     # Import al momento della chiamata: i test sostituiscono il parser sul
     # suo modulo.
@@ -165,7 +165,7 @@ def _parse_multi_template_units(file_content: bytes) -> List[Dict[str, Any]]:
             output = fitz.open()
             try:
                 output.insert_pdf(document, from_page=start, to_page=end)
-                return output.tobytes(garbage=3, deflate=True)
+                return output.tobytes(garbage=3, deflate=True, no_new_id=True)
             finally:
                 output.close()
 
@@ -195,7 +195,8 @@ def _parse_multi_template_units(file_content: bytes) -> List[Dict[str, Any]]:
             else:
                 candidates.append(None)
 
-        if sum(candidate is not None for candidate in candidates) <= 1:
+        distinct_keys = {candidate[0] for candidate in candidates if candidate}
+        if len(distinct_keys) <= 1:
             parsed = parse_busta_paga_from_bytes(file_content)
             summary = extract_summary(parsed)
             if not _summary_complete(parsed, summary):
@@ -207,15 +208,13 @@ def _parse_multi_template_units(file_content: bytes) -> List[Dict[str, Any]]:
 
         starts: List[Tuple[int, Tuple[str, int, int, str], Dict[str, Any]]] = []
         current_key: Optional[Tuple[str, int, int, str]] = None
-        previous_complete = False
         for index, candidate in enumerate(candidates):
             if not candidate:
                 continue
             key, summary = candidate
-            if key != current_key or (previous_complete and summary.get("netto") is not None):
+            if key != current_key:
                 starts.append((index, key, summary))
                 current_key = key
-            previous_complete = summary.get("netto") is not None
 
         # Un foglio presenze precede normalmente la busta dello stesso
         # dipendente. Non deve finire in coda alla busta precedente solo
@@ -278,10 +277,19 @@ def _con_voci(busta: Dict[str, Any]) -> Dict[str, Any]:
     from app.services.salari_unificati_v2 import estrai_ferie_rol_from_text
 
     testo = busta.get("_raw_text") or ""
-    corpo = leggi_corpo_cedolino(testo)
+    pdf_bytes = base64.b64decode(busta["_pdf_data"]) if busta.get("_pdf_data") else None
+    corpo = leggi_corpo_cedolino(testo, pdf_bytes=pdf_bytes,
+                                 page_offset=int(busta.get("source_page_start") or 1) - 1)
     if corpo.get("voci"):
         busta["voci"] = corpo["voci"]
-        busta["dati_chiave"] = corpo["dati_chiave"]
+        busta["dati_chiave"] = {**(busta.get("dati_chiave") or {}), **corpo["dati_chiave"]}
+    voci_tfr = (busta.get("dati_chiave") or {}).get("voci_tfr_documento") or []
+    if voci_tfr:
+        busta["voci"] = (busta.get("voci") or []) + voci_tfr
+    da_verificare = [{"codice": voce["codice"], "pagina": voce["provenienza"]["pagina"]}
+                    for voce in busta.get("voci", []) if voce.get("stato_lettura") == "da_verificare"]
+    if da_verificare:
+        busta.setdefault("dati_chiave", {})["voci_da_verificare"] = da_verificare
     if busta.get("_pdf_data"):
         try:
             ratei = importi_ratei_da_coordinate(base64.b64decode(busta["_pdf_data"]))
@@ -296,14 +304,11 @@ def _con_voci(busta: Dict[str, Any]) -> Dict[str, Any]:
                     chiave[f"{campo}_importo"] = ratei[tipo]
     # Acconto gia' dato e recuperato in questa busta (voce codificata): va
     # in HR con i dati chiave, la posizione del dipendente lo somma al netto.
-    acconto = acconto_recuperato_in_busta(testo, base64.b64decode(busta["_pdf_data"]) if busta.get("_pdf_data") else None)
-    if acconto and acconto.get("da_verificare"):
-        busta.setdefault("dati_chiave", {})["acconto_recuperato_da_verificare"] = True
-    elif acconto:
+    acconto = acconto_recuperato_in_busta(testo)
+    if acconto:
         busta["dati_chiave"] = {**(busta.get("dati_chiave") or {}),
                                 "acconto_recuperato_busta": acconto["importo"],
-                                "acconto_recuperato_voce": acconto["codice"],
-                                "acconto_recuperato_prova": acconto.get("righe", [])}
+                                "acconto_recuperato_voce": acconto["codice"]}
     # Anticipo TFR pagato dentro la busta (voce codificata): resta nei dati chiave
     # e il motore degli acconti TFR lo scala dal fondo (`tfr_anticipo_busta`).
     anticipo = anticipo_tfr_in_busta(testo)
@@ -318,26 +323,6 @@ def _con_voci(busta: Dict[str, Any]) -> Dict[str, Any]:
              or (k in {"tfr_mese", "tfr_quota_anno"} and v is None)}
     if extra:
         busta["dati_extra"] = extra
-    if busta.get("_pdf_data"):
-        try:
-            componenti = componenti_busta_da_coordinate(base64.b64decode(busta["_pdf_data"]))
-        except Exception as exc:
-            logger.warning("Componenti documentali non lette (%s)", type(exc).__name__)
-            componenti = None
-    else:
-        componenti = None
-    if componenti is not None:
-        busta.setdefault("dati_chiave", {})["componenti_busta"] = componenti
-        busta["dati_chiave"]["componenti_versione"] = 1
-        for tipo, campo in (("13", "rateo_13ma"), ("14", "rateo_14ma")):
-            quote = [v["importo"] for v in componenti if v["tipo"] == tipo]
-            if quote:
-                busta["dati_chiave"][campo + "_presente"] = True
-                busta["dati_chiave"][campo + "_importo"] = round(sum(quote), 2)
-        for tipo, campo in (("tfr_quota_mese", "tfr_mese"), ("tfr_quota_anno", "tfr_quota_anno")):
-            quote = [v["importo"] for v in componenti if v["tipo"] == tipo]
-            if len(quote) == 1:
-                busta.setdefault("dati_extra", {})[campo] = quote[0]
     if busta.get("_pdf_data"):
         # La chiave documentale del gestionale usa l'MD5 dei byte della busta
         # (`chiave_cedolino`): conservarla fa ritrovare la stessa busta.
@@ -367,11 +352,6 @@ def leggi_pdf(contenuto: bytes) -> Dict[str, Any]:
                 "motivo": "contratto di lavoro, non una busta paga"}
 
     buste = [_con_voci(b) for b in _parse_multi_template_units(contenuto)]
-    for b in buste:
-        end = (b.get("rapporto_lavoro") or {}).get("data_cessazione")
-        if end and any(c.get("codice_fiscale") == b.get("codice_fiscale")
-                       and ((c.get("rapporto_lavoro") or {}).get("data_assunzione") or "") > end for c in buste):
-            b["rapporto_successivo_documentato"] = True
     fuori = [b for b in buste if 0 < _anno(b) < PAYROLL_MIN_YEAR]
     buste = [b for b in buste if b not in fuori]
     presenze = _presenze(pagine)

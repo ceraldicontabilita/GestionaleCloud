@@ -2,7 +2,9 @@
 unita_misura.py
 ════════════════════════════════════════════════════════════════════
 Normalizzazione unità di misura per la VISUALIZZAZIONE
-(magazzino/rimanenze/schede), usata dal magazzino unificato.
+(magazzino/rimanenze/schede): unica funzione superstite del vecchio
+modulo (dizionario conversioni + endpoint /unita-misura/*), rimosso
+nell'audit del 03/07/2026 perché mai chiamato da frontend/scheduler.
 La logica di conversione peso/prezzo vive in xml_helpers.calcola_prezzo_quantita_kg.
 """
 

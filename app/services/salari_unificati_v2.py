@@ -359,9 +359,9 @@ async def processa_cedolino_v2(
         dati_extra = {}
         if pdf_text:
             dati_extra = estrai_ferie_rol_from_text(pdf_text)
-        if cedolino_data.get("dati_extra"):
+        elif cedolino_data.get("dati_extra"):
             # Ricarica dalla scheda Markdown: i dati del testo sono gia' letti.
-            dati_extra.update(cedolino_data["dati_extra"])
+            dati_extra = dict(cedolino_data["dati_extra"])
         
         # Merge con dati dal parser multi-template se presenti
         ferie_permessi = cedolino_data.get("ferie_permessi", {})
@@ -381,7 +381,8 @@ async def processa_cedolino_v2(
         # --- 1. Anagrafica dipendente ---
         dipendente = await db["dipendenti"].find_one({"codice_fiscale": cf})
         
-        if sostituita:
+        if sostituita or (tipo_cedolino == "tfr" and dipendente):
+            # Il TFR autonomo conserva l'identita' senza sostituire la paga.
             # Versione superata: l'anagrafica non cambia (ultimo netto,
             # ferie, IBAN restano quelli della busta che vale).
             dipendente_id = (dipendente or {}).get("id")
@@ -445,6 +446,9 @@ async def processa_cedolino_v2(
                 "source": "auto_cedolino_v2",
                 "created_at": datetime.now(timezone.utc).isoformat()
             }
+            if tipo_cedolino == "tfr":
+                for campo in ("primo_cedolino", "ultimo_cedolino", "ultimo_netto"):
+                    nuova.pop(campo, None)
             await db["dipendenti"].insert_one(dict(nuova).copy())
         
         result["dipendente_id"] = dipendente_id
@@ -522,7 +526,7 @@ async def processa_cedolino_v2(
             "created_at": (cedolino_esistente or {}).get("created_at") or datetime.now(timezone.utc).isoformat(),
             "updated_at": datetime.now(timezone.utc).isoformat(),
         }
-        for field in ("rapporto_id", "rapporto_lavoro", "impronta_contenuto", "drive_file_id", "drive_md5", "blob_key", "pdf_source_scope", "source_file_hash", "canale", "voci", "dati_chiave", "dati_extra", "retribuzione"):
+        for field in ("drive_file_id", "source_file_hash", "canale", "voci", "dati_chiave", "retribuzione"):
             if cedolino_data.get(field):
                 cedolino_record[field] = cedolino_data[field]
         cedolino_record["stato_netto"] = stato_netto
@@ -546,10 +550,10 @@ async def processa_cedolino_v2(
         # I file Drive restano nell'archivio canonico e vengono letti per ID
         # dall'endpoint autenticato. Solo i canali senza archivio esterno
         # conservano ancora il payload incorporato.
-        if pdf_data and not (cedolino_record.get("drive_file_id") or cedolino_record.get("blob_key")):
+        if pdf_data and not cedolino_record.get("drive_file_id"):
             cedolino_record["pdf_data"] = pdf_data
             cedolino_record["pdf_disponibile"] = True
-        elif cedolino_record.get("drive_file_id") or cedolino_record.get("blob_key"):
+        elif cedolino_record.get("drive_file_id"):
             cedolino_record["pdf_disponibile"] = True
         
         # Upsert per evitare duplicati. Il registro `cedolini` del gestionale
@@ -575,6 +579,14 @@ async def processa_cedolino_v2(
             result["deposito_hr"] = (await deposita_cedolino_in_hr(cedolino_record)).get("esito")
         except Exception:
             logger.exception("Deposito cedolino in HR fallito (canale V2): flusso contabile invariato")
+
+        if tipo_cedolino == "tfr":
+            # Documento e anagrafica sono gia' salvati, cosi' come il deposito
+            # HR. Il netto TFR appartiene al suo conto, non e' uno stipendio
+            # e non prova un pagamento: nessuna riconciliazione o evento salari.
+            result["success"] = True
+            result["documento_tfr"] = True
+            return result
 
         # --- 3. Prima Nota Salari ---
         # Bug corretto 15/07/2026 (audit funzionale): questo controllo
@@ -760,8 +772,7 @@ async def processa_cedolino_v2(
         except Exception:
             logger.exception("Errore detect_cessazione (canale D V2)")
 
-        if (cessazione_info and cessazione_info.get("cessato") and dipendente_id
-                and not cedolino_data.get("rapporto_successivo_documentato")):
+        if cessazione_info and cessazione_info.get("cessato") and dipendente_id:
             try:
                 # Calcola data_cessazione
                 data_cess = cessazione_info.get("data_cessazione_rilevata")

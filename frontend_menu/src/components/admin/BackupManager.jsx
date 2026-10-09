@@ -5,7 +5,7 @@ import { toast } from '../../hooks/use-toast';
 import { Database, Download, Trash2, RefreshCw, Clock, HardDrive, Shield } from 'lucide-react';
 import axios from 'axios';
 
-import { MENU_BACKEND_URL as BACKEND_URL } from '@/lib/backend';
+const BACKEND_URL = process.env.REACT_APP_MENU_BACKEND_URL;
 
 const BackupManager = () => {
   const [backups, setBackups] = useState([]);

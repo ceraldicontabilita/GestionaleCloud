@@ -865,8 +865,8 @@ async def stato_scraping_acquaviva():
 async def export_foto_zip():
     """ZIP con le foto dei prodotti Acquaviva/VDM, ogni file rinominato col
     NOME DEL PRODOTTO (richiesta Enzo 23/07/2026: "estrai foto acquaviva con
-    relativi nomi e dammi zip"). Le foto interne vengono da Supabase Storage;
-    gli URL esterni sono scaricati al volo (best-effort)."""
+    relativi nomi e dammi zip"). Le foto vengono da foto_files su Mongo
+    (/api/foto/...) o, se l'URL è esterno, scaricate al volo (best-effort)."""
     import io
     import zipfile
     import httpx as _httpx
@@ -892,20 +892,9 @@ async def export_foto_zip():
                 dati, mime = None, "image/jpeg"
                 m = re.search(r"/api/foto/([^?]+)", url)
                 if m:
-                    ricetta = await db.ricette.find_one(
-                        {"foto_id": m.group(1)},
-                        {"_id": 0, "foto_storage_path": 1, "foto_content_type": 1},
-                    )
-                    if ricetta and ricetta.get("foto_storage_path"):
-                        from app.lotti.servizi import supabase_foto_ricette
-                        try:
-                            dati = await asyncio.to_thread(
-                                supabase_foto_ricette.leggi,
-                                str(ricetta["foto_storage_path"]),
-                            )
-                            mime = ricetta.get("foto_content_type") or "image/jpeg"
-                        except Exception as exc:  # noqa: BLE001
-                            logger.debug("[Acquaviva] foto Storage non letta: %s", exc)
+                    doc = await db.foto_files.find_one({"_id": m.group(1)})
+                    if doc and doc.get("data"):
+                        dati, mime = bytes(doc["data"]), doc.get("mime", "image/jpeg")
                 elif url.startswith("http"):
                     try:
                         r = await client.get(url)

@@ -147,6 +147,12 @@ def _authorized(x_lotti_key: Optional[str]) -> None:
         raise HTTPException(status_code=401, detail="Chiave integrazione non valida")
 
 
+# Le due grafie dello stato archiviato convivono in archivio (regola 13 di
+# CLAUDE.md): un filtro che ne conosce una sola lascia passare documenti che
+# doveva escludere.
+_STATI_NON_ATTIVI = {"deleted", "archived", "archiviata"}
+
+
 def _attiva(doc: dict[str, Any]) -> bool:
     """Le stesse fatture che il gestionale considera attive, non altre.
 
@@ -160,13 +166,13 @@ def _attiva(doc: dict[str, Any]) -> bool:
     (`registrazione_contabile._FILTRO_FATTURE_DA_REGISTRARE`): archiviata
     significa fuori dai conti, e una collisione aperta aspetta che un operatore
     decida quale originale vale — finche' non lo decide, non e' merce."""
-    from app.constants.fattura_attiva import fattura_attiva
-    from app.routers.fatture_module.crud import _e_documento_trasporto
-    from app.services.fatture_emesse import e_fattura_emessa
-
-    if not fattura_attiva(doc) or _e_documento_trasporto(doc) or e_fattura_emessa(doc):
+    if doc.get("entity_status") == "deleted" or doc.get("deleted"):
         return False
-    if doc.get("duplicate_review_required") is True or doc.get("verifica_ai") == "in_attesa":
+    if _text(doc.get("status")).lower() in _STATI_NON_ATTIVI:
+        return False
+    if _text(doc.get("stato_import")) == "archivio_storico":
+        return False
+    if doc.get("duplicate_review_required") is True:
         return False
     return True
 

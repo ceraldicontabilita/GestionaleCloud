@@ -218,6 +218,7 @@ def abbina_ravvedimenti(
 
     proposte = []
     for o in originali:
+        oid = str(o["id"])
         su_modelli = [(r, d) for r in ravvedimenti if (d := confronta(o, r))]
         su_quietanze = [(g, d) for g in gruppi if (d := confronta(o, g["copie"][0]))]
         proposte.append({"originale": o, "modelli": su_modelli, "quietanze": su_quietanze})

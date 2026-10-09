@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import axios from 'axios';
 
-import { MENU_BACKEND_URL as BACKEND_URL } from '@/lib/backend';
+const BACKEND_URL = process.env.REACT_APP_MENU_BACKEND_URL;
 
 /**
  * Verifica il token admin salvato in localStorage e reindirizza al login se assente/scaduto.

@@ -390,7 +390,7 @@ async def applica(db, fornitore: Dict[str, Any], escludi: bool, motivo: str,
 async def registra_decisione_da_lotti(nome: str, piva: str, escluso: bool) -> Optional[Dict[str, Any]]:
     """Una scelta fatta dentro Lotti arriva nell'anagrafica ERP, se il fornitore c'e'
     (P.IVA, altrimenti nome univoco). Lotti l'ha gia' scritta: qui solo il canonico."""
-    from app.database import Database
+    from app.database import Database, Collections
 
     db = Database.get_db()
     trovato = await trova_fornitore(db, piva, nome)

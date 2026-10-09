@@ -1,0 +1,417 @@
+import React from 'react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+import api from '../api';
+import {
+  default as CoerenzaPOSCorrispettivi,
+  BadgeRiconciliatoBanca,
+  EditorPosReale,
+  ModalImportTotaliPos,
+  calcolaSaldoXmlPos,
+  formatEuroConSegno,
+  parseTotaliPosTesto,
+  CellaCircuito,
+  TESTO_SENZA_CHIUSURA,
+  TESTO_CREDITO_XML,
+  creditoXmlAperto,
+} from './CoerenzaPOSCorrispettivi';
+
+vi.mock('../api', () => ({
+  default: { get: vi.fn(), put: vi.fn(), post: vi.fn() },
+}));
+
+vi.mock('../contexts/AnnoContext', () => ({
+  useAnnoGlobale: () => ({ anno: 2026 }),
+}));
+
+vi.mock('sonner', () => ({
+  toast: { success: vi.fn(), error: vi.fn() },
+}));
+
+describe('Segno differenza XML meno POS reale', () => {
+  it('mostra positivo quando XML e maggiore del POS reale', () => {
+    expect(formatEuroConSegno(793.20 - 792.60)).toBe('€ +0,60');
+  });
+
+  it('mantiene il segno negativo quando XML non copre il POS reale', () => {
+    expect(formatEuroConSegno(792.60 - 793.20)).toBe('€ -0,60');
+  });
+
+  it('somma solo i giorni confrontabili e restituisce la direzione complessiva', () => {
+    expect(calcolaSaldoXmlPos([
+      { pos_manuale_presente: true, stato_serale: 'ok', diff_serale: 11.89 },
+      { pos_manuale_presente: true, stato_serale: 'ok', diff_serale: -3.00 },
+      { pos_manuale_presente: true, stato_serale: 'in_attesa_xml', diff_serale: -100 },
+      { pos_manuale_presente: true, stato_serale: 'chiusa_col_giorno_dopo', diff_serale: 0 },
+      { pos_manuale_presente: false, stato_serale: 'no_dati', diff_serale: 50 },
+    ])).toEqual({ saldo: 8.89, direzione: 'piu', giorni: 2 });
+  });
+
+  it('segnala complessivamente in meno senza proporre modifiche ai dati storici', () => {
+    expect(calcolaSaldoXmlPos([
+      { pos_manuale_presente: true, stato_serale: 'differenza_in_piu_da_registrare', diff_serale: -0.60 },
+    ])).toEqual({ saldo: -0.60, direzione: 'meno', giorni: 1 });
+  });
+});
+
+describe('Evidenza di riconciliazione bancaria', () => {
+  it('mostra il badge soltanto quando il backend certifica il match reale', () => {
+    const { rerender } = render(<BadgeRiconciliatoBanca riconciliato={false} />);
+    expect(screen.queryByText('Riconciliato banca')).not.toBeInTheDocument();
+
+    rerender(<BadgeRiconciliatoBanca riconciliato />);
+    expect(screen.getByText('Riconciliato banca')).toBeInTheDocument();
+  });
+});
+
+describe('Importazione massiva POS', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    api.post.mockResolvedValue({ data: { salvati: 2, errori: 0 } });
+  });
+
+  it('legge date e importi con virgola senza accettare duplicati', () => {
+    expect(parseTotaliPosTesto('2026-07-01;1685,80\n2026-07-02;1666.90')).toEqual([
+      { data: '2026-07-01', importo: 1685.80 },
+      { data: '2026-07-02', importo: 1666.90 },
+    ]);
+    expect(() => parseTotaliPosTesto('2026-07-01;1\n2026-07-01;2')).toThrow('Data duplicata');
+  });
+
+  it('invia tutte le giornate in una sola richiesta autenticata', async () => {
+    const onSaved = vi.fn();
+    render(<ModalImportTotaliPos onClose={vi.fn()} onSaved={onSaved} />);
+    fireEvent.change(screen.getByLabelText('Totali POS giornalieri'), {
+      target: { value: '2026-07-01;1685,80\n2026-07-02;1666,90' },
+    });
+    fireEvent.click(screen.getByLabelText('Conferma importazione POS'));
+
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith(
+      '/api/pos-corrispettivi/chiusure-giornaliere/batch',
+      {
+        righe: [
+          { data: '2026-07-01', importo: 1685.80 },
+          { data: '2026-07-02', importo: 1666.90 },
+        ],
+        note: 'Import Numia: solo acquisti approvati',
+      },
+    ));
+    expect(onSaved).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('Editor POS reale del terminale', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    api.put.mockResolvedValue({ data: { message: 'salvato' } });
+  });
+
+  it('parte vuoto quando il POS manuale non e ancora stato inserito', () => {
+    render(<EditorPosReale g={{
+      data: '2026-07-05', pos_per_circuito: { numia: null },
+    }} />);
+
+    expect(screen.getByLabelText('POS NUMIA reale 2026-07-05')).toHaveValue('');
+    expect(screen.queryByLabelText('Salva POS NUMIA 2026-07-05')).not.toBeInTheDocument();
+  });
+
+  it('nasconde Salva se il valore e gia persistito e lo mostra solo dopo una modifica', () => {
+    render(<EditorPosReale g={{
+      data: '2026-07-05', pos_per_circuito: { numia: 1098.40 },
+    }} />);
+
+    const input = screen.getByLabelText('POS NUMIA reale 2026-07-05');
+    expect(screen.queryByLabelText('Salva POS NUMIA 2026-07-05')).not.toBeInTheDocument();
+    fireEvent.change(input, { target: { value: '1100,00' } });
+    expect(screen.getByLabelText('Salva POS NUMIA 2026-07-05')).toBeInTheDocument();
+  });
+
+  it('salva il valore manuale senza modificare il dato XML', async () => {
+    const onSaved = vi.fn();
+    render(<EditorPosReale g={{
+      data: '2026-07-05', pos_per_circuito: { numia: 1098.40 },
+      xml_elettronico: 1152.70,
+    }} onSaved={onSaved} />);
+
+    const input = screen.getByLabelText('POS NUMIA reale 2026-07-05');
+    expect(input).toHaveValue('1098,40');
+    fireEvent.change(input, { target: { value: '1.125,50' } });
+    // Formato operativo semplice: nessun separatore migliaia nell'input.
+    fireEvent.change(input, { target: { value: '1125,50' } });
+    fireEvent.click(screen.getByLabelText('Salva POS NUMIA 2026-07-05'));
+
+    await waitFor(() => expect(api.put).toHaveBeenCalledWith(
+      '/api/pos-corrispettivi/chiusura-giornaliera',
+      {
+        data: '2026-07-05',
+        importo: 1125.50,
+        gestore: 'numia',
+        note: 'Inserimento manuale NUMIA da Coerenza POS',
+      },
+    ));
+    expect(onSaved).toHaveBeenCalledTimes(1);
+    expect(screen.queryByLabelText('Salva POS NUMIA 2026-07-05')).not.toBeInTheDocument();
+  });
+
+  it('accetta zero come valore manuale esplicito', async () => {
+    render(<EditorPosReale g={{
+      data: '2026-07-06', pos_per_circuito: { numia: null },
+    }} />);
+
+    fireEvent.change(screen.getByLabelText('POS NUMIA reale 2026-07-06'), {
+      target: { value: '0,00' },
+    });
+    fireEvent.keyDown(screen.getByLabelText('POS NUMIA reale 2026-07-06'), {
+      key: 'Enter', code: 'Enter',
+    });
+
+    await waitFor(() => expect(api.put).toHaveBeenCalledWith(
+      '/api/pos-corrispettivi/chiusura-giornaliera',
+      expect.objectContaining({ data: '2026-07-06', importo: 0 }),
+    ));
+  });
+});
+
+describe('Vista canonica POS e banca', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    api.get.mockImplementation(url => {
+      if (url.includes('/verifica-coerenza')) {
+        return Promise.resolve({ data: {
+          riepilogo: {}, riepilogo_giornaliero: [], anomalie: [], anomalie_count: 0,
+        } });
+      }
+      if (url.includes('/riepilogo-mensile')) {
+        return Promise.resolve({ data: {
+          mesi: [{
+            mese: 7, nome: 'Lug', totale_corrispettivi: 150,
+            contanti: 45, elettronico_xml: 105, pos_terminale: 100,
+            differenza_xml_pos: 5, pos_accreditato: 100,
+            differenza_pos_banca: 0, stato: 'ok',
+          }],
+          totali: {
+            elettronico_xml: 105, pos_terminale: 100,
+            differenza_xml_pos: 5, pos_accreditato: 100,
+            differenza_pos_banca: 0,
+          },
+        } });
+      }
+      return Promise.resolve({ data: {
+        statistiche: {
+          fase2_ok: 1, fase2_pos_totale: 100, fase2_accrediti_totale: 100,
+          fase2_saldo_finale: 0, fase2_movimenti_banca: 1,
+          fase2_movimenti_banca_raw: 3, fase2_duplicati_banca_unificati: 2,
+        },
+        giorni: [], riepilogo_settimanale: [],
+      } });
+    });
+  });
+
+  it('espone le fonti duplicate unificate e le due differenze mensili', async () => {
+    render(<CoerenzaPOSCorrispettivi />);
+
+    expect(await screen.findByText(/Fonti bancarie duplicate unificate:/)).toHaveTextContent('2');
+    fireEvent.click(screen.getByRole('button', { name: 'Mensile' }));
+
+    expect(screen.getByText('POS Numia, chiusura serale')).toBeInTheDocument();
+    expect(screen.getByText("POS SumUp, dall'app")).toBeInTheDocument();
+    expect(screen.getByText('Accreditato su BPM')).toBeInTheDocument();
+    expect(screen.getByText('Pagato sulla carta SumUp')).toBeInTheDocument();
+    // Le due differenze stanno dietro «Mostra tutte le colonne».
+    fireEvent.click(screen.getByTestId('mensile-tutte-colonne'));
+    expect(screen.getByText('Registratore − (Numia + SumUp)')).toBeInTheDocument();
+    expect(screen.getByText('BPM − Numia')).toBeInTheDocument();
+  });
+
+  it('apre dai contatori la lista esatta dei giorni con problemi', async () => {
+    api.get.mockImplementation(url => {
+      if (url.includes('/verifica-coerenza')) return Promise.resolve({ data: {
+        riepilogo: {}, riepilogo_giornaliero: [], anomalie: [], anomalie_count: 0,
+      } });
+      if (url.includes('/riepilogo-mensile')) return Promise.resolve({ data: { mesi: [], totali: {} } });
+      if (url.includes('/sumup/')) return Promise.resolve({ data: { configured: false } });
+      return Promise.resolve({ data: {
+        statistiche: { fase2_ok: 1, fase2_mancante: 1, fase2_saldo_finale: -25 },
+        giorni: [
+          { data: '2026-08-01', stato_serale: 'ok', stato_accredito: 'ok', stato_corrispettivo: 'ok', pos_manuale_presente: true },
+          { data: '2026-08-02', stato_serale: 'ok', stato_accredito: 'mancante', stato_corrispettivo: 'ok', pos_manuale_presente: true },
+        ],
+        riepilogo_settimanale: [],
+      } });
+    });
+    window.HTMLElement.prototype.scrollIntoView = vi.fn();
+
+    render(<CoerenzaPOSCorrispettivi />);
+
+    expect(await screen.findByRole('button', { name: /XML mancanti/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Accrediti circuito mancanti/ })).toBeInTheDocument();
+    fireEvent.click(await screen.findByRole('button', { name: /Saldo da verificare/ }));
+    expect(await screen.findByText('1 / 2 giorni')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Solo problemi' })).toHaveStyle({ background: '#c15f3c' });
+    await waitFor(() => expect(window.HTMLElement.prototype.scrollIntoView).toHaveBeenCalled());
+  });
+});
+
+describe('CellaCircuito', () => {
+  // Un circuito che non ha risposto non vale zero: mostrarlo come 0,00
+  // affermerebbe che quel terminale non ha incassato, che e' un'altra cosa.
+  const rendi = (posPerCircuito, circuito) =>
+    render(
+      <table><tbody><tr>
+        <CellaCircuito g={{ pos_per_circuito: posPerCircuito }} circuito={circuito} />
+      </tr></tbody></table>
+    );
+
+  it('mostra l\'importo del circuito quando il dato c\'e\'', () => {
+    rendi({ numia: 500, sumup: 100 }, 'sumup');
+    expect(screen.getByText(/100/)).toBeInTheDocument();
+  });
+
+  it('mostra la fonte reale del circuito', () => {
+    render(
+      <table><tbody><tr>
+        <CellaCircuito
+          g={{
+            pos_per_circuito: { numia: 867.30 },
+            fonte_pos_per_circuito: { numia: 'estratto_conto_numia' },
+          }}
+          circuito="numia"
+        />
+      </tr></tbody></table>
+    );
+    expect(screen.getByText('Estratto BPM')).toBeInTheDocument();
+  });
+
+  it('distingue lo zero dichiarato dal dato mancante', () => {
+    const { unmount } = rendi({ numia: 500, sumup: 0 }, 'sumup');
+    expect(screen.getByText(/0,00/)).toBeInTheDocument();
+    expect(screen.queryByText('in attesa')).toBeNull();
+    unmount();
+
+    rendi({ numia: 500, sumup: null }, 'sumup');
+    expect(screen.getByText('in attesa')).toBeInTheDocument();
+  });
+
+  it('non esplode se il dettaglio per circuito non arriva', () => {
+    render(
+      <table><tbody><tr>
+        <CellaCircuito g={{}} circuito="numia" />
+      </tr></tbody></table>
+    );
+    expect(screen.getByText('in attesa')).toBeInTheDocument();
+  });
+});
+
+describe('NUMIA senza chiusura del terminale', () => {
+  // Il POS NUMIA letto dall'accredito BPM non si verifica contro se stesso:
+  // la pagina lo dice a parole e non lo conta fra i giorni quadrati.
+  beforeEach(() => {
+    vi.clearAllMocks();
+    api.get.mockImplementation(url => {
+      if (url.includes('/verifica-coerenza')) return Promise.resolve({ data: {
+        riepilogo: {}, riepilogo_giornaliero: [], anomalie: [], anomalie_count: 0,
+      } });
+      if (url.includes('/riepilogo-mensile')) return Promise.resolve({ data: {
+        mesi: [{
+          mese: 7, nome: 'Lug', elettronico_xml: 900, pos_numia: 867.3,
+          pos_accreditato: 867.3, differenza_xml_pos: 32.7,
+          differenza_pos_banca: null, banca_verificabile: false, stato: 'ok',
+        }],
+        totali: { differenza_pos_banca: null },
+      } });
+      if (url.includes('/sumup/')) return Promise.resolve({ data: { configured: false } });
+      return Promise.resolve({ data: {
+        statistiche: {
+          fase2_ok: 0, fase2_senza_chiusura_terminale: 1,
+          fase2_accrediti_senza_chiusura_totale: 867.3, fase2_saldo_finale: 0,
+        },
+        giorni: [{
+          data: '2026-07-06', stato_serale: 'ok', stato_corrispettivo: 'definitivo_xml',
+          stato_accredito: 'senza_chiusura_terminale', riconciliato_banca_reale: false,
+          accredito_banca: 867.3, diff_accredito: null, pos_manuale_presente: true,
+          pos_manuale: 867.3, xml_elettronico: 900,
+          pos_per_circuito: { numia: 867.3, sumup: null },
+          fonte_pos_per_circuito: { numia: 'estratto_conto_numia' },
+          fase2_per_circuito: { sumup: { stato: 'no_pos_sumup' } },
+        }],
+        riepilogo_settimanale: [],
+      } });
+    });
+  });
+
+  it('mostra lo stato a parole e non lo conta come quadrato', async () => {
+    render(<CoerenzaPOSCorrispettivi />);
+
+    expect(await screen.findByTestId('avviso-senza-chiusura')).toHaveTextContent(TESTO_SENZA_CHIUSURA);
+    expect(screen.getByText('0%')).toBeInTheDocument();
+    expect(screen.queryByText('Riconciliato banca')).toBeNull();
+    expect(screen.getAllByText(TESTO_SENZA_CHIUSURA).length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText(TESTO_SENZA_CHIUSURA, { selector: 'div' })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Solo OK' }));
+    expect(screen.queryByText(TESTO_SENZA_CHIUSURA, { selector: 'div' })).toBeNull();
+  });
+
+  it('nel mensile la differenza BPM − Numia e\' «Non verificabile», non zero', async () => {
+    render(<CoerenzaPOSCorrispettivi />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Mensile' }));
+    fireEvent.click(screen.getByTestId('mensile-tutte-colonne'));
+    expect(screen.getByTestId('mensile-7')).toHaveTextContent('Non verificabile');
+  });
+});
+
+describe('Credito POS aperto dal solo XML (senza chiusura del terminale)', () => {
+  // Decisione del titolare (02/10/2026): l'XML apre il credito verso il gestore;
+  // la pagina lo evidenzia finche' la banca non lo prova o il terminale non lo sostituisce.
+  beforeEach(() => {
+    vi.clearAllMocks();
+    api.get.mockImplementation(url => {
+      if (url.includes('/verifica-coerenza')) return Promise.resolve({ data: {
+        riepilogo: {}, riepilogo_giornaliero: [], anomalie: [], anomalie_count: 0,
+      } });
+      if (url.includes('/riepilogo-mensile')) return Promise.resolve({ data: { mesi: [], totali: {} } });
+      if (url.includes('/sumup/')) return Promise.resolve({ data: { configured: false } });
+      return Promise.resolve({ data: {
+        statistiche: {
+          fase2_ok: 0, fase2_saldo_finale: 0,
+          fase2_crediti_xml_aperti: 1, fase2_crediti_xml_aperti_totale: 700,
+          fase2_crediti_xml_differenza_terminale: 0,
+        },
+        giorni: [{
+          data: '2026-09-10', stato_serale: 'no_dati', stato_corrispettivo: 'definitivo_xml',
+          stato_accredito: 'no_pos_manuale', riconciliato_banca_reale: false,
+          accredito_banca: 0, diff_accredito: 0, pos_manuale_presente: false,
+          pos_manuale: 0, xml_elettronico: 700,
+          pos_per_circuito: { numia: null, sumup: null },
+          fonte_pos_per_circuito: {},
+          fase2_per_circuito: { sumup: { stato: 'no_pos_sumup' } },
+          credito_pos_da_xml: {
+            importo: 700, accreditato: 0, riconciliato: false,
+            stato: 'senza_chiusura_terminale', differenza_terminale: null,
+          },
+        }],
+        riepilogo_settimanale: [],
+      } });
+    });
+  });
+
+  it('dice a parole che il credito e\' aperto e lo tiene fra i problemi', async () => {
+    render(<CoerenzaPOSCorrispettivi />);
+
+    expect(await screen.findByTestId('avviso-credito-xml')).toHaveTextContent(`${TESTO_CREDITO_XML}: 1`);
+    expect(screen.getByTestId('credito-xml-2026-09-10')).toHaveTextContent('aperto, senza chiusura terminale');
+    expect(screen.queryByText('Riconciliato banca')).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Solo problemi' }));
+    expect(screen.getByTestId('credito-xml-2026-09-10')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Solo OK' }));
+    expect(screen.queryByTestId('credito-xml-2026-09-10')).toBeNull();
+  });
+
+  it('un credito chiuso dall\'accredito non e\' piu\' un problema', () => {
+    expect(creditoXmlAperto({ credito_pos_da_xml: { stato: 'riconciliato' } })).toBe(false);
+    expect(creditoXmlAperto({ credito_pos_da_xml: { stato: 'differenza_con_chiusura_terminale' } })).toBe(true);
+    expect(creditoXmlAperto({ credito_pos_da_xml: null })).toBe(false);
+  });
+});

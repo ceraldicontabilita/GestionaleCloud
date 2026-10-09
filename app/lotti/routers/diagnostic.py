@@ -42,7 +42,7 @@ _COLLEZIONI_PROTETTE = {
         "sanificazione_schede", "anomalie", "fornitori_rivendita",
         "attrezzature_config", "schede_tecniche", "produzioni",
         "fornitori_anagrafica", "sconti_merce", "magazzino_bar_movimenti",
-        "dizionario_ingredienti", "gelati_invenduti",
+        "dizionario_ingredienti", "ricerca_web_tentativi", "gelati_invenduti",
         "controllo_olio", "temperature_cottura", "sistema_stato",
         "ricezioni_merce", "prodotti_alias", "colazione_template",
         "materie_prime", "import_jobs", "sanificazione", "ricette_libro",

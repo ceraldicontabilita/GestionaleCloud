@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import axios from 'axios';
 
-import { MENU_BACKEND_URL as BACKEND_URL } from '@/lib/backend';
+const BACKEND_URL = process.env.REACT_APP_MENU_BACKEND_URL;
 
 const MenuContext = createContext(null);
 

@@ -24,9 +24,6 @@ export default function PrimaNotaHub() {
 
   return (
     <div style={{ width: '100%' }}>
-      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
-        <a href="/primanota-ceraldi.html" className="text-sm text-blue-600 hover:underline">Apri applicazione Ceraldi</a>
-      </div>
       <div style={{ display: activeTab === 'prima-nota' ? 'block' : 'none' }}>
         <Suspense fallback={<PageLoader />}>
           {visitedPrimaNota && <PrimaNotaContent key={`prima-nota-${anno}`} />}

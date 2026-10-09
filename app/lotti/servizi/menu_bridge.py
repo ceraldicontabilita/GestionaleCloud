@@ -4,15 +4,15 @@ Menu con le stesse immagini e scelgo io se far comparire nel menu pubblico".
 
 La fonte e' la ricetta di Lotti (collezione ``ricette``): ogni ricetta viene
 SEMPRE replicata in ``menu_products`` (tabelle del Menu, progetto Supabase
-``GestionaleCloud``, client PostgREST sincrono di ``app.menu.supabase_client``)
+``Lotti-HACCP``, client PostgREST sincrono di ``app.menu.supabase_client``)
 con ``origine = "lotti"`` e chiave idempotente ``lotti_ref = "ricetta:<id>"``.
 La colonna ``visible`` replica il flag ``menu_pubblico`` della ricetta: il
 titolare la vede nell'area admin del Menu e decide se mostrarla ai clienti.
 
 Immagini: i nuovi upload di Lotti sono persistiti direttamente nel bucket
 Supabase Storage ``menu-images`` sotto ``lotti/ricette`` e il prodotto Menu
-usa lo stesso oggetto, senza copie concorrenti. Il ponte non recupera immagini
-da Drive o dal progetto Qromo eliminato.
+usa lo stesso oggetto, senza copie concorrenti. Il lettore Drive resta solo
+per le immagini storiche finche' la loro migrazione non e' completata.
 
 Prezzo (decisione del titolare 19/09/2026): la ricetta ha due prezzi, al banco
 (``prezzo_vendita``, quello del food cost) e al tavolo (``prezzo_tavolo``). Il
@@ -21,9 +21,9 @@ stato deciso si continua a esporre quello al banco (vedi ``prezzo_per_menu``).
 Una ricetta senza prezzo compare nella carta con «Prezzo da definire».
 Le API del catalogo ordinabile la escludono finche' non ha un prezzo valido.
 
-Categoria: rispetta la coppia categoria/sottocategoria Menu scelta in Lotti;
-in assenza di una scelta valida usa "Produzione Ceraldi" e il reparto.
-I prodotti senza ricetta, come bevande e cocktail, restano gestibili dal Menu.
+Categoria: ogni ricetta operativa va nella categoria canonica "Produzione
+Ceraldi" e nella sottocategoria derivata dal reparto. Non esiste una seconda
+classificazione manuale concorrente.
 
 Il ponte non deve MAI far fallire un endpoint di Lotti: le funzioni pubbliche
 restituiscono sempre un dizionario ``{"esito": ...}`` e non sollevano
@@ -84,6 +84,14 @@ MAPPA_ALLERGENI_MENU = {
     "lupini": "lupin",
     "arachidi": "peanuts",
 }
+
+ESTENSIONE_DA_MIME = {
+    "image/jpeg": "jpg",
+    "image/jpg": "jpg",
+    "image/png": "png",
+    "image/webp": "webp",
+}
+
 
 def menu_configurato() -> bool:
     return bool(os.environ.get("MENU_SUPABASE_URL", "").strip().strip('"').strip("'"))
@@ -186,8 +194,23 @@ def _sottocategoria_per_reparto(reparto: Any) -> tuple[str, str]:
     return SOTTOCATEGORIE_REPARTO.get(str(reparto or "").strip().casefold(), SOTTOCATEGORIA_ALTRO)
 
 
+def _estensione(mime: str) -> str:
+    return ESTENSIONE_DA_MIME.get((mime or "").split(";", 1)[0].strip().casefold(), "jpg")
+
+
+def _foto_id_da_url(foto_url: Any) -> Optional[str]:
+    """Id foto dagli URL interni di Lotti ``/api/foto/<id>[?v=...]``."""
+    if not foto_url:
+        return None
+    path = str(foto_url).split("?", 1)[0].rstrip("/")
+    marker = "/api/foto/"
+    if marker not in path:
+        return None
+    return path.split(marker, 1)[1] or None
+
+
 def percorso_storage(foto_id: str, mime: str) -> str:
-    return f"{STORAGE_PREFIX}/{foto_id}.webp"
+    return f"{STORAGE_PREFIX}/{foto_id}.{_estensione(mime)}"
 
 
 def _descrizione(ricetta: dict) -> Optional[str]:
@@ -330,13 +353,10 @@ def _riga_agganciata(ricetta: dict, lotti_ref: str) -> Optional[dict]:
 
 def _carica_immagine(foto: dict) -> str:
     """Copia i byte della foto Lotti nel bucket del Menu e restituisce l'URL pubblico."""
-    from app.menu.image_optimizer import ottimizza_immagine_web
-
-    percorso = percorso_storage(str(foto["_id"]), "image/webp")
-    contenuto = ottimizza_immagine_web(bytes(foto["data"]))
+    mime = str(foto.get("mime") or "image/jpeg")
+    percorso = percorso_storage(str(foto["_id"]), mime)
     supabase.storage.from_(STORAGE_BUCKET).upload(
-        percorso, contenuto,
-        {"content-type": "image/webp", "cache-control": "31536000", "upsert": "true"},
+        percorso, bytes(foto["data"]), {"content-type": mime, "upsert": "true"}
     )
     return supabase.storage.from_(STORAGE_BUCKET).get_public_url(percorso)
 
@@ -499,7 +519,20 @@ async def _foto_ricetta(ricetta: dict, db: Any) -> Optional[dict]:
             "sha256": ricetta.get("foto_sha256"),
             "storage_path": storage_path,
         }
-    return None
+    drive_id = str(ricetta.get("foto_drive_id") or "").strip()
+    if drive_id:
+        from app.lotti.servizi import drive_foto_ricette
+        contenuto, mime, _ = await asyncio.to_thread(
+            drive_foto_ricette.leggi,
+            drive_id,
+            folder_id=str(ricetta.get("foto_drive_folder_id") or ""),
+        )
+        return {"_id": drive_id, "mime": mime, "data": contenuto,
+                "sha256": ricetta.get("foto_sha256")}
+    foto_id = _foto_id_da_url(ricetta.get("foto_url"))
+    if not foto_id or db is None:
+        return None
+    return await db.foto_files.find_one({"_id": foto_id})
 
 
 async def pubblica_prodotto_nel_menu(ricetta: dict, *, visibile: bool, db: Any = None) -> dict:

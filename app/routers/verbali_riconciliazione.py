@@ -587,6 +587,8 @@ async def scan_fatture_per_verbali() -> Dict[str, Any]:
             if numero_verbale:
                 verbali_trovati += 1
                 fattura_id = fattura.get("id") or str(fattura.get("_id"))
+                fattura_numero = fattura.get("invoice_number") or fattura.get("numero_fattura")
+
                 # Verifica se esiste già l'associazione
                 existing = await db["verbali_noleggio"].find_one({
                     "numero_verbale": numero_verbale,

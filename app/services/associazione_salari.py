@@ -60,7 +60,11 @@ async def anteprima(db, pagamento, dip_id, destinazioni=None, collega_key=None):
     key = (esistente or {}).get("key") or "ripartizione-salari:" + str(pagamento["id"])
     anno, mese = (esistente or {}).get("anno"), (esistente or {}).get("mese")
     comp = competenza_in_causale(pagamento.get("causale"))
-    if comp:
+    if pagamento.get("competenza_confermata") is True and pagamento.get("anno") and pagamento.get("mese"):
+        anno, mese = int(pagamento["anno"]), int(pagamento["mese"])
+        if anno < 2000 or not 1 <= mese <= 14:
+            raise HTTPException(422, "Competenza manuale non valida")
+    elif comp:
         mese, anno = comp
     base = [e for e in dati["pagamenti_esiti"] if e.get("key") != key]
     coda = [e for e in dati["bonifici_da_associare"] if e.get("id") != pagamento["id"]
@@ -178,12 +182,22 @@ async def conferma(db, pagamento, dip_id, payload, attore="admin"):
             **campi, "stato": "associato", "associato_a": dip_id, "associato_tipo": "stipendio",
             "pagamento_esito_key": esito["key"], "ripartizione_salari_versione": 1,
             "destinazioni_salari": piano["destinazioni"], "associato_il": now}})
+        if esito.get("anno") and esito.get("mese"):
+            # Un mese scelto esplicitamente resta visibile anche se la busta
+            # deve ancora arrivare. Nessun netto o debito viene inventato.
+            await tx.paghe_mensili.update_one({"dipendente_id": dip_id,
+                "anno": esito["anno"], "mese": esito["mese"]}, {"$setOnInsert": {
+                    "dipendente_id": dip_id, "anno": esito["anno"], "mese": esito["mese"]},
+                "$set": {"bonifico_da_esiti": True}}, upsert=True)
         await aggiorna_proiezioni(tx, dip_id)
 
-    return {"ok": True, **pubblica(piano), "pagamento_key": esito["key"]}
+    proiezioni = await _allinea_cedolini_erp(db, dip_id)
+    return {"ok": True, **pubblica(piano), "pagamento_key": esito["key"],
+            "cedolini_gestionale": proiezioni,
+            "cedolino_gestionale": proiezioni[0] if len(proiezioni) == 1 else {"esito": "ripartito", "righe": proiezioni}}
 
 
-async def annulla(db, key):
+async def annulla(db, key, attore="admin"):
     """Ritira le quote; un pagamento preesistente resta nella prima nota."""
     async with _transazione(db) as tx:
         e = await tx.pagamenti_esiti.find_one({"key": key}, {"_id": 0, "pdf_data": 0})
@@ -195,13 +209,70 @@ async def annulla(db, key):
                 "$set": prima, "$unset": {k: "" for k in e if k not in prima}})
         else:
             await tx.pagamenti_esiti.delete_one({"key": key})
+        from app.services.conferma_bonifico import campi_ritiro
         await tx.bonifici_da_associare.update_one({"id": e.get("bonifico_da_associare_id")}, {
-            "$set": {"stato": "da_associare", "confermato_manuale": False},
+            "$set": {"stato": "da_associare", **campi_ritiro()},
+            "$push": {"storico": {"azione": "ritira_conferma", "da": attore,
+                                  "il": datetime.now(timezone.utc).isoformat(), "dipendente_id": e["dipendente_id"]}},
             "$unset": {k: "" for k in ("pagamento_esito_key", "ripartizione_salari_versione",
                 "destinazioni_salari", "associato_a", "associato_tipo", "associato_il")}})
         await aggiorna_proiezioni(tx, e["dipendente_id"])
 
-    return {"ok": True}
+    proiezioni = await _allinea_cedolini_erp(db, e["dipendente_id"], ritirato=e)
+    return {"ok": True, "cedolini_gestionale": proiezioni}
+
+
+async def _allinea_cedolini_erp(db, dip_id, ritirato=None):
+    """Proietta soltanto le quote del writer unico, anche dopo una redistribuzione.
+
+    Ogni pagamento mantiene lo stesso riferimento sui diversi cedolini. Gli
+    acconti senza competenza non creano un pagamento su una busta inesistente.
+    Gli esiti dichiarano un errore ERP senza annullare il fatto già scritto in HR.
+    """
+    from app.hr.routers.dipendenti_cloud import _db_gestionale
+    from app.services.cedolini_pagamento import allinea_cedolino_gestionale_da_paghe
+
+    gest = _db_gestionale()
+    dati = await _carica(db, dip_id)
+    dip = await db.dipendenti.find_one({"id": dip_id}, {"_id": 0}) or {}
+    registro = _registro(dati, dip, dati["pagamenti_esiti"], dati["bonifici_da_associare"])
+    quote = indice_quote(registro, dati["pagamenti_esiti"])
+    esiti = []
+
+    async def ritira(e, periodi):
+        coda_id = e.get("bonifico_da_associare_id")
+        if not coda_id:
+            return
+        for anno, mese in sorted(periodi):
+            esiti.append(await allinea_cedolino_gestionale_da_paghe(
+                db, gest, dip_id, anno, mese,
+                riferimento=f"hr:bonifici_da_associare:{coda_id}", ritira=True))
+
+    if ritirato:
+        precedenti = {tuple(p) for p in ritirato.get("cedolini_gestionale_periodi", [])}
+        precedenti.update((d["anno"], d["mese"]) for d in ritirato.get("destinazioni_salari", []))
+        if ritirato.get("anno") and ritirato.get("mese"):
+            precedenti.add((ritirato["anno"], ritirato["mese"]))
+        await ritira(ritirato, precedenti)
+    for e in dati["pagamenti_esiti"]:
+        if e.get("ripartizione_salari_versione") != 1 or not e.get("bonifico_da_associare_id"):
+            continue
+        per_mese = {comp: sum((pos.importo(q["importo"]) or pos.ZERO for q in righe
+                              if q.get("key") == e.get("key")), pos.ZERO)
+                    for comp, righe in quote.items()}
+        per_mese = {comp: valore for comp, valore in per_mese.items() if valore > pos.ZERO}
+        precedenti = {tuple(p) for p in e.get("cedolini_gestionale_periodi", [])}
+        await ritira(e, precedenti - set(per_mese))
+        for (anno, mese), importo in sorted(per_mese.items()):
+            esiti.append(await allinea_cedolino_gestionale_da_paghe(
+                db, gest, dip_id, anno, mese,
+                riferimento=f"hr:bonifici_da_associare:{e['bonifico_da_associare_id']}",
+                importo=float(importo), data=e.get("data")))
+        # Conserva anche i mesi ritirati se il gateway ERP non era raggiungibile:
+        # una successiva conferma riprova la stessa rimozione idempotente.
+        await db.pagamenti_esiti.update_one({"key": e["key"]}, {"$set": {
+            "cedolini_gestionale_periodi": [list(p) for p in sorted(precedenti | set(per_mese))]}})
+    return esiti
 
 
 async def aggiorna_proiezioni(db, dip_id):
@@ -213,6 +284,9 @@ async def aggiorna_proiezioni(db, dip_id):
     quote = indice_quote(registro, dati["pagamenti_esiti"])
     dovuti = {tuple(m["competenza"]): m["dare"] for m in registro if m["tipo"] == "busta" and m.get("competenza")}
     coperture = indice_coperture(dati["pagamenti_esiti"])
+    from app.services.cedolini_rapporti import raggruppa_cedolini
+    cedolini = raggruppa_cedolini(c for c in dati["cedolini"] if
+        (str(c.get("tipo_cedolino") or "").strip().lower() or None) in pos.TIPI_BUSTA_DOVUTO)
     stati = {}
     for p in dati["paghe_mensili"]:
         comp = p.get("anno"), p.get("mese")
@@ -223,6 +297,9 @@ async def aggiorna_proiezioni(db, dip_id):
         dovuto = dovuti.get(comp)
         prove = coperture.get((dip_id, *comp), [])
         stato = stato_paga_mese(dovuto, erogato)
+        ced = cedolini.get((dip_id, *comp))
+        if dovuto is None and pos.netto_da_verificare(ced) and not p.get("importo_busta_manuale"):
+            stato = "da_verificare"
         if bon and dovuto is not None and not esiti_confermati(bonifici):
             stato = "da_verificare"
         if prove:

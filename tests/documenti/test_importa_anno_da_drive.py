@@ -1,0 +1,259 @@
+"""Richiesta utente 16/07/2026: bottone in Admin per l'import "pulito per
+anno" — selezioni l'anno e il sistema importa da Drive solo fatture e
+corrispettivi di quell'anno. La parte critica è la PROMOZIONE: un file di
+un anno diverso da quello attivo viene archiviato e spostato in Elaborate
+su Drive, quindi rilanciare il sync dopo aver cambiato anno non lo
+ritroverebbe mai — i documenti dell'anno scelto già in archivio vengono
+ripresi da lì e fatti entrare nel flusso attivo."""
+import asyncio
+
+from app.services import config_import as mod
+
+
+def _run(c):
+    loop = asyncio.new_event_loop()
+    try:
+        return loop.run_until_complete(c)
+    finally:
+        loop.close()
+
+
+def _match(doc, query):
+    for k, v in query.items():
+        if isinstance(v, dict):
+            if "$regex" in v and not str(doc.get(k, "")).startswith(v["$regex"].lstrip("^")):
+                return False
+            if "$ne" in v and doc.get(k) == v["$ne"]:
+                return False
+        else:
+            if doc.get(k) != v:
+                return False
+    return True
+
+
+class _Cursor:
+    def __init__(self, docs):
+        self._docs = docs
+
+    async def to_list(self, n=None):
+        return list(self._docs[:n] if n else self._docs)
+
+
+class _Coll:
+    def __init__(self, docs=None):
+        self.docs = docs or []
+
+    def find(self, query=None, projection=None, *a, **k):
+        return _Cursor([dict(d) for d in self.docs if _match(d, query or {})])
+
+    async def find_one(self, query, *a, **k):
+        for d in self.docs:
+            if _match(d, query):
+                return dict(d)
+        return None
+
+    async def insert_one(self, doc, *a, **k):
+        self.docs.append(dict(doc))
+
+    async def update_one(self, query, update, upsert=False, *a, **k):
+        for d in self.docs:
+            if _match(d, query):
+                d.update(update.get("$set", {}))
+                return
+        if upsert:
+            nuovo = {k2: v2 for k2, v2 in query.items() if not isinstance(v2, dict)}
+            nuovo.update(update.get("$set", {}))
+            self.docs.append(nuovo)
+
+    async def delete_one(self, query, *a, **k):
+        before = len(self.docs)
+        self.docs = [d for d in self.docs if not _match(d, query)]
+
+        class _R:
+            deleted_count = before - len(self.docs)
+        return _R()
+
+    async def find_one_and_update(self, query, update, upsert=False):
+        for d in self.docs:
+            if _match(d, query):
+                return dict(d)
+        if upsert:
+            self.docs.append(dict(update.get("$setOnInsert", {})))
+        return None
+
+    async def delete_many(self, query, *a, **k):
+        return await self.delete_one(query)
+
+
+class _Db:
+    def __init__(self):
+        self.collections = {}
+
+    def __getitem__(self, name):
+        return self.collections.setdefault(name, _Coll())
+
+
+def test_promozione_corrispettivo_archiviato_entra_in_prima_nota():
+    db = _Db()
+    db["corrispettivi"].docs = [
+        {"id": "c23", "data": "2023-05-10", "stato_import": "archivio_storico",
+         "status": "archiviata", "totale": 1000.0,
+         "pagato_contanti": 400.0, "pagato_elettronico": 600.0},
+    ]
+    # Chiusura REALE del terminale: dal 07/08/2026 l'uscita POS non si ricava
+    # piu' dall'elettronico XML, che non sa distinguere i circuiti.
+    db["chiusure_pos_manuali"].docs = [{
+        "data": "2023-05-10", "gestore": "nexi", "importo": 600.0,
+        "source": "inserimento_manuale_terminale",
+    }]
+
+    esito = _run(mod.promuovi_archivio_anno(db, 2023))
+
+    assert esito["corrispettivi_promossi"] == 1
+    corr = db["corrispettivi"].docs[0]
+    assert corr["stato_import"] == "promosso_da_archivio"
+    assert corr["prima_nota_cassa_id"]
+    # Movimento Cassa: sola quota contanti; il POS apre un credito separato.
+    cassa = db["prima_nota_cassa"].docs
+    assert any(m["tipo"] == "entrata" and m["importo"] == 400.0 for m in cassa)
+    assert not any(m["tipo"] == "uscita" for m in cassa)
+    assert not any(m.get("source") == "corrispettivo_pos" for m in db["prima_nota_banca"].docs)
+
+
+def test_promozione_salta_giorno_gia_attivo():
+    db = _Db()
+    db["corrispettivi"].docs = [
+        {"id": "attivo", "data": "2023-05-10", "stato_import": "promosso_da_archivio",
+         "totale": 1000.0},
+        {"id": "arch", "data": "2023-05-10", "stato_import": "archivio_storico",
+         "status": "archiviata", "totale": 1000.0},
+    ]
+
+    esito = _run(mod.promuovi_archivio_anno(db, 2023))
+
+    assert esito["corrispettivi_promossi"] == 0
+    assert esito["corrispettivi_gia_attivi"] == 1
+    assert db["prima_nota_cassa"].docs == []  # nessun movimento doppio
+
+
+def test_promozione_fattura_archiviata_ripassa_dalla_pipeline(monkeypatch):
+    db = _Db()
+    db["invoices"].docs = [
+        {"id": "f23", "invoice_key": "key-f23", "invoice_date": "2023-03-01", "stato_import": "archivio_storico",
+         "filename": "IT123_fatt.xml", "xml_raw": "<FatturaElettronica>...</FatturaElettronica>"},
+        {"id": "f23-noxml", "invoice_date": "2023-04-01", "stato_import": "archivio_storico"},
+    ]
+    chiamate = []
+
+    async def _fake_process_xml_bytes(db_, content, filename, source, applica_filtro_anno,
+                                      promote_existing_id, promote_invoice_key):
+        chiamate.append({"filename": filename, "source": source,
+                         "applica_filtro_anno": applica_filtro_anno,
+                         "promote_existing_id": promote_existing_id,
+                         "promote_invoice_key": promote_invoice_key})
+        return {"status": "imported"}
+
+    monkeypatch.setattr("app.routers.invoices.fatture_upload.process_xml_bytes",
+                        _fake_process_xml_bytes)
+
+    esito = _run(mod.promuovi_archivio_anno(db, 2023))
+
+    assert esito["fatture_promosse"] == 1
+    assert esito["fatture_senza_xml"] == 1
+    assert chiamate[0]["source"] == "promozione_archivio"
+    assert chiamate[0]["applica_filtro_anno"] is False
+    assert chiamate[0]["promote_existing_id"] == "f23"
+    assert chiamate[0]["promote_invoice_key"] == "key-f23"
+    assert any(d["id"] == "f23" for d in db["invoices"].docs)
+    # quello senza XML resta in archivio, mai eliminato alla cieca
+    assert any(d["id"] == "f23-noxml" for d in db["invoices"].docs)
+
+
+def test_promozione_fattura_fallita_non_perde_originale(monkeypatch):
+    db = _Db()
+    originale = {
+        "id": "f23", "invoice_key": "key-f23", "invoice_date": "2023-03-01",
+        "stato_import": "archivio_storico", "filename": "IT123_fatt.xml",
+        "xml_raw": "<FatturaElettronica>...</FatturaElettronica>",
+        "file_hash": "sha256-originale",
+    }
+    db["invoices"].docs = [dict(originale)]
+
+    async def _errore(*args, **kwargs):
+        return {"status": "error", "error": "parser non disponibile"}
+
+    monkeypatch.setattr("app.routers.invoices.fatture_upload.process_xml_bytes", _errore)
+    esito = _run(mod.promuovi_archivio_anno(db, 2023))
+
+    assert esito["fatture_errori"] == 1
+    assert db["invoices"].docs == [originale]
+
+
+def test_promozione_ignora_anni_diversi():
+    db = _Db()
+    db["corrispettivi"].docs = [
+        {"id": "c24", "data": "2024-02-01", "stato_import": "archivio_storico", "totale": 500.0},
+    ]
+
+    esito = _run(mod.promuovi_archivio_anno(db, 2023))
+
+    assert esito["corrispettivi_promossi"] == 0
+    assert db["corrispettivi"].docs[0]["stato_import"] == "archivio_storico"  # intoccato
+
+
+def test_import_anno_svuota_la_cartella_unica_non_i_vecchi_canali(monkeypatch):
+    """I canali Drive per sezione sono smontati: il bottone rispondeva
+    «Drive fatture non configurato». Ora svuota la cartella unica."""
+    db = _Db()
+    chiamate = []
+
+    async def _svuota(db_):
+        chiamate.append("svuota")
+        return {"giri": 2, "elaborati": 60, "restanti": 0}
+
+    async def _promuovi(db_, anno):
+        return {"anno": anno}
+
+    monkeypatch.setattr("app.services.drive_cartella_unica.attivo", lambda: True)
+    monkeypatch.setattr("app.services.drive_cartella_unica.svuota", _svuota)
+    monkeypatch.setattr(mod, "promuovi_archivio_anno", _promuovi)
+
+    esito = _run(mod.importa_anno_da_drive(db, 2026))
+
+    assert chiamate == ["svuota"]
+    assert esito["drive"]["elaborati"] == 60
+    # I moduli dei canali per sezione non esistono piu'.
+    import importlib.util
+    assert importlib.util.find_spec("app.services.drive_invoice_ingest") is None
+    assert importlib.util.find_spec("app.services.drive_corrispettivi_ingest") is None
+
+
+def test_job_import_anno_persiste_esito(monkeypatch):
+    db = _Db()
+
+    async def _fake_import(db_, anno):
+        return {"anno": anno, "sync_fatture": {"imported": 2}}
+
+    monkeypatch.setattr(mod, "importa_anno_da_drive", _fake_import)
+    _run(mod._esegui_import_job(db, 2025))
+
+    stato = _run(mod.get_stato_import_anno(db))
+    assert stato["stato"] == "completato"
+    assert stato["anno"] == 2025
+    assert stato["risultato"]["sync_fatture"]["imported"] == 2
+    assert stato["errore"] is None
+
+
+def test_job_import_anno_persiste_errore_senza_inventare_esito(monkeypatch):
+    db = _Db()
+
+    async def _fake_import(db_, anno):
+        raise RuntimeError("Drive non disponibile")
+
+    monkeypatch.setattr(mod, "importa_anno_da_drive", _fake_import)
+    _run(mod._esegui_import_job(db, 2025))
+
+    stato = _run(mod.get_stato_import_anno(db))
+    assert stato["stato"] == "errore"
+    assert stato["risultato"] is None
+    assert "Drive non disponibile" in stato["errore"]

@@ -622,6 +622,9 @@ scripts/
 supabase/
     migrazioni SQL
 
+tests/
+    test backend e frontend per area
+
 page_catalog.json
 
 CLAUDE.md
@@ -682,6 +685,59 @@ python -m uvicorn app.main:app --host 0.0.0.0 --port 8000
 ```
 
 Una build frontend mancante può rendere indisponibili le SPA pur lasciando raggiungibili le API.
+
+---
+
+# Test
+
+Suite backend isolata:
+
+```bash
+python scripts/collaudo_isolato.py -q
+```
+
+Frontend ERP:
+
+```bash
+yarn --cwd frontend test
+```
+
+Lotti:
+
+```bash
+python scripts/collaudo_isolato.py tests/lotti
+```
+
+HR:
+
+```bash
+python scripts/collaudo_isolato.py tests/hr
+```
+
+Le suite sono organizzate principalmente in:
+
+```text
+tests/banca
+tests/contabilita
+tests/documenti
+tests/fatture
+tests/fiscale
+tests/frontend
+tests/hr
+tests/lotti
+tests/menu
+tests/noleggio
+tests/runtime
+```
+
+Il runner di test deve isolare le credenziali reali e impedire connessioni involontarie ai servizi di produzione.
+
+Un test verde su fixture locali non dimostra che:
+
+- i dati reali siano coerenti;
+- le relazioni di produzione siano integre;
+- una migrazione sia stata applicata;
+- un flusso live riconcili realmente i documenti.
 
 ---
 
@@ -814,17 +870,18 @@ Non creare nuovi endpoint alternativi per aprire documenti.
 Per ogni modifica pertinente:
 
 ```text
-1. compilazione Python
-2. analisi statica
-3. build frontend interessati
-4. git diff --check
-5. revisione avversariale del diff
-6. commit dei soli file pertinenti
-7. PR finale
-8. merge su main
-9. verifica deploy
-10. verifica health
-11. controllo live del flusso
+1. test mirati
+2. suite backend se necessaria
+3. test frontend interessati
+4. build frontend interessati
+5. git diff --check
+6. revisione avversariale del diff
+7. commit dei soli file pertinenti
+8. PR finale
+9. merge su main
+10. verifica deploy
+11. verifica health
+12. controllo live del flusso
 ```
 
 La presenza di:

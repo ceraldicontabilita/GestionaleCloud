@@ -56,6 +56,7 @@ async def righe_scadenzario(db, anni: Optional[Iterable[int]] = None) -> List[Di
     registro = await registro_f24.carica_registro(db)
     prospetti = await db[COLL_PROSPETTI].find({"stato": CANONICA, "f24_id": {"$ne": None}}, {"_id": 0}).to_list(5000)
     prospetto_per_f24 = {str(p["f24_id"]): p for p in prospetti}
+    quietanze = {str(q.get("id")): q for q in registro["quietanze"] if q.get("id")}
     anni_set = set(anni) if anni is not None else None
 
     visti: set = set()

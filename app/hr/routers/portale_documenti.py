@@ -103,6 +103,24 @@ async def upload_documento(
     return {"ok": True, "id": doc["id"], "nome_file": doc["nome_file"]}
 
 
+@router.get("/{doc_id}/file", summary="Scarico un mio documento")
+async def scarica_documento(doc_id: str, identity: Dict[str, Any] = Depends(get_identity)):
+    db = Database.get_db()
+    doc = await db[COLL].find_one(
+        {"id": doc_id, "dipendente_id": identity["id"]}, {"_id": 0})
+    if not doc or not doc.get("file_data"):
+        raise HTTPException(404, "Documento non trovato")
+    try:
+        raw = base64.b64decode(doc["file_data"])
+    except Exception as exc:
+        raise HTTPException(500, "File corrotto") from exc
+    fname = doc.get("nome_file") or f"{doc.get('tipo','documento')}.pdf"
+    return StreamingResponse(
+        io.BytesIO(raw), media_type=doc.get("mime") or "application/octet-stream",
+        headers={"Content-Disposition": f'attachment; filename="{fname}"'},
+    )
+
+
 @router.delete("/{doc_id}", summary="Elimino un mio documento caricato")
 async def elimina_documento(doc_id: str, identity: Dict[str, Any] = Depends(get_identity)):
     db = Database.get_db()
@@ -341,22 +359,3 @@ async def regolamento_accetta(request: Request, identity: Dict[str, Any] = Depen
         }},
         upsert=True)
     return {"ok": True, "accettato_il": quando}
-
-
-# Dopo regolamento/file: «regolamento» non è l'ID di un allegato personale.
-@router.get("/{doc_id}/file", summary="Scarico un mio documento")
-async def scarica_documento(doc_id: str, identity: Dict[str, Any] = Depends(get_identity)):
-    db = Database.get_db()
-    doc = await db[COLL].find_one(
-        {"id": doc_id, "dipendente_id": identity["id"]}, {"_id": 0})
-    if not doc or not doc.get("file_data"):
-        raise HTTPException(404, "Documento non trovato")
-    try:
-        raw = base64.b64decode(doc["file_data"])
-    except Exception as exc:
-        raise HTTPException(500, "File corrotto") from exc
-    fname = doc.get("nome_file") or f"{doc.get('tipo','documento')}.pdf"
-    return StreamingResponse(
-        io.BytesIO(raw), media_type=doc.get("mime") or "application/octet-stream",
-        headers={"Content-Disposition": f'attachment; filename="{fname}"'},
-    )

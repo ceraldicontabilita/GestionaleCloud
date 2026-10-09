@@ -7,11 +7,15 @@ import { Globe } from "lucide-react";
 import { conferma } from "../../../utils/conferma";
 import { stampaDoc } from "../../../utils/stampa";
 import { isAdmin, vaiAlLoginGestionale } from "../../../auth";
-import { API, fotoSrc } from "../../../utils/constants";
 
 // Riga breve mostrata nel Menu digitale: una frase, non un tema. Oltre questa
 // misura il testo sborda dalla card del Menu su telefono.
 export const MAX_DESCRIZIONE_MENU = 140;
+
+const API = process.env.REACT_APP_LOTTI_BACKEND_URL + "/api";
+const BACKEND = process.env.REACT_APP_LOTTI_BACKEND_URL || "";
+// foto_url è relativo (/api/foto/..): per <img>/background va reso assoluto sul backend.
+const fotoSrc = (u) => (u ? (/^https?:/.test(u) ? u : BACKEND + u) : "");
 
 const toast = (msg, tipo = "ok") => {
   const div = document.createElement("div");
@@ -201,7 +205,6 @@ function FormRicetta({ ricetta, onSalvato, onAnnulla, onApriScheda, onVisibilita
     };
   });
   const [saving, setSaving] = useState(false);
-  const semilavorato = (form.categorie_rapide || []).includes("semilavorati");
   const [scadenza, setScadenza] = useState(null);
   const mountTs = useRef(Date.now());  // anti ghost-click sul backdrop
 
@@ -427,7 +430,7 @@ function FormRicetta({ ricetta, onSalvato, onAnnulla, onApriScheda, onVisibilita
   // Finché resta "automatica" e cambia il nome, la proposta si aggiorna.
   useEffect(() => {
     if (ricetta?.id) return;
-    if (form.fornitore_rivendita || semilavorato) return;  // prodotto comprato: niente proposta
+    if (form.fornitore_rivendita) return;  // prodotto comprato: niente proposta
     if (origineIngredienti === "ereditata" || origineIngredienti === "manuale") return;
     const nome = (form.nome || "").trim();
     if (nome.length < 4 || autoProposta.current.ultimoNome === nome) return;
@@ -451,7 +454,7 @@ function FormRicetta({ ricetta, onSalvato, onAnnulla, onApriScheda, onVisibilita
     }, 1200);
     return () => clearTimeout(t);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [form.nome, origineIngredienti, form.fornitore_rivendita, semilavorato]);
+  }, [form.nome, origineIngredienti, form.fornitore_rivendita]);
 
   // Intelligenza visiva: legge la foto di un'etichetta e ne estrae gli ingredienti.
   const [leggendoFoto, setLeggendoFoto] = useState(false);
@@ -533,7 +536,6 @@ function FormRicetta({ ricetta, onSalvato, onAnnulla, onApriScheda, onVisibilita
 
   const salva = async () => {
     if (!form.nome.trim()) { toast("Inserisci il nome ricetta","warn"); return; }
-    if (semilavorato && !(form.fornitore_rivendita || "").trim()) { toast("Indica il fornitore del semilavorato", "warn"); return; }
     setSaving(true);
     try {
       // Invia solo i campi che il backend si aspetta: evita di rispedire
@@ -569,11 +571,7 @@ function FormRicetta({ ricetta, onSalvato, onAnnulla, onApriScheda, onVisibilita
         // Memoria manuale/automatica/ereditata (richiesta Enzo 23/07/2026)
         origine_ingredienti: origineIngredienti || "manuale",
         // Prodotto di rivendita: "" = lo produciamo noi
-        fornitore_rivendita: (form.fornitore_rivendita || "").trim(),
-        fornitore_partita_iva: (form.fornitore_partita_iva || "").trim(),
-        codice_articolo_fornitore: (form.codice_articolo_fornitore || "").trim(),
-        confezione: (form.confezione || "").trim(),
-        ...(!ricetta?.id && semilavorato ? {categorie_rapide:["semilavorati"]} : {}),
+        fornitore_rivendita: form.fornitore_rivendita || "",
         // Menu digitale (Enzo 03/09/2026): la ricetta va SEMPRE anche nel Menu
         // con la stessa foto; questo flag decide se i clienti la vedono.
         menu_pubblico: !!form.menu_pubblico,
@@ -598,8 +596,7 @@ function FormRicetta({ ricetta, onSalvato, onAnnulla, onApriScheda, onVisibilita
       if (fotoPending && idFoto) {
         try {
           const fd = new FormData(); fd.append("file", fotoPending);
-          const fotoSalvata = await axios.post(`${API}/ricette/${idFoto}/upload-foto`, fd, { headers: { "Content-Type": "multipart/form-data" } });
-          menuSync = fotoSalvata.data?.menu_sync || menuSync;
+          await axios.post(`${API}/ricette/${idFoto}/upload-foto`, fd, { headers: { "Content-Type": "multipart/form-data" } });
         } catch {
           toast("Ricetta salvata, ma la foto non è partita: riaprila e ricaricala", "warn");
         }
@@ -607,7 +604,7 @@ function FormRicetta({ ricetta, onSalvato, onAnnulla, onApriScheda, onVisibilita
       if (menuSync?.esito === "errore") {
         toast("Ricetta salvata, ma il Menu digitale non è stato aggiornato: riprova con «Aggiorna ricetta»", "warn");
       } else {
-        toast(semilavorato ? "Semilavorato salvato ✅" : "Ricetta salvata ✅");
+        toast("Ricetta salvata ✅");
       }
       onSalvato();
     } catch (e) {
@@ -645,7 +642,7 @@ function FormRicetta({ ricetta, onSalvato, onAnnulla, onApriScheda, onVisibilita
       {!incorporata && <div style={{position:"sticky",top:0,zIndex:5,background:bannerColor,color:"#fff",padding:"16px 20px",display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,flexWrap:"wrap"}}>
         <div style={{minWidth:0}}>
           <div style={{fontSize:11,fontWeight:800,letterSpacing:".08em",textTransform:"uppercase",opacity:.85}}>
-            {semilavorato ? (ricetta?.id ? "✏️ Modifica semilavorato" : "📦 Nuovo semilavorato") : (ricetta?.id ? "✏️ Stai modificando la ricetta" : "✨ Nuova ricetta")}
+            {ricetta?.id ? "✏️ Stai modificando la ricetta" : "✨ Nuova ricetta"}
           </div>
           <div style={{fontSize:21,fontWeight:900,lineHeight:1.2,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>
             {form.nome || ricetta?.nome || "Senza nome"}
@@ -715,7 +712,7 @@ function FormRicetta({ ricetta, onSalvato, onAnnulla, onApriScheda, onVisibilita
           (prima erano 4 righe piene: il form sembrava infinito) */}
       <div style={{display:"flex",flexDirection:"column",gap:14,marginBottom:18}}>
         <div>
-          <label style={lbl}>{semilavorato ? "Nome prodotto *" : "Nome ricetta *"}</label>
+          <label style={lbl}>Nome ricetta *</label>
           <input value={form.nome} onChange={e=>setField("nome",e.target.value)} placeholder="es. Babà al Rum" style={inp}/>
         </div>
         <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit, minmax(140px, 1fr))",gap:10}}>
@@ -793,7 +790,7 @@ function FormRicetta({ ricetta, onSalvato, onAnnulla, onApriScheda, onVisibilita
           </label>
 
           {[{id:"menu_bb", label:"Visibile nelle Colazioni B&B", nota:"Disponibile da scegliere quando componi una colazione per gli hotel."},
-            {id:"visibile_tablet", label:semilavorato ? "Visibile in Lotti" : "Visibile nelle ricette operative", nota:"Compare nelle card del reparto. Se togli la spunta, la ricetta resta recuperabile tra le Escluse."}].map(flag => (
+            {id:"visibile_tablet", label:"Visibile nelle ricette operative", nota:"Compare nelle card del reparto. Se togli la spunta, la ricetta resta recuperabile tra le Escluse."}].map(flag => (
             <label key={flag.id} style={{display:"flex", alignItems:"center", gap:12, minHeight:44, padding:"10px 14px", border:"1.5px solid var(--border)", borderRadius:10, cursor:"pointer"}}>
               <input type="checkbox" checked={!!form[flag.id]} onChange={e=>setField(flag.id,e.target.checked)} style={{width:20,height:20}} />
               <span><strong>{flag.label}</strong><span style={{display:"block",fontSize:12,color:"var(--text-2)"}}>{flag.nota}</span></span>
@@ -863,16 +860,13 @@ function FormRicetta({ ricetta, onSalvato, onAnnulla, onApriScheda, onVisibilita
           spegne (è un prodotto acquistato, non una ricetta da comporre). */}
       <div style={{marginBottom:12}}>
         <label style={{fontSize:11,fontWeight:700,color:"var(--text-2)",textTransform:"uppercase",letterSpacing:".05em",display:"block",marginBottom:6}}>
-          {semilavorato ? "Fornitore del semilavorato *" : "Lo produciamo noi o lo compriamo?"}
+          Lo produciamo noi o lo compriamo?
         </label>
         <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>
-          {!semilavorato && <button onClick={()=>setField("fornitore_rivendita","")} style={chip(!form.fornitore_rivendita)}>
+          <button onClick={()=>setField("fornitore_rivendita","")} style={chip(!form.fornitore_rivendita)}>
             🏠 Lo produciamo noi
-          </button>}
-          {semilavorato ? <>
-            <input aria-label="Fornitore del semilavorato" list="fornitori-semilavorato" value={form.fornitore_rivendita || ""} onChange={e=>setField("fornitore_rivendita",e.target.value)} placeholder="Acquaviva, Sammontana…" style={inp} />
-            <datalist id="fornitori-semilavorato">{fornitoriRivendita.map(n => <option key={n} value={n} />)}</datalist>
-          </> : <select value={form.fornitore_rivendita || ""} onChange={e=>setField("fornitore_rivendita",e.target.value)}
+          </button>
+          <select value={form.fornitore_rivendita || ""} onChange={e=>setField("fornitore_rivendita",e.target.value)}
             style={{...inp,flex:1,minWidth:170,width:"auto",background:"var(--card)",
               borderColor: form.fornitore_rivendita ? "#8a6f47" : "var(--border)",
               color: form.fornitore_rivendita ? "#6f583a" : "var(--text-2)",fontWeight:700}}>
@@ -881,7 +875,7 @@ function FormRicetta({ ricetta, onSalvato, onAnnulla, onApriScheda, onVisibilita
             {form.fornitore_rivendita && !fornitoriRivendita.includes(form.fornitore_rivendita) && (
               <option value={form.fornitore_rivendita}>{form.fornitore_rivendita}</option>
             )}
-          </select>}
+          </select>
         </div>
         {form.fornitore_rivendita && (
           <div style={{marginTop:6,fontSize:12,fontWeight:700,color:"#8a6f47"}}>
@@ -889,19 +883,6 @@ function FormRicetta({ ricetta, onSalvato, onAnnulla, onApriScheda, onVisibilita
           </div>
         )}
       </div>
-
-      {semilavorato && <div style={{display:"grid",gap:10,marginBottom:16}}>
-        <label>P.IVA del fornitore in fattura
-          <input aria-label="P.IVA del fornitore in fattura" maxLength={32} value={form.fornitore_partita_iva || ""} onChange={e=>setField("fornitore_partita_iva",e.target.value)} style={inp} />
-        </label>
-        <label>Codice articolo in fattura
-          <input aria-label="Codice articolo in fattura" maxLength={100} value={form.codice_articolo_fornitore || ""} onChange={e=>setField("codice_articolo_fornitore",e.target.value)} style={inp} />
-        </label>
-        <label>Confezione (pezzi, peso, formato)
-          <input aria-label="Confezione" maxLength={300} value={form.confezione || ""} onChange={e=>setField("confezione",e.target.value)} placeholder="Es. cartone da 48 pezzi, 80 g per pezzo" style={inp} />
-        </label>
-        <p style={{fontSize:12,margin:0}}>Le fatture si collegano tramite P.IVA e codice articolo. Il marchio può essere diverso dal fornitore che emette la fattura.</p>
-      </div>}
 
       {/* Metodo conservazione */}
       <div style={{marginBottom:12}}>
@@ -954,16 +935,16 @@ function FormRicetta({ ricetta, onSalvato, onAnnulla, onApriScheda, onVisibilita
               {leggendoFoto ? "Leggo…" : "📷 Leggi etichetta"}
               <input type="file" accept="image/*" capture="environment" onChange={leggiEtichetta} disabled={leggendoFoto} style={{display:"none"}} />
             </label>
-            {!semilavorato && <button onClick={proponiIngredienti} disabled={proponendo}
+            <button onClick={proponiIngredienti} disabled={proponendo}
               title="Proponi gli ingredienti tipici dal nome della ricetta"
               style={{padding:"6px 12px",border:"1.5px solid var(--primary)",borderRadius:8,background:"var(--card)",color:"var(--primary)",fontWeight:800,fontSize:13,cursor:"pointer",fontFamily:"var(--font)"}}>
               {proponendo ? "Penso…" : "✨ Proponi"}
-            </button>}
+            </button>
           </div>
         </div>
         {form.ingredienti.length === 0 && (
           <div style={{textAlign:"center",padding:"22px 16px",color:"var(--text-3)",fontSize:14,background:"var(--bg)",borderRadius:10,marginBottom:10}}>
-            Nessun ingrediente.<br/>{semilavorato ? <>Riporta i dati del fornitore con <b>+ Aggiungi ingrediente</b> o <b>📷 Leggi etichetta</b>.</> : <>Usa <b>+ Aggiungi ingrediente</b> qui sotto, oppure <b>✨ Proponi</b> / <b>📷 Leggi etichetta</b>.</>}
+            Nessun ingrediente.<br/>Usa <b>+ Aggiungi ingrediente</b> qui sotto, oppure <b>✨ Proponi</b> / <b>📷 Leggi etichetta</b>.
           </div>
         )}
         {form.ingredienti.map((ing,idx) => (
@@ -1055,7 +1036,7 @@ function FormRicetta({ ricetta, onSalvato, onAnnulla, onApriScheda, onVisibilita
           background:"var(--primary-grad)",color:"#fff",fontFamily:"var(--font)",
           fontSize:15,fontWeight:800,cursor:"pointer",
           boxShadow:"0 4px 14px rgba(63,90,78,.3)",opacity:saving?.6:1}}>
-        {saving ? "Salvo…" : semilavorato ? (ricetta?.id ? "💾 Aggiorna semilavorato" : "📦 Crea semilavorato") : ricetta?.id ? "💾 Aggiorna ricetta" : "✨ Crea ricetta"}
+        {saving ? "Salvo…" : ricetta?.id ? "💾 Aggiorna ricetta" : "✨ Crea ricetta"}
       </button>
 
       </div>

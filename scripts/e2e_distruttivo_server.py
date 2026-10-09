@@ -1,0 +1,258 @@
+"""Server isolato per il collaudo browser delle operazioni distruttive.
+
+Usa i router reali e un archivio in memoria in memoria. Non legge file ``.env`` e
+non puo' raggiungere l'archivio di produzione. I dati spariscono alla chiusura.
+"""
+
+from __future__ import annotations
+
+import os
+from contextlib import asynccontextmanager
+from pathlib import Path
+
+# Il runner cloud puo' ereditare le credenziali del servizio reale. L'archivio
+# in memoria non basta: alcuni router aprono connessioni HR/Postgres, Drive o
+# servizi esterni direttamente. Rimuoverle PRIMA di importare app.* impedisce
+# che il collaudo usi per errore quelle connessioni.
+from scripts.collaudo_isolato import ambiente_isolato
+
+_ambiente_fixture = ambiente_isolato(os.environ)
+os.environ.clear()
+os.environ.update(_ambiente_fixture)
+
+# Configurazione deliberatamente fittizia, impostata prima di importare app.*.
+os.environ["ENVIRONMENT"] = "test"
+os.environ["ENABLE_SCHEDULER"] = "false"
+os.environ["PROCESS_ROLE"] = "web"
+os.environ["RUN_STARTUP_DATA_REPAIRS"] = "false"
+os.environ["RUN_STARTUP_INDEX_MIGRATIONS"] = "false"
+os.environ["RUN_STARTUP_SEED_DATA"] = "false"
+os.environ["SECRET_KEY"] = "e2e-isolato-solo-test-non-produzione"
+os.environ["ADMIN_EMAIL"] = "e2e@example.invalid"
+# PIN amministratore fittizio (sha256 di "246810"): l'unico ingresso e' il PIN.
+os.environ["PIN_HASH_ADMIN"] = "7c2523c985881fb2c2b4cfbe917eb12c4c4b61e898ad4e7160cfca487ca3c4f3"
+os.environ["GESTIONE_RISERVATA_CODE"] = "00000000"
+
+from fastapi import FastAPI, Request  # noqa: E402
+from fastapi.responses import FileResponse, JSONResponse  # noqa: E402
+from fastapi.staticfiles import StaticFiles  # noqa: E402
+from app.services.archivio_documenti_memoria import ClientArchivioMemoria  # noqa: E402
+
+from app.config import settings  # noqa: E402
+from app.database import Database  # noqa: E402
+from app.middleware.authentication import AuthenticationMiddleware  # noqa: E402
+from app.middleware.performance import IstantaneeMiddleware  # noqa: E402
+from app.middleware.error_handler import add_exception_handlers  # noqa: E402
+from app.router_registry import register_all_routers  # noqa: E402
+
+
+ROOT = Path(__file__).resolve().parents[1]
+# Consente di collaudare un build fresco fuori dal repository. In questo modo
+# l'E2E non sporca ``frontend/dist`` e non rischia di confondere artefatti
+# generati con modifiche sorgente da pubblicare.
+DIST = Path(
+    os.environ.get("E2E_FRONTEND_DIST", str(ROOT / "frontend" / "dist"))
+).resolve()
+
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    client = ClientArchivioMemoria()
+    Database.client = client
+    Database.db = client["Gestionale_E2E_Distruttivo"]
+    await Database.db["notifiche_scadenze"].insert_one(
+        {
+            "id": "e2e-scadenza-da-eliminare",
+            "data_scadenza": "2026-12-15",
+            "descrizione": "COLLAUDO E2E - cancellami",
+            "tipo": "CUSTOM",
+            "importo": 123.45,
+            "priorita": "media",
+            "completata": False,
+        }
+    )
+    await Database.db["learning_rules"].insert_one(
+        {"id": "e2e-regola-protetta", "pattern": "solo test"}
+    )
+    await Database.db["invoices"].insert_many([
+        {
+            "id": "e2e-fattura-a",
+            "invoice_number": "E2E-001",
+            "invoice_date": "2026-08-08",
+            "document_type": "TD01",
+            "supplier_name": "Fornitore E2E Alfa",
+            "supplier_vat": "00000000001",
+            "taxable_amount": 100.00,
+            "vat_amount": 22.00,
+            "total_amount": 122.00,
+            "status": "imported",
+        },
+        {
+            "id": "e2e-fattura-b",
+            "invoice_number": "E2E-002",
+            "invoice_date": "2026-08-07",
+            "document_type": "TD01",
+            "supplier_name": "Fornitore E2E Beta",
+            "supplier_vat": "00000000002",
+            "taxable_amount": 200.00,
+            "vat_amount": 44.00,
+            "total_amount": 244.00,
+            "status": "imported",
+        },
+        {
+            "id": "e2e-nota-credito",
+            "invoice_number": "NC-E2E-001",
+            "invoice_date": "2026-08-06",
+            "document_type": "TD04",
+            "supplier_name": "Fornitore E2E Gamma",
+            "supplier_vat": "00000000003",
+            "taxable_amount": 50.00,
+            "vat_amount": 11.00,
+            "total_amount": 61.00,
+            "status": "imported",
+        },
+    ])
+    await Database.db["fornitori"].insert_many([
+        {
+            "id": "e2e-fornitore-cassa",
+            "partita_iva": "00000000101",
+            "ragione_sociale": "Fornitore E2E Cassa",
+            "metodo_pagamento": "contanti",
+        },
+        {
+            "id": "e2e-fornitore-banca-attesa",
+            "partita_iva": "00000000102",
+            "ragione_sociale": "Fornitore E2E Banca Attesa",
+            "metodo_pagamento": "bonifico",
+        },
+        {
+            "id": "e2e-fornitore-banca-prova",
+            "partita_iva": "00000000103",
+            "ragione_sociale": "Fornitore E2E Banca Prova",
+            "metodo_pagamento": "bonifico",
+        },
+        {
+            "id": "e2e-fornitore-misto",
+            "partita_iva": "00000000104",
+            "ragione_sociale": "Fornitore E2E Misto",
+            "metodo_pagamento": "misto",
+        },
+    ])
+    await Database.db["invoices"].insert_many([
+        {
+            "id": "e2e-fattura-cassa",
+            "invoice_number": "E2E-CASSA-001",
+            "invoice_date": "2026-09-20",
+            "document_type": "TD01",
+            "supplier_name": "Fornitore E2E Cassa",
+            "supplier_vat": "00000000101",
+            "total_amount": 90.00,
+            "status": "imported",
+            "pagato": False,
+        },
+        {
+            "id": "e2e-fattura-banca-attesa",
+            "invoice_number": "E2E-BANCA-ATTESA-001",
+            "invoice_date": "2026-09-20",
+            "document_type": "TD01",
+            "supplier_name": "Fornitore E2E Banca Attesa",
+            "supplier_vat": "00000000102",
+            "total_amount": 140.00,
+            "status": "imported",
+            "pagato": False,
+        },
+        {
+            "id": "e2e-fattura-banca-prova",
+            "invoice_number": "E2E-BANCA-PROVA-001",
+            "invoice_date": "2026-08-31",
+            "document_type": "TD01",
+            "supplier_name": "Fornitore E2E Banca Prova",
+            "supplier_vat": "00000000103",
+            "total_amount": 160.00,
+            "status": "imported",
+            "pagato": False,
+        },
+        {
+            "id": "e2e-fattura-mista",
+            "invoice_number": "E2E-MISTA-001",
+            "invoice_date": "2026-09-20",
+            "document_type": "TD01",
+            "supplier_name": "Fornitore E2E Misto",
+            "supplier_vat": "00000000104",
+            "total_amount": 100.00,
+            "status": "imported",
+            "pagato": False,
+        },
+    ])
+    await Database.db["estratto_conto_movimenti"].insert_one({
+        "id": "e2e-ec-banca-prova",
+        "data": "2026-09-02",
+        "data_contabile": "02/09/2026",
+        "data_valuta": "2026-09-03",
+        "tipo": "uscita",
+        "importo": 160.00,
+        "descrizione": "BONIFICO FORNITORE E2E BANCA PROVA FATTURA E2E-BANCA-PROVA-001",
+        "descrizione_originale": "BONIFICO FORNITORE E2E BANCA PROVA FATTURA E2E-BANCA-PROVA-001",
+        "riconciliato": False,
+    })
+
+    yield
+    client.close()
+    Database.client = None
+    Database.db = None
+
+
+app = FastAPI(title="GestionaleCloud E2E isolato", lifespan=lifespan)
+# Come in produzione (app/main.py): una scrittura svuota le istantanee dei
+# riepiloghi. Senza, i conteggi dei Provvisori restavano quelli di prima
+# delle conferme per 60 s e il collaudo falliva a caso.
+app.add_middleware(IstantaneeMiddleware)
+app.add_middleware(AuthenticationMiddleware)
+add_exception_handlers(app)
+register_all_routers(app)
+
+
+@app.get("/api/health")
+async def health():
+    return {
+        "status": "healthy",
+        "database": "connected" if Database.db is not None else "disconnected",
+        "environment": "e2e-isolato",
+        "version": settings.APP_VERSION,
+    }
+
+
+@app.get("/api/system/lock-status")
+async def system_lock_status():
+    """Replica il contratto read-only esposto dall'applicazione reale.
+
+    Il collaudo delle pagine deve usare gli stessi endpoint del deploy, anche
+    quando il server isolato non importa ``app.main`` per evitare bootstrap e
+    connessioni esterne. Lo stato deriva dal lock reale del router Documenti.
+    """
+    from app.routers.documenti import get_current_operation, is_email_operation_running
+
+    locked = is_email_operation_running()
+    return {
+        "email_locked": locked,
+        "operation": get_current_operation(),
+        "can_start_email_operation": not locked,
+    }
+
+
+if not DIST.is_dir():
+    raise RuntimeError("frontend/dist assente: eseguire prima il build frontend")
+
+assets = DIST / "assets"
+if assets.is_dir():
+    app.mount("/assets", StaticFiles(directory=assets), name="e2e-assets")
+
+
+@app.get("/{full_path:path}", include_in_schema=False, response_model=None)
+async def serve_frontend(request: Request, full_path: str):
+    if full_path.startswith("api/") or full_path == "api":
+        return JSONResponse({"detail": "Not found"}, status_code=404)
+    candidate = (DIST / full_path).resolve()
+    if candidate.is_file() and DIST.resolve() in candidate.parents:
+        return FileResponse(candidate)
+    return FileResponse(DIST / "index.html", headers={"Cache-Control": "no-cache"})

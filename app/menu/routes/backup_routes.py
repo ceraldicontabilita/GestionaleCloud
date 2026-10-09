@@ -178,6 +178,23 @@ async def download_backup(filename: str, username: str = Depends(verify_token)):
         raise HTTPException(status_code=500, detail=str(e)) from e
 
 
+@router.get("/public-download/{filename}")
+async def public_download_backup(filename: str, _username: str = Depends(verify_token)):
+    """Legacy URL retained for clients, but downloads are always authenticated."""
+    try:
+        file_path = _file_backup(filename)
+
+        return FileResponse(
+            path=str(file_path),
+            filename=filename,
+            media_type='application/gzip'
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+
 @router.delete("/delete/{filename}")
 async def delete_backup(filename: str, username: str = Depends(verify_token)):
     """Delete a backup file"""

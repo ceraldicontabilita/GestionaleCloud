@@ -210,11 +210,11 @@ async def verifica_fattura(fattura_id: str, data: Dict[str, Any] = Body(...)) ->
     # Numero/P.IVA/data cambiati -> la chiave di dedup e la scadenza (data+30gg)
     # vanno ricalcolate, stesso criterio usato all'import (process_xml_bytes).
     if any(c in campi_corretti for c in ("invoice_number", "supplier_vat", "invoice_date")):
-        from app.services.fatture_canonico import invoice_key
+        from app.routers.invoices.fatture_upload import generate_invoice_key
         nuovo_numero = update_set.get("invoice_number", invoice.get("invoice_number", ""))
         nuova_piva = update_set.get("supplier_vat", invoice.get("supplier_vat", ""))
         nuova_data = update_set.get("invoice_date", invoice.get("invoice_date", ""))
-        update_set["invoice_key"] = invoice_key(nuovo_numero, nuova_piva, nuova_data)
+        update_set["invoice_key"] = generate_invoice_key(nuovo_numero, nuova_piva, nuova_data)
         # Nessuna scadenza: le fatture fornitore non ne hanno (titolare, 19/09/2026).
         if "invoice_date" in campi_corretti and nuova_data[:4].isdigit():
             update_set["anno"] = int(nuova_data[:4])

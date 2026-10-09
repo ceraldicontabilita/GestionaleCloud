@@ -456,11 +456,8 @@ async def esiste_documento_cross_canale(
             candidati.append((coll, "pdf_hash"))
 
     for coll, campo in candidati:
-        # Un candidato MD5 incoerente non deve oscurare una copia certa
-        # successiva. Il cursore contiene solo ID e impronte, mai i payload;
-        # gli originali legacy si verificano uno alla volta per ID.
-        async for found in db[coll].find({campo: impronta_md5}, proiezione):
-            if await _stesso_contenuto(db, coll, found, sha256, contenuto):
-                return {"collezione": coll, "campo": campo, "sha256": sha256, "id": found.get("id")}
+        found = await db[coll].find_one({campo: impronta_md5}, proiezione)
+        if found and await _stesso_contenuto(db, coll, found, sha256, contenuto):
+            return {"collezione": coll, "campo": campo, "sha256": sha256, "id": found.get("id")}
 
     return None

@@ -3,6 +3,7 @@ import { Loader2, X, Building2, FileText, Folder, ChartColumn, Download, Refresh
 import api from '../api';
 import { COLORS, BORDER_RADIUS, FONT } from '../lib/utils';
 import { PageLayout } from '../components/PageLayout';
+import DocumentImportLink from '../components/DocumentImportLink';
 import {
   Button,
   Badge,
@@ -49,6 +50,7 @@ function MostraAltre({ totale, limite, onClick }) {
 export default function RegoleCategorizzazione() {
   const [regole, setRegole] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [uploading, setUploading] = useState(false);
   const [message, setMessage] = useState(null);
   const [activeTab, setActiveTab] = useState('associazioni');
   const [searchTerm, setSearchTerm] = useState('');
@@ -92,6 +94,27 @@ export default function RegoleCategorizzazione() {
     }
   };
 
+  const handleUploadExcel = async event => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    setUploading(true);
+    const formData = new FormData();
+    formData.append('file', file);
+    try {
+      const res = await api.post('/api/regole/upload-regole', formData);
+      if (res.data.success) {
+        setMessage({
+          type: 'success',
+          text: `Caricate: ${res.data.regole_fornitori_caricate} fornitori, ${res.data.regole_descrizioni_caricate} descrizioni`,
+        });
+        fetchRegole();
+      }
+    } catch (err) {
+      setMessage({ type: 'error', text: 'Errore nel caricamento' });
+    }
+    setUploading(false);
+    event.target.value = '';
+  };
 
   const handleAddRule = async () => {
     if (!newRule.pattern || !newRule.categoria) {
@@ -264,6 +287,30 @@ export default function RegoleCategorizzazione() {
           <Button variant="success" onClick={handleDownloadExcel} iconLeft={<Download size={16} aria-hidden="true" />}>
             Scarica Excel
           </Button>
+
+          {/* Trigger upload file: deve restare un <label> nativo (wrappa l'<input type="file">
+              nascosto che apre il file picker) — <Button> renderizza un <button>, non un <label>,
+              quindi non può assolvere a questo ruolo. Stile tokenizzato. */}
+          <DocumentImportLink
+            workflow="regole-categorizzazione"
+            aria-label="Carica Excel regole"
+            title="Acquisisci il file da Documenti: classificazione e deduplicazione centralizzate"
+            style={{
+              padding: '8px 16px',
+              background: COLORS.info,
+              color: '#fff',
+              borderRadius: BORDER_RADIUS.sm,
+              cursor: 'pointer',
+              fontWeight: 600,
+              fontSize: 13,
+              fontFamily: FONT.family,
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 8,
+            }}
+          >
+            {uploading ? 'Caricamento...' : 'Carica Excel'}
+          </DocumentImportLink>
 
           <Button variant="info" onClick={handleRicategorizza} disabled={ricategorizzando} iconLeft={<RefreshCw size={16} aria-hidden="true" />}>
             {ricategorizzando ? 'Elaborazione...' : 'Applica alle Fatture'}

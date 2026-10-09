@@ -1,8 +1,12 @@
+from typing import Optional
+
 from fastapi import APIRouter, HTTPException, Depends, Header, Request
 from app.menu.models.qrcode_models import MenuUrlUpdate, AdminLoginResponse
 from datetime import UTC, datetime, timedelta
 import os
 import jwt
+from io import BytesIO
+import base64
 from urllib.parse import urlsplit
 
 from app.menu.supabase_client import supabase
@@ -125,6 +129,55 @@ async def aggiorna_menu_url(payload: MenuUrlUpdate, username: str = Depends(veri
             {"id": CONFIG_ID, "menu_url": url, "updated_at": adesso, "updated_by": username}
         ).execute()
     return {"url": url, "updated_at": adesso, "updated_by": username}
+
+
+@router.get("/prodotto/{codice}")
+async def qr_prodotto(codice: str, canale: Optional[str] = None, _username: str = Depends(verify_token)):
+    """Indirizzo del QR del singolo prodotto (il QR lo disegna il browser). ``url`` e' ``null`` finche'
+    il menu clienti non ha un indirizzo pubblico: non si inventa."""
+    from app.menu.qr_prodotto import codice_valido, url_prodotto
+
+    if not codice_valido(codice):
+        raise HTTPException(status_code=400, detail="Codice prodotto non valido")
+    righe = supabase.table("menu_products").select("id,codice_prodotto").eq("codice_prodotto", codice).limit(1).execute().data
+    if not righe:
+        raise HTTPException(status_code=404, detail="Prodotto non trovato")
+    try:
+        url = url_prodotto((_get_config_row() or {}).get("menu_url"), codice, canale)
+    except ValueError as errore:
+        raise HTTPException(status_code=400, detail=str(errore)) from errore
+    return {"codice": codice, "url": url, "canale": canale or None}
+
+
+@router.get("/generate/wifi")
+async def generate_wifi_qr(_username: str = Depends(verify_token)):
+    """Generate QR code for WiFi access"""
+    import qrcode
+    config = _get_config_row()
+    if not config:
+        raise HTTPException(status_code=404, detail="Configuration not found")
+
+    wifi = config.get("wifi") or {}
+    if not wifi.get("password"):
+        raise HTTPException(status_code=503, detail="Password Wi-Fi non configurata")
+    wifi_string = f"WIFI:T:{wifi['security']};S:{wifi['ssid']};P:{wifi['password']};H:{'true' if wifi.get('hidden', False) else 'false'};;"
+
+    qr = qrcode.QRCode(version=1, box_size=10, border=5)
+    qr.add_data(wifi_string)
+    qr.make(fit=True)
+
+    img = qr.make_image(fill_color="black", back_color="white")
+    buffered = BytesIO()
+    img.save(buffered, format="PNG")
+    img_str = base64.b64encode(buffered.getvalue()).decode()
+
+    return {
+        "qr_code": f"data:image/png;base64,{img_str}",
+        "wifi": {
+            "ssid": wifi["ssid"],
+            "security": wifi["security"],
+        },
+    }
 
 
 @router.get("/verify")

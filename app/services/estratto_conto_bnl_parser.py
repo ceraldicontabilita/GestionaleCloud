@@ -275,12 +275,8 @@ def leggi_parole_bnl(pagine: Sequence[Sequence[Parola]], testo: Optional[str] = 
                 importo = _importo_della_riga(riga, colonne)
                 valuta = next((w for w in riga[1:] if _DATA.match(str(w["text"]))
                                and _vicino(float(w["x0"]), colonne.data_valuta_x0)), None)
-                # I codici alfabetici stretti (ZI) sono allineati a destra:
-                # il bordo sinistro puo' distare quasi 10 pt dall'etichetta.
-                # Restiamo nella fascia ABI, prima della descrizione.
                 abi = next((w for w in riga if _ABI.match(str(w["text"]))
-                            and colonne.abi_x0 - _TOLLERANZA_COLONNA <= float(w["x0"])
-                            and float(w["x1"]) <= colonne.descrizione_x0 + 1), None)
+                            and _vicino(float(w["x0"]), colonne.abi_x0)), None)
                 esclusi = {id(prima), id(importo) if importo else None,
                            id(valuta) if valuta else None, id(abi) if abi else None}
                 descrizione = " ".join(

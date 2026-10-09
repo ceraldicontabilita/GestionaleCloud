@@ -1,0 +1,455 @@
+"""Copertura per i 2 fix isolati dell'operazione 14 (piano residuo,
+audit 14/07/2026): il mapping fornitore PayPal leggeva da una collection
+mai scritta (paypal_mapping_fornitori) e il KPI dashboard ignorava il
+flag di riconciliazione scritto dal percorso API (riconciliato_con_estratto_banca)."""
+import asyncio
+
+import pytest
+
+from app.routers import paypal_statements as mod
+
+
+def _matches(doc, query):
+    if not query:
+        return True
+    if "$and" in query:
+        return all(_matches(doc, q) for q in query["$and"])
+    if "$or" in query:
+        return any(_matches(doc, q) for q in query["$or"])
+    return all(doc.get(k) == v for k, v in query.items())
+
+
+class _FakeCollection:
+    def __init__(self, docs=None):
+        self.docs = docs or []
+
+    async def find_one(self, query, *a, **k):
+        for d in self.docs:
+            if _matches(d, query):
+                return {k2: v for k2, v in d.items() if k2 != "_id"}
+        return None
+
+    async def count_documents(self, query=None):
+        return sum(1 for d in self.docs if _matches(d, query))
+
+    def find(self, query=None, *a, **k):
+        return _FakeCursor([d for d in self.docs if _matches(d, query or {})])
+
+    def aggregate(self, pipeline, *a, **k):
+        return _FakeCursor([])
+
+
+class _FakeCursor:
+    def __init__(self, docs):
+        self._docs = docs
+
+    def sort(self, *a, **k):
+        return self
+
+    def limit(self, *a, **k):
+        return self
+
+    def skip(self, *a, **k):
+        return self
+
+    async def to_list(self, n=None):
+        return list(self._docs[:n] if n else self._docs)
+
+    def __aiter__(self):
+        return _aiter(self._docs)
+
+
+async def _aiter(items):
+    for i in items:
+        yield i
+
+
+class _FakeDb:
+    def __init__(self):
+        self.collections = {}
+
+    def __getitem__(self, name):
+        return self.collections.setdefault(name, _FakeCollection())
+
+
+def _run(c):
+    loop = asyncio.new_event_loop()
+    try:
+        return loop.run_until_complete(c)
+    finally:
+        loop.close()
+
+
+def _patch_db(monkeypatch, db):
+    monkeypatch.setattr(mod.Database, "get_db", staticmethod(lambda: db))
+
+
+def test_dettaglio_transazione_legge_mapping_da_fornitori_non_da_collection_morta(monkeypatch):
+    db = _FakeDb()
+    db["paypal_transactions"].docs = [{
+        "transaction_id": "TX1", "paypal_account_id": "ACC-1",
+        "importo": 100.0, "nome_controparte": "Fornitore Test",
+    }]
+    db["fornitori"].docs = [{
+        "id": "f1", "paypal_account_id": "ACC-1",
+        "nome": "Fornitore Test Srl", "piva": "IT12345678901",
+    }]
+    # La collection legacy morta esiste ma NON deve essere quella letta.
+    db["paypal_mapping_fornitori"].docs = [{
+        "paypal_account_id": "ACC-1", "fornitore_piva": "PIVA-SBAGLIATA",
+    }]
+    _patch_db(monkeypatch, db)
+
+    res = _run(mod.dettaglio_transazione_paypal("TX1"))
+
+    assert res["mapping_fornitore"] is not None
+    assert res["mapping_fornitore"]["fornitore_piva"] == "IT12345678901"
+    assert res["mapping_fornitore"]["fornitore_nome"] == "Fornitore Test Srl"
+
+
+def test_dettaglio_transazione_nessun_mapping_se_fornitore_non_agganciato(monkeypatch):
+    db = _FakeDb()
+    db["paypal_transactions"].docs = [{"transaction_id": "TX2", "paypal_account_id": "ACC-2"}]
+    _patch_db(monkeypatch, db)
+
+    res = _run(mod.dettaglio_transazione_paypal("TX2"))
+
+    assert res["mapping_fornitore"] is None
+
+
+def test_dashboard_conta_riconciliati_sia_da_statement_che_da_api(monkeypatch):
+    db = _FakeDb()
+    db["paypal_transactions"].docs = [
+        {"id": "1", "lordo": 10.0, "tipo": "pagamento_web", "riconciliato_banca": True},
+        {"id": "2", "lordo": 20.0, "tipo": "pagamento_web", "riconciliato_con_estratto_banca": True},
+        {"id": "3", "lordo": 30.0, "tipo": "pagamento_web"},
+    ]
+    _patch_db(monkeypatch, db)
+
+    res = _run(mod.paypal_dashboard(anno=None))
+
+    assert res["riconciliati_banca"] == 2
+
+
+def test_fonti_paypal_mostrano_periodo_api_senza_inventare_un_documento(monkeypatch):
+    db = _FakeDb()
+    db["paypal_transactions"].docs = [
+        {
+            "transaction_id": "PAY-1", "data": "2026-07-12",
+            "lordo": -20.99, "currency": "EUR", "tipo": "pagamento_web",
+            "source": "paypal_api",
+        },
+        {
+            "transaction_id": "PAY-2", "data": "2026-07-20",
+            "lordo": -42.62, "currency": "EUR", "tipo": "pagamento_web",
+            "source": "paypal_api",
+        },
+    ]
+    _patch_db(monkeypatch, db)
+
+    res = _run(mod.get_paypal_statements(anno=None, limit=100))
+
+    assert res["statements"] == []
+    assert res["totale"] == 0
+    assert res["totale_periodi_api"] == 1
+    assert res["fonti"] == [{
+        "id": "paypal-api-2026-07",
+        "source_type": "api",
+        "tipo_documento": "API",
+        "periodo_inizio": "2026-07-01",
+        "periodo_fine": "2026-07-31",
+        "totale_transazioni": 2,
+        "totale_pagamenti": 2,
+        "riepilogo": {
+            "pagamenti_inviati": 63.61,
+            "depositi_accrediti": None,
+            "saldo_finale": None,
+        },
+        "file_name": None,
+        "source": "paypal_api",
+        "documento_presente": False,
+    }]
+
+
+def test_stato_fattura_non_legittima_un_vecchio_match_solo_importo():
+    assert mod._stato_collegamento_fattura({}) == "non_associata"
+    assert mod._stato_collegamento_fattura({
+        "fattura_associata": {
+            "match": "solo_importo",
+            "evidenze": ["importo"],
+        }
+    }) == "da_rivalidare"
+    assert mod._stato_collegamento_fattura({
+        "fattura_associata": {
+            "match": "fornitore_numero_importo_esatti",
+            "evidenze": ["numero_fattura", "importo", "partita_iva_o_cf"],
+        }
+    }) == "associata_validata"
+
+
+def test_dashboard_non_somma_due_volte_conversione_valuta(monkeypatch):
+    db = _FakeDb()
+    db["paypal_transactions"].docs = [
+        {"transaction_id": "PAY-USD", "lordo": -120.0, "currency": "USD",
+         "tipo": "pagamento_web", "nome_controparte": "Fornitore USA"},
+        {"transaction_id": "CONV-EUR", "paypal_reference_id": "PAY-USD",
+         "lordo": -100.0, "currency": "EUR", "tipo": "T0200"},
+        {"transaction_id": "CONV-USD", "paypal_reference_id": "PAY-USD",
+         "lordo": 120.0, "currency": "USD", "tipo": "T0200"},
+    ]
+    _patch_db(monkeypatch, db)
+
+    res = _run(mod.paypal_dashboard(anno=None))
+
+    assert res["totale_pagamenti"] == 1
+    assert res["totale_speso"] == -100.0
+
+
+def test_report_non_somma_due_volte_conversione_valuta(monkeypatch):
+    db = _FakeDb()
+    db["paypal_transactions"].docs = [
+        {"transaction_id": "PAY-USD", "data": "2026-07-15", "lordo": -120.0,
+         "currency": "USD", "tipo": "pagamento_web",
+         "nome_controparte": "Fornitore USA"},
+        {"transaction_id": "CONV-EUR", "paypal_reference_id": "PAY-USD",
+         "data": "2026-07-15", "lordo": -100.0, "currency": "EUR", "tipo": "T0200"},
+        {"transaction_id": "CONV-USD", "paypal_reference_id": "PAY-USD",
+         "data": "2026-07-15", "lordo": 120.0, "currency": "USD", "tipo": "T0200"},
+        {"transaction_id": "PAY-EUR", "data": "2026-07-16", "lordo": -30.0,
+         "currency": "EUR", "tipo": "pagamento_web",
+         "nome_controparte": "Fornitore Italia"},
+    ]
+    _patch_db(monkeypatch, db)
+
+    res = _run(mod.paypal_report(anno=None))
+
+    assert res["totale_transazioni"] == 2
+    assert res["totale_speso"] == -130.0
+    assert {row["nome"] for row in res["per_fornitore"]} == {
+        "Fornitore USA", "Fornitore Italia",
+    }
+
+
+def test_match_banca_paypal_richiede_importo_segno_e_data_non_solo_importo():
+    tx = {"transaction_id": "PAY-12345678", "data": "2026-07-15", "lordo": -42.62}
+    corretto = {
+        "data": "2026-07-17", "importo": -42.62,
+        "descrizione": "ADDEBITO DIRETTO PAYPAL EUROPE",
+    }
+    lontano = {**corretto, "data": "2026-06-01"}
+    segno_errato = {
+        **corretto, "importo": 42.62, "tipo": "entrata",
+        "descrizione": "ACCREDITO PAYPAL EUROPE",
+    }
+    assert mod._score_match_banca(tx, corretto)["score"] >= 85
+    assert mod._score_match_banca(tx, lontano) is None
+    assert mod._score_match_banca(tx, segno_errato) is None
+
+
+def test_riferimento_paypal_non_supera_un_importo_diverso():
+    tx = {"transaction_id": "8ABCDEFGH12345", "data": "2026-07-15", "lordo": -42.62}
+    mov = {
+        "data": "2026-07-25", "importo": -40,
+        "descrizione": "PAYPAL 8ABCDEFGH12345 regolazione",
+    }
+    assert mod._score_match_banca(tx, mov) is None
+
+
+def test_match_banca_accetta_uscita_canonica_positiva_solo_al_centesimo():
+    tx = {"transaction_id": "PAY-12345678", "data": "2026-07-15", "lordo": -42.62}
+    movimento = {
+        "data": "2026-07-17", "tipo": "uscita", "importo": 42.62,
+        "descrizione": "ADDEBITO DIRETTO PAYPAL EUROPE",
+    }
+    assert mod._score_match_banca(tx, movimento)["score"] >= 85
+    assert mod._score_match_banca(tx, {**movimento, "importo": 42.63}) is None
+
+
+def test_direzione_usa_tipo_bancario_prima_del_segno_positivo():
+    movimento = {
+        "tipo": "uscita", "importo": 42.62,
+        "descrizione": "ADDEBITO DIRETTO SDD - PAYPAL EUROPE",
+    }
+    assert mod._direzione_movimento_banca(movimento) == "uscita"
+
+
+def test_deduplica_due_formati_della_stessa_operazione_senza_perdere_prove():
+    movimenti = [
+        {
+            "id": "EC-OLD", "data": "2026-03-13", "tipo": "uscita",
+            "importo": 20.99,
+            "descrizione": "SDD CORE: 49RJ2252ASLM4 PAYPAL EUROPE S.A.R.L.",
+            "created_at": "2026-08-03T10:00:00+00:00",
+        },
+        {
+            "id": "EC-FULL", "data": "2026-03-13", "tipo": "uscita",
+            "importo": 20.99, "rapporto": "conto-bancario",
+            "descrizione": (
+                "ADDEBITO DIRETTO SDD - SDD CORE: 49RJ2252ASLM4 "
+                "PayPal Europe S.a.r.l."
+            ),
+            "created_at": "2026-08-04T10:00:00+00:00",
+        },
+    ]
+
+    result = mod._deduplica_movimenti_banca_paypal(movimenti)
+
+    assert len(result) == 1
+    assert result[0]["id"] == "EC-FULL"
+    assert set(result[0]["paypal_duplicate_source_ids"]) == {"EC-OLD", "EC-FULL"}
+    assert result[0]["paypal_duplicate_sources_unified"] == 1
+
+
+def test_deduplica_conserva_due_operazioni_reali_identiche_nella_stessa_fonte():
+    base = {
+        "data": "2026-03-13", "tipo": "uscita", "importo": 20.99,
+        "descrizione": "ADDEBITO DIRETTO SDD - PAYPAL EUROPE",
+        "banca": "Banco BPM",
+    }
+    result = mod._deduplica_movimenti_banca_paypal([
+        {**base, "id": "EC-1"}, {**base, "id": "EC-2"},
+    ])
+    assert {row["id"] for row in result} == {"EC-1", "EC-2"}
+
+
+def test_match_banca_usa_la_gamba_eur_per_un_pagamento_in_valuta():
+    tx = {
+        "transaction_id": "PAY-USD",
+        "data": "2026-07-15",
+        "lordo": -120.0,
+        "currency": "USD",
+        "importo_report_eur": -100.0,
+    }
+    movimento = {
+        "data": "2026-07-17", "importo": -100.0,
+        "descrizione": "ADDEBITO PAYPAL EUROPE",
+    }
+
+    assert mod._score_match_banca(tx, movimento)["score"] >= 85
+    assert mod._score_match_banca(tx, {**movimento, "importo": -120.0}) is None
+
+
+def test_proposte_banca_accetta_solo_match_biunivoco():
+    txs = [
+        {"transaction_id": "PAY-A", "data": "2026-07-15", "lordo": -42.62},
+        {"transaction_id": "PAY-B", "data": "2026-07-20", "lordo": -20.99},
+    ]
+    movimenti = [
+        {"id": "EC-A", "data": "2026-07-17", "importo": -42.62,
+         "descrizione": "ADDEBITO PAYPAL EUROPE"},
+        {"id": "EC-B", "data": "2026-07-22", "importo": -20.99,
+         "descrizione": "ADDEBITO PAYPAL EUROPE"},
+    ]
+
+    result = mod._proposte_riconciliazione_banca(txs, movimenti)
+
+    assert result["ambigui"] == 0
+    assert {(p["movimento_id"], p["transaction_id"]) for p in result["proposte"]} == {
+        ("EC-A", "PAY-A"), ("EC-B", "PAY-B"),
+    }
+
+
+def test_proposte_banca_lascia_sospeso_un_pareggio():
+    txs = [
+        {"transaction_id": "PAY-A", "data": "2026-07-15", "lordo": -42.62},
+        {"transaction_id": "PAY-B", "data": "2026-07-15", "lordo": -42.62},
+    ]
+    movimenti = [{
+        "id": "EC-A", "data": "2026-07-17", "importo": -42.62,
+        "descrizione": "ADDEBITO PAYPAL EUROPE",
+    }]
+
+    result = mod._proposte_riconciliazione_banca(txs, movimenti)
+
+    assert result["proposte"] == []
+    assert result["ambigui"] == 1
+
+
+def test_proposte_banca_non_riusa_movimento_gia_riconciliato():
+    txs = [{"transaction_id": "PAY-A", "data": "2026-07-15", "lordo": -42.62}]
+    movimenti = [{
+        "id": "EC-A", "data": "2026-07-17", "importo": -42.62,
+        "descrizione": "ADDEBITO PAYPAL EUROPE", "riconciliato": True,
+    }]
+
+    result = mod._proposte_riconciliazione_banca(txs, movimenti)
+
+    assert result["proposte"] == []
+
+
+# --- 01/10/2026: riconciliazione PayPal ↔ banca senza intervento manuale ---
+
+SDD = "ADDEBITO DIRETTO SDD - SDD CORE: 49RJ2252ASLM4 PayPal Europe S.a.r.l. et Cie S.C.A"
+BONIFICO = "BONIF. VS. FAVORE - BON.DA PayPal Europe S.a.r.l. et Cie S.C.A - YYW1052371473308/PAYPAL"
+
+
+def test_addebito_sdd_dopo_quattro_giorni_si_abbina_da_solo():
+    """MongoDB: 184,31 USD = 165,96 € il 20/08, addebito SDD il 24/08."""
+    righe = [
+        {"transaction_id": "T-USD", "event_code": "T0003", "tipo": "T0003", "lordo": -184.31,
+         "currency": "USD", "data": "2026-08-20", "transaction_status": "S"},
+        {"transaction_id": "T-EUR", "event_code": "T0200", "tipo": "T0200", "lordo": -165.96,
+         "currency": "EUR", "data": "2026-08-20", "transaction_status": "S",
+         "paypal_reference_id": "T-USD"},
+    ]
+    movimento = {"id": "EC-1", "data": "2026-08-24", "importo": -165.96, "tipo": "uscita",
+                 "descrizione": SDD}
+
+    risultato = mod._proposte_riconciliazione_banca(mod._pagamenti_paypal_in_euro(righe), [movimento])
+
+    assert [(p["movimento_id"], p["transaction_id"]) for p in risultato["proposte"]] == [("EC-1", "T-USD")]
+
+
+def test_accredito_in_banca_si_abbina_al_prelievo_paypal():
+    righe = [
+        {"transaction_id": "RIMB", "event_code": "T1107", "tipo": "T1107", "lordo": 9.38,
+         "currency": "EUR", "data": "2026-08-04", "transaction_status": "S"},
+        {"transaction_id": "PRELIEVO", "event_code": "T0403", "tipo": "T0403", "lordo": -9.38,
+         "currency": "EUR", "data": "2026-08-04", "transaction_status": "S"},
+    ]
+    movimento = {"id": "EC-2", "data": "2026-08-05", "importo": 9.38, "tipo": "entrata",
+                 "descrizione": BONIFICO}
+
+    accrediti = mod._accrediti_paypal(righe)
+    risultato = mod._proposte_riconciliazione_banca(accrediti, [movimento])
+
+    assert [a["transaction_id"] for a in accrediti] == ["PRELIEVO"]  # il rimborso non conta due volte
+    assert [(p["movimento_id"], p["transaction_id"]) for p in risultato["proposte"]] == [("EC-2", "PRELIEVO")]
+
+
+def test_accredito_senza_prelievo_nel_report_usa_l_incasso_entro_venti_giorni():
+    righe = [{"transaction_id": "RIMB", "event_code": "T1107", "tipo": "T1107", "lordo": 7.8,
+              "currency": "EUR", "data": "2026-08-05", "transaction_status": "S"}]
+    movimento = {"id": "EC-3", "data": "2026-08-17", "importo": 7.8, "tipo": "entrata",
+                 "descrizione": BONIFICO}
+
+    risultato = mod._proposte_riconciliazione_banca(mod._accrediti_paypal(righe), [movimento])
+    assert [p["transaction_id"] for p in risultato["proposte"]] == ["RIMB"]
+
+    lontano = {**movimento, "data": "2026-09-10"}
+    assert mod._proposte_riconciliazione_banca(mod._accrediti_paypal(righe), [lontano])["proposte"] == []
+
+
+def test_due_addebiti_uguali_per_due_pagamenti_uguali_si_abbinano_in_ordine():
+    txs = [
+        {"transaction_id": "PAY-1", "data": "2026-07-23", "lordo": -32.94},
+        {"transaction_id": "PAY-2", "data": "2026-07-23", "lordo": -32.94},
+    ]
+    movimenti = [
+        {"id": "EC-B", "data": "2026-07-27", "importo": 32.94, "tipo": "uscita", "descrizione": SDD},
+        {"id": "EC-A", "data": "2026-07-27", "importo": 32.94, "tipo": "uscita", "descrizione": SDD},
+    ]
+
+    risultato = mod._proposte_riconciliazione_banca(txs, movimenti)
+
+    assert risultato["ambigui"] == 0
+    assert {(p["movimento_id"], p["transaction_id"]) for p in risultato["proposte"]} == {
+        ("EC-A", "PAY-1"), ("EC-B", "PAY-2"),
+    }
+    assert all("importi_uguali_in_ordine" in p["evidenze"] for p in risultato["proposte"])
+
+
+def test_importo_oltre_dieci_giorni_non_si_abbina_per_un_pagamento():
+    tx = {"transaction_id": "PAY", "data": "2026-07-01", "lordo": -50.0}
+    movimento = {"id": "EC", "data": "2026-07-15", "importo": -50.0, "tipo": "uscita", "descrizione": SDD}
+    assert mod._proposte_riconciliazione_banca([tx], [movimento])["proposte"] == []

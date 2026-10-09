@@ -13,7 +13,7 @@ import {
 } from '../../components/ui/dialog';
 import { toast } from '../../hooks/use-toast';
 
-import { MENU_BACKEND_URL as BACKEND_URL } from '@/lib/backend';
+const BACKEND_URL = process.env.REACT_APP_MENU_BACKEND_URL;
 
 const SalaDialog = ({ sala, onSaved, authHeader, trigger }) => {
   const isEdit = !!sala;

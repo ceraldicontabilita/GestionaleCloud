@@ -77,8 +77,7 @@ def chiave_cedolino(doc: Dict[str, Any]) -> str:
         or ""
     ).strip().upper()
     content_hash = str(
-        doc.get("impronta_contenuto")
-        or doc.get("file_hash")
+        doc.get("file_hash")
         or doc.get("pdf_hash")
         or doc.get("document_hash")
         or doc.get("sha256")
@@ -88,7 +87,7 @@ def chiave_cedolino(doc: Dict[str, Any]) -> str:
         discriminante = content_hash[:32]
     else:
         valori = [
-            doc.get("rapporto_id"), doc.get("netto"), doc.get("netto_mese"), doc.get("lordo"),
+            doc.get("netto"), doc.get("netto_mese"), doc.get("lordo"),
             doc.get("ore_lavorate"), doc.get("giorni_lavorati"),
         ]
         firma = "|".join("" if value is None else str(value).strip() for value in valori)

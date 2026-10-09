@@ -1,0 +1,230 @@
+"""Separazione tra ricettari fornitori e card operative dolce/salato."""
+
+import asyncio
+import os
+
+from mongomock_motor import AsyncMongoMockClient
+
+os.environ.setdefault("AUTH_SECRET", "test-secret-non-usare-in-prod")
+os.environ.setdefault("MONGO_URL", "mongodb://localhost:27017")
+os.environ.setdefault("DB_NAME", "Gestionale_Test")
+
+
+_LOOP = asyncio.new_event_loop()
+asyncio.set_event_loop(_LOOP)
+
+
+def run(coro):
+    return _LOOP.run_until_complete(coro)
+
+
+def test_riferimenti_fornitore_non_sono_operativi_finche_non_attivati():
+    from app.lotti.routers.ricette import _ricetta_visibile_tablet
+
+    assert _ricetta_visibile_tablet({"nome": "Pastiera Ceraldi"})
+    assert not _ricetta_visibile_tablet({"nome": "Croissant", "origine": "saima"})
+    assert not _ricetta_visibile_tablet({"nome": "Sfoglia", "origine": "acquaviva"})
+    assert not _ricetta_visibile_tablet({"nome": "Ricetta", "ricettario_mepa_id": "mepa-1"})
+    assert _ricetta_visibile_tablet({
+        "nome": "Croissant adattato",
+        "origine": "saima",
+        "visibile_tablet": True,
+    })
+    assert not _ricetta_visibile_tablet({"nome": "Ricetta nascosta", "visibile_tablet": False})
+
+
+def test_tablet_nasconde_fornitori_e_riordina_dolce_salato(monkeypatch):
+    import app.lotti.routers.ricette as module
+    import app.lotti.routers.lotti_produzione as lotti
+    database = AsyncMongoMockClient()["Gestionale_Test"]
+    monkeypatch.setattr(module, "db", database)
+
+    async def giacenza_vuota(_nomi):
+        return {}
+
+    monkeypatch.setattr(lotti, "giacenza_prodotti_finiti", giacenza_vuota)
+    run(database.ricette.insert_many([
+        {"id": "dolce", "nome": "Cheesecake al limone", "reparto": "rosticceria"},
+        {"id": "salato", "nome": "Calzone con provola", "reparto": "pasticceria"},
+        {"id": "saima-ref", "nome": "Apple Cake", "reparto": "pasticceria", "origine": "saima"},
+        {"id": "saima-ok", "nome": "Brownie adattato", "reparto": "pasticceria", "origine": "saima", "visibile_tablet": True},
+        {"id": "acq-ref", "nome": "Sfoglia Acquaviva", "reparto": "pasticceria", "origine": "acquaviva"},
+    ]))
+
+    dolci = run(module.get_tablet("pasticceria"))["prodotti"]
+    salati = run(module.get_tablet("rosticceria"))["prodotti"]
+
+    assert {item["id"] for item in dolci} == {"dolce", "saima-ok"}
+    assert {item["id"] for item in salati} == {"salato"}
+    assert all(item["reparto"] == "pasticceria" for item in dolci)
+    assert all(item["reparto"] == "rosticceria" for item in salati)
+
+
+def test_esclusione_ricetta_conserva_dati_e_permette_ripristino(monkeypatch):
+    import app.lotti.routers.ricette as module
+    import app.lotti.routers.lotti_produzione as lotti
+    database = AsyncMongoMockClient()["Gestionale_Test"]
+    monkeypatch.setattr(module, "db", database)
+
+    async def giacenza_vuota(_nomi):
+        return {}
+
+    monkeypatch.setattr(lotti, "giacenza_prodotti_finiti", giacenza_vuota)
+    originale = {"id": "ricetta-1", "nome": "Pastiera", "reparto": "pasticceria",
+                "ingredienti": ["Ricotta"], "foto_url": "/api/foto/originale"}
+    run(database.ricette.insert_one(originale.copy()))
+
+    result = run(module.imposta_visibilita_tablet_ricetta(
+        "ricetta-1", module.VisibilitaTabletRicetta(visibile=False), _admin={"nome": "Admin"}
+    ))
+    assert result["visibile_tablet"] is False
+    assert run(module.get_tablet("pasticceria"))["prodotti"] == []
+    conservata = run(database.ricette.find_one({"id": "ricetta-1"}, {"_id": 0}))
+    assert {k: conservata[k] for k in originale} == originale
+    assert conservata["visibile_tablet"] is False
+    assert run(database.ricette_cestino.count_documents({})) == 0
+
+    run(module.imposta_visibilita_tablet_ricetta(
+        "ricetta-1", module.VisibilitaTabletRicetta(visibile=True), _admin={"nome": "Admin"}
+    ))
+    assert [r["id"] for r in run(module.get_tablet("pasticceria"))["prodotti"]] == ["ricetta-1"]
+
+
+def test_categorie_rapide_si_aggiornano_senza_riscrivere_la_ricetta(monkeypatch):
+    import app.lotti.routers.ricette as module
+    database = AsyncMongoMockClient()["Gestionale_Test"]
+    monkeypatch.setattr(module, "db", database)
+    originale = {
+        "id": "ricetta-rapida", "nome": "Pastiera", "reparto": "pasticceria",
+        "ingredienti": ["Ricotta"], "note": "Ricetta verificata",
+    }
+    run(database.ricette.insert_one(originale.copy()))
+
+    result = run(module.imposta_categorie_rapide_ricetta(
+        "ricetta-rapida",
+        module.CategorieRapideRicetta(categorie=["pasqua", "ricorrenze", "pasqua"]),
+        _admin={"nome": "Admin"},
+    ))
+
+    assert result["categorie_rapide"] == ["pasqua", "ricorrenze"]
+    salvata = run(database.ricette.find_one({"id": "ricetta-rapida"}, {"_id": 0}))
+    assert salvata["categorie_rapide"] == ["pasqua", "ricorrenze"]
+    assert {k: salvata[k] for k in originale} == originale
+
+
+def test_categorie_rapide_rifiutano_valori_inventati():
+    import pytest
+    from pydantic import ValidationError
+    from app.lotti.routers.ricette import CategorieRapideRicetta
+
+    with pytest.raises(ValidationError):
+        CategorieRapideRicetta(categorie=["categoria-non-prevista"])
+
+
+def test_gruppi_operativi_persistono_senza_modificare_dosi_o_menu(monkeypatch):
+    from unittest.mock import AsyncMock
+    import app.lotti.routers.ricette as module
+    import app.lotti.routers.lotti_produzione as lotti
+    database = AsyncMongoMockClient()["Gestionale_Test"]
+    monkeypatch.setattr(module, "db", database)
+    sync = AsyncMock(return_value={"esito": "aggiornato"})
+    monkeypatch.setattr(module, "_sincronizza_menu", sync)
+
+    async def vuota(_nomi):
+        return {}
+
+    monkeypatch.setattr(lotti, "giacenza_prodotti_finiti", vuota)
+    originale = {"id": "salato-manuale", "nome": "Specialità del mattino", "reparto": "pasticceria",
+                 "ingredienti": ["Ingrediente verificato"], "menu_pubblico": True, "prezzo_tavolo": 4}
+    run(database.ricette.insert_one(originale.copy()))
+    run(module.imposta_categorie_rapide_ricetta("salato-manuale", module.CategorieRapideRicetta(categorie=["rosticceria_giorno"]), {}))
+    persistita = run(database.ricette.find_one({"id": "salato-manuale"}))
+    assert all(persistita[k] == v for k, v in originale.items() if k != "reparto")
+    assert persistita["reparto"] == "rosticceria"
+    sync.assert_awaited_once_with("salato-manuale")
+    assert persistita["categorie_rapide"] == ["rosticceria_giorno"]
+    assert [p["id"] for p in run(module.get_tablet("rosticceria"))["prodotti"]] == ["salato-manuale"]
+    assert run(module.get_tablet("pasticceria"))["prodotti"] == []
+    run(module.imposta_categorie_rapide_ricetta("salato-manuale", module.CategorieRapideRicetta(categorie=["pasticceria_classica"]), {}))
+    assert run(database.ricette.find_one({"id": "salato-manuale"}))["reparto"] == "pasticceria"
+    assert [p["id"] for p in run(module.get_tablet("pasticceria"))["prodotti"]] == ["salato-manuale"]
+    run(module.imposta_categorie_rapide_ricetta("salato-manuale", module.CategorieRapideRicetta(categorie=[]), {}))
+    assert run(database.ricette.find_one({"id": "salato-manuale"}))["categorie_rapide"] == []
+    assert run(database.lotti_produzione.count_documents({})) == 0
+
+
+def test_gruppi_di_reparto_incompatibili_rifiutati():
+    import pytest
+    from pydantic import ValidationError
+    from app.lotti.routers.ricette import CategorieRapideRicetta
+    for altra in ("colazioni", "pasticceria_classica"):
+        with pytest.raises(ValidationError):
+            CategorieRapideRicetta(categorie=["rosticceria_giorno", altra])
+
+
+def test_salvataggio_ricetta_fornitore_la_rende_operativa(monkeypatch):
+    import app.lotti.routers.ricette as module
+    database = AsyncMongoMockClient()["Gestionale_Test"]
+    monkeypatch.setattr(module, "db", database)
+    run(database.ricette.insert_one({
+        "id": "saima-ref",
+        "nome": "Croissant pistacchio",
+        "reparto": "pasticceria",
+        "origine": "saima",
+        "ricettario_saima_id": "croissant",
+        "visibile_tablet": False,
+    }))
+
+    item = module.RicettaCreate(
+        nome="Croissant pistacchio Ceraldi",
+        reparto="pasticceria",
+        porzioni=40,
+        ingredienti=["Farina", "Pistacchio"],
+        ingredienti_dettaglio=[
+            {"nome": "Farina", "quantita": 1000, "unita_misura": "g"},
+            {"nome": "Pistacchio", "quantita": 100, "unita_misura": "g"},
+        ],
+    )
+    saved = run(module.update_ricetta("saima-ref", item))
+
+    assert saved["origine"] == "saima"
+    assert saved["ricettario_saima_id"] == "croissant"
+    assert saved["visibile_tablet"] is True
+    assert saved["ricetta_operativa"] is True
+    assert saved["adattata_da_ricettario_fornitore_at"]
+
+    run(module.imposta_visibilita_tablet_ricetta(
+        "saima-ref", module.VisibilitaTabletRicetta(visibile=False), _admin={"nome": "Admin"}
+    ))
+    modificata = run(module.update_ricetta("saima-ref", item))
+    assert modificata["visibile_tablet"] is False
+    assert modificata["ricetta_operativa"] is True
+
+
+def test_riordino_persistente_corregge_anche_riferimenti_fornitori_e_crea_backup(monkeypatch):
+    import app.lotti.routers.ricette as module
+    database = AsyncMongoMockClient()["Gestionale_Test"]
+    monkeypatch.setattr(module, "db", database)
+    run(database.ricette.insert_many([
+        {"id": "dolce", "nome": "Tiramisù", "reparto": "rosticceria"},
+        {"id": "salato", "nome": "Pizza margherita", "reparto": "pasticceria"},
+        {"id": "saima", "nome": "Calzone SAIMA", "reparto": "pasticceria", "origine": "saima"},
+        {"id": "saima-dolce", "nome": "Caprese Al Limone", "reparto": "rosticceria",
+         "origine": "saima", "visibile_tablet": False,
+         "ingredienti": ["Marzapane dolce", "Cioccolato bianco"]},
+    ]))
+
+    result = run(module.auto_assegna_reparti(applica=True, _admin={"nome": "Ceraldi Vincenzo"}))
+
+    assert result["aggiornate"] == 4
+    assert run(database.ricette.find_one({"id": "dolce"}))["reparto"] == "pasticceria"
+    assert run(database.ricette.find_one({"id": "salato"}))["reparto"] == "rosticceria"
+    assert run(database.ricette.find_one({"id": "saima"}))["reparto"] == "rosticceria"
+    corretta = run(database.ricette.find_one({"id": "saima-dolce"}))
+    assert corretta["reparto"] == "pasticceria"
+    assert corretta["visibile_tablet"] is False
+    backup = run(database.ricette_import_backup.find_one({"tipo": "riordino_reparti_operativi"}))
+    assert backup["operatore"] == "Ceraldi Vincenzo"
+    assert {item["id"] for item in backup["reparti_precedenti"]} == {
+        "dolce", "salato", "saima", "saima-dolce"
+    }

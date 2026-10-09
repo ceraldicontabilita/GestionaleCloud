@@ -12,7 +12,7 @@ import shutil
 from app.database import Database
 from .common import (
     UPLOAD_DIR, safe_filename, build_dedup_key,
-    logger
+    parse_filename_data, logger
 )
 from .pdf_parser import read_pdf_text, extract_transfers_from_text
 
@@ -160,6 +160,15 @@ async def process_files_background(job_id: str, file_paths: List[Path]):
                     pdf_data = base64.b64encode(pdf_file.read()).decode('utf-8')
             except Exception:
                 pdf_data = None
+
+            # Fallback: estrai dati dal nome file
+            if not transfers or (transfers and not transfers[0].get('importo')):
+                filename_data = parse_filename_data(p.name)
+                if filename_data:
+                    if transfers:
+                        transfers[0].update({k: v for k, v in filename_data.items() if v and not transfers[0].get(k)})
+                    else:
+                        transfers = [filename_data]
 
             if not transfers:
                 errors += 1

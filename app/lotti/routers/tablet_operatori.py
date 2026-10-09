@@ -377,12 +377,6 @@ async def trova_operatori_per_pin(pin: str) -> List[Dict[str, Any]]:
 
 @router.post("/login")
 async def login_pin(payload: PinLogin, request: Request = None):
-    db_hr = _db_hr()
-    if db_hr is None:
-        raise HTTPException(503, "Archivio del personale non disponibile: riprova più tardi")
-    persona = await db_hr["dipendenti"].find_one({"merged_into": {"$exists": False}}, {"id": 1})
-    if not persona:
-        raise HTTPException(409, "Non ci sono dipendenti in HR: il titolare deve entrare dal Gestionale. Configura il personale e i PIN personali per gli operatori")
     ip = ip_richiesta(request)
     await check_lock(ip)
     pin = (payload.pin or "").strip()
