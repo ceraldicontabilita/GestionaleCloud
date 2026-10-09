@@ -3560,6 +3560,10 @@ I report ricostruiti dagli allegati dell'utente affiancano le fonti originali:
 il foglio «Cedolini» dell'allegato con i pagamenti del mese successivo è una
 ricostruzione delle attribuzioni, non prova del netto retributivo.
 Un'autorizzazione di distinta non dimostra da sola l'addebito sul conto.
+Anche la sincronizzazione periodica del registro conserva questa distinzione:
+un elenco o una ricevuta senza riscontro bancario non imposta `bonifico_ricevuto`
+né trasforma una semplice quadratura in `pagato`. Le conferme manuali già
+presenti restano separate dalla riconciliazione automatica.
 
 ### Bonifici HR e importazione bancaria
 

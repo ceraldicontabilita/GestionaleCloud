@@ -26,7 +26,9 @@ import asyncio
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
-from app.constants.stati_associazione_bonifico import stato_paga_mese
+from app.constants.stati_associazione_bonifico import (
+    esiti_riconciliati, ha_riscontro_bancario, stato_paga_mese,
+)
 from app.hr.database import Collections
 from app.hr.services.regole_pagamenti_dipendenti import filtra_acconti_contanti
 from app.services.posizione_dipendente import ZERO, acconti_registro_del_mese, dovuto_busta, importo
@@ -41,12 +43,15 @@ def _num(v: Any) -> Optional[float]:
         return None
 
 
-def _stato_e_saldo(busta: Any, erogato: Any) -> Dict[str, Any]:
+def _stato_e_saldo(busta: Any, erogato: Any, *, bonifico: Any = 0,
+                   riconciliato: bool = False) -> Dict[str, Any]:
     """Stesso motore di ``_ricalcola_stato_paga``: confronto in Decimal al
     centesimo, nessuna tolleranza (titolare 02/10/2026)."""
     busta_d = importo(busta)
     erogato_d = importo(erogato) or ZERO
     stato = stato_paga_mese(busta_d, erogato_d)
+    if (importo(bonifico) or ZERO) > ZERO and busta_d is not None and not riconciliato:
+        stato = "da_verificare"
     return {"stato_pagamento": stato,
             "saldo": float(busta_d - erogato_d) if busta_d is not None else None}
 
@@ -75,7 +80,7 @@ async def _sincronizza(db, anno: int = None) -> Dict[str, Any]:
     from app.hr.db_supabase import SupabaseDatabase
 
     if isinstance(db, SupabaseDatabase):
-        await db.refresh_collections("cedolini", "paghe_mensili", "dipendenti")
+        await db.refresh_collections("cedolini", "paghe_mensili", "dipendenti", "pagamenti_esiti")
     filtro_ced: Dict[str, Any] = {
         "tipo_cedolino": {"$in": ["ordinario", "mensile", "tredicesima", "quattordicesima", None]}
     }
@@ -110,9 +115,12 @@ async def _sincronizza(db, anno: int = None) -> Dict[str, Any]:
     # gia' fatte da _ricalcola_stato_paga in giri precedenti. Sommati una volta
     # sola per (dipendente_id, anno, mese), zero query aggiuntive nel ciclo.
     esiti_idx: Dict[tuple, float] = {}
-    async for e in db["pagamenti_esiti"].find({}, {"_id": 0, "dipendente_id": 1, "anno": 1, "mese": 1, "importo": 1}):
+    prove_idx: Dict[tuple, list] = {}
+    async for e in db["pagamenti_esiti"].find({}, {"_id": 0, "pdf_data": 0, "file_data": 0}):
         k = (e.get("dipendente_id"), e.get("anno"), e.get("mese"))
         esiti_idx[k] = round((esiti_idx.get(k) or 0) + (_num(e.get("importo")) or 0), 2)
+        prove_idx.setdefault(k, []).append({campo: e.get(campo) for campo in (
+            "associazione_certa", "origine", "gestionale_movimento_id")})
 
     # Prefetch di paghe_mensili in blocco: l'adattatore Supabase non ha indici,
     # un find_one per cedolino (fino a 3000) su una tabella che cresce ad ogni
@@ -157,6 +165,9 @@ async def _sincronizza(db, anno: int = None) -> Dict[str, Any]:
         tot_esiti = esiti_idx.get((dip, anno_c, mese_c))
         if tot_esiti is not None:
             bonifico_importo = tot_esiti
+        prove = prove_idx.get((dip, anno_c, mese_c), bon)
+        riconciliato_auto = esiti_riconciliati(prove)
+        riconciliato = (esistente or {}).get("bonifico_riconciliato") is True or riconciliato_auto
 
         dovuto = dovuto_busta(esistente if netto_confermato is not None else {}, c)
         importo_dovuto = float(dovuto["dovuto"]) if dovuto["dovuto"] is not None else None
@@ -169,7 +180,8 @@ async def _sincronizza(db, anno: int = None) -> Dict[str, Any]:
             "netto_stampato": float(dovuto["netto_busta"]) if dovuto["netto_busta"] is not None else None,
             "acconto_recuperato": float(dovuto["acconto"]),
             "dovuto_periodo": importo_dovuto,
-            "bonifico_ricevuto": bonifico_importo > 0,
+            "bonifico_ricevuto": bonifico_importo > 0 and bool(prove) and all(ha_riscontro_bancario(e) for e in prove),
+            "bonifico_riconciliato_auto": riconciliato_auto,
             "bonifico_importo": bonifico_importo or None,
             "bonifico_data": bonifico_data,
             "acconti": esistente.get("acconti", []) if esistente else [],
@@ -184,7 +196,8 @@ async def _sincronizza(db, anno: int = None) -> Dict[str, Any]:
             dipendenti_idx.get(dip, {}), (esistente or {}).get("acconti") or [])
         acconti_pagati = (sum(_num(a.get("importo")) or 0 for a in in_busta)
                           + float(acconti_registro_del_mese(acconti_per_dip.get(dip, []), anno_c, mese_c, in_busta)))
-        doc.update(_stato_e_saldo(importo_dovuto, round(bonifico_importo + acconti_pagati, 2)))
+        doc.update(_stato_e_saldo(importo_dovuto, round(bonifico_importo + acconti_pagati, 2),
+                                 bonifico=bonifico_importo, riconciliato=riconciliato))
         doc = {k: v for k, v in doc.items() if v is not None or k in ("acconti",)}
 
         if esistente and all(esistente.get(k) == v for k, v in doc.items() if k != "updated_at"):
