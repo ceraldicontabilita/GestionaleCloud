@@ -9,7 +9,8 @@ export function statoPeriodo(r) {
   if (r.avvisi_importo?.length || r.acconto_da_verificare || r.netto_pdf_da_verificare || r.busta == null) return 'Da verificare';
   if (!r.cedolino_pdf) return 'PDF mancante';
   if (r.riconciliato && r.stato === 'pagato' && r.erogato > 0 && r.fonte === 'banca') return 'Riconciliato';
-  if (r.erogato > 0) return r.riconciliato && r.fonte === 'banca' ? 'Pagamento parziale / eccedenza' : 'Pagamento da verificare';
+  if (r.riconciliato && r.stato === 'pagato' && r.fonte === 'conferma_titolare') return 'Pagato — confermato dal titolare';
+  if (r.erogato > 0) return r.riconciliato ? 'Pagamento parziale / eccedenza' : 'Pagamento da verificare';
   return r.busta === 0 ? 'Saldo zero' : 'Pagamento non associato';
 }
 
@@ -46,8 +47,9 @@ export default function GrigliaPaghe({ righe, daLeggere, loading, onDipendente }
       <b>{dettaglio.dipendente} · {MESI[dettaglio.mese - 1]} {dettaglio.anno}</b>
       <p>Dovuto: {denaro(dettaglio.busta)} · Erogato: {denaro(dettaglio.erogato)} · Residuo: {denaro(dettaglio.saldo)}</p>
       {dettaglio.pagamenti_copertura?.map(p => <p key={p.id}>{p.nota}. Bonifico complessivo {denaro(p.importo)} per più mensilità, conteggiato una sola volta. CRO: {p.cro || '—'}.</p>)}
+      {dettaglio.cedolini?.length > 1 && <p>{dettaglio.cedolini.length} cedolini: {dettaglio.cedolini.map(c => `${c.rapporto?.descrizione || "Cedolino"} ${denaro(c.netto)}`).join(" + ")}</p>}
       <p>{dettaglio.ambiguo ? 'Più righe per la stessa mensilità: importi da confrontare.' : statoPeriodo(dettaglio)}.
-        {dettaglio.erogato > 0 && !(dettaglio.riconciliato && dettaglio.fonte === 'banca') && ' Il pagamento è registrato; manca la verifica del collegamento con la busta e dell’addebito bancario.'}
+        {dettaglio.erogato > 0 && !dettaglio.riconciliato && ' Il pagamento è registrato; manca la verifica del collegamento con la busta e dell’addebito bancario.'}
         {dettaglio.acconto_da_verificare && ' Recupero acconto da controllare sul cedolino.'}
         {dettaglio.avvisi_importo?.length > 0 && ' Gli importi importati presentano differenze da controllare.'}
         {dettaglio.netto_pdf_da_verificare && ' Il netto del PDF deve essere verificato.'}
@@ -73,7 +75,7 @@ export default function GrigliaPaghe({ righe, daLeggere, loading, onDipendente }
               if (r.pagamenti_copertura?.length) { txt = '✓ Pagato'; color = '#3d8168'; }
               else if (r.ambiguo) { txt = 'Verifica'; color = '#7a3b32'; }
               else if (r.busta == null && r.stato !== 'in_attesa_busta') { txt = 'Da leggere'; color = '#7a3b32'; }
-              else if (r.stato === 'pagato' && r.riconciliato && r.fonte === 'banca') { txt = '✓'; color = '#3d8168'; }
+              else if (r.stato === 'pagato' && r.riconciliato) { txt = '✓'; color = '#3d8168'; }
               else if (r.stato === 'in_attesa_busta') { txt = '+' + euro(r.erogato); color = '#7d5526'; }
               else if (r.stato === 'da_verificare' || r.netto_pdf_da_verificare || r.avvisi_importo?.length || r.acconto_da_verificare) {
                 txt = euro(r.saldo) + ' !'; color = '#7d5526';
@@ -90,6 +92,6 @@ export default function GrigliaPaghe({ righe, daLeggere, loading, onDipendente }
         </tr>;
       })}</tbody>
     </table></div>
-    <p className="dc-muted" style={{ fontSize: 12, margin: '6px 10px' }}>✓ riconciliato · rosso = residuo · + = eccedenza o busta attesa · ! = controllo da completare · Da leggere = netto non disponibile · — = totale incompleto. Tocca un mese per i dettagli.</p>
+    <p className="dc-muted" style={{ fontSize: 12, margin: '6px 10px' }}>✓ pagato confermato · rosso = residuo · + = eccedenza o busta attesa · ! = controllo da completare · Da leggere = netto non disponibile · — = totale incompleto. Tocca un mese per i dettagli.</p>
   </section>;
 }

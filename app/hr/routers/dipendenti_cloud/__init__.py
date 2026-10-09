@@ -716,7 +716,7 @@ async def _ricalcola_stato_paga(db, dip, anno, mese):
     # bonifico arrivato prima della busta resta «in attesa della busta».
     from app.services import posizione_dipendente as pos
 
-    from app.constants.stati_associazione_bonifico import esiti_riconciliati, ha_riscontro_bancario
+    from app.constants.stati_associazione_bonifico import esiti_riconciliati, esiti_confermati, ha_riscontro_bancario
     from app.services.pagamenti_mensilita import periodi_saldati
     tot_esiti, n_esiti, esiti = pos.ZERO, 0, []
     async for e in db.pagamenti_esiti.find({"dipendente_id": dip, "mese": mese, "anno": anno}, {"_id": 0, "pdf_data": 0}):
@@ -748,7 +748,7 @@ async def _ricalcola_stato_paga(db, dip, anno, mese):
     erogato = bonifico + acc
     stato = stato_paga_mese(busta, erogato)
     automatico = esiti_riconciliati(esiti)
-    riconciliato = p.get("bonifico_riconciliato") is True or automatico
+    riconciliato = p.get("bonifico_riconciliato") is True or esiti_confermati(esiti)
     if bonifico > 0 and busta is not None and not riconciliato:
         stato = "da_verificare"
     upd = {"stato_pagamento": stato,
@@ -4284,8 +4284,9 @@ async def _calcola_associazioni_bonifici(db, anno: Optional[int] = None, mese: O
     ced_by_periodo: Dict[tuple, Dict[str, Any]] = {}
     ced_by_id = {}
     from app.hr.services.sincronizza_paghe_mensili import _mese_registro
-    async for c in db.cedolini.find({}, {"_id": 0, "pdf_data": 0}):
-        cedolini_lista.append(c)
+    from app.services.cedolini_rapporti import raggruppa_cedolini
+    cedolini_lista = await db.cedolini.find({}, {"_id": 0, "pdf_data": 0}).to_list(None)
+    for c in raggruppa_cedolini(cedolini_lista).values():
         ced_by_id[c.get("id")] = c
         try:
             mese_cedolino = _mese_registro(c)
@@ -4320,9 +4321,11 @@ async def _calcola_associazioni_bonifici(db, anno: Optional[int] = None, mese: O
         dip_id = p.get("dipendente_id")
         copertura = coperture.get((dip_id, p.get("anno"), p.get("mese")), [])
         dip = dip_map.get(dip_id) or {}
-        ced = ced_by_id.get(p.get("cedolino_id"))
-        if not ced or ced.get("dipendente_id") != dip_id:
-            ced = trova_cedolino(dip_id, dip.get("cognome"), p.get("mese"), p.get("anno"))
+        ced = trova_cedolino(dip_id, dip.get("cognome"), p.get("mese"), p.get("anno"))
+        if not ced:
+            ced = ced_by_id.get(p.get("cedolino_id"))
+        if ced and ced.get("dipendente_id") != dip_id:
+            ced = None
         dovuto = dovuto_busta(p, ced)
         # busta assente (``None``) = non ancora arrivata, non uno zero
         busta_dec = dovuto["dovuto"]
@@ -4359,10 +4362,11 @@ async def _calcola_associazioni_bonifici(db, anno: Optional[int] = None, mese: O
         senza_busta = busta_dec is None
 
         # Fonte del bonifico
-        from app.constants.stati_associazione_bonifico import esiti_riconciliati, ha_riscontro_bancario
+        from app.constants.stati_associazione_bonifico import esiti_confermati, ha_riscontro_bancario
         prove = esiti_idx.get((dip_id, p.get("mese"), p.get("anno")), [])
         if prove:
-            fonte = "banca" if all(ha_riscontro_bancario(e) for e in prove) else "documento_da_verificare"
+            fonte = ("banca" if all(ha_riscontro_bancario(e) for e in prove)
+                     else "conferma_titolare" if esiti_confermati(prove) else "documento_da_verificare")
         elif p.get("bonifico_da_prima_nota"):
             fonte = "prima_nota"
         elif bon > 0:
@@ -4375,7 +4379,7 @@ async def _calcola_associazioni_bonifici(db, anno: Optional[int] = None, mese: O
         # confermano da soli il collegamento. Solo la conferma esplicita e
         # reversibile ``bonifico_riconciliato`` trasforma il candidato in un
         # legame verificato.
-        riconciliato = p.get("bonifico_riconciliato") is True or esiti_riconciliati(prove)
+        riconciliato = p.get("bonifico_riconciliato") is True or esiti_confermati(prove)
         # Lo stato contabile effettivo non può derivare dal solo quadramento
         # numerico. Conserviamo quel calcolo come candidato, ma finché manca
         # una conferma reversibile della prova bancaria/assegno esponiamo
@@ -4476,6 +4480,9 @@ async def _calcola_associazioni_bonifici(db, anno: Optional[int] = None, mese: O
             "busta_nota": p.get("importo_busta_nota"),
             "cedolino_pdf": has_pdf,
             "cedolino_id": cedolino_id,
+            "cedolini": [{"cedolino_id": c.get("id"), "cedolino_pdf": ha_originale(c),
+                          "netto": c.get("netto"), "rapporto": c.get("rapporto_lavoro") or {}}
+                         for c in ((ced or {}).get("cedolini_componenti") or ([ced] if ced else []))],
         })
 
     # La prova di un pagamento cumulativo compare su ogni mese, il denaro una volta sola.

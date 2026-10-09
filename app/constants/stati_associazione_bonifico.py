@@ -86,6 +86,21 @@ def esiti_riconciliati(esiti) -> bool:
     )
 
 
+def esiti_confermati(esiti) -> bool:
+    """Pagamento confermato dal titolare o riscontrato in banca.
+
+    La conferma del titolare vale per il saldo, senza fingere un riscontro
+    nell'estratto conto. Identità candidata e ricevuta da sole non bastano.
+    """
+    return bool(esiti) and all(
+        (e.get("associazione_certa") is True and ha_riscontro_bancario(e))
+        or (e.get("dipendente_id") and e.get("confermato_manuale") is True)
+        or (e.get("dipendente_id") and e.get("origine") == "elenco-pagamenti-titolare"
+            and e.get("associazione_certa") is True and e.get("competenza_confermata") is True)
+        for e in esiti
+    )
+
+
 # ── candidati della coda ─────────────────────────────────────────────────────
 MAX_CANDIDATI = 10
 #: Cambia quando cambia il modo di calcolarli: le righe salvate con un'altra

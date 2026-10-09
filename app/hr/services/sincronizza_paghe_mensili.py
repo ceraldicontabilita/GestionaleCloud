@@ -27,7 +27,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
 from app.constants.stati_associazione_bonifico import (
-    esiti_riconciliati, ha_riscontro_bancario, stato_paga_mese,
+    esiti_riconciliati, esiti_confermati, ha_riscontro_bancario, stato_paga_mese,
 )
 from app.hr.database import Collections
 from app.hr.services.regole_pagamenti_dipendenti import filtra_acconti_contanti
@@ -87,8 +87,8 @@ async def _sincronizza(db, anno: int = None) -> Dict[str, Any]:
     if anno:
         filtro_ced["anno"] = anno
     cedolini = await db[Collections.PAYSLIPS].find(filtro_ced, {"_id": 0, "pdf_data": 0}).to_list(3000)
-    cedolini = [c for c in cedolini if c.get("dipendente_id") and c.get("anno") and c.get("mese")
-               and c.get("netto") is not None]
+    from app.services.cedolini_rapporti import raggruppa_cedolini
+    cedolini = list(raggruppa_cedolini(c for c in cedolini if c.get("dipendente_id")).values())
 
     # pdf_data ESCLUSO (05/09/2026): con la quirk del $ne:None descritta sotto
     # questa query prende quasi tutti gli 887 bonifici, e 805 hanno il PDF
@@ -117,15 +117,15 @@ async def _sincronizza(db, anno: int = None) -> Dict[str, Any]:
     esiti_idx: Dict[tuple, float] = {}
     prove_idx: Dict[tuple, list] = {}
     from app.services.pagamenti_mensilita import indice_coperture, stato_copertura, periodi_saldati
-    tutte_prove = []
-    async for e in db["pagamenti_esiti"].find({}, {"_id": 0, "pdf_data": 0, "file_data": 0}):
-        tutte_prove.append(e)
+    tutte_prove = await db["pagamenti_esiti"].find({}, {"_id": 0, "pdf_data": 0, "file_data": 0}).to_list(None)
+    for e in tutte_prove:
         if periodi_saldati(e):
             continue
         k = (e.get("dipendente_id"), e.get("anno"), e.get("mese"))
         esiti_idx[k] = round((esiti_idx.get(k) or 0) + (_num(e.get("importo")) or 0), 2)
         prove_idx.setdefault(k, []).append({campo: e.get(campo) for campo in (
-            "associazione_certa", "origine", "gestionale_movimento_id")})
+            "associazione_certa", "origine", "gestionale_movimento_id",
+            "dipendente_id", "confermato_manuale", "competenza_confermata")})
 
     coperture = indice_coperture(tutte_prove)
     # Prefetch di paghe_mensili in blocco: l'adattatore Supabase non ha indici,
@@ -163,7 +163,9 @@ async def _sincronizza(db, anno: int = None) -> Dict[str, Any]:
             saltati_manuali += 1
             continue
 
-        bon = per_cedolino.get(c.get("id"), [])
+        componenti = c.get("cedolini_componenti") or [c]
+        bon = list({b.get("id") or str(b): b for part in componenti
+                    for b in per_cedolino.get(part.get("id"), [])}.values())
         bonifico_importo = round(sum(_num(b.get("importo")) or 0 for b in bon), 2)
         bonifico_data = max((b.get("data") for b in bon), default=None)
         # pagamenti_esiti e' la fonte autorevole quando presente (copre anche i
@@ -173,7 +175,7 @@ async def _sincronizza(db, anno: int = None) -> Dict[str, Any]:
             bonifico_importo = tot_esiti
         prove = prove_idx.get((dip, anno_c, mese_c), bon)
         riconciliato_auto = esiti_riconciliati(prove)
-        riconciliato = (esistente or {}).get("bonifico_riconciliato") is True or riconciliato_auto
+        riconciliato = (esistente or {}).get("bonifico_riconciliato") is True or esiti_confermati(prove)
 
         dovuto = dovuto_busta(esistente if netto_confermato is not None else {}, c)
         importo_dovuto = float(dovuto["dovuto"]) if dovuto["dovuto"] is not None else None
@@ -192,10 +194,11 @@ async def _sincronizza(db, anno: int = None) -> Dict[str, Any]:
             "pagamenti_copertura": [],
             "bonifico_data": bonifico_data,
             "acconti": esistente.get("acconti", []) if esistente else [],
-            "giorni_lavorati": (c.get("periodo") or {}).get("giorni_lavorati") or c.get("giorni_lavorati"),
+            "giorni_lavorati": c.get("giorni_lavorati"),
             "acconto_da_cedolino": float(dovuto["acconto"]),
             "livello": c.get("livello"),
             "cedolino_id": c.get("id"),
+            "cedolino_ids": [part["id"] for part in componenti if part.get("id")],
             "origine": "excel_cedolino" if netto_confermato is not None else "cedolino",
             "updated_at": adesso,
         }
@@ -207,7 +210,7 @@ async def _sincronizza(db, anno: int = None) -> Dict[str, Any]:
                                  bonifico=bonifico_importo, riconciliato=riconciliato))
         if prove := coperture.get((dip, anno_c, mese_c)):
             doc.update(stato_copertura(prove))
-        doc = {k: v for k, v in doc.items() if v is not None or k in ("acconti",)}
+        doc = {k: v for k, v in doc.items() if v is not None or k in ("acconti", "importo_busta", "netto_stampato", "dovuto_periodo", "saldo", "bonifico_importo", "bonifico_data")}
 
         if esistente and all(esistente.get(k) == v for k, v in doc.items() if k != "updated_at"):
             invariati += 1

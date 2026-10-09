@@ -6,13 +6,8 @@ residuo della busta. Sono ammessi piu' acconti; la riga si chiude soltanto
 quando la loro somma raggiunge il netto. Non esistono fallback per ordine del
 database, solo cognome o semplice vicinanza dell'importo.
 
-Competenza del bonifico (LOGICA_FUNZIONAMENTO.md §7, audit 03/09/2026 PR 13):
-senza periodo esplicito in causale, un bonifico eseguito PRIMA del giorno 25
-paga il cedolino del mese precedente (il saldo di gennaio arriva il 20
-febbraio); dal 25 in poi paga il mese corrente. La vecchia finestra
-[20/M, 15/M+1] agganciava il saldo di gennaio pagato il 20/02 alla busta di
-febbraio: ``riallinea_competenza_bonifici_stipendi`` sposta (o stacca) i
-bonifici gia' registrati sul mese sbagliato.
+La competenza viene dalla causale o da una conferma del titolare.
+La data bancaria resta la data effettiva e non determina il mese retributivo.
 """
 from __future__ import annotations
 
@@ -46,22 +41,12 @@ def _collezione_id(movimento_id: Any) -> str:
 
     return collezione_del_movimento({"id": movimento_id})
 
-# Giorno del mese da cui un bonifico senza periodo in causale si riferisce al
-# mese corrente invece che al precedente (LOGICA_FUNZIONAMENTO.md §7).
-GIORNO_CAMBIO_COMPETENZA = 25
 MOTIVO_RIALLINEO_COMPETENZA = "riallineo_competenza_bonifici_stipendi_2026-09-03"
 
 _FAVORE_RE = re.compile(
     r"FAVORE\s+([A-Za-zÀ-ÿ'\. ]+?)(?:\s+NOTPROVIDE\b.*)?\s*(?:-|$)",
     re.I,
 )
-_PERIODO_NUM_RE = re.compile(r"\b(0?[1-9]|1[0-4])[/\-](20\d{2})\b")
-_MESI = {
-    "gennaio": 1, "febbraio": 2, "marzo": 3, "aprile": 4,
-    "maggio": 5, "giugno": 6, "luglio": 7, "agosto": 8,
-    "settembre": 9, "ottobre": 10, "novembre": 11, "dicembre": 12,
-    "tredicesima": 13, "quattordicesima": 14,
-}
 
 
 def _tokens(nome: str) -> frozenset[str]:
@@ -78,31 +63,8 @@ def estrai_nome_favore(descrizione: str) -> Optional[str]:
 
 def estrai_periodo_causale(descrizione: str) -> Optional[Tuple[int, int]]:
     """Restituisce (mese, anno) solo quando la causale lo dichiara."""
-    testo = (descrizione or "").casefold()
-    match = _PERIODO_NUM_RE.search(testo)
-    if match:
-        return int(match.group(1)), int(match.group(2))
-    for nome, mese in _MESI.items():
-        match = re.search(rf"\b{nome}\b(?:\s+|[/\-])(20\d{{2}})\b", testo)
-        if match:
-            return mese, int(match.group(1))
-    return None
-
-
-def competenza_bonifico_stipendio(data_movimento: Any) -> Optional[Tuple[int, int]]:
-    """``(mese, anno)`` del cedolino pagato da un bonifico senza periodo in causale.
-
-    Prima del giorno 25 il bonifico e' il saldo/acconto del mese PRECEDENTE
-    (20/02/2026 -> 01/2026); dal 25 in poi e' del mese corrente (30/03/2026
-    -> 03/2026). ``None`` se la data non e' leggibile.
-    """
-    try:
-        data = datetime.fromisoformat(str(data_movimento or "")[:10])
-    except (TypeError, ValueError):
-        return None
-    if data.day < GIORNO_CAMBIO_COMPETENZA:
-        return (12, data.year - 1) if data.month == 1 else (data.month - 1, data.year)
-    return data.month, data.year
+    from app.services.pagamenti_mensilita import competenza_in_causale
+    return competenza_in_causale(descrizione)
 
 
 def competenza_dichiarata(valore: Any) -> Optional[Tuple[int, int]]:
@@ -117,14 +79,13 @@ def competenza_dichiarata(valore: Any) -> Optional[Tuple[int, int]]:
 def periodo_atteso_bonifico(descrizione: str, data_movimento: Any,
                             dichiarata: Any = None) -> Optional[Tuple[int, int]]:
     """Il periodo che il titolare ha dichiarato sul movimento vince su tutto;
-    poi quello scritto in causale; altrimenti quello dedotto dalla data.
+    poi quello scritto in causale; senza prova la competenza resta sconosciuta.
 
     La causale la scrive chi dispone il bonifico e puo' sbagliare («paga
     ottobre» su una busta di agosto): la parola del titolare la corregge."""
     return (
         competenza_dichiarata(dichiarata)
         or estrai_periodo_causale(descrizione)
-        or competenza_bonifico_stipendio(data_movimento)
     )
 
 
@@ -204,8 +165,7 @@ def _candidati_univoci(
 ) -> List[Dict[str, Any]]:
     """Nome completo + importo entro il residuo + periodo di competenza.
 
-    Il periodo e' quello scritto in causale; altrimenti lo decide la data del
-    bonifico con la regola del giorno 25 (``competenza_bonifico_stipendio``).
+    Il periodo deve essere scritto in causale o confermato dal titolare.
     """
     nome_favore = estrai_nome_favore(descrizione)
     periodo = periodo_atteso_bonifico(descrizione, data_movimento, competenza)
@@ -233,7 +193,7 @@ def _candidati_univoci(
         )
         if not nome_ok or len(_tokens(nome_riga)) < 2:
             continue
-        # Senza periodo (ne' in causale ne' da una data leggibile) non si
+        # Senza periodo esplicito o confermato non si
         # sceglie una busta "a caso": nessun candidato.
         if periodo is None:
             continue
@@ -370,7 +330,7 @@ async def riallinea_competenza_bonifici_stipendi(
     esito: Dict[str, Any] = {
         "dry_run": dry_run,
         "motivo": MOTIVO_RIALLINEO_COMPETENZA,
-        "regola": f"causale esplicita, altrimenti giorno < {GIORNO_CAMBIO_COMPETENZA} = mese precedente",
+        "regola": "competenza confermata dal titolare o esplicita in causale",
         "righe_esaminate": len(righe),
         "movimenti_esaminati": 0,
         "coerenti": 0,

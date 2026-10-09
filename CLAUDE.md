@@ -3597,6 +3597,27 @@ passa allo stesso motore da HR, Drive e Import documenti: esito `presenze`,
 zero buste, nessun errore. Nel cedolino Zucchetti nuovo competenze e trattenute
 si leggono dalle celle etichettate, non da coppie di cifre nel testo.
 
+### Più rapporti nello stesso mese e reimport — 09/10/2026
+
+Due cedolini dello stesso dipendente e mese possono appartenere a contratti
+diversi: rimangono due originali, con matricola e data di assunzione proprie.
+Il parser separa le buste complete anche nello stesso PDF. Archivio, griglia,
+sincronizzazione e prima nota sommano i netti e i recuperi acconto una sola
+volta; la riga mensile permette di aprire ogni PDF. Se un netto manca, il
+totale resta incompleto; le revisioni da decidere non vengono sommate.
+
+CF, mese e importo uguali non provano un duplicato. Il reimport confronta
+l'impronta del contenuto o la stessa fonte/pagine: la pagina caricata da sola
+e quella estratta dal fascicolo sono la stessa prova. I metadati dei rapporti
+si conservano sia nel registro ERP sia nel deposito HR.
+
+La competenza confermata dal titolare o scritta in causale collega il bonifico
+al cedolino, anche quando il pagamento avviene il mese dopo. La prima nota
+mantiene la data effettiva. I pagamenti dell'elenco che il titolare ha
+esplicitamente confermato possono chiudere il mese e apparire «Pagato —
+confermato dal titolare»; non diventano per questo riconciliati con l'estratto
+conto. La data, da sola, non assegna una competenza.
+
 ### Componenti 13ª, 14ª e TFR nei cedolini
 
 Il lettore unico conserva `dati_chiave.componenti_busta`: tipo, importo,

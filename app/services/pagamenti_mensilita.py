@@ -1,5 +1,19 @@
 """Mensilità saldate da un unico bonifico, senza inventare quote mensili."""
 from datetime import date
+import re
+
+
+def competenza_in_causale(testo):
+    """Una sola mensilità esplicita; date bancarie e causali cumulative escluse."""
+    testo = str(testo or "").casefold()
+    testo = re.sub(r"\b\d{1,2}[/.-]\d{1,2}[/.-]20\d{2}\b|\b20\d{2}-\d{2}-\d{2}\b", " ", testo)
+    if re.search(r"\b\d{1,2}(?:\s*[-+,]\s*\d{1,2}){1,}\s+20\d{2}\b", testo):
+        return None
+    periodi = {(int(m), int(a)) for m, a in re.findall(r"(?<![\d/\-])(0?[1-9]|1[0-4])[/\-](20\d{2})\b", testo)}
+    mesi = "gennaio febbraio marzo aprile maggio giugno luglio agosto settembre ottobre novembre dicembre tredicesima quattordicesima".split()
+    for m, nome in enumerate(mesi, 1):
+        periodi.update((m, int(a)) for a in re.findall(rf"\b{nome}\b(?:\s+|[/\-])(20\d{{2}})\b", testo))
+    return next(iter(periodi)) if len(periodi) == 1 else None
 
 
 def periodi_saldati(esito):

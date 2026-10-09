@@ -522,7 +522,7 @@ async def processa_cedolino_v2(
             "created_at": (cedolino_esistente or {}).get("created_at") or datetime.now(timezone.utc).isoformat(),
             "updated_at": datetime.now(timezone.utc).isoformat(),
         }
-        for field in ("drive_file_id", "drive_md5", "blob_key", "pdf_source_scope", "source_file_hash", "canale", "voci", "dati_chiave", "dati_extra", "retribuzione"):
+        for field in ("rapporto_id", "rapporto_lavoro", "impronta_contenuto", "drive_file_id", "drive_md5", "blob_key", "pdf_source_scope", "source_file_hash", "canale", "voci", "dati_chiave", "dati_extra", "retribuzione"):
             if cedolino_data.get(field):
                 cedolino_record[field] = cedolino_data[field]
         cedolino_record["stato_netto"] = stato_netto
@@ -760,7 +760,8 @@ async def processa_cedolino_v2(
         except Exception:
             logger.exception("Errore detect_cessazione (canale D V2)")
 
-        if cessazione_info and cessazione_info.get("cessato") and dipendente_id:
+        if (cessazione_info and cessazione_info.get("cessato") and dipendente_id
+                and not cedolino_data.get("rapporto_successivo_documentato")):
             try:
                 # Calcola data_cessazione
                 data_cess = cessazione_info.get("data_cessazione_rilevata")

@@ -73,7 +73,14 @@ def _summary_cedolino(
     document_pages: int,
 ) -> Dict[str, Any]:
     """Converte un riepilogo deterministico conservando provenienza e PDF."""
+    from app.services.cedolini_rapporti import rapporto_da_coordinate, impronta_testo
+    with fitz.open(stream=pdf_bytes, filetype="pdf") as doc:
+        payroll_pages = [page for page in doc if detect_template(page.get_text()) != "zucchetti_presenze"]
+        rapporto = next((r for page in payroll_pages if (r := rapporto_da_coordinate(page.get_text("words")))), {})
+        content_text = "\n".join(page.get_text() for page in payroll_pages)
     return {
+        **rapporto,
+        "impronta_contenuto": impronta_testo(content_text),
         "nome_dipendente": summary.get("dipendente_nome") or "",
         "codice_fiscale": summary.get("codice_fiscale") or "",
         "tipo_cedolino": summary.get("tipo_cedolino") or "mensile",
@@ -139,8 +146,8 @@ def _summary_complete(parsed: Dict[str, Any], summary: Dict[str, Any]) -> bool:
 def _parse_multi_template_units(file_content: bytes) -> List[Dict[str, Any]]:
     """Separa un fascicolo multipagina per dipendente e periodo.
 
-    Le pagine di continuazione restano aggregate al cedolino precedente. Se il
-    fascicolo contiene un solo dipendente, viene conservato integralmente.
+    Le continuazioni restano aggregate. Due buste complete dello stesso
+    dipendente/mese restano distinte, anche quando cambiano contratto.
     """
     # Import al momento della chiamata: i test sostituiscono il parser sul
     # suo modulo.
@@ -188,8 +195,7 @@ def _parse_multi_template_units(file_content: bytes) -> List[Dict[str, Any]]:
             else:
                 candidates.append(None)
 
-        distinct_keys = {candidate[0] for candidate in candidates if candidate}
-        if len(distinct_keys) <= 1:
+        if sum(candidate is not None for candidate in candidates) <= 1:
             parsed = parse_busta_paga_from_bytes(file_content)
             summary = extract_summary(parsed)
             if not _summary_complete(parsed, summary):
@@ -201,13 +207,15 @@ def _parse_multi_template_units(file_content: bytes) -> List[Dict[str, Any]]:
 
         starts: List[Tuple[int, Tuple[str, int, int, str], Dict[str, Any]]] = []
         current_key: Optional[Tuple[str, int, int, str]] = None
+        previous_complete = False
         for index, candidate in enumerate(candidates):
             if not candidate:
                 continue
             key, summary = candidate
-            if key != current_key:
+            if key != current_key or (previous_complete and summary.get("netto") is not None):
                 starts.append((index, key, summary))
                 current_key = key
+            previous_complete = summary.get("netto") is not None
 
         # Un foglio presenze precede normalmente la busta dello stesso
         # dipendente. Non deve finire in coda alla busta precedente solo
@@ -359,6 +367,11 @@ def leggi_pdf(contenuto: bytes) -> Dict[str, Any]:
                 "motivo": "contratto di lavoro, non una busta paga"}
 
     buste = [_con_voci(b) for b in _parse_multi_template_units(contenuto)]
+    for b in buste:
+        end = (b.get("rapporto_lavoro") or {}).get("data_cessazione")
+        if end and any(c.get("codice_fiscale") == b.get("codice_fiscale")
+                       and ((c.get("rapporto_lavoro") or {}).get("data_assunzione") or "") > end for c in buste):
+            b["rapporto_successivo_documentato"] = True
     fuori = [b for b in buste if 0 < _anno(b) < PAYROLL_MIN_YEAR]
     buste = [b for b in buste if b not in fuori]
     presenze = _presenze(pagine)

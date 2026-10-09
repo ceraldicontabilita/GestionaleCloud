@@ -80,15 +80,18 @@ async def _busta_gia_in_archivio(db, ced: Dict[str, Any]) -> Optional[Dict[str, 
     """Un cedolino con lo stesso contenuto (``doppioni_archivio.identita_cedolino``)."""
     from app.services.doppioni_archivio import identita_cedolino
 
+    from app.services.cedolini_rapporti import stessa_busta
     chiave = identita_cedolino(ced)
     if chiave is None:
         return None
     candidati = await db["cedolini"].find(
         {"codice_fiscale": chiave[0], "anno": chiave[1], "mese": chiave[2]},
         {"_id": 0, "id": 1, "codice_fiscale": 1, "anno": 1, "mese": 1, "tipo_cedolino": 1,
-         "netto": 1, "netto_mese": 1, "lordo": 1, "totale_trattenute": 1},
+         "netto": 1, "netto_mese": 1, "lordo": 1, "totale_trattenute": 1,
+         "rapporto_id": 1, "impronta_contenuto": 1, "cedolino_dedup_key": 1,
+         "source_file_hash": 1, "source_page_start": 1, "source_page_end": 1},
     ).to_list(None)
-    return next((c for c in candidati if identita_cedolino(c) == chiave), None)
+    return next((c for c in candidati if stessa_busta(c, ced)), None)
 
 
 # Una busta alla volta per dipendente e periodo: lo smistatore legge piu' PDF
@@ -181,6 +184,12 @@ async def _registra_busta(db, ced: Dict[str, Any], *, filename: str, pdf_data: O
             ced.get(k) == originale.get(k)
             for k in ("source_file_hash", "source_page_start", "source_page_end")
         )
+        from app.services.cedolini_rapporti import CAMPI_RAPPORTO, stessa_busta
+        if stessa_busta(ced, originale):
+            metadata = {k: ced[k] for k in CAMPI_RAPPORTO if ced.get(k)}
+            if metadata:
+                await db["cedolini"].update_one({"id": gia["id"]}, {"$set": metadata})
+                originale.update(metadata)
         nuove_voci = ced.get("dati_chiave") or {}
         if stessa_fonte and nuove_voci.get("componenti_versione") == 1:
             patch = {"dati_chiave.componenti_busta": nuove_voci["componenti_busta"],
