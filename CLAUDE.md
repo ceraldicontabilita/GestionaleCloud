@@ -1596,9 +1596,16 @@ Cartella unica:
 
 - `DA ELABORARE`
 - `ELABORATE`
+- `DA VERIFICARE`
 - `ERRORI`
 
 Eventuali stati come `ARRETRATO` seguono le regole specifiche.
+
+Le cartelle di stato possono contenere la stessa struttura di sottocartelle
+per tipologia. Lo smistatore percorre ricorsivamente `DA ELABORARE`, registra
+il percorso relativo e lo conserva nel passaggio a `ELABORATE`, `ERRORI`,
+`DOPPIONI` o `ARRETRATO`. La cartella aiuta a ordinare il lavoro, ma il tipo
+documentale continua a essere determinato dal contenuto.
 
 La presenza in `ELABORATE` non dimostra che il documento sia stato acquisito correttamente.
 

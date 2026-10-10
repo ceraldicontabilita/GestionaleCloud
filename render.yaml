@@ -126,9 +126,11 @@ services:
       # HR_SUPABASE_DB_URL finche' la dashboard non usa soltanto il nome canonico.
       - key: APPDIPENDENTI_DB_URL
         sync: false
-      # --- Cartella unica «DATI SOCIETA CERALDI» (25/09/2026): DA ELABORARE /
-      # ELABORATE / ERRORI. Ogni documento passa dallo smistatore di Documenti >
-      # Import e «vedi documento» legge solo da ELABORATE
+      # --- Radice unica «DATI SOCIETA CERALDI»: DA ELABORARE / ELABORATE /
+      # DA VERIFICARE / ERRORI, con sottocartelle per tipologia percorse
+      # ricorsivamente. Ogni documento passa dallo smistatore di Documenti >
+      # Import e conserva la stessa tipologia quando cambia stato; «vedi
+      # documento» legge gli originali registrati.
       # (app/services/drive_cartella_unica.py). E' l'unico canale Drive: i
       # canali per sezione (fatture, cedolini, F24, estratti...) sono smontati.
       # Id cartella, non un segreto; vuota = giro spento. Proprietario: titolare.
