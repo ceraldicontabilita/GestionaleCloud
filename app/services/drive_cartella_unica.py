@@ -1,13 +1,14 @@
 """Cartella unica «DATI SOCIETA CERALDI»: l'unico ingresso Drive dei documenti.
 
-Decisione del titolare (25/09/2026): tutto cio' che entra nel gestionale passa
-da una sola cartella con tre sottocartelle, e il gestionale legge gli
-originali **solo** da li'.
+Decisione del titolare (25/09/2026, struttura per tipologia 10/10/2026): tutto
+cio' che entra nel gestionale passa da una sola radice. Le cartelle di stato
+possono contenere sottocartelle per tipologia; il gestionale le percorre
+ricorsivamente e conserva lo stesso percorso relativo quando cambia stato.
 
     DATI SOCIETA CERALDI/
-        DA ELABORARE   ← si mette qui qualunque documento, di qualunque tipo
-        ELABORATE      ← gli originali registrati (archivio piatto: tipo,
-                          anno, fornitore stanno nel database)
+        DA ELABORARE   ← file sciolti o sottocartelle per tipologia
+        ELABORATE      ← originali registrati, nella stessa tipologia
+        DA VERIFICARE  ← documenti leggibili che richiedono decisione umana
         ERRORI         ← cio' che non si e' potuto registrare, col motivo
         ARRETRATO      ← estratti conto di un anno sotto ``DRIVE_ESTRATTI_ANNO_MINIMO``
                           (difetto 2026, scelta del titolare): fermi, non errori
@@ -50,6 +51,7 @@ logger = logging.getLogger(__name__)
 REGISTRO = "drive_cartella_unica"
 CHIAVE_STATO = "drive_cartella_unica_last_sync"
 INBOX, ARCHIVIO, ERRORI = "DA ELABORARE", "ELABORATE", "ERRORI"
+DA_VERIFICARE = "DA VERIFICARE"
 # Copie esatte che il Cestino non accetta: un file di proprieta' del titolare
 # puo' cestinarlo solo lui (Drive risponde 403 al service account). Restano
 # qui, fuori dall'archivio, finche' il titolare non svuota la cartella.
@@ -256,7 +258,7 @@ def _cartella(service, parent_id: str, nome: str) -> Optional[str]:
 
 def _cartelle(service, root: str) -> Dict[str, str]:
     return {nome: _cartella(service, root, nome)
-            for nome in (INBOX, ARCHIVIO, ERRORI, DOPPIONI, ARRETRATO)}
+            for nome in (INBOX, ARCHIVIO, DA_VERIFICARE, ERRORI, DOPPIONI, ARRETRATO)}
 
 
 # File che il titolare ha chiesto di riguardare ed eliminare a mano
@@ -287,6 +289,60 @@ def _elenca(service, parent_id: str, campi: str, limite: Optional[int] = None,
         token = risposta.get("nextPageToken")
         if not token or (limite is not None and len(trovati) >= limite):
             return trovati[:limite] if limite is not None else trovati
+
+
+def _sottocartelle(service, parent_id: str) -> List[Dict[str, str]]:
+    """Sottocartelle dirette, paginate, ordinate per nome."""
+    trovate: List[Dict[str, str]] = []
+    token = None
+    while True:
+        risposta = riprova(lambda: service.files().list(
+            q=(f"'{parent_id}' in parents and trashed = false "
+               f"and mimeType = '{CARTELLA_MIME}'"),
+            fields="nextPageToken, files(id, name)", pageSize=1000,
+            orderBy="name", pageToken=token,
+            supportsAllDrives=True, includeItemsFromAllDrives=True,
+        ).execute(), quale="elenco sottocartelle")
+        trovate.extend(risposta.get("files", []))
+        token = risposta.get("nextPageToken")
+        if not token:
+            return trovate
+
+
+def _elenca_ricorsivo(service, parent_id: str, campi: str,
+                      escludi_marcati: bool = False,
+                      creati_dopo: Optional[str] = None,
+                      percorso: tuple[str, ...] = (),
+                      visitate: Optional[set[str]] = None) -> List[Dict[str, Any]]:
+    """File della cartella e discendenti, con genitore e percorso relativi."""
+    visitate = visitate if visitate is not None else set()
+    if parent_id in visitate:
+        return []
+    visitate.add(parent_id)
+    trovati = [
+        {**f, "_da": parent_id, "_percorso_categoria": list(percorso)}
+        for f in _elenca(service, parent_id, campi, None, escludi_marcati, creati_dopo)
+    ]
+    for cartella in _sottocartelle(service, parent_id):
+        trovati.extend(_elenca_ricorsivo(
+            service, cartella["id"], campi, escludi_marcati, creati_dopo,
+            percorso + (cartella["name"],), visitate,
+        ))
+    return trovati
+
+
+def _destinazione_percorso(service, stato_id: str, percorso: List[str]) -> str:
+    """Crea o risolve sotto uno stato lo stesso percorso per tipologia."""
+    corrente = stato_id
+    cache = _cache.setdefault("percorsi_destinazione", {})
+    for nome in percorso or []:
+        chiave = (corrente, nome)
+        prossimo = cache.get(chiave)
+        if not prossimo:
+            prossimo = _cartella(service, corrente, nome)
+            cache[chiave] = prossimo
+        corrente = prossimo
+    return corrente
 
 
 def _sposta(service, file_id: str, da: str, a: str, motivo: Optional[str] = None) -> None:
@@ -546,6 +602,7 @@ async def rimetti_in_coda_buste_gia_presenti(db, service, cartelle: Dict[str, st
     righe = await db[REGISTRO].find(
         {"cartella": {"$in": [ERRORI, ARRETRATO]}},
         {"_id": 0, "id": 1, "nome": 1, "motivo": 1, "tipo": 1, "cartella": 1,
+         "drive_parent_id": 1, "percorso_categoria": 1,
          "regole_non_riconosciuti": 1, "regole_classificazione": 1, "rinvii": 1},
     ).to_list(None)
     rimessi = 0
@@ -588,9 +645,14 @@ async def rimetti_in_coda_buste_gia_presenti(db, service, cartelle: Dict[str, st
                     and not (e_guasto_transitorio(motivo) and int(riga.get("rinvii") or 0) < MAX_RINVII)):
                 continue
         try:
-            await asyncio.to_thread(_sposta, service, riga["id"], cartelle[riga["cartella"]],
-                                    cartelle[INBOX], "da rileggere")
+            percorso = list(riga.get("percorso_categoria") or [])
+            origine = riga.get("drive_parent_id") or cartelle[riga["cartella"]]
+            destinazione = await asyncio.to_thread(
+                _destinazione_percorso, service, cartelle[INBOX], percorso)
+            await asyncio.to_thread(_sposta, service, riga["id"], origine,
+                                    destinazione, "da rileggere")
             await _registra(db, riga["id"], cartella=INBOX, esito="rimesso_in_coda",
+                            drive_parent_id=destinazione, percorso_categoria=percorso,
                             motivo=("rileggere con le regole nuove" if da_rileggere
                                     else "guasto transitorio, si rilegge" if transitorio
                                     else "busta gia' in archivio, non un errore"),
@@ -622,7 +684,8 @@ async def rimetti_in_coda_per_tipo(db, tipi=TIPI_DA_RIPASSARE, *, dry_run: bool 
     secondo ingest di un documento gia' presente da' `nuovi=0` (idempotenza)."""
     righe = await db[REGISTRO].find(
         {"cartella": ARCHIVIO, "tipo": {"$in": list(tipi)}},
-        {"_id": 0, "id": 1, "nome": 1, "tipo": 1},
+        {"_id": 0, "id": 1, "nome": 1, "tipo": 1,
+         "drive_parent_id": 1, "percorso_categoria": 1},
     ).to_list(None)
     per_tipo: Dict[str, int] = {}
     for r in righe:
@@ -638,9 +701,14 @@ async def rimetti_in_coda_per_tipo(db, tipi=TIPI_DA_RIPASSARE, *, dry_run: bool 
         cartelle = await _cartelle_in_cache(service)
         for riga in righe[: limite if limite is not None else None]:
             try:
-                await asyncio.to_thread(_sposta, service, riga["id"], cartelle[ARCHIVIO],
-                                        cartelle[INBOX], "da rileggere: archivio gestionale azzerato")
+                percorso = list(riga.get("percorso_categoria") or [])
+                origine = riga.get("drive_parent_id") or cartelle[ARCHIVIO]
+                destinazione = await asyncio.to_thread(
+                    _destinazione_percorso, service, cartelle[INBOX], percorso)
+                await asyncio.to_thread(_sposta, service, riga["id"], origine,
+                                        destinazione, "da rileggere: archivio gestionale azzerato")
                 await _registra(db, riga["id"], cartella=INBOX, esito="rimesso_in_coda",
+                                drive_parent_id=destinazione, percorso_categoria=percorso,
                                 motivo="ricostruzione dell'archivio: si rilegge dal motore unico")
                 rimessi += 1
             except Exception as exc:
@@ -705,7 +773,8 @@ async def _md5_archivio(service, cartella_id: str, esito: Dict[str, Any]) -> Dic
     if voce and voce["cartella"] == cartella_id and ora - voce["pieno"] < CACHE_ARCHIVIO_S:
         da = (voce["cursore"] - timedelta(seconds=MARGINE_DELTA_S)).strftime("%Y-%m-%dT%H:%M:%SZ")
         with _fase(esito, "elenco_archivio_delta"):
-            nuovi = await asyncio.to_thread(_elenca, service, cartella_id, "id, md5Checksum", None, False, da)
+            nuovi = await asyncio.to_thread(
+                _elenca_ricorsivo, service, cartella_id, "id, md5Checksum", False, da)
         for f in nuovi:
             md5 = f.get("md5Checksum")
             if md5 and f["id"] not in voce["per_md5"].setdefault(md5, []):
@@ -714,7 +783,8 @@ async def _md5_archivio(service, cartella_id: str, esito: Dict[str, Any]) -> Dic
         esito["archivio_da_cache"] = True
         return voce["per_md5"]
     with _fase(esito, "elenco_archivio"):
-        archivio = await asyncio.to_thread(_elenca, service, cartella_id, "id, md5Checksum")
+        archivio = await asyncio.to_thread(
+            _elenca_ricorsivo, service, cartella_id, "id, md5Checksum")
     per_md5: Dict[str, List[str]] = {}
     for f in archivio:
         if f.get("md5Checksum"):
@@ -751,7 +821,7 @@ def e_guasto_transitorio(testo: Any) -> bool:
 
 
 async def giro(db) -> Dict[str, Any]:
-    """Un giro sulla radice e poi su DA ELABORARE: al piu' ``DRIVE_CARTELLA_UNICA_BATCH`` file."""
+    """Un giro sulla radice e dentro DA ELABORARE, al piu' un lotto di file."""
     if not radice():
         return {"saltato": "GOOGLE_DRIVE_DATI_FOLDER_ID non impostata"}
     if not import_attivo():
@@ -781,16 +851,15 @@ async def _giro(db) -> Dict[str, Any]:
                 esito["buste_rimesse_in_coda"] = await rimetti_in_coda_buste_gia_presenti(db, service, cartelle)
             _cache["rimessa_ts"] = time.monotonic()
         campi = "id, name, md5Checksum, size, mimeType, createdTime, modifiedTime"
-        # Prima i file lasciati sciolti nella radice, poi DA ELABORARE
-        # (decisione del titolare, 26/09/2026): la cartella unica si usa come
-        # calderone e nessuno deve smistare a mano. Le sottocartelle restano
-        # escluse da _elenca. Si elenca tutto (solo metadati) per poter mettere
+        # Prima i file lasciati sciolti nella radice, poi DA ELABORARE e tutte
+        # le sue sottocartelle per tipologia. Si elenca tutto (solo metadati) per poter mettere
         # in testa le fatture e le chiusure RT: erano dietro centinaia di PDF.
         with _fase(esito, "elenco_coda"):
-            in_coda = [{**f, "_da": radice()} for f in await asyncio.to_thread(
-                _elenca, service, radice(), campi, None, True)]
-            in_coda += [{**f, "_da": cartelle[INBOX]} for f in await asyncio.to_thread(
-                _elenca, service, cartelle[INBOX], campi, None, True)]
+            in_coda = [{**f, "_da": radice(), "_percorso_categoria": []}
+                       for f in await asyncio.to_thread(
+                           _elenca, service, radice(), campi, None, True)]
+            in_coda += await asyncio.to_thread(
+                _elenca_ricorsivo, service, cartelle[INBOX], campi, True)
         esito["in_coda_totale"] = len(in_coda)
         in_coda = ordina_coda(in_coda)[:_batch()]
         per_md5 = await _md5_archivio(service, cartelle[ARCHIVIO], esito)
@@ -806,7 +875,11 @@ async def _giro(db) -> Dict[str, Any]:
         rinvii = int(riga.get("rinvii") or 0) + 1
         if rinvii >= MAX_RINVII:
             return False
-        await _registra(db, f["id"], nome=nome, rinvii=rinvii, esito="rinviato", motivo=motivo[:300])
+        await _registra(
+            db, f["id"], nome=nome, rinvii=rinvii, esito="rinviato", motivo=motivo[:300],
+            cartella=INBOX, drive_parent_id=f["_da"],
+            percorso_categoria=list(f.get("_percorso_categoria") or []),
+        )
         esito["rinviati"] = esito.get("rinviati", 0) + 1
         esito["dettagli"].append({"file": nome, "esito": "rinviato", "motivo": motivo[:200]})
         return True
@@ -817,6 +890,7 @@ async def _giro(db) -> Dict[str, Any]:
         drive = drive or service
         esito["letti"] += 1
         fid, nome = f["id"], f.get("name") or f["id"]
+        percorso = list(f.get("_percorso_categoria") or [])
         try:
             tipo = None
             if isinstance(pre, BaseException):
@@ -855,11 +929,15 @@ async def _giro(db) -> Dict[str, Any]:
                 with _fase(esito, "sposta"):
                     if not await asyncio.to_thread(_cestina, drive, fid, f"copia identica di {copia_di}"):
                         cartella = DOPPIONI
-                        await asyncio.to_thread(_sposta, drive, fid, f["_da"], cartelle[DOPPIONI],
+                        destinazione_id = await asyncio.to_thread(
+                            _destinazione_percorso, drive, cartelle[DOPPIONI], percorso)
+                        await asyncio.to_thread(_sposta, drive, fid, f["_da"], destinazione_id,
                                                 f"copia identica di {copia_di}")
                 with _fase(esito, "registro"):
                     await _registra(db, fid, nome=nome, sha256=sha256, esito="doppione_cestinato",
-                                    cartella=cartella, duplicato_di=copia_di)
+                                    cartella=cartella, duplicato_di=copia_di,
+                                    drive_parent_id=(destinazione_id if cartella == DOPPIONI else None),
+                                    percorso_categoria=percorso)
                 esito["doppioni_cestinati"] += 1
                 esito["dettagli"].append({"file": nome, "esito": "doppione", "copia_di": copia_di,
                                           "cartella": cartella})
@@ -875,18 +953,25 @@ async def _giro(db) -> Dict[str, Any]:
                 with _fase(esito, "sposta"):
                     if not await asyncio.to_thread(_cestina, drive, fid, tecnico):
                         cartella = DOPPIONI
-                        await asyncio.to_thread(_sposta, drive, fid, f["_da"], cartelle[DOPPIONI], tecnico)
+                        destinazione_id = await asyncio.to_thread(
+                            _destinazione_percorso, drive, cartelle[DOPPIONI], percorso)
+                        await asyncio.to_thread(_sposta, drive, fid, f["_da"], destinazione_id, tecnico)
                 with _fase(esito, "registro"):
                     await _registra(db, fid, nome=nome, sha256=sha256, esito="tecnico_cestinato",
                                     cartella=cartella, motivo=tecnico,
+                                    drive_parent_id=(destinazione_id if cartella == DOPPIONI else None),
+                                    percorso_categoria=percorso,
                                     regole_non_riconosciuti=REGOLE_NON_RICONOSCIUTI)
                 esito["tecnici_cestinati"] = esito.get("tecnici_cestinati", 0) + 1
                 esito["dettagli"].append({"file": nome, "esito": "tecnico_cestinato", "motivo": tecnico,
                                           "cartella": cartella})
                 return
 
+            archivio_id = await asyncio.to_thread(
+                _destinazione_percorso, drive, cartelle[ARCHIVIO], percorso)
             contesto = {"channel": "drive_cartella_unica", "drive_file_id": fid,
-                        "drive_parent_id": cartelle[ARCHIVIO], "source_sha256": sha256}
+                        "drive_parent_id": archivio_id, "source_sha256": sha256,
+                        "drive_path": "/".join([INBOX, *percorso, nome])}
             with _fase(esito, "smista"):
                 risultato = await (_smista(nome, contenuto, contesto, tipo) if tipo
                                    else _smista(nome, contenuto, contesto))
@@ -902,13 +987,16 @@ async def _giro(db) -> Dict[str, Any]:
                 logger.warning("[cartella-unica] %s rinviato per un guasto passeggero", nome)
                 return
             destinazione, motivo = esito_del_risultato(risultato)
+            destinazione_id = await asyncio.to_thread(
+                _destinazione_percorso, drive, cartelle[destinazione], percorso)
             with _fase(esito, "sposta"):
-                await asyncio.to_thread(_sposta, drive, fid, f["_da"], cartelle[destinazione], motivo or None)
+                await asyncio.to_thread(_sposta, drive, fid, f["_da"], destinazione_id, motivo or None)
             riferimenti = riferimenti_del_risultato(risultato)
             with _fase(esito, "registro"):
                 await _registra(
                     db, fid, nome=nome, sha256=sha256, md5=f.get("md5Checksum"),
                     tipo=risultato.get("tipo_rilevato"), cartella=destinazione,
+                    drive_parent_id=destinazione_id, percorso_categoria=percorso,
                     esito={ARCHIVIO: "elaborato", ARRETRATO: "arretrato"}.get(destinazione, "errore"),
                     gia_presente=bool(risultato.get("duplicate")), motivo=motivo or None,
                     riferimenti=riferimenti, regole_non_riconosciuti=REGOLE_NON_RICONOSCIUTI,
@@ -938,8 +1026,11 @@ async def _giro(db) -> Dict[str, Any]:
             esito["errori"] += 1
             esito["dettagli"].append({"file": nome, "esito": ERRORI, "motivo": motivo})
             try:
-                await asyncio.to_thread(_sposta, drive, fid, f["_da"], cartelle[ERRORI], motivo)
-                await _registra(db, fid, nome=nome, cartella=ERRORI, esito="errore", motivo=motivo)
+                errore_id = await asyncio.to_thread(
+                    _destinazione_percorso, drive, cartelle[ERRORI], percorso)
+                await asyncio.to_thread(_sposta, drive, fid, f["_da"], errore_id, motivo)
+                await _registra(db, fid, nome=nome, cartella=ERRORI, esito="errore", motivo=motivo,
+                                drive_parent_id=errore_id, percorso_categoria=percorso)
             except Exception as exc2:
                 logger.warning("[cartella-unica] %s non spostato in ERRORI: %s: %s",
                                nome, type(exc2).__name__, exc2)
@@ -1100,28 +1191,35 @@ async def rielabora_con_tipo(db, drive_file_id: str, tipo: str, *, deciso_da: st
     riga = await db[REGISTRO].find_one({"id": drive_file_id}, {"_id": 0})
     if not riga:
         return {"success": False, "message": "file non presente nel registro della cartella unica"}
-    if riga.get("cartella") not in (ERRORI, ARRETRATO):
+    if riga.get("cartella") not in (ERRORI, DA_VERIFICARE, ARRETRATO):
         return {"success": False, "message": f"file gia' in {riga.get('cartella')}: non si rilegge",
                 "cartella": riga.get("cartella")}
     service = await asyncio.to_thread(_service)
     cartelle = await _cartelle_in_cache(service)
+    percorso = list(riga.get("percorso_categoria") or [])
     nome = riga.get("nome") or drive_file_id
     contenuto = await asyncio.to_thread(scarica_bytes, service, drive_file_id)
     sha256 = hashlib.sha256(contenuto).hexdigest()
+    archivio_id = await asyncio.to_thread(
+        _destinazione_percorso, service, cartelle[ARCHIVIO], percorso)
     contesto = {"channel": "drive_cartella_unica", "drive_file_id": drive_file_id,
-                "drive_parent_id": cartelle[ARCHIVIO], "source_sha256": sha256,
+                "drive_parent_id": archivio_id, "source_sha256": sha256,
                 "tipo_deciso_da": deciso_da}
     if campi:
         contesto["campi_proposta"] = dict(campi)
     risultato = await _smista(nome, contenuto, contesto, tipo)
     destinazione, motivo = esito_del_risultato(risultato)
+    destinazione_id = await asyncio.to_thread(
+        _destinazione_percorso, service, cartelle[destinazione], percorso)
     if destinazione != riga.get("cartella"):
-        await asyncio.to_thread(_sposta, service, drive_file_id, cartelle[riga["cartella"]],
-                                cartelle[destinazione], motivo or None)
+        origine = riga.get("drive_parent_id") or cartelle[riga["cartella"]]
+        await asyncio.to_thread(_sposta, service, drive_file_id, origine,
+                                destinazione_id, motivo or None)
     riferimenti = riferimenti_del_risultato(risultato)
     await _registra(
         db, drive_file_id, nome=nome, sha256=sha256, tipo=risultato.get("tipo_rilevato") or tipo,
         cartella=destinazione, esito={ARCHIVIO: "elaborato", ARRETRATO: "arretrato"}.get(destinazione, "errore"),
+        drive_parent_id=destinazione_id, percorso_categoria=percorso,
         gia_presente=bool(risultato.get("duplicate")), motivo=motivo or None, riferimenti=riferimenti,
         tipo_deciso_da=deciso_da,
     )
@@ -1140,7 +1238,7 @@ async def originale(db, drive_file_id: Optional[str] = None,
     qualunque): il titolare deve poterlo guardare per decidere una proposta.
     """
     if drive_file_id:
-        filtro = {"id": drive_file_id, "cartella": {"$in": [ARCHIVIO, ERRORI, ARRETRATO]}}
+        filtro = {"id": drive_file_id, "cartella": {"$in": [ARCHIVIO, DA_VERIFICARE, ERRORI, ARRETRATO]}}
     elif sha256:
         filtro = {"sha256": sha256.strip().lower(), "cartella": ARCHIVIO}
     else:

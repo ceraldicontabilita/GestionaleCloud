@@ -3,6 +3,7 @@ gli originali (Cestino, mai eliminazione), errori col motivo, «vedi documento»
 solo da ELABORATE."""
 import asyncio
 import hashlib
+import re
 
 import pytest
 from mongomock_motor import AsyncMongoMockClient
@@ -48,13 +49,31 @@ class DriveFinto:
                           "md5Checksum": hashlib.md5(contenuto).hexdigest(),
                           "mimeType": "application/pdf", "trashed": False}
 
+    def aggiungi_cartella(self, fid, nome, parent):
+        self.file[fid] = {"id": fid, "name": nome, "parent": parent,
+                          "mimeType": cu.CARTELLA_MIME, "trashed": False}
+
     def files(self):
         return self
 
     def list(self, q, **_):
-        parent = q.split("'")[1]
+        parent_match = re.search(r"'([^']+)' in parents", q)
+        assert parent_match, q
+        parent = parent_match.group(1)
         trovati = [dict(f) for f in self.file.values() if f["parent"] == parent and not f["trashed"]]
+        if f"mimeType = '{cu.CARTELLA_MIME}'" in q:
+            trovati = [f for f in trovati if f["mimeType"] == cu.CARTELLA_MIME]
+        elif f"mimeType != '{cu.CARTELLA_MIME}'" in q:
+            trovati = [f for f in trovati if f["mimeType"] != cu.CARTELLA_MIME]
+        nome = re.search(r"name = '([^']+)'", q)
+        if nome:
+            trovati = [f for f in trovati if f["name"] == nome.group(1)]
         return _Esegui({"files": trovati})
+
+    def create(self, body, **_):
+        fid = f"cartella-{len(self.file) + 1}"
+        self.aggiungi_cartella(fid, body["name"], body["parents"][0])
+        return _Esegui({"id": fid})
 
     def update(self, fileId, addParents=None, removeParents=None, body=None, **_):
         def fai():
@@ -83,7 +102,8 @@ class DriveFinto:
 
 
 CARTELLE = {cu.INBOX: "inbox", cu.ARCHIVIO: "elaborate", cu.ERRORI: "errori",
-            cu.DOPPIONI: "doppioni", cu.ARRETRATO: "arretrato"}
+            cu.DA_VERIFICARE: "da-verificare", cu.DOPPIONI: "doppioni",
+            cu.ARRETRATO: "arretrato"}
 
 
 @pytest.fixture
@@ -317,6 +337,60 @@ def test_i_file_sciolti_nella_radice_passano_dallo_smistatore(ambiente):
     assert drive.file["i1"]["parent"] == "elaborate"
     # Secondo giro: la radice e' vuota, niente da rileggere.
     assert run(cu.giro(db))["letti"] == 0
+
+
+def test_legge_sottocartella_e_conserva_la_categoria_in_elaborate(ambiente):
+    drive, smistati, _ = ambiente
+    db = AsyncMongoMockClient()["t"]
+    categoria = "10_CEDOLINI_INDIVIDUALI"
+    drive.aggiungi_cartella("inbox-cedolini", categoria, "inbox")
+    drive.aggiungi_cartella("archivio-cedolini", categoria, "elaborate")
+    drive.aggiungi("ced-1", "cedolino.pdf", b"%PDF cedolino", "inbox-cedolini")
+
+    esito = run(cu.giro(db))
+
+    assert esito["elaborati"] == 1
+    assert drive.file["ced-1"]["parent"] == "archivio-cedolini"
+    assert smistati[0][1]["drive_parent_id"] == "archivio-cedolini"
+    assert smistati[0][1]["drive_path"] == f"{cu.INBOX}/{categoria}/cedolino.pdf"
+    riga = run(db[cu.REGISTRO].find_one({"id": "ced-1"}))
+    assert riga["percorso_categoria"] == [categoria]
+    assert riga["drive_parent_id"] == "archivio-cedolini"
+
+
+def test_errore_di_sottocartella_resta_nella_stessa_categoria(ambiente):
+    drive, _, esiti = ambiente
+    db = AsyncMongoMockClient()["t"]
+    categoria = "08_PAGHE_LUL_E_RIEPILOGHI"
+    drive.aggiungi_cartella("inbox-lul", categoria, "inbox")
+    drive.aggiungi_cartella("errori-lul", categoria, "errori")
+    drive.aggiungi("lul-1", "fascicolo.pdf", b"%PDF fascicolo", "inbox-lul")
+    esiti["fascicolo.pdf"] = {"success": False, "message": "pagine non attribuite"}
+
+    esito = run(cu.giro(db))
+
+    assert esito["errori"] == 1
+    assert drive.file["lul-1"]["parent"] == "errori-lul"
+    riga = run(db[cu.REGISTRO].find_one({"id": "lul-1"}))
+    assert riga["cartella"] == cu.ERRORI
+    assert riga["percorso_categoria"] == [categoria]
+    assert riga["drive_parent_id"] == "errori-lul"
+
+
+def test_deduplica_vede_originale_in_sottocartella_elaborate(ambiente):
+    drive, smistati, _ = ambiente
+    db = AsyncMongoMockClient()["t"]
+    categoria = "02_F24_QUIETANZE"
+    drive.aggiungi_cartella("inbox-quietanze", categoria, "inbox")
+    drive.aggiungi_cartella("archivio-quietanze", categoria, "elaborate")
+    drive.aggiungi("originale", "quietanza.pdf", b"%PDF quietanza", "archivio-quietanze")
+    drive.aggiungi("copia", "quietanza copia.pdf", b"%PDF quietanza", "inbox-quietanze")
+
+    esito = run(cu.giro(db))
+
+    assert esito["doppioni_cestinati"] == 1
+    assert drive.cestinati == ["copia"]
+    assert smistati == []
 
 
 def test_import_in_pausa_senza_togliere_la_cartella(monkeypatch):
@@ -648,7 +722,7 @@ def test_secondo_giro_usa_la_cache_dell_archivio_e_non_rilegge_tutto(ambiente, m
     e2 = run(cu.giro(db))
     assert e2["archivio_da_cache"] is True
     # ELABORATE: solo la richiesta dei file nuovi, mai l'elenco intero.
-    q_arch = [q for q in letti if "'elaborate' in parents" in q]
+    q_arch = [q for q in letti if "'elaborate' in parents" in q and "mimeType !=" in q]
     assert q_arch and all("createdTime >" in q for q in q_arch)
     assert e2["elaborati"] == 1 and drive.file["f2"]["parent"] == "elaborate"
 
