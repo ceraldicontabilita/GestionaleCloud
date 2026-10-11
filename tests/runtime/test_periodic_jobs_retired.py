@@ -12,7 +12,7 @@ import app.scheduler as scheduler_module
 from app.scheduler_policy import RETIRED_PERIODIC_JOBS
 
 
-KEPT_JOBS = {"drive_cartella_unica", "import_cartelle_drive", "enable_banking_giro"}
+KEPT_JOBS = {"drive_cartella_unica", "import_cartelle_drive", "enable_banking_giro", "gmail_full_scan", "mittenti_email_sync"}
 ROOT = Path(__file__).resolve().parents[2]
 
 
@@ -31,7 +31,7 @@ def test_inventory_covers_all_periodic_registrations():
             if len(node.args) > 1 and isinstance(node.args[1], ast.Constant) and node.args[1].value == "date":
                 continue  # i due avvii singoli non sono procedure periodiche
             periodic_ids.add(job_id.value)
-    assert len(RETIRED_PERIODIC_JOBS) == 71
+    assert len(RETIRED_PERIODIC_JOBS) == 69
     assert len(periodic_ids) == 74
     assert periodic_ids == RETIRED_PERIODIC_JOBS | KEPT_JOBS
 

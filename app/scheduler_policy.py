@@ -1,7 +1,7 @@
 """Procedure periodiche ritirate dal titolare l'11/10/2026.
 
 Il blocco precede la configurazione del server: nessuna variabile ambiente o
-riavvio puo' riattivare queste 71 procedure. I relativi comandi manuali e le
+riavvio puo' riattivare queste procedure. I relativi comandi manuali e le
 elaborazioni avviate da un import restano disponibili.
 """
 
@@ -17,7 +17,7 @@ ERP_RETIRED_JOBS = frozenset({
     "controlli_incrociati", "incroci_fiscali", "drive_censimento_doppioni",
     "f24_doppioni", "bonifici_pdf_inbox", "allinea_status_documenti",
     "riallinea_cessazioni_auto", "chiusure_attivita", "cedolini_hr_riverifica",
-    "cedolini_tipo_dal_pdf", "hr_pagamenti_deposito", "mittenti_email_sync",
+    "cedolini_tipo_dal_pdf", "hr_pagamenti_deposito",
     "tax_code_registry_sync", "collaudo_invarianti", "cedolini_bloccati",
     "dedup_fatture", "quietanze_orfane", "pagamenti_dichiarati",
     "banca_versamenti_proiezione", "f24_quietanze_banca", "fatture_emesse",
@@ -25,7 +25,7 @@ ERP_RETIRED_JOBS = frozenset({
     "verbali_email_scan", "verbali_notifications", "scadenze_partite_check",
     "controllo_pos_calendario", "controllo_canoni_noleggio",
     "f24_scadenze_check", "verifica_trattenute_retro", "f24_scadenze_check_pm",
-    "fornitori_duplicati_check", "fornitori_unifica_duplicati", "gmail_full_scan",
+    "fornitori_duplicati_check", "fornitori_unifica_duplicati",
     "paypal_recupera_fatture_email", "lotti_dizionario_categorie",
     "lotti_identifica_col_web", "agenti_proposte", "agenti_righe_acquisti",
     "paypal_automatico", "categorie_banca", "bonifici_via_estratto",
