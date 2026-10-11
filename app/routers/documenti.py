@@ -2550,10 +2550,11 @@ async def _process_zip_upload(filename: str, content: bytes) -> Dict[str, Any]:
 
 def _messaggio_componente_770(metadata: Dict[str, Any], *, gia_presente: bool) -> str:
     quadro = metadata.get("quadro") or "?"
+    etichetta = "Frontespizio" if quadro == "FRONTESPIZIO" else f"Quadro {quadro}"
     if metadata.get("dichiarazione_id"):
-        testo = f"Quadro {quadro} del 770 agganciato a {metadata.get('dichiarazione_filename')}"
+        testo = f"{etichetta} del 770 agganciato a {metadata.get('dichiarazione_filename')}"
     else:
-        testo = (f"Quadro {quadro} del 770 conservato: manca il 770 intero "
+        testo = (f"{etichetta} del 770 conservato: manca il 770 intero "
                  f"({metadata.get('identificativo_dichiarazione') or 'identificativo non leggibile'})")
     return f"{testo} (era già in coda, riclassificato)" if gia_presente else testo
 
@@ -2596,7 +2597,7 @@ async def _archive_non_payment_document(
         "verbale_codice_strada": "Verbale Codice della strada",
         "visura_camerale": "Visura camerale",
         "documento_identita": "Documento di identita allegato",
-        "componente_770": "Quadro del 770",
+        "componente_770": "Componente del 770",
         "dilazione_inps": "Dilazione INPS (piano di ammortamento)",
         "prospetto_contabile": "Prospetto contabile del consulente",
     }
@@ -3504,7 +3505,7 @@ async def upload_documento_automatico(
             if gia:
                 await db["documents_inbox"].update_one({"id": gia["id"]}, {"$set": {
                     "category": "componente_770", "document_type": "componente_770",
-                    "category_label": "Quadro del 770", "evidence_role": "componente_dichiarazione",
+                    "category_label": "Componente del 770", "evidence_role": "componente_dichiarazione",
                     "parsed_metadata": metadata, "obligation_status": "NON_APPLICABILE",
                     "relation_keys": metadata["relation_keys"], "sha256": digest,
                     "status": "archiviato" if metadata["dichiarazione_id"] else "da_verificare",

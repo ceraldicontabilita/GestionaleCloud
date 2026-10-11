@@ -140,3 +140,19 @@ def test_declarations_read_from_fiscal_documents(monkeypatch):
     assert payload["sources"] == {"fiscal_documents": 1, "canonical": "fiscal_documents"}
     assert payload["items"][0]["filename"] == "770_2026.pdf"
     assert "source_kind" not in payload["items"][0]
+
+
+def test_declarations_annual_dossiers_use_tax_year(monkeypatch):
+    from app.services import declaration_dossiers
+
+    async def annual(_db, *, company_id, year, declaration_type):
+        assert company_id
+        assert year == 2023
+        assert declaration_type == "MODELLO_770"
+        return {"items": [{"tax_year": 2023, "originals": [], "quietanze": []}], "total": 1}
+
+    monkeypatch.setattr(declaration_dossiers, "list_annual_dossiers", annual)
+    monkeypatch.setattr(fiscal_control.Database, "get_db", classmethod(lambda _cls: object()))
+    payload = asyncio.run(fiscal_control.declarations(year=2023, declaration_type="MODELLO_770", raggruppa=True, _admin={}))
+    assert payload["total"] == 1
+    assert payload["items"][0]["tax_year"] == 2023

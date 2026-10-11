@@ -242,6 +242,7 @@ async def f24_rows(
 async def declarations(
     year: int | None = Query(None, ge=2000, le=2100),
     declaration_type: str | None = None,
+    raggruppa: bool = False,
     _admin: Dict[str, Any] = Depends(get_current_admin_user),
 ):
     """770/IVA/IRAP/LIPE/Redditi SC gia' ingeriti in fiscal_documents, con i
@@ -249,6 +250,11 @@ async def declarations(
     if declaration_type and declaration_type not in DECLARATION_TYPES:
         raise HTTPException(400, "Tipo dichiarazione non valido")
     db = Database.get_db()
+    if raggruppa:
+        from app.services.declaration_dossiers import list_annual_dossiers
+
+        return await list_annual_dossiers(db, company_id=_company(), year=year,
+                                         declaration_type=declaration_type)
     dossiers = await list_declaration_dossiers(
         db, company_id=_company(), year=year, declaration_type=declaration_type,
     )

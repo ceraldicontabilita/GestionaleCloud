@@ -73,3 +73,14 @@ def test_l_import_lo_classifica_come_quadro_del_770(monkeypatch):
     monkeypatch.setattr(documenti, "_pdf_text_for_detection", lambda *_a, **_k: TESTO_ST)
     tipo = documenti.detect_document_type("02_Quadro_ST_modulo_1 (dup1).pdf", b"%PDF-1.6 finto")
     assert tipo == "componente_770"
+
+
+def test_frontespizio_770_importato_come_componente_con_anno_e_cf(monkeypatch):
+    text = TESTO_ST.replace("QUADRO ST", "DATI RELATIVI\nAL SOSTITUTO\nAnno 2019")
+    monkeypatch.setattr(documenti, "_pdf_text_for_detection", lambda *_a, **_k: text)
+    assert documenti.detect_document_type("01_Frontespizio.pdf", b"%PDF-1.6") == "componente_770"
+    meta = asyncio.run(c770.metadati(_Db(), filename="01_Frontespizio.pdf", testo=text))
+    assert meta["quadro"] == "FRONTESPIZIO"
+    assert meta["codice_fiscale"] == "04523831214"
+    assert meta["anno_imposta"] == 2019
+    assert c770.quadro("01_Frontespizio.pdf", text.replace("AL SOSTITUTO", "AL CONTRIBUENTE")) is None
