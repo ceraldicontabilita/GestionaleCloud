@@ -19,6 +19,14 @@ def test_identita_non_dipende_da_pdf_e_distingue_ente_e_matricola():
     assert identita_f24(a) is None
 
 
+def test_rate_diverse_non_vengono_accorpate():
+    a = _f24('a', 'rata1.pdf')
+    b = copy.deepcopy(a)
+    a['sezione_erario'][0]['rateazione'] = '0102'
+    b['sezione_erario'][0]['rateazione'] = '0202'
+    assert chiave_f24(a) != chiave_f24(b)
+
+
 def test_due_processi_importano_un_solo_obbligo_e_un_solo_evento(monkeypatch):
     events = []
 

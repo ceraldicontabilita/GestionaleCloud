@@ -25,6 +25,7 @@ def stessi_debiti(a, b):
                 r["anno"] or "",
                 r["ente"],
                 r["matricola"],
+                r["rateazione"],
                 r["acconto"],
                 r["saldo"],
                 r["importo_debito_cents"],

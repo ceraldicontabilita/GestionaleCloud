@@ -201,6 +201,7 @@ def righe_modello(f24: Dict[str, Any]) -> List[Dict[str, Any]]:
             "ente": str(r.get("codice_regione") or r.get("codice_comune") or r.get("codice_ente")
                         or r.get("codice_sede") or "").strip().upper(),
             "matricola": str(r.get("matricola") or "").strip(),
+            "rateazione": str(r.get("rateazione") or r.get("rateazione_regione_provincia_mese") or "").strip(),
             "acconto": r.get("acconto") is True,
             "saldo": r.get("saldo") is True,
         })

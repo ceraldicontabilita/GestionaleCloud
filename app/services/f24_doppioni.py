@@ -45,7 +45,7 @@ def identita_f24(doc: Dict[str, Any]) -> Optional[str]:
         return None
     firma = sorted(
         (r["sezione"] or "", r["codice"], r["mese"] or "", r["anno"] or "",
-         r["ente"], r["matricola"], r["acconto"], r["saldo"],
+         r["ente"], r["matricola"], r["rateazione"], r["acconto"], r["saldo"],
          r["importo_debito_cents"], r["importo_credito_cents"])
         for r in righe
     )
