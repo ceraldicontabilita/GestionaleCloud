@@ -98,6 +98,19 @@ export function createPinModal(React, { LockKeyhole, Delete, X }) {
       setPin(value.replace(/[^0-9]/g, '').slice(0, maxLength));
       setError('');
     };
+    const typePin = event => {
+      if (event.isComposing || event.ctrlKey || event.metaKey || event.altKey) return;
+      if (/^[0-9]$/.test(event.key)) {
+        event.preventDefault();
+        change(pin + event.key);
+      } else if (event.key === 'Backspace' || event.key === 'Delete') {
+        event.preventDefault();
+        change(event.key === 'Backspace' ? pin.slice(0, -1) : '');
+      } else if (event.key === 'Enter') {
+        event.preventDefault();
+        submit();
+      }
+    };
     const keyDown = event => {
       if (event.key === 'Escape') { event.preventDefault(); cancel(); }
       if (event.key !== 'Tab') return;
@@ -141,10 +154,13 @@ export function createPinModal(React, { LockKeyhole, Delete, X }) {
         onClick: () => { setChoices([]); setPin(''); setError(''); } }, 'Torna al PIN'))
     : h('form', { autoComplete: 'off', onSubmit: event => { event.preventDefault(); submit(); } },
       h('label', { style: { display: 'block', fontSize: 13, marginBottom: 6 } }, 'PIN',
-        h('input', { ref: field, type: 'password', inputMode: 'numeric', autoComplete: 'new-password',
+        // readonly impedisce la tastiera di sistema anche sui browser mobili
+        // che ignorano inputMode=none. I tasti fisici passano da typePin.
+        h('input', { ref: field, type: 'password', inputMode: 'none', readOnly: true, autoComplete: 'new-password',
           name: 'pin-accesso-non-salvare', 'data-lpignore': 'true', 'data-1p-ignore': 'true',
           'aria-label': 'PIN', value: pin, disabled: busy, maxLength,
-          onChange: event => change(event.target.value),
+          onKeyDown: typePin,
+          onPaste: event => { event.preventDefault(); change(event.clipboardData.getData('text')); },
           style: { width: '100%', boxSizing: 'border-box', height: 48, textAlign: 'center', fontSize: 24,
             letterSpacing: 6, background: '#fffefb', color: '#2a3329', outlineColor: color, border: '1px solid #e6e0d4', borderRadius: 10, marginTop: 6 } })),
       h('div', { 'data-testid': 'pin-keypad', style: { display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 8, marginTop: 14 } },

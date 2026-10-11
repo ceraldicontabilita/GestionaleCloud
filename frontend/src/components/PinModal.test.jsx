@@ -9,7 +9,7 @@ describe('Modale PIN comune', () => {
   it('accetta PIN lunghi senza inviare prematuramente alla sesta cifra', async () => {
     const verify = vi.fn().mockResolvedValue({});
     render(<PinModal onVerify={verify} />);
-    fireEvent.change(screen.getByLabelText('PIN'), { target: { value: '12345678' } });
+    for (const key of '12345678') fireEvent.keyDown(screen.getByLabelText('PIN'), { key });
     expect(verify).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: 'Accedi' }));
     await waitFor(() => expect(verify).toHaveBeenCalledWith('12345678', null));
@@ -20,7 +20,7 @@ describe('Modale PIN comune', () => {
     let resolve;
     const verify = vi.fn(() => new Promise(r => { resolve = r; }));
     render(<PinModal onVerify={verify} />);
-    fireEvent.change(screen.getByLabelText('PIN'), { target: { value: '1234' } });
+    for (const key of '1234') fireEvent.keyDown(screen.getByLabelText('PIN'), { key });
     const form = screen.getByLabelText('PIN').closest('form');
     fireEvent.submit(form);
     fireEvent.submit(form);
@@ -32,7 +32,7 @@ describe('Modale PIN comune', () => {
   it('mantiene la scelta di identità e verifica nuovamente il PIN con ID', async () => {
     const verify = vi.fn().mockResolvedValueOnce({ choices: [{ id: 'op-a', name: 'Operatore A' }] }).mockResolvedValueOnce({});
     render(<PinModal onVerify={verify} />);
-    fireEvent.change(screen.getByLabelText('PIN'), { target: { value: '1234' } });
+    for (const key of '1234') fireEvent.keyDown(screen.getByLabelText('PIN'), { key });
     fireEvent.click(screen.getByRole('button', { name: 'Accedi' }));
     fireEvent.click(await screen.findByRole('button', { name: 'Operatore A' }));
     await waitFor(() => expect(verify).toHaveBeenLastCalledWith('1234', 'op-a'));
@@ -40,7 +40,7 @@ describe('Modale PIN comune', () => {
 
   it('mostra il blocco server e cancella il PIN dopo un errore', async () => {
     render(<PinModal onVerify={() => Promise.reject(new Error('Troppi tentativi'))} />);
-    fireEvent.change(screen.getByLabelText('PIN'), { target: { value: '1234' } });
+    for (const key of '1234') fireEvent.keyDown(screen.getByLabelText('PIN'), { key });
     fireEvent.click(screen.getByRole('button', { name: 'Accedi' }));
     expect(await screen.findByRole('alert')).toHaveTextContent('Troppi tentativi');
     expect(screen.getByLabelText('PIN')).toHaveValue('');
@@ -64,10 +64,10 @@ describe('Modale PIN comune', () => {
   it('azzera il PIN quando la pagina viene nascosta o ripristinata', () => {
     render(<PinModal onVerify={vi.fn()} />);
     const pin = screen.getByLabelText('PIN');
-    fireEvent.change(pin, { target: { value: '1234' } });
+    for (const key of '1234') fireEvent.keyDown(pin, { key });
     fireEvent(window, new Event('pagehide'));
     expect(pin).toHaveValue('');
-    fireEvent.change(pin, { target: { value: '5678' } });
+    for (const key of '5678') fireEvent.keyDown(pin, { key });
     fireEvent(window, new Event('pageshow'));
     expect(pin).toHaveValue('');
     expect(pin).toHaveAttribute('autocomplete', 'new-password');
@@ -77,11 +77,39 @@ describe('Modale PIN comune', () => {
   it('permette il tastierino, limita le cifre e non conserva il PIN in storage', () => {
     const spy = vi.spyOn(Storage.prototype, 'setItem');
     render(<PinModal maxLength={4} onVerify={vi.fn()} />);
+    const pin = screen.getByLabelText('PIN');
+    expect(pin).toHaveAttribute('readonly');
+    expect(pin).toHaveAttribute('inputmode', 'none');
     for (const key of ['1','2','3','4','5']) fireEvent.click(screen.getByRole('button', { name: key, exact: true }));
-    expect(screen.getByLabelText('PIN')).toHaveValue('1234');
+    expect(pin).toHaveValue('1234');
+    expect(pin).toHaveFocus();
+    expect(pin).toHaveAttribute('readonly');
     fireEvent.click(screen.getByRole('button', { name: 'Cancella ultima cifra' }));
     expect(screen.getByLabelText('PIN')).toHaveValue('123');
     expect(spy).not.toHaveBeenCalled();
     spy.mockRestore();
+  });
+
+  it('mantiene tastiera fisica, cancellazione e Invio senza aprire un campo modificabile', async () => {
+    const verify = vi.fn().mockResolvedValue({});
+    render(<PinModal onVerify={verify} />);
+    const pin = screen.getByLabelText('PIN');
+    for (const key of '123x') fireEvent.keyDown(pin, { key });
+    fireEvent.keyDown(pin, { key: 'Backspace' });
+    expect(pin).toHaveValue('12');
+    fireEvent.keyDown(pin, { key: 'Delete' });
+    expect(pin).toHaveValue('');
+    for (const key of '5678') fireEvent.keyDown(pin, { key });
+    fireEvent.keyDown(pin, { key: 'Enter' });
+    await waitFor(() => expect(verify).toHaveBeenCalledTimes(1));
+    expect(verify).toHaveBeenCalledWith('5678', null);
+  });
+
+  it('permette di incollare il PIN senza rendere modificabile il campo', () => {
+    render(<PinModal maxLength={4} onVerify={vi.fn()} />);
+    const pin = screen.getByLabelText('PIN');
+    fireEvent.paste(pin, { clipboardData: { getData: () => '12 34 56' } });
+    expect(pin).toHaveValue('1234');
+    expect(pin).toHaveAttribute('readonly');
   });
 });
