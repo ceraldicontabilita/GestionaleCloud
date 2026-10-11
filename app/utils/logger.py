@@ -11,6 +11,18 @@ from pathlib import Path
 from app.config import settings
 
 
+class OAuthCallbackRedaction(logging.Filter):
+    """Uvicorn non deve registrare il codice Google e lo stato in query."""
+    def filter(self, record):
+        if isinstance(record.args, tuple) and len(record.args) == 5:
+            args = list(record.args)
+            path = str(args[2])
+            if path.split('?', 1)[0] == '/api/auth/google/callback':
+                args[2] = path.split('?', 1)[0]
+                record.args = tuple(args)
+        return True
+
+
 class JSONFormatter(logging.Formatter):
     """Custom JSON formatter for structured logging."""
     
@@ -64,6 +76,7 @@ def setup_logging() -> None:
     Setup application logging based on configuration.
     Called once at application startup.
     """
+    logging.getLogger('uvicorn.access').addFilter(OAuthCallbackRedaction())
     # Get root logger
     root_logger = logging.getLogger()
     root_logger.setLevel(getattr(logging, settings.LOG_LEVEL.upper()))

@@ -114,6 +114,8 @@ def has_configured_credentials() -> bool:
     resta affidata a ``load_credentials_for_folder``, che prova l'accesso alla
     cartella richiesta prima di restituire il client.
     """
+    if settings.GOOGLE_CLIENT_ID and settings.GOOGLE_CLIENT_SECRET:
+        return True
     if str(getattr(settings, "GOOGLE_DRIVE_SA_FILE", None) or "").strip():
         return True
     return next(iter(_raw_candidates()), None) is not None
@@ -127,6 +129,15 @@ def load_credentials_for_folder(folder_id: Optional[str]) -> Tuple[Any, Optional
 
     attempts = 0
     load_errors = 0
+    try:
+        from app.services.drive_oauth import load_credentials
+        oauth_creds = load_credentials()
+        if oauth_creds is not None:
+            attempts += 1
+            if _can_access(oauth_creds, folder_id):
+                return oauth_creds, None
+    except Exception:
+        load_errors += 1
     shared_creds, shared_err = _shared_candidate()
     if shared_creds is not None:
         attempts += 1

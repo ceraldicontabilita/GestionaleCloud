@@ -191,6 +191,7 @@ async def reset_collections(
     protected = {
         "users", "system_settings", "settings", "sistema_stato",
         "token_blacklist", "mfa_settings", "audit_log",
+        "google_drive_oauth", "google_drive_oauth_states",
         "prima_nota_migrazioni_audit", "migration_runs",
         "scheduler_leases", "admin_destructive_audit",
     }

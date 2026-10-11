@@ -248,6 +248,8 @@ Aggiungere solo i file pertinenti.
 
 # 9. Supabase e Drive
 
+OAuth Drive personale: pagina amministrativa `/api/auth/google/drive`, avvio `/api/auth/google/connect`, callback esatto `https://impresasemplice.online/api/auth/google/callback`. Il client Google deve autorizzare questo URI senza slash finale. `GOOGLE_CLIENT_ID` e `GOOGLE_CLIENT_SECRET` sono segreti di configurazione runtime; `GOOGLE_REFRESH_TOKEN` e' facoltativo per un'autorizzazione offline gia' esistente. Il callback usa stato monouso legato alla sessione ERP, scadenza di 10 minuti e PKCE. Il refresh token ottenuto viene cifrato con una chiave derivata dal secret del gestionale e riletto nel registro privato `google_drive_oauth`; non appare in URL, risposte o log. Lo stato PKCE vive separatamente in `google_drive_oauth_states`. Proteggere entrambi dal reset dei dati e preservare `SECRET_KEY` nei ripristini. Il loader comune dei documenti preferisce OAuth dopo accesso verificato alla cartella e mantiene le credenziali esistenti per le letture finche' il consenso personale non e' completato. Non cambiare cartelle ne' revocare/ruotare client secret senza istruzione esplicita. `POST /api/auth/google/verify` verifica l'account e la cartella, crea un piccolo TXT di collaudo nella stessa cartella e lo rilegge; il risultato conserva id e SHA-256. Il codice di callback e lo stato sono rimossi dai log di accesso applicativi. Per gli originali preesistenti e lo smistamento nella gerarchia attuale e' richiesto lo scope Drive completo; `drive.file` da solo non autorizza tutti i file gia' presenti.
+
 ## REGOLA
 
 Supabase è l'archivio strutturato applicativo.

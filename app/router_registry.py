@@ -44,6 +44,7 @@ def register_all_routers(app: FastAPI) -> None:
 def _register_auth(app: FastAPI):
     from app.routers import auth, lotti_integration, mfa, pin_login, external_api_v1, ricerca_globale
     from app.routers.legal_pages import router as legal_router
+    from app.routers.google_drive_oauth import router as drive_oauth_router
 
     app.include_router(external_api_v1.router, prefix="/api", tags=["API esterna v1"])
     app.include_router(ricerca_globale.router, prefix="/api", tags=["Ricerca globale"])
@@ -57,6 +58,7 @@ def _register_auth(app: FastAPI):
     app.include_router(pin_login.router, prefix="/api/auth", tags=["PIN Login"])
     app.include_router(mfa.router, prefix="/api/auth", tags=["MFA"])
     app.include_router(legal_router, tags=["Legal"])
+    app.include_router(drive_oauth_router)
 
     # Le notifiche operative usano esclusivamente Telegram. Non registrare
     # webhook o router di canali legacy.

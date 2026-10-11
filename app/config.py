@@ -118,7 +118,8 @@ class Settings(BaseSettings):
     # Google OAuth
     GOOGLE_CLIENT_ID: Optional[str] = None
     GOOGLE_CLIENT_SECRET: Optional[str] = None
-    GOOGLE_REDIRECT_URI: str = "/api/auth/google/callback"
+    GOOGLE_REDIRECT_URI: str = "https://impresasemplice.online/api/auth/google/callback"
+    GOOGLE_REFRESH_TOKEN: Optional[str] = None
 
     # Google Drive: un solo service account per tutto il Drive (JSON inline
     # o file). Le cartelle e le credenziali per sezione sono uscite con i
@@ -126,6 +127,7 @@ class Settings(BaseSettings):
     # GOOGLE_DRIVE_DATI_FOLDER_ID (app/services/drive_cartella_unica.py).
     GOOGLE_DRIVE_SA_FILE: Optional[str] = None            # path al JSON del service account
     GOOGLE_DRIVE_SA_JSON: Optional[str] = None            # oppure il JSON inline (alternativa al file)
+    GOOGLE_DRIVE_DATI_FOLDER_ID: Optional[str] = None    # cartella esistente, condivisa con lo smistatore
 
     # Archivio documentale esterno: il gestionale legge esclusivamente
     # l'indice Excel e lascia i file originali su Google Drive.
