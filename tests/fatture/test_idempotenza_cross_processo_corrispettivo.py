@@ -123,6 +123,23 @@ class ProcessoFinto(SupabaseRuntimeDatabase):
                 payload["p_collection"], payload["p_field"],
                 payload["p_values"], payload["p_exclude_fields"],
             )
+        if function_name == "gc_commit_documents":
+            import copy
+            snapshot = copy.deepcopy(self.postgres.__dict__)
+            for change in payload["p_changes"]:
+                rows = self.postgres.fetch_exact(change["collection"], "_id", [change["id"]], [])
+                if (rows[0] if rows else None) != change["before"]:
+                    return {"status": "conflict"}
+            for change in payload["p_changes"]:
+                if change["after"] is None:
+                    self.postgres.delete(change["collection"], [change["id"]])
+                else:
+                    result = self.postgres.upsert(change["collection"], [change["after"]])
+                    if result["rejected"]:
+                        self.postgres.__dict__.update(snapshot)
+                        return {"status": "duplicate", "collection": change["collection"],
+                                "rejected": result["rejected"]}
+            return {"status": "committed"}
         if function_name == "gc_upsert_documents":
             return self.postgres.upsert(payload["p_collection"], payload["p_documents"])
         if function_name == "gc_delete_documents":

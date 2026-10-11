@@ -73,6 +73,13 @@ class CachingFakeSupabase(FakeRestSupabase):
             start = payload["p_offset"]
             return page[start:start + payload["p_limit"]]
         result = await super()._rpc(function_name, payload)
+        if function_name == "gc_commit_documents" and result.get("status") == "committed":
+            for change in payload["p_changes"]:
+                updated = self.updated.setdefault(change["collection"], {})
+                if change["after"] is None:
+                    updated.pop(change["id"], None)
+                else:
+                    updated[change["id"]] = self._tick()
         if function_name == "gc_upsert_documents":
             for document in payload["p_documents"]:
                 self.updated.setdefault(payload["p_collection"], {})[str(document["_id"])] = self._tick()
@@ -280,8 +287,8 @@ def test_lookup_puntuale_senza_payload_viene_dalla_cache():
     assert uno["_id"] == "a2" and leggera["id"] == "f2" and "xml_raw" not in leggera
     assert c_cache == []  # nessuna RPC: entrambi dalla cache
     assert piena["xml_raw"] == "<xml>2</xml>" and c_piena == ["gc_fetch_documents_exact"]
-    # l'update su una collezione senza payload non rilegge il documento da Supabase
-    assert c_update == ["gc_fetch_documents_exact", "gc_upsert_documents"]
+    # Una mutazione rilegge sempre la versione autorevole prima del CAS.
+    assert c_update == ["gc_fetch_documents_exact", "gc_fetch_documents_exact", "gc_commit_documents"]
     assert runtime.remote["alerts"]["a2"]["stato"] == "aperto"
 
 

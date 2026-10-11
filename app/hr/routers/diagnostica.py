@@ -62,7 +62,7 @@ async def diagnostica() -> Dict[str, Any]:
     db = None
     try:
         db = Database.get_db()
-        await db.command("ping")
+        await db.ping()
         add("Database", "Connessione Supabase/Postgres", "ok", "Connesso")
     except Exception as e:
         add("Database", "Connessione Supabase/Postgres", "err", str(e)[:200])

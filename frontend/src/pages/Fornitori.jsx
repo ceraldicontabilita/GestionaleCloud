@@ -173,14 +173,14 @@ const emptySupplier = {
   pec: '',
   iban: '',
   iban_lista: [], // Lista di IBAN aggiuntivi estratti dalle fatture
-  metodo_pagamento: 'banca',
+  metodo_pagamento: '',
   esclude_cassa_banca: false,
   cessato: false,
   note: '',
 };
 
 // Modale Fornitore
-function SupplierModal({ isOpen, onClose, supplier, onSave, saving }) {
+export function SupplierModal({ isOpen, onClose, supplier, onSave, saving }) {
   const isMobile = useIsMobile();
   const [form, setForm] = useState(emptySupplier);
   const [loadingOpenAPI, setLoadingOpenAPI] = useState(false);
@@ -194,6 +194,7 @@ function SupplierModal({ isOpen, onClose, supplier, onSave, saving }) {
       setForm({
         ...emptySupplier,
         ...supplier,
+        metodo_pagamento: canaleCanonico(supplier.metodo_pagamento),
         ragione_sociale: supplier.ragione_sociale || supplier.nome || supplier.denominazione || '',
         partita_iva: supplier.partita_iva || supplier.piva || '',
         esclude_cassa_banca: supplier.esclude_cassa_banca ?? Boolean(supplier.cessato),
@@ -731,7 +732,7 @@ function SupplierModal({ isOpen, onClose, supplier, onSave, saving }) {
                     Metodo Pagamento
                   </label>
                   <select
-                    value={canaleCanonico(form.metodo_pagamento) || 'banca'}
+                    value={canaleCanonico(form.metodo_pagamento)}
                     onChange={e => handleChange('metodo_pagamento', e.target.value)}
                     style={{
                       width: '100%',
@@ -743,6 +744,7 @@ function SupplierModal({ isOpen, onClose, supplier, onSave, saving }) {
                       boxSizing: 'border-box',
                     }}
                   >
+                    <option value="">Da impostare</option>
                     {Object.entries(METODI_PAGAMENTO).map(([key, val]) => (
                       <option key={key} value={key}>
                         {val.label}

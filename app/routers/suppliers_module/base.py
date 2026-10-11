@@ -856,7 +856,7 @@ async def update_supplier(supplier_id: str, data: Dict[str, Any] = Body(...)) ->
     
     metodo_configurato = False
     if "metodo_pagamento" in data:
-        if data["metodo_pagamento"] not in PAYMENT_METHODS:
+        if data["metodo_pagamento"] not in (None, "") and data["metodo_pagamento"] not in PAYMENT_METHODS:
             raise HTTPException(status_code=400, detail="Metodo pagamento non valido")
         metodo_configurato = data["metodo_pagamento"] is not None and data["metodo_pagamento"] != ""
 
@@ -914,7 +914,7 @@ async def update_supplier(supplier_id: str, data: Dict[str, Any] = Body(...)) ->
     )
     
     # Se metodo cambiato, salva nello storico
-    if metodo_configurato:
+    if metodo_configurato and metodo_cambiato:
         from app.utils.iva_calculator import save_supplier_payment_method
 
         supplier_vat = (
@@ -963,7 +963,7 @@ async def update_supplier(supplier_id: str, data: Dict[str, Any] = Body(...)) ->
     # spostare eventualmente le operazioni". In background le scritture
     # automatiche sul lato errato tornano provvisorie e vengono subito
     # reinstradate nel lato Cassa/Banca indicato dal nuovo metodo.
-    if metodo_configurato:
+    if metodo_configurato and metodo_cambiato:
         import asyncio as _asyncio
 
         async def _riprocessa_prima_nota():
@@ -973,7 +973,8 @@ async def update_supplier(supplier_id: str, data: Dict[str, Any] = Body(...)) ->
                 )
                 anno_corrente = datetime.now(timezone.utc).year
                 esito = await ripristina_provvisori_metodo_errato(
-                    dry_run=False, anno=anno_corrente, banca_non_riconciliate=False)
+                    dry_run=False, anno=anno_corrente, banca_non_riconciliate=False,
+                    fornitore_id=supplier_id, dal=data.get("metodo_pagamento_dal"))
                 # Qui seguiva il reinstradamento automatico in Cassa/Banca sul
                 # solo metodo dell'anagrafica. E' stato tolto perche' confermava
                 # un pagamento senza prova. Dal 15/09/2026 rispondeva 409, e il

@@ -9,6 +9,7 @@ from app.menu.models.warehouse_models import (
 )
 
 from app.menu.routes.qrcode_routes import verify_token
+from starlette.concurrency import run_in_threadpool
 
 router = APIRouter(prefix="/api/warehouse", tags=["Warehouse"])
 
@@ -67,10 +68,10 @@ def _get_item_row(item_id: str) -> Optional[dict]:
 @router.get("/items", response_model=List[WarehouseItem])
 async def list_items(low_stock_only: bool = False, username: str = Depends(verify_token)):
     res = (
-        supabase.table(LOTTI_TABLE)
+        (await run_in_threadpool(supabase.table(LOTTI_TABLE)
         .select("*")
         .eq("collection", LOTTI_COLLECTION)
-        .execute()
+        .execute))
     )
     items = [_row_to_item(r) for r in res.data]
     items.sort(key=lambda i: (i["name"] or "").lower())
@@ -94,13 +95,13 @@ async def create_item(payload: WarehouseItemCreate, username: str = Depends(veri
     if payload.min_threshold is not None:
         data["min_threshold"] = payload.min_threshold
 
-    supabase.table(LOTTI_TABLE).insert({
+    (await run_in_threadpool(supabase.table(LOTTI_TABLE).insert({
         "collection": LOTTI_COLLECTION,
         "doc_id": item_id,
         "data": data,
         "created_at": now,
         "updated_at": now,
-    }).execute()
+    }).execute))
 
     row = _get_item_row(item_id)
     return _row_to_item(row)
@@ -128,11 +129,11 @@ async def update_item(item_id: str, payload: WarehouseItemUpdate, username: str 
         data["min_threshold"] = update_data["min_threshold"]
 
     result = (
-        supabase.table(LOTTI_TABLE)
+        (await run_in_threadpool(supabase.table(LOTTI_TABLE)
         .update({"data": data, "updated_at": _iso(datetime.utcnow())})
         .eq("collection", LOTTI_COLLECTION)
         .eq("doc_id", item_id)
-        .execute()
+        .execute))
     )
     if not result.data:
         raise HTTPException(status_code=404, detail="Articolo non trovato")
@@ -142,11 +143,11 @@ async def update_item(item_id: str, payload: WarehouseItemUpdate, username: str 
 @router.delete("/items/{item_id}")
 async def delete_item(item_id: str, username: str = Depends(verify_token)):
     result = (
-        supabase.table(LOTTI_TABLE)
+        (await run_in_threadpool(supabase.table(LOTTI_TABLE)
         .delete()
         .eq("collection", LOTTI_COLLECTION)
         .eq("doc_id", item_id)
-        .execute()
+        .execute))
     )
     if not result.data:
         raise HTTPException(status_code=404, detail="Articolo non trovato")
@@ -177,10 +178,10 @@ async def register_movement(item_id: str, payload: MovementCreate, username: str
     data = dict(row.get("data") or {})
     data["stock"] = new_qty
 
-    supabase.table(LOTTI_TABLE).update({
+    (await run_in_threadpool(supabase.table(LOTTI_TABLE).update({
         "data": data,
         "updated_at": _iso(datetime.utcnow()),
-    }).eq("collection", LOTTI_COLLECTION).eq("doc_id", item_id).execute()
+    }).eq("collection", LOTTI_COLLECTION).eq("doc_id", item_id).execute))
 
     # Storico movimenti: resta nel database del Menu (non modifica i
     # movimenti_lotto di Lotti, che ha una logica propria legata ai lotti HACCP)
@@ -194,7 +195,7 @@ async def register_movement(item_id: str, payload: MovementCreate, username: str
     )
     movement_doc = movement.dict()
     movement_doc['created_at'] = _iso(movement_doc['created_at'])
-    supabase.table("menu_warehouse_movements").insert(movement_doc).execute()
+    (await run_in_threadpool(supabase.table("menu_warehouse_movements").insert(movement_doc).execute))
 
     updated_row = _get_item_row(item_id)
     return _row_to_item(updated_row)
@@ -205,5 +206,5 @@ async def list_movements(item_id: Optional[str] = None, limit: int = 100, userna
     query = supabase.table("menu_warehouse_movements").select("*")
     if item_id:
         query = query.eq("item_id", item_id)
-    res = query.order("created_at", desc=True).limit(limit).execute()
+    res = (await run_in_threadpool(query.order("created_at", desc=True).limit(limit).execute))
     return res.data

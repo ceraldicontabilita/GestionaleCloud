@@ -86,14 +86,14 @@ async def _sincronizza(db, anno: int = None) -> Dict[str, Any]:
     }
     if anno:
         filtro_ced["anno"] = anno
-    cedolini = await db[Collections.PAYSLIPS].find(filtro_ced, {"_id": 0, "pdf_data": 0}).to_list(3000)
+    cedolini = await db[Collections.PAYSLIPS].find(filtro_ced, {"_id": 0, "pdf_data": 0}).to_list(None)
     from app.services.cedolini_rapporti import raggruppa_cedolini
     cedolini = list(raggruppa_cedolini(c for c in cedolini if c.get("dipendente_id")).values())
 
     # pdf_data ESCLUSO (05/09/2026): con la quirk del $ne:None descritta sotto
     # questa query prende quasi tutti gli 887 bonifici, e 805 hanno il PDF
     # allegato (180 MB di base64). Qui servono solo cedolino_id e importo.
-    bonifici = await db["bonifici"].find({"cedolino_id": {"$ne": None}}, {"_id": 0, "pdf_data": 0}).to_list(1000)
+    bonifici = await db["bonifici"].find({"cedolino_id": {"$ne": None}}, {"_id": 0, "pdf_data": 0}).to_list(None)
     per_cedolino: Dict[str, list] = {}
     for b in bonifici:
         # $ne:None nell'adattatore Supabase, come in Mongo, matcha anche i

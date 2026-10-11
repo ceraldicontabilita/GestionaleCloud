@@ -1,5 +1,6 @@
 """Contratto del runtime documentale Supabase senza dipendenze di rete."""
 import asyncio
+import copy
 import pytest
 
 from app.services.supabase_runtime_database import (
@@ -91,6 +92,18 @@ class FakeRestSupabase(SupabaseRuntimeDatabase):
                     if key not in payload["p_exclude_fields"]
                 })
             return documents
+        if function_name == "gc_commit_documents":
+            for change in payload["p_changes"]:
+                current = self.remote.get(change["collection"], {}).get(change["id"])
+                if current != change["before"]:
+                    return {"status": "conflict"}
+            for change in payload["p_changes"]:
+                target = self.remote.setdefault(change["collection"], {})
+                if change["after"] is None:
+                    target.pop(change["id"], None)
+                else:
+                    target[change["id"]] = copy.deepcopy(change["after"])
+            return {"status": "committed"}
         if function_name == "gc_upsert_documents":
             target = self.remote.setdefault(payload["p_collection"], {})
             for document in payload["p_documents"]:
@@ -153,7 +166,7 @@ class ConcurrentAppendSupabase(FakeRestSupabase):
 
 class FailingWriteSupabase(FakeRestSupabase):
     async def _rpc(self, function_name, payload):
-        if function_name == "gc_upsert_documents" and payload["p_documents"]:
+        if function_name == "gc_commit_documents" and payload["p_changes"]:
             raise RuntimeError("scrittura Supabase rifiutata")
         return await super()._rpc(function_name, payload)
 
@@ -447,8 +460,8 @@ def test_insert_e_update_per_id_non_caricano_tutta_la_collezione(monkeypatch):
     assert "gc_fetch_collection" not in calls
     assert "gc_fetch_collection_after" not in calls
     assert calls == [
-        "gc_fetch_documents_exact", "gc_upsert_documents",
-        "gc_fetch_documents_exact", "gc_upsert_documents",
+        "gc_fetch_documents_exact", "gc_commit_documents",
+        "gc_fetch_documents_exact", "gc_commit_documents",
     ]
     assert runtime.remote["invoices"]["pk1"]["totale"] == 20
 

@@ -58,7 +58,9 @@ def test_motivo_obbligatorio_e_altro_vuole_il_testo():
 @pytest.fixture
 def ambiente(monkeypatch):
     from app.database import Database
-    from app.lotti.db import database as db_lotti
+    from app.lotti.db import STORAGE, database as db_lotti
+
+    assert STORAGE == "memoria", "La fixture non deve mai pulire l'archivio Lotti reale"
 
     db = ClientArchivioMemoria()["magazzino_fornitore"]
     monkeypatch.setattr(Database, "get_db", classmethod(lambda cls: db))

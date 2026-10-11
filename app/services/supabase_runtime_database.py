@@ -15,6 +15,8 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import copy
+from contextvars import ContextVar
 import json
 import logging
 import uuid
@@ -25,7 +27,7 @@ import aiohttp
 
 from app.services.archivio_documenti_memoria import (
     MISSING, CursoreDocumenti, ArchivioDocumenti, CollezioneDocumenti, apply_projection, matches_filter,
-    filtra_e_proietta_a_rate, prepara_filtro,
+    prepara_filtro,
 )
 from app.document_repository import DOCUMENT_PAYLOAD_FIELDS, metadata_projection
 
@@ -408,11 +410,16 @@ class SupabaseRPCError(RuntimeError):
         )
 
 
+class ConcurrentDocumentChange(RuntimeError):
+    """La versione letta è cambiata: nessuna parte della scrittura è confermata."""
+
+
 class _ReadThroughCursor:
     """Cursor Motor-compatibile che costruisce lo snapshot da Supabase al consumo."""
 
-    def __init__(self, loader):
+    def __init__(self, loader, *, windowed=False):
         self._loader = loader
+        self._windowed = windowed
         self._sort = None
         self._skip = 0
         self._limit: int | None = None
@@ -430,7 +437,19 @@ class _ReadThroughCursor:
         self._limit = max(0, int(count))
         return self
 
-    async def _cursor(self) -> CursoreDocumenti:
+    async def _window(self, documents, length=None):
+        cursor = CursoreDocumenti(documents)
+        if self._sort is not None:
+            cursor.sort(*self._sort)
+        if self._skip:
+            cursor.skip(self._skip)
+        if self._limit is not None:
+            cursor.limit(self._limit)
+        return await cursor.to_list(length)
+
+    async def _cursor(self, length=None) -> CursoreDocumenti:
+        if self._windowed:
+            return await self._loader(lambda rows: self._window(rows, length), self._sort)
         cursor = await self._loader()
         if self._sort is not None:
             cursor.sort(*self._sort)
@@ -441,7 +460,7 @@ class _ReadThroughCursor:
         return cursor
 
     async def to_list(self, length: int | None = None) -> list[dict[str, Any]]:
-        return await (await self._cursor()).to_list(length)
+        return await (await self._cursor(length)).to_list(length)
 
     def __aiter__(self):
         self._iterator = None
@@ -647,6 +666,13 @@ class SupabaseTable(CollezioneDocumenti):
     # ----- letture ---------------------------------------------------------
 
     async def _refresh_unlocked(self, projection=None, selector=None) -> None:
+        if self.database._current_transaction() is not None:
+            self._documents = await self._raw_for_mutation(selector)
+            if _projection_needs_payload(projection, self._payload_fields):
+                from app.services.pdf_drive_only import hydrate_documents
+                self._documents = await hydrate_documents(
+                    self.name, self._documents, _excluded_projection_fields(projection))
+            return
         lookup = _exact_lookup(selector)
         leggero, richiede_stato = self._selettore_cache(selector)
         if lookup:
@@ -708,85 +734,98 @@ class SupabaseTable(CollezioneDocumenti):
                 if document.get("_id") is not None:
                     self._cache[str(document["_id"])] = self._cache_light(document)
 
-    async def _prepare_insert_unlocked(
-        self, documents: list[dict[str, Any]],
-    ) -> None:
-        """Carica soltanto conflitti di ID o idempotenza prima dell'INSERT."""
-        lookups = [
-            ("_id", [str(document["_id"]) for document in documents]),
-            (
-                "idempotency_key",
-                [
-                    str(document["idempotency_key"])
-                    for document in documents
-                    if document.get("idempotency_key")
-                ],
-            ),
-        ]
-        found: dict[str, dict[str, Any]] = {}
-        for field, values in lookups:
-            if not values:
-                continue
-            rows = await self.database._fetch_logical_documents_exact(
-                self.name, field=field, values=sorted(set(values)),
-            )
-            for row in rows:
-                if row.get("_id") is not None:
-                    found[str(row["_id"])] = row
-        self._documents = [_normalise_document(row) for row in found.values()]
-
     def find(self, selector=None, projection=None, *args, **kwargs):
-        async def load():
+        async def load(window, sort):
+            await asyncio.sleep(0)
             needs_payload = _projection_needs_payload(projection, self._payload_fields)
-            lookup = _exact_lookup(selector)
-            if lookup and needs_payload:
-                # Lookup puntuale con payload (es. find_one({"id": ...})):
-                # l'indice remoto basta, la cache non aggiungerebbe nulla e la
-                # firma costerebbe una RPC in piu'. Senza lock operativo.
-                field, values = lookup
-                rows = await self.database._fetch_logical_documents_exact(
-                    self.name, field=field, values=values,
-                    excluded_fields=_excluded_projection_fields(projection),
-                )
-                normalised = [_normalise_document(row) for row in rows]
-                from app.services.pdf_drive_only import hydrate_documents
-                normalised = await hydrate_documents(
-                    self.name, normalised, _excluded_projection_fields(projection))
-                return CursoreDocumenti([
-                    apply_projection(document, projection)
-                    for document in normalised
-                    if matches_filter(document, selector)
-                ])
-            leggero, richiede_stato = self._selettore_cache(selector)
-            if leggero is not None:
-                # Lettura senza lock operativo: una pagina non aspetta il job
-                # che sta scrivendo la stessa collezione. Senza payload arriva
-                # tutto dalla cache (anche i lookup puntuali); con payload la
-                # cache sceglie i documenti e Supabase li manda per id.
-                documents = await self._cached_snapshot(richiede_stato=richiede_stato)
-                if documents is not None:
-                    if needs_payload:
-                        matched = [
-                            str(document["_id"]) for document in documents
-                            if document.get("_id") is not None
-                            and matches_filter(document, leggero)
-                        ]
-                        documents = await self._hydrate_by_ids(
-                            matched, _excluded_projection_fields(projection))
-                        return CursoreDocumenti([
-                            apply_projection(document, projection) for document in documents
-                        ])
-                    return CursoreDocumenti(await filtra_e_proietta_a_rate(
-                        documents, leggero, projection, prepara=_senza_stato,
-                    ), copia=False)
-            async with self._remote_operation_lock:
-                await self._refresh_unlocked(projection, selector)
-                try:
-                    return CollezioneDocumenti.find(self, selector, projection, *args, **kwargs)
-                finally:
-                    self._rilascia()
+            sort_fields = set()
+            if sort:
+                sort_fields = {sort[0]} if isinstance(sort[0], str) else {k for k, _ in sort[0]}
+            needs_full_filter = _references_any_field(selector, self._payload_fields)
+            needs_full_sort = bool(sort_fields & self._payload_fields)
+            excluded = _excluded_projection_fields(projection)
+            from app.services.pdf_drive_only import hydrate_documents
 
-        return _ReadThroughCursor(load)
+            # Una transazione vede le proprie scritture, non le pubblica nella cache.
+            if self.database._current_transaction() is not None:
+                async with self._remote_operation_lock:
+                    rows = await self._raw_for_mutation(selector)
+                if needs_full_filter or needs_full_sort:
+                    rows = await hydrate_documents(self.name, rows)
+                rows = await window([d for d in rows if matches_filter(d, selector)])
+                if needs_payload:
+                    rows = await hydrate_documents(self.name, rows, excluded)
+            else:
+                lookup = _exact_lookup(selector)
+                leggero, richiede_stato = self._selettore_cache(selector)
+                documents = None
+                if (not lookup or not needs_payload) and leggero is not None and not needs_full_sort:
+                    documents = await self._cached_snapshot(richiede_stato=richiede_stato)
+                if documents is not None:
+                    rows = await window([d for d in documents if matches_filter(d, leggero)])
+                    if needs_payload:
+                        ids = [str(d["_id"]) for d in rows]
+                        hydrated = await self._hydrate_by_ids(ids, excluded)
+                        by_id = {str(d["_id"]): d for d in hydrated}
+                        rows = [by_id[i] for i in ids if i in by_id]
+                else:
+                    # Il filtro e l'ordinamento precedono proiezione e limite.
+                    # Drive si legge solo per la finestra richiesta, salvo filtri
+                    # che dipendono davvero dal contenuto del documento.
+                    fetch_excluded = [f for f in excluded if f not in sort_fields
+                                      and not _references_any_field(selector, {f})]
+                    if lookup:
+                        field, values = lookup
+                        rows = await self.database._fetch_logical_documents_exact(
+                            self.name, field=field, values=values, excluded_fields=fetch_excluded)
+                    else:
+                        rows = await self.database._fetch_logical_collection_documents(
+                            self.name, excluded_fields=fetch_excluded)
+                    rows = [_normalise_document(d) for d in rows]
+                    if needs_full_filter or needs_full_sort:
+                        rows = await hydrate_documents(self.name, rows)
+                    rows = await window([d for d in rows if matches_filter(d, selector)])
+                    if needs_payload:
+                        rows = await hydrate_documents(self.name, rows, excluded)
+            return CursoreDocumenti([
+                apply_projection(_senza_stato(d), projection) for d in rows
+            ])
+
+        return _ReadThroughCursor(load, windowed=True)
+
+    async def _raw_for_mutation(self, selector):
+        """Rilettura autorevole prima del confronto atomico; mai dalla cache TTL."""
+        lookup = _exact_lookup(selector)
+        if lookup:
+            field, values = lookup
+            rows = await self.database._fetch_logical_documents_exact(
+                self.name, field=field, values=values)
+        else:
+            # Prima i metadati, poi il payload dei soli candidati.
+            light, state = self._selettore_cache(selector)
+            excluded = sorted(self._payload_fields) if light is not None else None
+            rows = await self.database._fetch_logical_collection_documents(
+                self.name, excluded_fields=excluded)
+            if excluded:
+                if state and not all(_PAYLOAD_STATO_KEY in d for d in rows):
+                    rows = await self.database._fetch_logical_collection_documents(self.name)
+                else:
+                    ids = [str(d["_id"]) for d in rows if matches_filter(d, light)]
+                    rows = []
+                    for start in range(0, len(ids), _MAX_EXACT_LOOKUP_VALUES):
+                        rows.extend(await self.database._fetch_logical_documents_exact(
+                            self.name, field="_id", values=ids[start:start + _MAX_EXACT_LOOKUP_VALUES]))
+        if not _references_any_field(selector, self._payload_fields):
+            rows = [d for d in rows if matches_filter(d, selector)]
+        rows = {str(d["_id"]): _normalise_document(d) for d in rows}
+        tx = self.database._current_transaction()
+        if tx is not None:
+            for (collection, doc_id), change in tx["changes"].items():
+                if collection == self.name:
+                    rows.pop(doc_id, None)
+                    if change["after"] is not None:
+                        rows[doc_id] = copy.deepcopy(change["after"])
+        return list(rows.values())
 
     async def find_one(self, selector=None, projection=None, *args, **kwargs):
         cursor = self.find(selector, projection, *args, **kwargs)
@@ -859,27 +898,39 @@ class SupabaseTable(CollezioneDocumenti):
 
     async def _mutate(self, method_name: str, *args, **kwargs):
         async with self._remote_operation_lock:
-            selector = args[0] if method_name not in {"insert_one", "insert_many"} else None
-            if method_name == "insert_one":
-                document = args[0]
-                document.setdefault("_id", str(uuid.uuid4()))
-                await self._prepare_insert_unlocked([document])
-            elif method_name == "insert_many":
-                documents = list(args[0])
+            inserting = method_name in {"insert_one", "insert_many"}
+            if inserting:
+                documents = [args[0]] if method_name == "insert_one" else list(args[0])
                 for document in documents:
                     document.setdefault("_id", str(uuid.uuid4()))
-                args = (documents, *args[1:])
-                await self._prepare_insert_unlocked(documents)
+                args = (documents[0] if method_name == "insert_one" else documents, *args[1:])
+                selector = {"_id": {"$in": [str(d["_id"]) for d in documents]}}
             else:
-                await self._refresh_unlocked(selector=selector)
-            try:
-                method = getattr(CollezioneDocumenti, method_name)
-                return await method(self, *args, **kwargs)
-            finally:
-                # L'RPC e' l'autorita': rifiutata o riuscita, nel processo non
-                # resta il buffer (la cache si aggiorna solo a scrittura
-                # confermata, in ``_write_through``).
-                self._rilascia()
+                selector = args[0]
+            for attempt in range(5):
+                try:
+                    if inserting:
+                        self._documents = []
+                        for start in range(0, len(documents), _MAX_EXACT_LOOKUP_VALUES):
+                            ids = [str(d["_id"]) for d in documents[start:start + _MAX_EXACT_LOOKUP_VALUES]]
+                            self._documents.extend(await self._raw_for_mutation({"_id": {"$in": ids}}))
+                        self._documents = list({str(d["_id"]): d for d in self._documents}.values())
+                    else:
+                        self._documents = await self._raw_for_mutation(selector)
+                    self._raw_originals = {str(d["_id"]): copy.deepcopy(d) for d in self._documents}
+                    if _references_any_field(selector, self._payload_fields):
+                        from app.services.pdf_drive_only import hydrate_documents
+                        self._documents = await hydrate_documents(self.name, self._documents)
+                    return await getattr(CollezioneDocumenti, method_name)(self, *args, **kwargs)
+                except ConcurrentDocumentChange:
+                    if self.database._current_transaction() is not None or attempt == 4:
+                        raise
+                    # Il selettore viene rivalutato sulla nuova versione: una
+                    # claim già assegnata non può essere restituita due volte.
+                    await asyncio.sleep(0)
+                finally:
+                    self._rilascia()
+                    self._raw_originals = {}
 
     async def insert_one(self, document, *args, **kwargs):
         return await self._mutate("insert_one", document, *args, **kwargs)
@@ -945,7 +996,7 @@ class SupabaseRuntimeDatabase(ArchivioDocumenti):
         self._session: aiohttp.ClientSession | None = None
         self._known_collections: set[str] = set()
         self._document_locations: dict[str, dict[str, str]] = {}
-        self._remote_write_lock = asyncio.Lock()
+        self._transaction_state = ContextVar(f"gc_transaction_{id(self)}", default=None)
         self.hydration_result: dict[str, Any] | None = None
         self._instance_id = str(uuid.uuid4())
         #: I job di cui questa istanza tiene il lease adesso: servono a
@@ -1472,44 +1523,70 @@ class SupabaseRuntimeDatabase(ArchivioDocumenti):
             await self._rilascia_lease(job_id)
         return rimasti
 
-    async def _write_through(
-        self,
-        collection_name: str,
-        method: str,
-        before: list[dict[str, Any]],
-        after: list[dict[str, Any]],
-    ) -> None:
-        self._known_collections.add(collection_name)
-        # Il trasferimento dell'originale può attendere Drive per molti
-        # secondi. Non deve occupare il lock delle scritture di TUTTE le
-        # collezioni, bloccando anche i cedolini e lo stato della loro coda.
-        if method not in {"delete_one", "delete_many", "find_one_and_delete"}:
-            from app.services.pdf_drive_only import externalize_documents
-            await externalize_documents(collection_name, after)
-        async with self._remote_write_lock:
-            await self._persist_mutation(collection_name, method, before, after)
-        table = self._tables.get(collection_name)
-        if isinstance(table, SupabaseTable):
-            table._cache_apply_mutation(method, before, after)
+    def _current_transaction(self):
+        state = self._transaction_state.get()
+        # create_task eredita i ContextVar, non la transazione del chiamante.
+        return state if state is not None and state["owner"] is asyncio.current_task() else None
 
-    async def _persist_mutation(
-        self,
-        collection_name: str,
-        method: str,
-        before: list[dict[str, Any]],
-        after: list[dict[str, Any]],
-    ) -> None:
-        if method in {"delete_one", "delete_many", "find_one_and_delete"}:
-            await self._delete_ids(
-                collection_name,
-                [str(document.get("_id")) for document in before],
-            )
+    @asynccontextmanager
+    async def transaction(self):
+        if self._current_transaction() is not None:
+            raise RuntimeError("Transazioni annidate non supportate")
+        state = {"owner": asyncio.current_task(), "changes": {}}
+        token = self._transaction_state.set(state)
+        try:
+            yield None
+            await self._commit_changes(list(state["changes"].values()))
+        finally:
+            self._transaction_state.reset(token)
+
+    async def _write_through(self, collection_name, method, before, after):
+        table = self._tables[collection_name]
+        deleting = method in {"delete_one", "delete_many", "find_one_and_delete"}
+        before_by_id = {str(d["_id"]): d for d in before}
+        tx = self._current_transaction()
+        changes = []
+        for doc in before if deleting else after:
+            doc_id = str(doc["_id"])
+            raw_before = table._raw_originals.get(doc_id) if doc_id in before_by_id else None
+            change = {"collection": collection_name, "id": doc_id,
+                      "before": copy.deepcopy(raw_before),
+                      "after": None if deleting else copy.deepcopy(doc)}
+            if tx is not None:
+                previous = tx["changes"].get((collection_name, doc_id))
+                if previous is not None:
+                    change["before"] = previous["before"]
+                tx["changes"][(collection_name, doc_id)] = change
+            else:
+                changes.append(change)
+        if tx is None:
+            await self._commit_changes(changes)
+
+    async def _commit_changes(self, changes):
+        if not changes:
             return
-        rifiuti = await self._upsert_documents(collection_name, after)
-        if rifiuti:
-            # Il chiamante e' ancora in attesa della mutazione: l'eccezione
-            # consegna la riga autorevole gia' presente in Supabase.
-            raise DocumentoDuplicatoRemoto(collection_name, rifiuti)
+        from app.services.pdf_drive_only import externalize_documents
+        payload = []
+        for change in changes:
+            collection = change["collection"]
+            if change["after"] is not None:
+                await externalize_documents(collection, [change["after"]])
+            locations = self._document_locations.setdefault(collection, {})
+            payload.append({**change, "collection": locations.get(change["id"], collection)})
+        # Un'unica RPC/transaction SQL: nessun chunk confermato a metà.
+        result = await self._rpc("gc_commit_documents", {"p_changes": payload})
+        if result.get("status") == "conflict":
+            raise ConcurrentDocumentChange("Documento modificato da un'altra operazione; riprovare")
+        if result.get("status") == "duplicate":
+            raise DocumentoDuplicatoRemoto(result["collection"], result["rejected"])
+        if result.get("status") != "committed":
+            raise RuntimeError("Esito della transazione Supabase non confermato")
+        for change in changes:
+            collection = change["collection"]
+            self._known_collections.add(collection)
+            before = [change["before"]] if change["before"] is not None else []
+            after = [change["after"]] if change["after"] is not None else []
+            self[collection]._cache_apply_mutation("update_one" if after else "delete_one", before, after)
 
     async def bulk_seed(
         self, collection_name: str, documents: list[dict[str, Any]],
