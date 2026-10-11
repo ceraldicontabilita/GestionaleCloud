@@ -1196,23 +1196,6 @@ async def get_cedolini_problematici() -> Dict[str, Any]:
 # ENDPOINT GENERICI (devono stare alla fine per evitare conflitti di routing)
 # ==============================================
 
-@router.get("/{cedolino_id}")
-@handle_errors
-async def get_cedolino_dettaglio(cedolino_id: str) -> Dict[str, Any]:
-    """
-    Recupera il dettaglio completo di un cedolino, incluso pdf_data per visualizzazione.
-    """
-    db = Database.get_db()
-    
-    cedolino = await db["cedolini"].find_one(
-        {"id": cedolino_id},
-        {"_id": 0}  # Include pdf_data per visualizzazione
-    )
-    
-    if not cedolino:
-        raise HTTPException(status_code=404, detail="Cedolino non trovato")
-    
-    return cedolino
 
 
 @router.get("/{cedolino_id}/download")
@@ -1668,3 +1651,22 @@ async def simulazione_f24(anno: int, mese: int) -> Dict[str, Any]:
             "parametri": {"inps_azienda_percento": INPS_AZIENDA_PERCENT,
                           "inps_dipendente_percento": INPS_DIPENDENTE_PERCENT,
                           "nota": "Simulazione: fa fede il modello F24 del consulente."}}
+
+
+@router.get("/{cedolino_id}")
+@handle_errors
+async def get_cedolino_dettaglio(cedolino_id: str) -> Dict[str, Any]:
+    """
+    Recupera il dettaglio completo di un cedolino, incluso pdf_data per visualizzazione.
+    """
+    db = Database.get_db()
+
+    cedolino = await db["cedolini"].find_one(
+        {"id": cedolino_id},
+        {"_id": 0}  # Include pdf_data per visualizzazione
+    )
+
+    if not cedolino:
+        raise HTTPException(status_code=404, detail="Cedolino non trovato")
+
+    return cedolino

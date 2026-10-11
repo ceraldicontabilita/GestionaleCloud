@@ -10,6 +10,7 @@ import base64
 from urllib.parse import urlsplit
 
 from app.menu.supabase_client import supabase
+from starlette.concurrency import run_in_threadpool
 
 CONFIG_ID = "qrcode_config"
 
@@ -121,13 +122,13 @@ async def aggiorna_menu_url(payload: MenuUrlUpdate, username: str = Depends(veri
     url = normalizza_menu_url(payload.url)
     adesso = datetime.now(UTC).isoformat()
     if _get_config_row():
-        supabase.table("menu_qrcode_config").update(
+        (await run_in_threadpool(supabase.table("menu_qrcode_config").update(
             {"menu_url": url, "updated_at": adesso, "updated_by": username}
-        ).eq("id", CONFIG_ID).execute()
+        ).eq("id", CONFIG_ID).execute))
     else:
-        supabase.table("menu_qrcode_config").insert(
+        (await run_in_threadpool(supabase.table("menu_qrcode_config").insert(
             {"id": CONFIG_ID, "menu_url": url, "updated_at": adesso, "updated_by": username}
-        ).execute()
+        ).execute))
     return {"url": url, "updated_at": adesso, "updated_by": username}
 
 
@@ -139,7 +140,7 @@ async def qr_prodotto(codice: str, canale: Optional[str] = None, _username: str 
 
     if not codice_valido(codice):
         raise HTTPException(status_code=400, detail="Codice prodotto non valido")
-    righe = supabase.table("menu_products").select("id,codice_prodotto").eq("codice_prodotto", codice).limit(1).execute().data
+    righe = (await run_in_threadpool(supabase.table("menu_products").select("id,codice_prodotto").eq("codice_prodotto", codice).limit(1).execute)).data
     if not righe:
         raise HTTPException(status_code=404, detail="Prodotto non trovato")
     try:

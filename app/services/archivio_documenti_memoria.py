@@ -13,6 +13,7 @@ import copy
 import re
 import uuid
 from contextlib import asynccontextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
 from enum import IntEnum
@@ -1166,8 +1167,20 @@ class ArchivioDocumenti:
         self.loading = False
         self._tables: dict[str, CollezioneDocumenti] = {}
         self._transaction_lock = asyncio.Lock()
+        self._memory_transaction = ContextVar(f"memory_transaction_{id(self)}", default=None)
 
     def __getitem__(self, name: str) -> CollezioneDocumenti:
+        state = self._memory_transaction.get()
+        if state is not None and state["owner"] is asyncio.current_task():
+            if name not in state["tables"]:
+                original = self._tables.get(name)
+                table = CollezioneDocumenti(self, name)
+                if original is not None:
+                    table._documents = _clone(original._documents)
+                    table._indexes = _clone(original._indexes)
+                state["before"][name] = _clone(original._documents) if original else None
+                state["tables"][name] = table
+            return state["tables"][name]
         return self._tables.setdefault(name, CollezioneDocumenti(self, name))
 
     def __getattr__(self, name: str) -> CollezioneDocumenti:
@@ -1180,8 +1193,25 @@ class ArchivioDocumenti:
 
     @asynccontextmanager
     async def transaction(self):
+        current = self._memory_transaction.get()
+        if current is not None and current["owner"] is asyncio.current_task():
+            raise RuntimeError("Transazioni annidate non supportate")
         async with self._transaction_lock:
-            yield None
+            state = {"owner": asyncio.current_task(), "tables": {}, "before": {}}
+            token = self._memory_transaction.set(state)
+            try:
+                yield None
+                # Conferma senza await: nessun altro task vede uno stato a metà.
+                for name, before in state["before"].items():
+                    original = self._tables.get(name)
+                    if (original._documents if original else None) != before:
+                        raise RuntimeError("Archivio modificato durante la transazione")
+                for name, table in state["tables"].items():
+                    original = self._tables.setdefault(name, CollezioneDocumenti(self, name))
+                    original._documents = table._documents
+                    original._indexes = table._indexes
+            finally:
+                self._memory_transaction.reset(token)
 
     def close(self) -> None:
         for table in self._tables.values():

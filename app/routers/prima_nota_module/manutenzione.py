@@ -899,6 +899,8 @@ async def ripristina_provvisori_metodo_errato(
         "riconciliata con estratto conto/PayPal/carta. Con true, TUTTE le "
         "uscite fattura banca auto MAI riconciliate tornano provvisorie.")),
     _admin: Dict = Depends(get_current_admin_user),
+    fornitore_id: Optional[str] = None,
+    dal: Optional[str] = None,
 ) -> Dict:
     """Richiesta utente 17/07/2026: "abbiamo fornitori che si pagano per
     cassa e li ha messi in banca — tutti quelli devi mettere nei provvisori".
@@ -916,6 +918,17 @@ async def ripristina_provvisori_metodo_errato(
 
     db = Database.get_db()
 
+    piva_limitata = None
+    if fornitore_id is not None:
+        from app.routers.suppliers_module.base import _filtro_fornitore, _normalized_supplier_key
+        fornitore = await db["fornitori"].find_one(_filtro_fornitore(fornitore_id))
+        if not fornitore:
+            raise HTTPException(status_code=404, detail="Fornitore non trovato")
+        piva_limitata = _normalized_supplier_key(
+            fornitore.get("partita_iva") or fornitore.get("piva")
+            or fornitore.get("vat_number") or fornitore.get("vat"))
+        if not piva_limitata:
+            return {"corretti": 0, "banca": [], "cassa": []}
     metodo_per_piva, _esclusi = await mappa_fornitori_per_piva(db)
 
     report = {"banca": [], "cassa": []}
@@ -953,8 +966,16 @@ async def ripristina_provvisori_metodo_errato(
                 {"_id": 0, "supplier_vat": 1, "cedente_piva": 1,
                  "invoice_number": 1, "supplier_name": 1,
                  "total_amount": 1, "importo_totale": 1,
-                 "registrata_auto_da_metodo_fornitore": 1},
+                 "registrata_auto_da_metodo_fornitore": 1, "invoice_date": 1},
             )
+            if fornitore_id is not None:
+                # Il salvataggio di una scheda non modifica altri fornitori,
+                # orfani o fatture anteriori alla decorrenza scelta.
+                if not fattura or _normalized_supplier_key(
+                        fattura.get("supplier_vat") or fattura.get("cedente_piva")) != piva_limitata:
+                    continue
+                if dal and str(fattura.get("invoice_date") or "")[:10] < dal:
+                    continue
             if not fattura:
                 # Movimento ORFANO: la fattura collegata non esiste più in
                 # archivio — un pagamento automatico senza documento non ha

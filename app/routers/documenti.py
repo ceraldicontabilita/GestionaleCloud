@@ -11,6 +11,9 @@ from typing import Dict, Any, Optional, List
 from datetime import datetime, timezone
 from pathlib import Path
 import asyncio
+from googleapiclient.errors import HttpError
+from google.auth.exceptions import TransportError
+from httplib2 import HttpLib2Error
 import re
 from decimal import Decimal, InvalidOperation
 import base64
@@ -453,7 +456,7 @@ async def lista_atti_amministrativi(
                 "payment_evidence_count": 0,
                 "areas": {key: sorted(value) for key, value in _ADMINISTRATIVE_CATEGORIES.items()},
             }
-    except (RuntimeError, ValueError, ImportError) as exc:
+    except (RuntimeError, ValueError, ImportError, HttpError, TransportError, HttpLib2Error, OSError) as exc:
         logger.warning("Indice Drive atti amministrativi non disponibile: %s", exc)
 
     categories = (

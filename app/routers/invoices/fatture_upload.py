@@ -1040,10 +1040,8 @@ async def auto_registra_prima_nota(db, invoice: Dict[str, Any], metodo_pagamento
     )
     destinazione = "banca"
 
-    # NB: registra_pagamento_fattura scrive fuori dalla transazione
-    # dell'import (non accetta session); è idempotente per fattura, quindi
-    # un eventuale abort dell'import lascia al più un movimento riferito a
-    # una fattura che verrà reimportata subito dopo con lo stesso id.
+    # Il runtime lega la transazione al task corrente: anche il writer di
+    # Prima Nota partecipa alla conferma atomica dell'importazione.
     from app.routers.prima_nota_module.sync import registra_pagamento_fattura
     esito = await registra_pagamento_fattura(
         invoice,
@@ -1335,8 +1333,7 @@ async def process_fattura_to_db(db, parsed: Dict[str, Any], filename: str = "upl
     un'unica transazione repository: se un passaggio fallisce a metà, tutto viene
     annullato invece di lasciare stato incoerente (es. fornitore creato ma
     fattura mai salvata, o prima nota orfana senza il link sulla fattura).
-    Il client di test in sandbox (archivio del runtime effimero) non supporta le sessioni: in
-    quel caso si procede senza transazione, come prima.
+    Anche l'archivio effimero dei test ripristina lo stato in caso di errore.
 
     Args:
         db: Database connection

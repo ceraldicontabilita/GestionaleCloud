@@ -1,4 +1,5 @@
 from fastapi import APIRouter, HTTPException
+from starlette.concurrency import run_in_threadpool
 from typing import List, Optional
 from decimal import Decimal, InvalidOperation
 
@@ -13,14 +14,14 @@ from app.menu.models.menu_models import (
 router = APIRouter(prefix="/api/menu", tags=["Menu"])
 
 
-def _crea_riga(tabella: str, row: dict) -> int:
+async def _crea_riga(tabella: str, row: dict) -> int:
     """Crea una riga in ``menu_*`` lasciando l'``id`` al database (CLAUDE.md §5).
 
     Stesso percorso del ponte Lotti (``inserisci_con_id_del_database``): un solo
     modo di assegnare gli id, cosi' admin del Menu e Lotti non si contendono lo
     stesso numero. L'identity e' quella della migrazione
     ``20261007051337_menu_id_dal_database``; un rifiuto del database risale."""
-    return inserisci_con_id_del_database(supabase, tabella, row)
+    return await run_in_threadpool(inserisci_con_id_del_database, supabase, tabella, row)
 
 
 # ================== Mappatura colonne DB (snake_case) <-> API (camelCase) ==================
@@ -138,9 +139,9 @@ def _prodotti_pubblici(rows) -> list:
 
 
 async def _fetch_all(*, catalogo_carta=False, catalogo_bb=False):
-    categories = [cat_out(r) for r in supabase.table("menu_categories").select("*").order("id").execute().data]
-    subcategories = [subcat_out(r) for r in supabase.table("menu_subcategories").select("*").order("id").execute().data]
-    righe = supabase.table("menu_products").select("*").order("id").execute().data
+    categories = [cat_out(r) for r in (await run_in_threadpool(supabase.table("menu_categories").select("*").order("id").execute)).data]
+    subcategories = [subcat_out(r) for r in (await run_in_threadpool(supabase.table("menu_subcategories").select("*").order("id").execute)).data]
+    righe = (await run_in_threadpool(supabase.table("menu_products").select("*").order("id").execute)).data
     if catalogo_bb:
         # La spunta arriva dal ponte Lotti: Menu non rilegge le ricette.
         products = [prod_out(r) for r in righe if r.get("menu_bb") is not False and (
@@ -194,7 +195,7 @@ async def get_full_menu():
     try:
         categories, subcategories, products = await _fetch_all()
         categories = _build_hierarchy(categories, subcategories, products)
-        allergens = [allergen_out(r) for r in supabase.table("menu_allergens").select("*").order("id").execute().data]
+        allergens = [allergen_out(r) for r in (await run_in_threadpool(supabase.table("menu_allergens").select("*").order("id").execute)).data]
 
         return {
             "categories": categories,
@@ -231,13 +232,13 @@ async def get_categories():
 @router.get("/categories/{category_id}")
 async def get_category(category_id: int):
     """Get a specific category with its subcategories and products"""
-    res = supabase.table("menu_categories").select("*").eq("id", category_id).limit(1).execute()
+    res = (await run_in_threadpool(supabase.table("menu_categories").select("*").eq("id", category_id).limit(1).execute))
     if not res.data:
         raise HTTPException(status_code=404, detail="Category not found")
     category = cat_out(res.data[0])
 
-    subcategories = [subcat_out(r) for r in supabase.table("menu_subcategories").select("*").eq("category_id", category_id).order("id").execute().data]
-    products = _prodotti_pubblici(supabase.table("menu_products").select("*").eq("category_id", category_id).order("id").execute().data)
+    subcategories = [subcat_out(r) for r in (await run_in_threadpool(supabase.table("menu_subcategories").select("*").eq("category_id", category_id).order("id").execute)).data]
+    products = _prodotti_pubblici((await run_in_threadpool(supabase.table("menu_products").select("*").eq("category_id", category_id).order("id").execute)).data)
 
     # Come nel menu completo: le sezioni senza prodotti visibili non si mostrano.
     category['subcategories'] = _sottocategorie_con_prodotti(subcategories, products)
@@ -247,12 +248,12 @@ async def get_category(category_id: int):
 @router.get("/subcategories/{subcategory_id}")
 async def get_subcategory(subcategory_id: int):
     """Get a specific subcategory with its products"""
-    res = supabase.table("menu_subcategories").select("*").eq("id", subcategory_id).limit(1).execute()
+    res = (await run_in_threadpool(supabase.table("menu_subcategories").select("*").eq("id", subcategory_id).limit(1).execute))
     if not res.data:
         raise HTTPException(status_code=404, detail="Subcategory not found")
     subcategory = subcat_out(res.data[0])
 
-    products = _prodotti_pubblici(supabase.table("menu_products").select("*").eq("subcategory_id", subcategory_id).order("id").execute().data)
+    products = _prodotti_pubblici((await run_in_threadpool(supabase.table("menu_products").select("*").eq("subcategory_id", subcategory_id).order("id").execute)).data)
 
     subcategory['items'] = products
     return subcategory
@@ -261,7 +262,7 @@ async def get_subcategory(subcategory_id: int):
 @router.get("/products/{product_id}")
 async def get_product(product_id: int):
     """Get a specific product"""
-    res = supabase.table("menu_products").select("*").eq("id", product_id).limit(1).execute()
+    res = (await run_in_threadpool(supabase.table("menu_products").select("*").eq("id", product_id).limit(1).execute))
     righe = res.data
     if not righe or not _pubblicabile(righe[0]):
         raise HTTPException(status_code=404, detail="Product not found")
@@ -271,7 +272,7 @@ async def get_product(product_id: int):
 @router.get("/allergens", response_model=List[Allergen])
 async def get_allergens():
     """Get all allergens"""
-    rows = supabase.table("menu_allergens").select("*").order("id").execute().data
+    rows = (await run_in_threadpool(supabase.table("menu_allergens").select("*").order("id").execute)).data
     return [allergen_out(r) for r in rows]
 
 
@@ -283,11 +284,11 @@ async def search_products(q: str, limit: int = 20):
 
     # Ricerca case-insensitive su name e name_it
     res = (
-        supabase.table("menu_products")
+        (await run_in_threadpool(supabase.table("menu_products")
         .select("*")
         .or_(f"name.ilike.%{q}%,name_it.ilike.%{q}%")
         .limit(limit)
-        .execute()
+        .execute))
     )
     products = _prodotti_pubblici(res.data)
     return {"results": products, "count": len(products)}
@@ -303,7 +304,7 @@ from fastapi import Depends
 @router.post("/admin/categories")
 async def create_category(category: CategoryCreate, username: str = Depends(verify_token)):
     """Create a new category"""
-    new_id = _crea_riga("menu_categories", cat_in(category.model_dump()))
+    new_id = await _crea_riga("menu_categories", cat_in(category.model_dump()))
     return {"success": True, "id": new_id, "message": "Category created"}
 
 
@@ -322,7 +323,7 @@ async def update_category(category_id: int, category: CategoryUpdate, username: 
     if "image" in data:
         update_data["image"] = data["image"]
 
-    result = supabase.table("menu_categories").update(update_data).eq("id", category_id).execute()
+    result = (await run_in_threadpool(supabase.table("menu_categories").update(update_data).eq("id", category_id).execute))
     if not result.data:
         raise HTTPException(status_code=404, detail="Category not found")
 
@@ -333,7 +334,7 @@ async def update_category(category_id: int, category: CategoryUpdate, username: 
 async def delete_category(category_id: int, username: str = Depends(verify_token)):
     """Delete a category and all its subcategories and products"""
     # I prodotti e le sottocategorie vengono cancellati in automatico (ON DELETE CASCADE)
-    result = supabase.table("menu_categories").delete().eq("id", category_id).execute()
+    result = (await run_in_threadpool(supabase.table("menu_categories").delete().eq("id", category_id).execute))
 
     if not result.data:
         raise HTTPException(status_code=404, detail="Category not found")
@@ -345,11 +346,11 @@ async def delete_category(category_id: int, username: str = Depends(verify_token
 @router.post("/admin/subcategories")
 async def create_subcategory(subcategory: SubcategoryCreate, username: str = Depends(verify_token)):
     """Create a new subcategory"""
-    category = supabase.table("menu_categories").select("id").eq("id", subcategory.category_id).limit(1).execute()
+    category = (await run_in_threadpool(supabase.table("menu_categories").select("id").eq("id", subcategory.category_id).limit(1).execute))
     if not category.data:
         raise HTTPException(status_code=404, detail="Category not found")
 
-    new_id = _crea_riga("menu_subcategories", subcat_in(subcategory.model_dump()))
+    new_id = await _crea_riga("menu_subcategories", subcat_in(subcategory.model_dump()))
     return {"success": True, "id": new_id, "message": "Subcategory created"}
 
 
@@ -368,7 +369,7 @@ async def update_subcategory(subcategory_id: int, subcategory: SubcategoryUpdate
     if "image" in data:
         update_data["image"] = data["image"]
 
-    result = supabase.table("menu_subcategories").update(update_data).eq("id", subcategory_id).execute()
+    result = (await run_in_threadpool(supabase.table("menu_subcategories").update(update_data).eq("id", subcategory_id).execute))
     if not result.data:
         raise HTTPException(status_code=404, detail="Subcategory not found")
 
@@ -379,7 +380,7 @@ async def update_subcategory(subcategory_id: int, subcategory: SubcategoryUpdate
 async def delete_subcategory(subcategory_id: int, username: str = Depends(verify_token)):
     """Delete a subcategory and all its products"""
     # I prodotti vengono cancellati in automatico (ON DELETE CASCADE)
-    result = supabase.table("menu_subcategories").delete().eq("id", subcategory_id).execute()
+    result = (await run_in_threadpool(supabase.table("menu_subcategories").delete().eq("id", subcategory_id).execute))
 
     if not result.data:
         raise HTTPException(status_code=404, detail="Subcategory not found")
@@ -391,11 +392,11 @@ async def delete_subcategory(subcategory_id: int, username: str = Depends(verify
 @router.post("/admin/products")
 async def create_product(product: ProductCreate, username: str = Depends(verify_token)):
     """Create a new product"""
-    subcategory = supabase.table("menu_subcategories").select("id").eq("id", product.subcategory_id).limit(1).execute()
+    subcategory = (await run_in_threadpool(supabase.table("menu_subcategories").select("id").eq("id", product.subcategory_id).limit(1).execute))
     if not subcategory.data:
         raise HTTPException(status_code=404, detail="Subcategory not found")
 
-    new_id = _crea_riga("menu_products", prod_in(product.model_dump()))
+    new_id = await _crea_riga("menu_products", prod_in(product.model_dump()))
     return {"success": True, "id": new_id, "message": "Product created"}
 
 
@@ -412,7 +413,7 @@ MESSAGGIO_RIGA_DI_LOTTI = (
 
 async def _verifica_prodotto_modificabile(product_id: int):
     """Lo stesso proprietario vale per modifica e cancellazione."""
-    esistente = supabase.table("menu_products").select("id,origine").eq("id", product_id).limit(1).execute()
+    esistente = (await run_in_threadpool(supabase.table("menu_products").select("id,origine").eq("id", product_id).limit(1).execute))
     if not esistente.data:
         raise HTTPException(status_code=404, detail="Product not found")
     if (esistente.data[0].get("origine") or "") == ORIGINE_LOTTI:
@@ -438,7 +439,7 @@ async def update_product(product_id: int, product: ProductUpdate, username: str 
         # 0 toglie il prezzo al banco; un valore non valido e' un errore, mai un ripiego
         update_data["prezzo_banco"] = prezzo_banco_valido(data["prezzo_banco"]) or None
 
-    result = supabase.table("menu_products").update(update_data).eq("id", product_id).execute()
+    result = (await run_in_threadpool(supabase.table("menu_products").update(update_data).eq("id", product_id).execute))
     if not result.data:
         raise HTTPException(status_code=404, detail="Product not found")
 
@@ -449,7 +450,7 @@ async def update_product(product_id: int, product: ProductUpdate, username: str 
 async def delete_product(product_id: int, username: str = Depends(verify_token)):
     """Delete a product"""
     await _verifica_prodotto_modificabile(product_id)
-    result = supabase.table("menu_products").delete().eq("id", product_id).execute()
+    result = (await run_in_threadpool(supabase.table("menu_products").delete().eq("id", product_id).execute))
 
     if not result.data:
         raise HTTPException(status_code=404, detail="Product not found")
@@ -460,7 +461,7 @@ async def delete_product(product_id: int, username: str = Depends(verify_token))
 @router.put("/admin/products/{product_id}/visibilita")
 async def imposta_visibilita_prodotto(product_id: int, body: ProductVisibility, username: str = Depends(verify_token)):
     """X reversibile: nessun DELETE. Le ricette restano possedute da Lotti."""
-    righe = supabase.table("menu_products").select("id,origine,lotti_ref").eq("id", product_id).limit(1).execute().data or []
+    righe = (await run_in_threadpool(supabase.table("menu_products").select("id,origine,lotti_ref").eq("id", product_id).limit(1).execute)).data or []
     if not righe:
         raise HTTPException(404, "Prodotto non trovato")
     riga = righe[0]
@@ -480,10 +481,10 @@ async def imposta_visibilita_prodotto(product_id: int, body: ProductVisibility, 
 @router.get("/admin/products/all")
 async def get_all_products_flat(username: str = Depends(verify_token)):
     """Get all products in a flat list for admin management"""
-    products = [prod_out(r) for r in supabase.table("menu_products").select("*").order("id").execute().data]
+    products = [prod_out(r) for r in (await run_in_threadpool(supabase.table("menu_products").select("*").order("id").execute)).data]
 
-    categories = {r['id']: r['name_it'] for r in supabase.table("menu_categories").select("id,name_it").execute().data}
-    subcategories = {r['id']: r['name_it'] for r in supabase.table("menu_subcategories").select("id,name_it").execute().data}
+    categories = {r['id']: r['name_it'] for r in (await run_in_threadpool(supabase.table("menu_categories").select("id,name_it").execute)).data}
+    subcategories = {r['id']: r['name_it'] for r in (await run_in_threadpool(supabase.table("menu_subcategories").select("id,name_it").execute)).data}
 
     for product in products:
         product['categoryName'] = categories.get(product.get('category_id'), 'N/A')

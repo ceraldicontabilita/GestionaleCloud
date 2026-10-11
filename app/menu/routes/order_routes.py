@@ -9,6 +9,7 @@ from app.menu.models.order_models import (
 )
 
 from app.menu.routes.qrcode_routes import verify_token
+from starlette.concurrency import run_in_threadpool
 
 router = APIRouter(prefix="/api/orders", tags=["Orders"])
 
@@ -53,7 +54,7 @@ async def create_order(payload: OrderCreate, authorization: str = Header(None)):
     sala_nome = None
     totale_coperto = 0.0
     if payload.sala_id:
-        sala_res = supabase.table("menu_sale").select("*").eq("id", payload.sala_id).limit(1).execute()
+        sala_res = (await run_in_threadpool(supabase.table("menu_sale").select("*").eq("id", payload.sala_id).limit(1).execute))
         if not sala_res.data:
             raise HTTPException(status_code=404, detail="Sala non trovata")
         sala = sala_res.data[0]
@@ -91,14 +92,14 @@ async def create_order(payload: OrderCreate, authorization: str = Header(None)):
     doc = order.dict()
     doc['items'] = [i if isinstance(i, dict) else i.dict() for i in order.items]
     row = order_in(doc)
-    supabase.table("menu_orders").insert(row).execute()
+    (await run_in_threadpool(supabase.table("menu_orders").insert(row).execute))
     return order_out(row)
 
 
 @router.get("/{order_id}", response_model=Order)
 async def get_order(order_id: str):
     """Stato di un singolo ordine (usato dal cliente per seguire il proprio ordine)."""
-    res = supabase.table("menu_orders").select("*").eq("id", order_id).limit(1).execute()
+    res = (await run_in_threadpool(supabase.table("menu_orders").select("*").eq("id", order_id).limit(1).execute))
     if not res.data:
         raise HTTPException(status_code=404, detail="Ordine non trovato")
     return order_out(res.data[0])
@@ -117,7 +118,7 @@ async def list_orders(status: Optional[str] = None, active_only: bool = False, u
     elif active_only:
         query = query.not_.in_("status", ["completato", "annullato"])
 
-    res = query.order("created_at").limit(500).execute()
+    res = (await run_in_threadpool(query.order("created_at").limit(500).execute))
     return [order_out(r) for r in res.data]
 
 
@@ -126,10 +127,10 @@ async def update_order_status(order_id: str, payload: OrderStatusUpdate, usernam
     if payload.status not in ORDER_STATUSES:
         raise HTTPException(status_code=400, detail="Stato non valido")
 
-    result = supabase.table("menu_orders").update({
+    result = (await run_in_threadpool(supabase.table("menu_orders").update({
         "status": payload.status,
         "updated_at": datetime.utcnow().isoformat()
-    }).eq("id", order_id).execute()
+    }).eq("id", order_id).execute))
 
     if not result.data:
         raise HTTPException(status_code=404, detail="Ordine non trovato")
@@ -138,11 +139,11 @@ async def update_order_status(order_id: str, payload: OrderStatusUpdate, usernam
 
 @router.patch("/{order_id}/payment", response_model=Order)
 async def update_order_payment(order_id: str, payload: OrderPaymentUpdate, username: str = Depends(verify_token)):
-    result = supabase.table("menu_orders").update({
+    result = (await run_in_threadpool(supabase.table("menu_orders").update({
         "paid": payload.paid,
         "payment_method": payload.payment_method,
         "updated_at": datetime.utcnow().isoformat()
-    }).eq("id", order_id).execute()
+    }).eq("id", order_id).execute))
 
     if not result.data:
         raise HTTPException(status_code=404, detail="Ordine non trovato")
@@ -151,7 +152,7 @@ async def update_order_payment(order_id: str, payload: OrderPaymentUpdate, usern
 
 @router.delete("/{order_id}")
 async def delete_order(order_id: str, username: str = Depends(verify_token)):
-    result = supabase.table("menu_orders").delete().eq("id", order_id).execute()
+    result = (await run_in_threadpool(supabase.table("menu_orders").delete().eq("id", order_id).execute))
     if not result.data:
         raise HTTPException(status_code=404, detail="Ordine non trovato")
     return {"success": True}

@@ -20,7 +20,7 @@ from app.menu.routes import allergeni_routes as ar
 
 
 def _run(coro):
-    return asyncio.run(coro)
+    return asyncio.run(coro) if asyncio.iscoroutine(coro) else coro
 
 
 class _Res:

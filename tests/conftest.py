@@ -8,12 +8,43 @@ Fornisce fixture per:
 import pytest
 import sys
 import os
+import socket
 from unittest.mock import AsyncMock, MagicMock, patch
 from datetime import datetime, timezone
 
 # Il mock documentale e' una scelta esplicita della suite. Il runtime Lotti
 # senza Supabase deve invece fallire chiuso e non perdere dati al riavvio.
-os.environ.setdefault("LOTTI_TEST_MEMORY", "1")
+# La stessa bonifica del comando dedicato vale anche con `pytest` diretto.
+from scripts.collaudo_isolato import ambiente_isolato
+
+_isolated_environment = ambiente_isolato(os.environ)
+os.environ.clear()
+os.environ.update(_isolated_environment)
+os.environ["LOTTI_TEST_MEMORY"] = "1"
+os.environ["PYTHON_DOTENV_DISABLED"] = "1"
+
+
+def pytest_configure(config):
+    """La suite può usare ASGI e database locali, mai servizi reali."""
+    original_connect = socket.socket.connect
+    original_connect_ex = socket.socket.connect_ex
+
+    def local_only(address):
+        if isinstance(address, tuple) and address[0] not in {"localhost", "127.0.0.1", "::1"}:
+            raise RuntimeError(f"Test isolato: connessione esterna vietata verso {address[0]}")
+
+    def connect(sock, address):
+        local_only(address)
+        return original_connect(sock, address)
+
+    def connect_ex(sock, address):
+        local_only(address)
+        return original_connect_ex(sock, address)
+
+    guard = pytest.MonkeyPatch()
+    guard.setattr(socket.socket, "connect", connect)
+    guard.setattr(socket.socket, "connect_ex", connect_ex)
+    config.add_cleanup(guard.undo)
 # Il libro giornale e' spento in produzione (CLAUDE.md §24, titolare 07/10/2026):
 # i test del motore lo accendono per collaudarne la logica; il difetto spento
 # e' verificato a parte in tests/contabilita/test_libro_giornale_spento.py.

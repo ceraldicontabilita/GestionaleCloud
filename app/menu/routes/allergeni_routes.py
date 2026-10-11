@@ -89,7 +89,7 @@ def _nomi(tabella: str) -> dict:
 
 
 @router.get("/mancanti")
-async def prodotti_senza_allergeni(_username: str = Depends(verify_token)):
+def prodotti_senza_allergeni(_username: str = Depends(verify_token)):
     """Prodotti che devono dichiarare gli allergeni e non lo fanno.
 
     Restituisce anche categoria e sottocategoria di ogni prodotto, cosi' la
@@ -134,7 +134,7 @@ async def prodotti_senza_allergeni(_username: str = Depends(verify_token)):
 
 
 @router.get("/esclusioni")
-async def elenco_esclusioni(_username: str = Depends(verify_token)):
+def elenco_esclusioni(_username: str = Depends(verify_token)):
     """Le esclusioni attive, con il nome dell'entita' esclusa: devono restare
     visibili e revocabili, non essere una scelta invisibile."""
     esclusioni = _leggi_esclusioni()
@@ -158,7 +158,7 @@ class NuovaEsclusione(BaseModel):
 
 
 @router.post("/esclusioni")
-async def crea_esclusione(payload: NuovaEsclusione, username: str = Depends(verify_token)):
+def crea_esclusione(payload: NuovaEsclusione, username: str = Depends(verify_token)):
     """Segna che un prodotto (o un'intera categoria/sottocategoria) non
     richiede la dichiarazione allergeni. Il motivo e' facoltativo."""
     tabella = _TABELLA_PER_TIPO[payload.tipo]
@@ -202,7 +202,7 @@ async def crea_esclusione(payload: NuovaEsclusione, username: str = Depends(veri
 
 
 @router.delete("/esclusioni/{tipo}/{riferimento_id}")
-async def revoca_esclusione(tipo: Tipo, riferimento_id: int, _username: str = Depends(verify_token)):
+def revoca_esclusione(tipo: Tipo, riferimento_id: int, _username: str = Depends(verify_token)):
     """Ripristino: il prodotto (o il reparto) torna nell'elenco di chi deve
     dichiarare gli allergeni."""
     res = (

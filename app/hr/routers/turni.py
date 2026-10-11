@@ -117,24 +117,6 @@ async def miei(identity: Dict[str, Any] = Depends(get_identity)):
     return {"settimana_inizio": doc["settimana_inizio"], "stato": doc["stato"], "giorni": giorni}
 
 
-@router.get("/{settimana_inizio}", summary="Dettaglio settimana")
-async def dettaglio(settimana_inizio: str, identity: Dict[str, Any] = Depends(get_identity)):
-    db = Database.get_db()
-    doc = await db[COLL].find_one({"id": _sid(settimana_inizio)}, {"_id": 0})
-    if not doc:
-        raise HTTPException(404, "Settimana non trovata")
-    if identity.get("role") in ("admin", "responsabile_turni"):
-        return doc
-    # dipendente: vede la griglia completa di tutti, ma solo se pubblicata
-    # e senza le note gestionali (avvisi/metadati interni)
-    if doc["stato"] != "pubblicato":
-        raise HTTPException(403, "Turni non ancora pubblicati")
-    return {
-        "settimana_inizio": doc["settimana_inizio"],
-        "stato": doc["stato"],
-        "giorni": doc["giorni"],
-        "totali": doc.get("totali", {}),
-    }
 
 
 @router.put("/{settimana_inizio}/cella", summary="Modifica una cella (responsabile/admin) + rivalida")
@@ -395,3 +377,23 @@ async def salva_preferenza(payload: Dict[str, Any] = Body(...),
     except Exception:
         logger.warning("Notifica preferenza riposo non inviata")
     return {"ok": True, "settimana": settimana, "giorno": giorno}
+
+
+@router.get("/{settimana_inizio}", summary="Dettaglio settimana")
+async def dettaglio(settimana_inizio: str, identity: Dict[str, Any] = Depends(get_identity)):
+    db = Database.get_db()
+    doc = await db[COLL].find_one({"id": _sid(settimana_inizio)}, {"_id": 0})
+    if not doc:
+        raise HTTPException(404, "Settimana non trovata")
+    if identity.get("role") in ("admin", "responsabile_turni"):
+        return doc
+    # dipendente: vede la griglia completa di tutti, ma solo se pubblicata
+    # e senza le note gestionali (avvisi/metadati interni)
+    if doc["stato"] != "pubblicato":
+        raise HTTPException(403, "Turni non ancora pubblicati")
+    return {
+        "settimana_inizio": doc["settimana_inizio"],
+        "stato": doc["stato"],
+        "giorni": doc["giorni"],
+        "totali": doc.get("totali", {}),
+    }
