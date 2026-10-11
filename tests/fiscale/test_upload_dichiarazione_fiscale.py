@@ -6,6 +6,7 @@ stesso motore di archiviazione (FiscalDocumentIngestionService), un solo
 sistema per funzione.
 """
 import asyncio
+import hashlib
 from io import BytesIO
 
 from fastapi import UploadFile
@@ -47,7 +48,7 @@ def test_upload_auto_dichiarazione_fiscale_usa_il_motore_canonico(monkeypatch):
 
     chiamata = {}
 
-    async def _fake_ingest(self, *, content, filename, source):
+    async def _fake_ingest(self, *, content, filename, source, source_metadata=None):
         chiamata["content"] = content
         chiamata["filename"] = filename
         chiamata["source"] = source
@@ -72,7 +73,7 @@ def test_upload_auto_dichiarazione_fiscale_duplicata_non_reimporta(monkeypatch):
     monkeypatch.setattr(documenti_mod, "detect_document_type", lambda *_: "dichiarazione_fiscale")
     monkeypatch.setattr(documenti_mod.Database, "get_db", staticmethod(lambda: object()))
 
-    async def _fake_ingest(self, *, content, filename, source):
+    async def _fake_ingest(self, *, content, filename, source, source_metadata=None):
         return {"status": "duplicate", "document_id": "doc-1", "version_id": "v-1"}
 
     from app.services.fiscal_document_ingestion import FiscalDocumentIngestionService
@@ -91,7 +92,7 @@ def test_upload_auto_dichiarazione_fiscale_duplicata_non_reimporta(monkeypatch):
 # `lipe_periodi` (l'unica fonte del confronto col commercialista) restava vuota.
 
 def _ingest_finto(stato):
-    async def _fake_ingest(self, *, content, filename, source):
+    async def _fake_ingest(self, *, content, filename, source, source_metadata=None):
         return {"status": stato, "document_id": "doc-1", "version_id": "v-1"}
     return _fake_ingest
 
@@ -118,7 +119,8 @@ def test_una_lipe_caricata_deposita_i_periodi(monkeypatch):
     chiamate = _deposito_registrato(monkeypatch)
 
     upload = UploadFile(filename="LIPE_2024_Itrim_358048737.pdf", file=BytesIO(b"%PDF-1.4"))
-    upload.source_context = {"channel": "drive_cartella_unica", "drive_file_id": "drv-1"}
+    upload.source_context = {"channel": "drive_cartella_unica", "drive_file_id": "drv-1",
+                             "source_sha256": hashlib.sha256(b"%PDF-1.4").hexdigest()}
     result = asyncio.run(documenti_mod.upload_documento_automatico(file=upload))
 
     assert chiamate == [{"nome_file": "LIPE_2024_Itrim_358048737.pdf",

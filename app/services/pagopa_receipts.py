@@ -1106,6 +1106,7 @@ async def aggancia_ricevute_in_attesa(db, verbale: dict[str, Any]) -> dict[str, 
 async def import_receipt(
     db, *, content: bytes, filename: str, company_id: str,
     source: str = "upload_manuale", overrides: dict[str, Any] | None = None,
+    source_metadata: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     # Mantiene compatibilita con parser/plugin preesistenti che espongono la
     # vecchia firma a un solo argomento, senza rinunciare al filename quando
@@ -1170,6 +1171,7 @@ async def import_receipt(
     now = datetime.now(timezone.utc).isoformat()
     receipt = {
         "id": receipt_id, "filename": filename, "content_type": "application/pdf",
+        "source_context": source_metadata or {},
         "size": len(content), "pdf_data": base64.b64encode(content).decode("utf-8"),
         "pdf_hash": pdf_hash, "importo": float(amount),
         "operation_amount": float(amount),

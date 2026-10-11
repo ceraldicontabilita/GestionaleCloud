@@ -1206,52 +1206,34 @@ async def download_cedolino_pdf(cedolino_id: str):
     import io
 
     db = Database.get_db()
-    doc = await db["cedolini"].find_one({"id": cedolino_id}, {"_id": 0, "pdf_data": 1, "drive_file_id": 1, "pdf_filename": 1, "dipendente": 1, "mese": 1, "anno": 1})
-    
-    pdf_data = doc.get("pdf_data") if doc else None
-    filename = doc.get("pdf_filename") if doc else None
-    
-    # Fallback 1: Cerca in cedolini_email_attachments
-    if not pdf_data and doc:
-        dipendente = doc.get("dipendente", "")
-        mese = doc.get("mese")
-        anno = doc.get("anno")
-        
-        # Cerca per dipendente e periodo
-        attachment = await db["cedolini_email_attachments"].find_one({
-            "$or": [
-                {"filename": {"$regex": dipendente, "$options": "i"}},
-                {"$and": [{"mese": mese}, {"anno": anno}]}
-            ],
-            "associato": False
-        })
-        
-        if attachment and attachment.get("pdf_data"):
-            pdf_data = attachment["pdf_data"]
-            filename = attachment.get("filename")
-            # Copia il PDF nel cedolino
-            await db["cedolini"].update_one(
-                {"id": cedolino_id},
-                {"$set": {"pdf_data": pdf_data, "pdf_filename": filename}}
-            )
-            # Marca attachment come associato
-            await db["cedolini_email_attachments"].update_one(
-                {"id": attachment["id"]},
-                {"$set": {"associato": True, "documento_associato_id": cedolino_id}}
-            )
-    
-    # Fallback 2: Cerca in payslips legacy
-    if not pdf_data and not (doc or {}).get("drive_file_id"):
-        payslip = await db["cedolini"].find_one({"id": cedolino_id}, {"pdf_data": 1, "filename": 1})
-        if payslip and payslip.get("pdf_data"):
-            pdf_data = payslip["pdf_data"]
-            filename = payslip.get("filename")
-    
-    if not pdf_data and not (doc or {}).get("drive_file_id"):
-        raise HTTPException(status_code=404, detail="PDF non disponibile")
+    doc = await db["cedolini"].find_one({"id": cedolino_id}, {
+        "_id": 0, "pdf_data": 1, "drive_file_id": 1, "drive_md5": 1,
+        "_drive_payloads": 1, "pdf_filename": 1, "filename": 1,
+        "gestionale_cedolino_id": 1,
+        "source_page_start": 1, "source_page_end": 1, "source_document_pages": 1,
+    })
+    if not doc:
+        raise HTTPException(status_code=404, detail="Cedolino non trovato")
+    pdf_data = doc.get("pdf_data")
+    filename = doc.get("pdf_filename") or doc.get("filename")
+    if not pdf_data and not doc.get("drive_file_id") and not doc.get("_drive_payloads"):
+        # Solo un collegamento esplicito prova quale allegato appartiene alla
+        # busta. Il vecchio OR nome/periodo prendeva anche PDF di altre persone
+        # e li associava scrivendo nel database durante un semplice download.
+        attachment = await db["cedolini_email_attachments"].find_one(
+            {"documento_associato_id": cedolino_id}, {"_id": 0},
+        )
+        if attachment:
+            doc = {**doc, **attachment}
+            pdf_data = attachment.get("pdf_data")
+            filename = attachment.get("filename") or filename
+        else:
+            raise HTTPException(status_code=404, detail="PDF non disponibile")
 
     from app.services.cedolino_originale import carica_originale
-    pdf_bytes = await carica_originale({**(doc or {}), "pdf_data": pdf_data})
+    pdf_bytes = await carica_originale({**doc, "pdf_data": pdf_data})
+    if not pdf_bytes:
+        raise HTTPException(status_code=404, detail="PDF non disponibile")
     if not filename:
         filename = f"cedolino_{cedolino_id}.pdf"
 
@@ -1265,88 +1247,13 @@ async def download_cedolino_pdf(cedolino_id: str):
 @router.post("/correggi-problematici")
 @handle_errors
 async def correggi_cedolini_problematici() -> Dict[str, Any]:
-    """
-    Corregge cedolini con netto=0 ma lordo>0.
-    Calcola il netto stimato basandosi su lordo e trattenute standard.
-    """
-    db = Database.get_db()
-    
-    # Cerca cedolini problematici
-    problematici = await db["cedolini"].find({
-        "$or": [
-            {"netto": 0, "lordo": {"$gt": 0}},
-            {"netto": None, "lordo": {"$gt": 0}},
-            {"netto": {"$exists": False}, "lordo": {"$gt": 0}}
-        ]
-    }).to_list(1000)
-    
-    corretti = 0
-    errori = []
-    
-    for ced in problematici:
-        try:
-            lordo = float(ced.get("lordo", 0))
-            trattenute = float(ced.get("trattenute", 0))
-            irpef = float(ced.get("irpef", 0))
-            ritenute_inps = float(ced.get("ritenute_dipendente", 0) or ced.get("contributi_dipendente", 0))
-            
-            # Se non ci sono trattenute specificate, calcola con aliquote standard
-            if trattenute == 0:
-                # INPS dipendente ~9.19%
-                ritenute_inps = lordo * 0.0919
-                
-                # Imponibile fiscale
-                imponibile = lordo - ritenute_inps
-                
-                # IRPEF approssimata (usando aliquota media 23%)
-                irpef = imponibile * 0.23
-                
-                # Detrazioni base per lavoro dipendente (mensili)
-                detrazioni_mensili = DETRAZIONE_BASE / 12
-                irpef = max(0, irpef - detrazioni_mensili)
-                
-                trattenute = ritenute_inps + irpef
-            
-            # Calcola netto
-            netto = lordo - trattenute
-            
-            if netto > 0:
-                # Aggiorna il cedolino
-                await db["cedolini"].update_one(
-                    {"_id": ced["_id"]},
-                    {"$set": {
-                        "netto": round(netto, 2),
-                        "trattenute": round(trattenute, 2),
-                        "irpef_stimato": round(irpef, 2),
-                        "ritenute_dipendente_stimate": round(ritenute_inps, 2),
-                        "corretto_automaticamente": True,
-                        "data_correzione": datetime.now(timezone.utc).isoformat()
-                    }}
-                )
-                corretti += 1
-            else:
-                errori.append({
-                    "id": str(ced.get("id") or ced.get("_id")),
-                    "mese": ced.get("mese"),
-                    "anno": ced.get("anno"),
-                    "lordo": lordo,
-                    "netto_calcolato": netto,
-                    "errore": "Netto calcolato <= 0"
-                })
-        except Exception as e:
-            errori.append({
-                "id": str(ced.get("id") or ced.get("_id")),
-                "errore": str(e)
-            })
-    
-    return {
-        "success": True,
-        "cedolini_trovati": len(problematici),
-        "corretti": corretti,
-        "errori_count": len(errori),
-        "errori": errori[:10],
-        "message": f"Corretti {corretti} cedolini su {len(problematici)} trovati"
-    }
+    """La stima del netto con aliquote standard non e' una correzione contabile."""
+    raise HTTPException(
+        status_code=410,
+        detail=("La stima automatica degli importi e' disattivata. "
+                "Ricarica il PDF del cedolino oppure inserisci l'importo verificato: "
+                "un netto mancante non puo' essere ricostruito con aliquote medie."),
+    )
 
 
 @router.post("/import-gmail")

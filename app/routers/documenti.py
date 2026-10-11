@@ -2959,6 +2959,12 @@ async def upload_documento_automatico(
     from fastapi.params import Header as HeaderParameter
 
     content_sha256 = hashlib.sha256(content).hexdigest()
+    from app.services.pdf_drive_only import verified_drive_source
+
+    try:
+        source_context = verified_drive_source(content, source_context)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     direct_internal_call = isinstance(preview_token, HeaderParameter)
     if not direct_internal_call and (
         not preview_token or not verify_confirmation_token(
@@ -3363,7 +3369,7 @@ async def upload_documento_automatico(
             from app.services.f24_canonico import importa_modello_bytes
 
             f24_result = await importa_modello_bytes(
-                db, content, filename, source="documenti_upload_auto"
+                db, content, filename, source="documenti_upload_auto", source_metadata=source_context,
             )
             result["data"] = f24_result
             result["workflow"] = "F24_CANONICO"
@@ -3386,7 +3392,7 @@ async def upload_documento_automatico(
             from app.services.f24_canonico import importa_quietanza
 
             quietanza = await importa_quietanza(
-                db, content, filename, source="documenti_upload_auto"
+                db, content, filename, source="documenti_upload_auto", source_metadata=source_context,
             )
             result["data"] = quietanza
             result["workflow"] = "F24_CANONICO"
@@ -3411,6 +3417,7 @@ async def upload_documento_automatico(
 
             registered = await FiscalDocumentIngestionService(db).ingest(
                 content=content, filename=filename, source="documenti_upload_auto",
+                source_metadata=source_context,
             )
             is_duplicate = registered.get("status") == "duplicate"
             result["data"] = registered
@@ -3602,6 +3609,7 @@ async def upload_documento_automatico(
                 db, content=content, filename=filename,
                 company_id=settings.FISCAL_COMPANY_ID,
                 source="documenti_upload_auto",
+                source_metadata=source_context,
             )
             result["data"] = receipt
             receipt_kind = (receipt.get("receipt") or {}).get("document_kind")
@@ -3875,7 +3883,9 @@ async def upload_documento_automatico(
         elif tipo_rilevato == 'estratto_conto_sumup':
             from app.services.sumup_conto import accoda_abbinamento, importa_estratto_sumup
 
-            sumup_result = await importa_estratto_sumup(db, filename, content)
+            sumup_result = await importa_estratto_sumup(
+                db, filename, content, drive_file_id=source_context.get("drive_file_id"),
+            )
             # Anche un estratto gia' presente riaccoda l'abbinamento: le righe
             # importate prima di un motore nuovo (o in attesa di una busta,
             # di una fattura) si ripassano senza aspettare il giro dei 30 minuti.
@@ -4022,6 +4032,7 @@ async def upload_documento_automatico(
                 "filename": filename,
                 "pdf_data": b64.b64encode(content).decode('utf-8'),  # Drive/Supabase
                 "category": "bonifico",
+                "source_context": source_context,
                 "status": "da_processare",
                 "processed": False,
                 "source": "upload_manuale",
@@ -4030,7 +4041,8 @@ async def upload_documento_automatico(
             await db["documents_inbox"].insert_one(dict(bonifici_doc).copy())
 
             ingest = await importa_pdf_bonifico(
-                db, content, filename, source="upload_manuale_import_documenti"
+                db, content, filename, source="upload_manuale_import_documenti",
+                source_path=source_context.get("drive_path"), source_metadata=source_context,
             )
             if ingest.get("status") == "non_bonifico":
                 await db["documents_inbox"].delete_one({"id": doc_id})

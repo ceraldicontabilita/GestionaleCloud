@@ -424,6 +424,7 @@ async def importa_pdf_bonifico(
     source: str = "upload_manuale",
     auto_associa: bool = True,
     source_path: Optional[str] = None,
+    source_metadata: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """Parsa e archivia il PDF; il match automatico puo' essere disattivato.
 
@@ -433,7 +434,11 @@ async def importa_pdf_bonifico(
     (ponte HR, ``hr_pagamenti_deposito.fascicolo_persona``)."""
     if not content.startswith(b"%PDF"):
         return {"status": "error", "message": "Il file non e' un PDF valido"}
-    if e_stampa_fattura(await asyncio.to_thread(read_pdf_bytes, content)):
+    from app.services.pdf_drive_only import verified_drive_source
+
+    source_metadata = verified_drive_source(content, source_metadata)
+    text = await asyncio.to_thread(read_pdf_bytes, content)
+    if e_stampa_fattura(text):
         # La stampa di una fattura dice «Bonifico» e IBAN, ma non e' un pagamento.
         return {"status": "non_bonifico",
                 "message": "Stampa PDF di una fattura: la fattura entra dall'XML dello SDI"}
@@ -445,7 +450,6 @@ async def importa_pdf_bonifico(
         # I documenti caricati prima della correzione possono contenere il
         # mese del nome file nel vecchio campo "periodo". Rileggiamo sempre il
         # PDF originale e correggiamo i soli metadati estratti.
-        text = await asyncio.to_thread(read_pdf_bytes, content)
         reparsed = extract_transfers_from_text(text, filename=filename)[0]
         if transfer_collegato(esistente):
             # La stessa ricevuta ricaricata non riscrive l'identita' di un pagamento gia' agganciato.
@@ -486,7 +490,6 @@ async def importa_pdf_bonifico(
         )
         return {"status": "duplicate", "transfer_id": esistente.get("id"), **associazione}
 
-    text = await asyncio.to_thread(read_pdf_bytes, content)
     parsed = extract_transfers_from_text(text, filename=filename)[0]
     if accredito_non_registrabile(parsed):
         return _esito_non_registrato(parsed)
@@ -502,8 +505,9 @@ async def importa_pdf_bonifico(
         "id": str(uuid.uuid4()),
         "source_file": filename,
         "source": source,
-        "canale": canale_obbligatorio(source),
+        "canale": canale_obbligatorio(source, drive_file_id=source_metadata.get("drive_file_id")),
         "source_path": source_path,
+        "source_context": source_metadata,
         "document_hash": digest,
         "pdf_data": base64.b64encode(content).decode("ascii"),
         "created_at": now,
@@ -581,13 +585,15 @@ async def processa_inbox_bonifici(db, limit: int = 100) -> Dict[str, int]:
         document_filter = {"_id": doc["_id"]} if doc.get("_id") is not None else {"id": doc.get("id")}
         try:
             payload = await db["documents_inbox"].find_one(
-                document_filter, {"_id": 0, "pdf_data": 1}
+                document_filter, {"_id": 0, "pdf_data": 1, "drive_file_id": 1,
+                                  "drive_md5": 1}
             ) or {}
             content = base64.b64decode(payload.get("pdf_data") or "", validate=True)
             result = await importa_pdf_bonifico(
                 db, content, doc.get("filename") or "bonifico.pdf",
                 source=doc.get("source") or "documents_inbox",
                 source_path=doc.get("source_path"),
+                source_metadata={k: payload[k] for k in ("drive_file_id", "drive_md5") if payload.get(k)},
             )
             status = result.get("status")
             if status == STATO_NON_REGISTRATO:
@@ -608,6 +614,8 @@ async def processa_inbox_bonifici(db, limit: int = 100) -> Dict[str, int]:
                 stats["salvati"] += 1
             elif status == "duplicate":
                 stats["duplicati"] += 1
+            else:
+                raise ValueError(result.get("message") or "Bonifico non acquisito")
             if result.get("associato"):
                 stats["associati"] += 1
             await db["documents_inbox"].update_one(

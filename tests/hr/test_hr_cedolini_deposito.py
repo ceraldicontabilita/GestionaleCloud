@@ -47,6 +47,7 @@ class ConnessioneFinta:
                     righe.append({
                         "id": d["id"], "tipo": d.get("tipo_cedolino"),
                         "dedup_key": d.get("cedolino_dedup_key"),
+                        "netto": d.get("netto"), "rapporto_id": d.get("rapporto_id"),
                     })
             return righe
         raise AssertionError("query inattesa: " + sql)
