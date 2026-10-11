@@ -533,9 +533,12 @@ async def apply_ader_archive_plan(*, db, plan: dict[str, Any], actor: str | None
     ingestor = FiscalDocumentIngestionService(db, plan["company_id"])
     document_refs: dict[str, dict[str, Any]] = {}
     for item in plan["pdfs"]:
+        from app.services.pdf_drive_only import verified_drive_source
+
+        source_metadata = verified_drive_source(item["content"], plan.get("source_context"))
         result = await ingestor.ingest(
             content=item["content"], filename=item["filename"], source="ader_archive",
-            source_metadata={"source_archive_id": plan["source_archive_id"],
+            source_metadata={**source_metadata, "source_archive_id": plan["source_archive_id"],
                              "source_archive_sha256": plan["dataset_sha256"]},
             expected_sha256=item["sha256"], category_hint="riscossione",
         )

@@ -41,6 +41,7 @@ from app.parsers.cedolino_voci import (
     acconto_recuperato_in_busta, anticipo_tfr_in_busta, importi_ratei_da_coordinate, leggi_corpo_cedolino,
     leggi_foglio_presenze,
 )
+from app.services.cedolini_rapporti import impronta_testo, rapporto_da_coordinate
 
 logger = logging.getLogger(__name__)
 
@@ -69,6 +70,7 @@ def _summary_cedolino(
     page_start: int,
     page_end: int,
     document_pages: int,
+    rapporto: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """Converte un riepilogo deterministico conservando provenienza e PDF."""
     def pagine_originali(value):
@@ -80,6 +82,8 @@ def _summary_cedolino(
         return value
 
     return {
+        **(rapporto or {}),
+        "impronta_contenuto": impronta_testo(raw_text),
         "nome_dipendente": summary.get("dipendente_nome") or "",
         "codice_fiscale": summary.get("codice_fiscale") or "",
         "tipo_cedolino": summary.get("tipo_cedolino") or "mensile",
@@ -144,10 +148,10 @@ def _summary_complete(parsed: Dict[str, Any], summary: Dict[str, Any]) -> bool:
 
 
 def _parse_multi_template_units(file_content: bytes) -> List[Dict[str, Any]]:
-    """Separa un fascicolo multipagina per dipendente e periodo.
+    """Separa un fascicolo multipagina per dipendente, periodo e rapporto.
 
     Le pagine di continuazione restano aggregate al cedolino precedente. Se il
-    fascicolo contiene un solo dipendente, viene conservato integralmente.
+    fascicolo contiene una sola busta, viene conservato integralmente.
     """
     # Import al momento della chiamata: i test sostituiscono il parser sul
     # suo modulo.
@@ -160,6 +164,10 @@ def _parse_multi_template_units(file_content: bytes) -> List[Dict[str, Any]]:
     try:
         page_count = len(document)
         raw_pages = [page.get_text() for page in document]
+        rapporti = [rapporto_da_coordinate(page.get_text("words")) for page in document]
+
+        def rapporto_pagine(start: int, end: int) -> Dict[str, Any]:
+            return next((dati for dati in rapporti[start:end + 1] if dati), {})
 
         def page_bytes(start: int, end: int) -> bytes:
             output = fitz.open()
@@ -177,9 +185,10 @@ def _parse_multi_template_units(file_content: bytes) -> List[Dict[str, Any]]:
             return [_summary_cedolino(
                 summary, "\n".join(raw_pages), pdf_bytes=file_content,
                 page_start=1, page_end=page_count, document_pages=page_count,
+                rapporto=rapporto_pagine(0, page_count - 1),
             )]
 
-        candidates: List[Optional[Tuple[Tuple[str, int, int, str], Dict[str, Any]]]] = []
+        candidates: List[Optional[Tuple[Tuple[str, int, int, str, str], Dict[str, Any]]]] = []
         for index in range(page_count):
             single = page_bytes(index, index)
             parsed = parse_busta_paga_from_bytes(single)
@@ -190,6 +199,7 @@ def _parse_multi_template_units(file_content: bytes) -> List[Dict[str, Any]]:
                     int(summary["mese"]),
                     int(summary["anno"]),
                     str(summary.get("tipo_cedolino") or "mensile").lower(),
+                    rapporti[index].get("rapporto_id", ""),
                 )
                 candidates.append((key, summary))
             else:
@@ -204,14 +214,18 @@ def _parse_multi_template_units(file_content: bytes) -> List[Dict[str, Any]]:
             return [_summary_cedolino(
                 summary, "\n".join(raw_pages), pdf_bytes=file_content,
                 page_start=1, page_end=page_count, document_pages=page_count,
+                rapporto=rapporto_pagine(0, page_count - 1),
             )]
 
-        starts: List[Tuple[int, Tuple[str, int, int, str], Dict[str, Any]]] = []
-        current_key: Optional[Tuple[str, int, int, str]] = None
+        starts: List[Tuple[int, Tuple[str, int, int, str, str], Dict[str, Any]]] = []
+        current_key: Optional[Tuple[str, int, int, str, str]] = None
         for index, candidate in enumerate(candidates):
             if not candidate:
                 continue
             key, summary = candidate
+            # Una continuazione senza testata non apre un nuovo rapporto.
+            if current_key and key[:4] == current_key[:4] and not key[4]:
+                continue
             if key != current_key:
                 starts.append((index, key, summary))
                 current_key = key
@@ -220,7 +234,7 @@ def _parse_multi_template_units(file_content: bytes) -> List[Dict[str, Any]]:
         # dipendente. Non deve finire in coda alla busta precedente solo
         # perche' non e' un candidato contabile. Le altre pagine non
         # riconosciute restano invece continuazioni della busta precedente.
-        adjusted_starts: List[Tuple[int, Tuple[str, int, int, str], Dict[str, Any]]] = []
+        adjusted_starts: List[Tuple[int, Tuple[str, int, int, str, str], Dict[str, Any]]] = []
         for position, (start, key, summary) in enumerate(starts):
             adjusted = start
             lower_bound = starts[position - 1][0] + 1 if position else 0
@@ -245,6 +259,7 @@ def _parse_multi_template_units(file_content: bytes) -> List[Dict[str, Any]]:
                 page_start=start + 1,
                 page_end=end + 1,
                 document_pages=page_count,
+                rapporto=rapporto_pagine(start, end),
             ))
         return units
     finally:

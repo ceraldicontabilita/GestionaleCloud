@@ -169,16 +169,22 @@ async def scarica_pdf(cedolino_id: str, request: Request,
                                   proj={"_id": 0, "pdf_data": 1, "filename": 1,
                                         "pdf_filename": 1, "mese": 1, "anno": 1,
                                         "drive_file_id": 1,
+                                        "drive_md5": 1, "_drive_payloads": 1,
+                                        "gestionale_cedolino_id": 1,
+                                        "source_page_start": 1, "source_page_end": 1,
+                                        "source_document_pages": 1,
                                         "netto": 1, "lordo": 1, "dipendente_nome": 1,
                                         "acconto_cedolino": 1, "saldo_residuo": 1})
     pdf_data = doc.get("pdf_data")
     generato = False
-    if pdf_data or doc.get("drive_file_id"):
+    if pdf_data or doc.get("drive_file_id") or doc.get("_drive_payloads"):
         try:
             from app.services.cedolino_originale import carica_originale
             pdf_bytes = await carica_originale(doc)
         except Exception as exc:
             raise HTTPException(500, "PDF corrotto") from exc
+        if not pdf_bytes:
+            raise HTTPException(404, "PDF non disponibile")
     else:
         # Nessun PDF originale (es. busta importata dal Libro Unico): genero un
         # riepilogo leggibile coi dati disponibili, così è comunque scaricabile.

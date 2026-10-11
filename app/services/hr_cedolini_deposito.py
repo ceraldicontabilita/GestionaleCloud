@@ -94,7 +94,7 @@ _SQL_DIPENDENTE = (
 
 _SQL_ESISTENTI = (
     "SELECT id, doc->>'tipo_cedolino' AS tipo, doc->>'cedolino_dedup_key' AS dedup_key,"
-    " doc->>'netto' AS netto, doc->'storico_netto' AS storico_netto"
+    " doc->>'netto' AS netto, doc->'storico_netto' AS storico_netto, doc->>'rapporto_id' AS rapporto_id"
     " FROM " + TABELLA_CEDOLINI +
     " WHERE (upper(doc->>'codice_fiscale') = $1"
     "        AND doc->>'anno' ~ '^[0-9]+$' AND (doc->>'anno')::int = $2"
@@ -250,8 +250,10 @@ def mappa_cedolino_per_hr(cedolino: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         "gestionale_source": cedolino.get("source") or cedolino.get("import_source"),
         "cedolino_dedup_key": cedolino.get("cedolino_dedup_key") or cedolino.get("dedup_key"),
     }
-    for chiave in ("drive_file_id", "source_file_hash", "source_path", "source_container",
-                   "canale", "stato_netto", "netto_fonte", "dati_chiave"):
+    for chiave in ("drive_file_id", "drive_md5", "source_file_hash", "source_path", "source_container",
+                   "source_page_start", "source_page_end", "source_document_pages",
+                   "canale", "stato_netto", "netto_fonte", "dati_chiave",
+                   "rapporto_id", "rapporto_lavoro", "impronta_contenuto"):
         if cedolino.get(chiave):
             doc[chiave] = cedolino[chiave]
     from app.constants.stati_netto import STATI_NON_UTILIZZABILI
@@ -295,7 +297,8 @@ async def _trova_dipendente_hr(con, cf: str) -> Optional[Dict[str, Any]]:
 
 
 async def _cerca_esistente_hr(con, cf: str, anno: int, mese: int,
-                              tipo: str, dedup_key: str) -> Optional[Dict[str, Any]]:
+                              tipo: str, dedup_key: str, rapporto_id: str = "",
+                              netto: Optional[float] = None) -> Optional[Dict[str, Any]]:
     """Primo cedolino HR con stessa chiave documentale, oppure stesso
     (CF, anno, mese) e stesso tipo (13a/14a restano distinte dall'ordinario)."""
     righe = await con.fetch(_SQL_ESISTENTI, cf, int(anno), int(mese), dedup_key or "")
@@ -303,6 +306,14 @@ async def _cerca_esistente_hr(con, cf: str, anno: int, mese: int,
         if dedup_key and riga["dedup_key"] == dedup_key:
             return {"id": riga["id"], "motivo": "cedolino_dedup_key", **_netto_hr(riga)}
     for riga in righe:
+        if rapporto_id:
+            # Due contratti nello stesso mese restano due buste. Per le righe
+            # storiche prive di rapporto occorre almeno lo stesso netto letto.
+            precedente = riga.get("rapporto_id")
+            if precedente and precedente != rapporto_id:
+                continue
+            if not precedente and (netto is None or _netto_hr(riga)["netto"] != netto):
+                continue
         if tipo_cedolino_hr(riga["tipo"]) == tipo:
             return {"id": riga["id"], "motivo": "cf_anno_mese_tipo", **_netto_hr(riga)}
     return None
@@ -342,7 +353,9 @@ async def _segui_vincitore(con, esistente: Dict[str, Any], doc: Dict[str, Any], 
     }
     for campo in ("filename", "pdf_filename", "pdf_data", "stato_netto", "netto_fonte", "lordo",
                   "competenze", "trattenute", "gestionale_cedolino_id", "cedolino_dedup_key",
-                  "drive_file_id", "source_file_hash", "canale", "dati_chiave"):
+                  "drive_file_id", "drive_md5", "source_file_hash", "canale", "dati_chiave",
+                  "source_page_start", "source_page_end", "source_document_pages",
+                  "rapporto_id", "rapporto_lavoro", "impronta_contenuto"):
         if doc.get(campo) is not None:
             patch[campo] = doc[campo]
     if prima == dopo:
@@ -408,6 +421,7 @@ async def deposita_cedolino_in_hr(
             esistente = await _cerca_esistente_hr(
                 con, doc["codice_fiscale"], doc["anno"], doc["mese"],
                 doc["tipo_cedolino"], doc.get("cedolino_dedup_key") or "",
+                doc.get("rapporto_id") or "", doc.get("netto"),
             )
             if esistente and cedolino.get("rettificato"):
                 return await _segui_vincitore(con, esistente, doc, chiave, dry_run=dry_run)

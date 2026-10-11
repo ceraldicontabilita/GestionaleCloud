@@ -84,9 +84,12 @@ async def _busta_gia_in_archivio(db, ced: Dict[str, Any]) -> Optional[Dict[str, 
     candidati = await db["cedolini"].find(
         {"codice_fiscale": chiave[0], "anno": chiave[1], "mese": chiave[2]},
         {"_id": 0, "id": 1, "codice_fiscale": 1, "anno": 1, "mese": 1, "tipo_cedolino": 1,
-         "netto": 1, "netto_mese": 1, "lordo": 1, "totale_trattenute": 1},
+         "netto": 1, "netto_mese": 1, "lordo": 1, "totale_trattenute": 1,
+         "rapporto_id": 1},
     ).to_list(None)
-    return next((c for c in candidati if identita_cedolino(c) == chiave), None)
+    return next((c for c in candidati if (identita_cedolino(c) or ())[:-1] == chiave[:-1]
+                 and not (c.get("rapporto_id") and ced.get("rapporto_id")
+                          and c["rapporto_id"] != ced["rapporto_id"])), None)
 
 
 # Una busta alla volta per dipendente e periodo: lo smistatore legge piu' PDF
@@ -308,7 +311,10 @@ async def processa_tutti_cedolini_pdf(
         ced["source_container"] = source_container or None
         ced["canale"] = canale
         if drive_file_id:
+            import hashlib
+
             ced["drive_file_id"] = drive_file_id
+            ced["drive_md5"] = hashlib.md5(file_content, usedforsecurity=False).hexdigest()
         if source_file_hash:
             ced["source_file_hash"] = source_file_hash
         cedolino_pdf_data = ced.pop("_pdf_data", pdf_data)

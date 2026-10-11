@@ -70,7 +70,8 @@ def identita_cedolino(doc: Dict[str, Any]) -> Optional[Tuple]:
         return None
     tipo = _testo(doc.get("tipo_cedolino") or "mensile").lower()
     return (cf, int(doc["anno"]), int(doc["mese"]), tipo, netto,
-            centesimi(doc.get("lordo")), centesimi(doc.get("totale_trattenute")))
+            centesimi(doc.get("lordo")), centesimi(doc.get("totale_trattenute")),
+            str(doc.get("rapporto_id") or ""))
 
 
 def identita_quietanza(doc: Dict[str, Any]) -> Optional[Tuple]:

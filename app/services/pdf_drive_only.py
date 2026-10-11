@@ -35,6 +35,32 @@ def _filename(doc: dict[str, Any], field: str) -> str:
     return safe if safe.lower().endswith(".pdf") else safe + ".pdf"
 
 
+def verified_drive_source(content: bytes, source: dict[str, Any] | None) -> dict[str, Any]:
+    """Riusa un originale solo se l'impronta identifica questi byte.
+
+    Il bridge puo' indicare lo ZIP contenitore: quell'id resta provenienza,
+    ma non puo' diventare il PDF da aprire o scaricare.
+    """
+    metadata = dict(source or {})
+    if not metadata.get("drive_file_id"):
+        return metadata
+    if metadata.get("archive_member"):
+        metadata["archive_drive_file_id"] = metadata.pop("drive_file_id")
+        metadata.pop("drive_md5", None)
+        return metadata
+    sha256 = hashlib.sha256(content).hexdigest()
+    md5 = hashlib.md5(content, usedforsecurity=False).hexdigest()
+    expected_sha = metadata.get("source_sha256")
+    expected_md5 = metadata.get("drive_md5")
+    if (expected_sha and expected_sha != sha256) or (expected_md5 and expected_md5 != md5):
+        raise ValueError("L'impronta dell'originale Drive non corrisponde al documento ricevuto")
+    if not expected_sha and not expected_md5:
+        metadata["unverified_drive_file_id"] = metadata.pop("drive_file_id")
+        return metadata
+    metadata["drive_md5"] = md5
+    return metadata
+
+
 def _drive_ref(doc: dict[str, Any], field: str) -> dict[str, Any]:
     refs = doc.get("_drive_payloads") or {}
     ref = refs.get(field) if isinstance(refs, dict) else None
@@ -65,6 +91,10 @@ async def externalize_documents(collection: str, documents: list[dict[str, Any]]
             if content is None:
                 continue
             ref = _drive_ref(doc, field)
+            if not ref and field == "pdf_data" and doc.get("source_context"):
+                source = verified_drive_source(content, doc["source_context"])
+                if source.get("drive_file_id"):
+                    ref = {"drive_file_id": source["drive_file_id"], "md5": source["drive_md5"]}
             expected_md5 = hashlib.md5(content, usedforsecurity=False).hexdigest()
             if not ref.get("drive_file_id") or ref.get("md5") != expected_md5:
                 result = await asyncio.to_thread(

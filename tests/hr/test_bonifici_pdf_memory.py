@@ -59,7 +59,7 @@ def test_inbox_non_materializza_cento_pdf_in_memoria(monkeypatch):
 
     assert result["letti"] == 1
     assert collection.find_projections[0].get("pdf_data") is None
-    assert collection.find_one_projections == [{"_id": 0, "pdf_data": 1}]
+    assert collection.find_one_projections == [{"_id": 0, "pdf_data": 1, "drive_file_id": 1, "drive_md5": 1}]
 
 
 def test_pendenti_carica_un_pdf_per_volta(monkeypatch):
