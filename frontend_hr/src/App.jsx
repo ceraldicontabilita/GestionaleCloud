@@ -3289,7 +3289,7 @@ function TurniPage({ dipendenti, turni, reload }) {
             {dipTurni.map(dip => { const ass = getAssegnazione(dip.id, g); const t = ass ? getTurno(ass.turno_id) : null; return (
               <div key={dip.id} className="dc-turni-giorno-riga">
                 <Avatar nome={dip.nome} cognome={dip.cognome} size="sm" />
-                <span className="dc-turni-giorno-nome">{dip.cognome ? `${dip.cognome} ${dip.nome?.[0] || ""}.` : dip.nome}</span>
+                <span className="dc-turni-giorno-nome">{dip.nome_completo || [dip.cognome, dip.nome].filter(Boolean).join(" ")}</span>
                 <button type="button" onClick={() => ciclaTurno(dip, g)}
                   aria-label={`${dip.cognome || dip.nome}, ${g}: turno successivo`}
                   style={{ border: `2px solid ${t ? t.colore : "#e6e0d4"}`, background: t ? t.colore + "30" : "#fffefb", color: "#2a3329",

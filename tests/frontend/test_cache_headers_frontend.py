@@ -39,3 +39,19 @@ def test_statico_senza_hash_riconvalida(tmp_path):
     resp = mod._static_response(str(f))
 
     assert resp.headers["cache-control"] == "no-cache"
+
+
+def test_modulo_card_bb_raggiungibile_e_riconvalidato():
+    from fastapi.testclient import TestClient
+
+    # Nessun lifespan: la prova serve statici e non avvia scheduler né DB.
+    client = TestClient(mod.app)
+    response = client.get("/frontend-shared/tabelleCard.js")
+    assert response.status_code == 200
+    assert "javascript" in response.headers["content-type"]
+    assert response.headers["cache-control"] == "no-cache"
+    assert "export function avviaTabelleCard" in response.text
+    page = client.get("/convenzioni/")
+    assert page.status_code == 200
+    assert page.headers["cache-control"] == "no-cache"
+    assert '/frontend-shared/tabelleCard.js' in page.text

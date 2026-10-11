@@ -1008,6 +1008,15 @@ class _HashedAssets(StaticFiles):
         return response
 
 
+class _RevalidatedAssets(StaticFiles):
+    """HTML e moduli senza hash: il telefono verifica la versione a ogni apertura."""
+
+    def file_response(self, *args, **kwargs):
+        response = super().file_response(*args, **kwargs)
+        response.headers["Cache-Control"] = "no-cache"
+        return response
+
+
 # App Lotti (HACCP) portata pari pari dentro il gestionale: backend originale
 # (app/lotti, proprio login a PIN) montato a /lotti -> /lotti/api/...; il
 # frontend originale (build CRA di frontend_lotti, PUBLIC_URL=/lotti) e' servito
@@ -1045,9 +1054,14 @@ app.mount("/menu", menu_app, name="menu")
 # build) che parla direttamente con Supabase tramite funzioni RPC con PIN. Non ha
 # un backend in app/: si serve la cartella cosi' com'e', con `html=True` per
 # l'indice. Va montata PRIMA del catch-all della SPA dell'ERP.
+# Moduli browser condivisi anche dalle mini app statiche (senza build dedicata).
+_FRONTEND_SHARED_DIR = os.path.join(_PROJECT_ROOT, "frontend_shared")
+if os.path.isdir(_FRONTEND_SHARED_DIR):
+    app.mount("/frontend-shared", _RevalidatedAssets(directory=_FRONTEND_SHARED_DIR), name="frontend-shared")
+
 _COLAZIONI_DIR = os.path.join(_PROJECT_ROOT, "frontend_colazioni")
 if os.path.isdir(_COLAZIONI_DIR):
-    app.mount("/convenzioni", StaticFiles(directory=_COLAZIONI_DIR, html=True), name="convenzioni")
+    app.mount("/convenzioni", _RevalidatedAssets(directory=_COLAZIONI_DIR, html=True), name="convenzioni")
     logger.info("Convenzioni (Colazioni B&B) montata da %s", _COLAZIONI_DIR)
 else:
     logger.warning("Convenzioni (Colazioni B&B) non trovata (%s): /convenzioni non risponde", _COLAZIONI_DIR)
