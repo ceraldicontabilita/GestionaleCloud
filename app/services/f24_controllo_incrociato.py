@@ -171,7 +171,7 @@ def periodo_riga(riga: Dict[str, Any]) -> Dict[str, Optional[int]]:
         anno = int(str(anno_raw).strip())
         mese = int(str(mese_raw).strip()) if mese_raw and str(mese_raw).strip().isdigit() else 0
         return {"mese": mese if 1 <= mese <= 12 and not rateizzata else None, "anno": anno}
-    testo = riga.get("periodo_riferimento") or riga.get("periodo") or ""
+    testo = riga.get("periodo_riferimento") or riga.get("periodo") or riga.get("periodo_da") or ""
     parsed = None if rateizzata else te._parse_periodo(testo)
     if parsed:
         return {"mese": parsed[0], "anno": parsed[1]}
@@ -198,6 +198,11 @@ def righe_modello(f24: Dict[str, Any]) -> List[Dict[str, Any]]:
                 else centesimi(r.get("importo_credito")) or 0
             ),
             "descrizione": r.get("descrizione") or "",
+            "ente": str(r.get("codice_regione") or r.get("codice_comune") or r.get("codice_ente")
+                        or r.get("codice_sede") or "").strip().upper(),
+            "matricola": str(r.get("matricola") or "").strip(),
+            "acconto": r.get("acconto") is True,
+            "saldo": r.get("saldo") is True,
         })
     return righe
 
@@ -253,10 +258,12 @@ def _quietanza_da_fiscal_document(doc: Dict[str, Any]) -> Dict[str, Any]:
     m = _RE_NOME_QUIETANZA.match(nome)
     meta = doc.get("metadata") or {}
     protocollo = (
-        meta.get("protocollo") or meta.get("protocollo_telematico") or doc.get("protocollo_telematico")
+        meta.get("protocollo") or meta.get("protocollo_telematico") or doc.get("protocollo_telematico") or (doc.get("dati_generali") or {}).get("protocollo_telematico")
         or (m.group("prot") if m else None)
     )
-    importo = centesimi(meta.get("importo") or meta.get("saldo") or doc.get("importo") or doc.get("saldo"))
+    importo = saldo_quietanza_cents(doc)
+    if importo is None:
+        importo = centesimi(meta.get("importo") or meta.get("saldo") or doc.get("importo"))
     f24_ids = {
         str(v) for v in (
             [doc.get("f24_id"), meta.get("f24_id")]
@@ -267,12 +274,16 @@ def _quietanza_da_fiscal_document(doc: Dict[str, Any]) -> Dict[str, Any]:
         "id": doc.get("id"),
         "fonte": COLL_FISCAL_DOCUMENTS,
         "filename": nome,
-        "data": _data_iso(meta.get("data_pagamento") or doc.get("data_pagamento") or (m.group("data") if m else None)),
+        "data": _data_iso(meta.get("data_pagamento") or doc.get("data_pagamento") or (doc.get("dati_generali") or {}).get("data_pagamento") or (m.group("data") if m else None)),
         "protocollo": re.sub(r"[^0-9A-Z]", "", str(protocollo).upper()) if protocollo else None,
         "protocollo_originale": protocollo,
         "importo_cents": importo,
         "f24_ids": sorted(f24_ids),
         "origini": origini_documento(doc),
+        "righe": righe_modello(doc),
+        "validazione": doc.get("validazione") or {},
+        "status": doc.get("status"),
+        "documento": doc,
     }
 
 
@@ -385,13 +396,8 @@ def modello_attivo(f24: Dict[str, Any]) -> bool:
     return not (f24.get("superato_da") or f24.get("motivo_quarantena"))
 
 
-async def carica_registro(db) -> Dict[str, Any]:
-    """Legge una volta sola modelli, quietanze e addebiti bancari F24."""
-    modelli = await db[COLL_F24].find(
-        {"status": {"$ne": "eliminato"}}, {"_id": 0, "pdf_data": 0},
-    ).to_list(5000)
-    modelli = [f for f in modelli if modello_attivo(f)]
-
+async def carica_quietanze(db) -> List[Dict[str, Any]]:
+    """Quietanze autonome dalle due raccolte documentali, senza interrogare la banca."""
     quietanze: List[Dict[str, Any]] = []
     fiscal = await db[COLL_FISCAL_DOCUMENTS].find(
         {"category": "quietanza_f24"}, {"_id": 0, "pdf_data": 0},
@@ -403,6 +409,16 @@ async def carica_registro(db) -> Dict[str, Any]:
     except Exception:  # noqa: BLE001 - collezione storica facoltativa
         legacy = []
     quietanze.extend(_quietanza_legacy(d) for d in legacy if d.get("entity_status") != "deleted")
+    return quietanze
+
+
+async def carica_registro(db) -> Dict[str, Any]:
+    """Legge una volta sola modelli, quietanze e addebiti bancari F24."""
+    modelli = await db[COLL_F24].find(
+        {"status": {"$ne": "eliminato"}}, {"_id": 0, "pdf_data": 0},
+    ).to_list(5000)
+    modelli = [f for f in modelli if modello_attivo(f)]
+    quietanze = await carica_quietanze(db)
 
     movimenti = await db[COLL_ESTRATTO_CONTO].find({"$or": [
         {"descrizione": {"$regex": REGEX_MOVIMENTI_F24, "$options": "i"}},
@@ -446,7 +462,8 @@ async def carica_registro(db) -> Dict[str, Any]:
         "movimenti_per_f24": movimenti_per_f24,
         "conteggi": {
             "f24": len(modelli), "quietanze": len(quietanze), "movimenti_f24_banca": len(movimenti),
-            "quietanze_fiscal_documents": len(fiscal), "quietanze_legacy": len(legacy),
+            "quietanze_fiscal_documents": sum(q["fonte"] == COLL_FISCAL_DOCUMENTS for q in quietanze),
+            "quietanze_legacy": sum(q["fonte"] == COLL_QUIETANZE_F24 for q in quietanze),
         },
     }
 
@@ -477,6 +494,7 @@ def _vista_quietanza(q: Dict[str, Any], agganciata: bool) -> Dict[str, Any]:
         "data_it": data_italiana(q.get("data")),
         "importo": euro(q.get("importo_cents")),
         "agganciata": agganciata,
+        "pdf_url": url_pdf_quietanza(q),
     }
 
 
@@ -868,6 +886,18 @@ async def verifica_codice(
             "pagato": es in (ESITO_COPERTO, ESITO_PAGATO_SENZA_QUIETANZA),
             "pagamento_verificato_banca": prove["pagato_banca"],
         })
+    # Anche le quietanze autonome rispondono alla ricerca del codice.
+    quietanze = []
+    for pagamento in pagamenti_da_quietanze(registro["quietanze"]):
+        righe = [r for r in pagamento["_righe"] if r["codice"] == codice
+                 and (filtro_anno is None or r["anno"] == filtro_anno)
+                 and (filtro_mese is None or r["mese"] == filtro_mese)]
+        if not righe:
+            continue
+        prima = pagamento["quietanze"][0]
+        quietanze.append({"quietanza_id": prima["id"], "pdf_url": prima["pdf_url"],
+                          "data": pagamento["data"], "protocollo": pagamento["protocollo"],
+                          "righe": righe, "importo_cents": sum(r["importo_debito_cents"] for r in righe)})
     risultati.sort(key=lambda r: r.get("data_versamento") or "", reverse=True)
     periodo_cercato = (
         f"{filtro_mese:02d}/{filtro_anno}" if filtro_mese and filtro_anno
@@ -879,7 +909,8 @@ async def verifica_codice(
         "codice_tributo": codice,
         "descrizione": (CODICI_TRIBUTO_F24.get(codice) or {}).get("descrizione"),
         "periodo_cercato": periodo_cercato,
-        "pagato": any(r["pagamento_verificato_banca"] for r in risultati),
+        "pagato": bool(quietanze) or any(r["pagato"] for r in risultati),
+        "quietanze": quietanze,
         "righe_f24": risultati,
         # chiavi storiche dell'endpoint, ora alimentate dal registro unico
         "pagamenti": [r for r in risultati if r["pagato"]],
@@ -905,7 +936,7 @@ def _f24_aperto_banca(f24: Dict[str, Any]) -> bool:
 #
 # Quietanza e addebito sono due prove dello stesso pagamento, e restano due
 # record distinti: qui si collegano, non si fondono, e il modello F24 non si
-# ricostruisce (se manca resta «F24 mancante»). Serve perche' il motore
+# ricostruisce: la quietanza prova direttamente i tributi. Serve perche' il motore
 # canonico abbina la banca ai soli modelli: al 27/09/2026 242 pagamenti su 328
 # avevano la sola quietanza, e i loro addebiti I24 restavano orfani.
 #
@@ -1069,7 +1100,7 @@ def pagamenti_da_quietanze(quietanze: Iterable[Dict[str, Any]]) -> List[Dict[str
     """
     gruppi: Dict[str, List[Dict[str, Any]]] = {}
     for q in quietanze:
-        if (q.get("status") in ("eliminato", "quarantena", "pagamento_non_eseguito")
+        if (str(q.get("status") or "").lower() in ("eliminato", "deleted", "quarantena", "pagamento_non_eseguito")
                 or (q.get("validazione") or {}).get("saldo_quadrato") is False
                 or (q.get("validazione") or {}).get("sezioni_quadrate") is False):
             continue
@@ -1109,6 +1140,54 @@ def pagamenti_da_quietanze(quietanze: Iterable[Dict[str, Any]]) -> List[Dict[str
             "_righe": righe,
         })
     return pagamenti
+
+
+def modelli_coperti_da_tributi_pagati(modelli, quietanze) -> Set[str]:
+    """Sopprime falsi solleciti anche senza aggancio quietanza/modello.
+
+    Confronta il totale dei tributi documentati per contribuente, ente e
+    competenza. Copie identiche contano una volta; un pagamento parziale
+    non chiude tutti i modelli dello stesso periodo. Nessuna scrittura e
+    nessuna riconciliazione bancaria implicita.
+    """
+    def contribuente(doc):
+        return str(doc.get("codice_fiscale") or
+                   (doc.get("dati_generali") or {}).get("codice_fiscale") or "").strip().upper()
+
+    def chiave(cf, r):
+        return (cf, r["sezione"], r["codice"], r.get("anno"), r.get("mese"),
+                r.get("ente", ""), r.get("matricola", ""), r.get("acconto"), r.get("saldo"))
+
+    quietanze = list(quietanze)
+    per_id = {q.get("id"): q for q in quietanze}
+    pagato = {}
+    for p in pagamenti_da_quietanze(quietanze):
+        cf = contribuente((per_id[p["quietanze"][0]["id"]].get("documento") or {}))
+        for r in p["_righe"]:
+            if r.get("anno") and r["importo_debito_cents"] > 0:
+                k = chiave(cf, r)
+                pagato[k] = pagato.get(k, 0) + r["importo_debito_cents"]
+    dovuto, firme, per_modello = {}, set(), {}
+    for f in modelli:
+        if not modello_attivo(f) or str(f.get("status") or "").lower() in {
+            "eliminato", "deleted", "annullato", "cancelled", "quarantena"
+        }:
+            continue
+        righe = [r for r in righe_modello(f) if r["importo_debito_cents"] > 0]
+        if not righe or any(not r.get("anno") for r in righe):
+            continue
+        importi = {}
+        for r in righe:
+            k = chiave(contribuente(f), r)
+            importi[k] = importi.get(k, 0) + r["importo_debito_cents"]
+        firma = frozenset(importi.items())
+        per_modello[str(f.get("id"))] = importi
+        if firma not in firme:
+            firme.add(firma)
+            for k, importo in importi.items():
+                dovuto[k] = dovuto.get(k, 0) + importo
+    return {fid for fid, importi in per_modello.items()
+            if all(pagato.get(k, 0) >= dovuto[k] for k in importi)}
 
 
 def _vista_addebito(m: Dict[str, Any]) -> Dict[str, Any]:

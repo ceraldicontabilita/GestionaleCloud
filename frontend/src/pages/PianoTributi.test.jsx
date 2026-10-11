@@ -5,6 +5,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import api from '../api';
 import PianoTributi from './PianoTributi';
 
+vi.mock('../components/DocumentViewerModal', () => ({ default: ({ fetchUrl, onClose }) => <div role="dialog" data-url={fetchUrl}><button onClick={onClose}>Chiudi quietanza</button></div> }));
+
 vi.mock('../api', () => ({ default: { get: vi.fn() } }));
 vi.mock('../contexts/AnnoContext', () => ({ useAnnoGlobale: () => ({ anno: 2026 }) }));
 
@@ -62,7 +64,9 @@ describe('Piano tributi: atteso dal prospetto paghe', () => {
     } });
     render(<MemoryRouter><PianoTributi /></MemoryRouter>);
     fireEvent.click(await screen.findByRole('button', { name: /03\/2026: Pagato/ }));
-    expect(screen.getByText(/Quietanza del 16\/04\/2026/)).toHaveTextContent('protocollo PROTO-MARZO');
+    expect(screen.getByRole('dialog')).toHaveAttribute('data-url', '/api/originale/quietanza/q-mar');
+    fireEvent.click(screen.getByRole('button', { name: 'Chiudi quietanza' }));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     expect(screen.queryByText(/Nessun F24 in archivio/)).not.toBeInTheDocument();
   });
 

@@ -127,11 +127,17 @@ def _sedici_mese_dopo(anno: int, mese: int) -> date:
 
 
 def scadenza_da_regola(sezione: str, codice: str, anno: Optional[int], mese: Optional[int],
-                       data_pagamento: Optional[str] = None) -> Tuple[Optional[date], str]:
+                       data_pagamento: Optional[str] = None, *, acconto: bool = False,
+                       saldo: bool = False) -> Tuple[Optional[date], str]:
     """(scadenza, fonte). Scadenza None se la regola non c'e'."""
     c = str(codice or "").upper()
     if not anno:
         return None, "periodo mancante"
+    if c in {"3918", "3930", "3925", "3916", "3914"}:
+        if acconto or saldo:
+            # Versamento unico acconto+saldo: termine del primo acconto.
+            return termine_effettivo(date(anno, 6 if acconto else 12, 16)), "IMU: acconto/saldo indicato sul documento"
+        return None, "IMU: acconto o saldo non indicato sul documento"
     if c in _IVA_MENSILE and c != "6099":
         m = int(c[2:])
         return termine_effettivo(_sedici_mese_dopo(anno, m)), "regola IVA mensile (16 del mese dopo)"
@@ -184,7 +190,10 @@ def righe_modello_con_scadenza(f24: Dict[str, Any]) -> List[Dict[str, Any]]:
                 anno = None
         sezione = f"sezione_{str(r.get('section') or '').lower()}"
         codice = str(r.get("tax_code") or "").upper()
-        scadenza, fonte = scadenza_da_regola(sezione, codice, anno, mese)
+        campi = r.get("source_fields") or {}
+        scadenza, fonte = scadenza_da_regola(sezione, codice, anno, mese,
+                                           acconto=campi.get("acconto") is True,
+                                           saldo=campi.get("saldo") is True)
         righe.append({"codice": codice, "sezione": sezione, "anno": anno, "mese": mese,
                       "importo_cents": importo, "scadenza": scadenza, "fonte": fonte})
     return righe
@@ -376,7 +385,7 @@ def calcola(pagamenti: Iterable[Dict[str, Any]],
                     scad = termine_effettivo(date.fromisoformat(scadenze_modello[chiave]))
                     fonte = "F24 del commercialista"
                 else:
-                    scad, fonte = scadenza_da_regola(sezione, codice, anno, mese, data_p)
+                    scad, fonte = scadenza_da_regola(sezione, codice, anno, mese, data_p, acconto=bool(r.get("acconto")), saldo=bool(r.get("saldo")))
                 giorni = (pagato_il - scad).days if scad else None
                 valutati.append({"r": r, "chiave": chiave, "importo": importo, "scadenza": scad,
                                  "fonte": fonte, "giorni": giorni})

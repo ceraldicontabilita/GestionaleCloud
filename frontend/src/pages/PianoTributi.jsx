@@ -5,7 +5,7 @@ import { useAnnoGlobale } from '../contexts/AnnoContext';
 import { COLORS, FONT, formatEuro, useIsMobile } from '../lib/utils';
 import api from '../api';
 import { scaricaOriginale } from '../lib/scaricaOriginale';
-import ApriOriginale from '../components/ApriOriginale';
+import ApriOriginale, { VisoreOriginale } from '../components/ApriOriginale';
 
 const MESI = ['Gen', 'Feb', 'Mar', 'Apr', 'Mag', 'Giu', 'Lug', 'Ago', 'Set', 'Ott', 'Nov', 'Dic'];
 
@@ -139,7 +139,7 @@ function DettaglioCasella({ voce, casella }) {
         <div style={{ marginTop: 6 }}>{voce.codici.join(', ')} · {casella.etichetta_periodo}: non risulta pagato. La scadenza è passata e non è presente una quietanza per questo periodo.</div>
       )}
       {!casella.modelli.length && casella.stato === 'nessun_f24' && (
-        <div style={{ marginTop: 6 }}>Nessun F24 in archivio per questo periodo. Questa voce non e' obbligatoria ogni mese: si versa solo se c'e' qualcosa di dovuto.</div>
+        <div style={{ marginTop: 6 }}>Nessun versamento documentato per questo periodo. Questa voce non è obbligatoria ogni mese.</div>
       )}
       {casella.modelli.map(m => (
         <div key={m.documento_id || m.f24_id} style={{ marginTop: 8, paddingTop: 8, borderTop: `1px solid ${COLORS.border}` }}>
@@ -220,8 +220,14 @@ function RicercaCodice({ anno }) {
           <div style={{ fontWeight: 700 }}>
             {esito.codice_tributo}{esito.descrizione ? ` · ${esito.descrizione}` : ''} · periodo {esito.periodo_cercato}
           </div>
-          {!esito.righe_f24.length && <div style={{ marginTop: 6 }}>Nessun F24 con questo codice nel periodo cercato.</div>}
+          {!esito.righe_f24.length && !esito.quietanze?.length && <div style={{ marginTop: 6 }}>Nessun documento con questo codice nel periodo cercato.</div>}
           <div style={{ ...FILA_CARD, marginTop: 8 }}>
+            {(esito.quietanze || []).map(q => (
+              <div key={q.quietanza_id} style={PICCOLA_CARD}>
+                <div><Badge variant="success">Pagato (quietanza)</Badge></div>
+                <ApriOriginale url={q.pdf_url} titolo="Quietanza di pagamento">{dataIt(q.data)} · {formatEuro(q.importo_cents / 100)}</ApriOriginale>
+              </div>
+            ))}
             {esito.righe_f24.map(r => (
               <div key={r.f24_id} style={PICCOLA_CARD}>
                 <div style={{ fontWeight: 700, fontSize: 13 }}>F24 del {r.data_versamento_it || 'data non letta'}</div>
@@ -248,6 +254,16 @@ function RicercaCodice({ anno }) {
 
 // Il piano di un anno: i gruppi di voci con le loro caselle, poi gli altri codici versati.
 function GrigliaAnno({ g, aperta, setAperta, filtroStati = null }) {
+  const [documento, setDocumento] = useState(null);
+  const apriCasella = (c, chiave) => {
+    const prove = c.quietanze_pagamento || (c.modelli || []).filter(m => m.tipo_documento === 'quietanza');
+    const uniche = [...new Map(prove.filter(q => q.pdf_url).map(q => [q.pdf_url, q])).values()];
+    if (['pagato', 'pagato_quietanza', 'credito_usato'].includes(c.stato) && uniche.length === 1) {
+      setDocumento(uniche[0]);
+      return;
+    }
+    setAperta(aperta === chiave ? null : chiave);
+  };
   const gruppi = useMemo(() => {
     const out = [];
     for (const rigaTutta of g.voci || []) {
@@ -265,6 +281,7 @@ function GrigliaAnno({ g, aperta, setAperta, filtroStati = null }) {
 
   return (
     <>
+      {documento && <VisoreOriginale url={documento.pdf_url} titolo="Quietanza di pagamento" onClose={() => setDocumento(null)} />}
       {gruppi.map(gr => (
         <section key={gr.nome} style={{ marginBottom: 16 }}>
           <h2 style={{ fontSize: 15, fontWeight: 800, letterSpacing: '-0.02em', margin: '8px 0' }}>{gr.nome}</h2>
@@ -284,7 +301,7 @@ function GrigliaAnno({ g, aperta, setAperta, filtroStati = null }) {
                   return (
                     <Casella
                       key={chiave} voce={voce} casella={c} aperta={aperta === chiave}
-                      onApri={() => setAperta(aperta === chiave ? null : chiave)}
+                      onApri={() => apriCasella(c, chiave)}
                     />
                   );
                 })}
@@ -299,15 +316,19 @@ function GrigliaAnno({ g, aperta, setAperta, filtroStati = null }) {
 
       {!filtroStati && (g.fuori_piano || []).length > 0 && (
         <section>
-          <h2 style={{ fontSize: 15, fontWeight: 800, letterSpacing: '-0.02em', margin: '8px 0' }}>Altri codici versati nel {g.anno}</h2>
+          <h2 style={{ fontSize: 15, fontWeight: 800, letterSpacing: '-0.02em', margin: '8px 0' }}>Altri codici documentati nel {g.anno}</h2>
           <div style={FILA_CARD}>
-            {g.fuori_piano.map(v => (
-              <div key={v.codice} style={PICCOLA_CARD}>
-                <div style={{ fontWeight: 700, fontSize: 13 }}>{v.codice}</div>
-                {v.descrizione && <div style={{ color: COLORS.textMuted }}>{v.descrizione}</div>}
-                <div>{v.versamenti.length} versamenti</div>
-              </div>
-            ))}
+            {g.fuori_piano.map(v => {
+              const key = `${g.anno}:extra:${v.sezione}:${v.codice}:${v.casella?.periodo}`;
+              const voce = { codici: [v.codice], etichetta: `${v.codice} ${v.descrizione || ''}` };
+              return <div key={key} style={PICCOLA_CARD}>
+                {v.casella ? <>
+                  <strong>{voce.etichetta}</strong>
+                  <Casella voce={voce} casella={v.casella} aperta={aperta === key} onApri={() => apriCasella(v.casella, key)} />
+                  {aperta === key && <DettaglioCasella voce={voce} casella={v.casella} />}
+                </> : <strong>{voce.etichetta}</strong>}
+              </div>;
+            })}
           </div>
         </section>
       )}
@@ -414,7 +435,7 @@ export default function PianoTributi() {
     <div style={{ width: '100%', paddingBottom: 24 }}>
       <PageHeader
         title="Piano tributi"
-        subtitle={`${sottotitolo}: i tributi che devono arrivare, quelli pagati e quelli che mancano`}
+        subtitle={`${sottotitolo}: scadenze, tributi pagati e pagamenti da controllare`}
       />
       <div role="group" aria-label="Periodo" style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
         {PERIODI.map(p => (

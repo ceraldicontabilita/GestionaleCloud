@@ -12,7 +12,7 @@ che portano ancora l'MD5 in `pdf_hash`), salvataggio in `quietanze_f24` e
 MATCHING AUTOMATICO con
 gli F24 del commercialista (confronto per codice tributo + periodo +
 importo esatto al centesimo e contribuente quando disponibile): match univoco →
-F24 segnato pagato; nessun match → alert.
+F24 segnato pagato; senza modello la quietanza alimenta comunque i tributi pagati.
 """
 import base64
 import hashlib
@@ -64,55 +64,46 @@ def _tipo_scadenza_da_codice(codice: str) -> str:
 
 
 async def _marca_scadenze_calendario(db, f24: dict, data_pagamento: str, quietanza_id: str) -> list:
-    """Segna COMPLETATE nel calendario fiscale le scadenze pagate da questo F24.
+    """Aggiorna il calendario dalla competenza letta, mai dal mese di pagamento.
 
-    Approccio conservativo e reversibile (rispetta la specifica F24):
-      - considera solo i tributi PRINCIPALI del F24 (ravvedimenti/RC01 esclusi);
-      - dai codici ricava i TIPI coinvolti (ritenute/IVA/INPS);
-      - usa la DATA DI PAGAMENTO della quietanza (dato certo dell'Agenzia
-        Entrate) come mese di versamento: per ritenute/INPS la scadenza ha
-        `data` = 16 di quel mese; per l'IVA la scadenza è di competenza del
-        mese precedente (versamento il 16 del mese dopo);
-      - marca solo scadenze non già completate; salva quietanza_id/f24_id per
-        tracciabilità e reversibilità.
-    Non tocca nulla se manca la data di pagamento o se il calendario non ha la
-    scadenza (es. anno non ancora generato)."""
-    if not data_pagamento or len(str(data_pagamento)) < 7:
+    Il documento puo' essere la quietanza autonoma. Nessun modello viene creato.
+    Anno o periodo non letti non chiudono una scadenza indovinata.
+    """
+    from app.services.f24_controllo_incrociato import righe_modello
+
+    if not data_pagamento:
         return []
     try:
-        anno_pag = int(str(data_pagamento)[:4])
-        mese_pag = int(str(data_pagamento)[5:7])
-    except (ValueError, TypeError):
+        anno_pagamento = datetime.fromisoformat(str(data_pagamento)[:10]).year
+    except (TypeError, ValueError):
         return []
-
-    tipi = set()
-    for t in estrai_tributi_dettaglio(f24):
-        if t['codice'] in CODICI_RAVVEDIMENTO:
+    annuali = {"2002": ("ires_acconto2", 0), "2003": ("ires_saldo", 1),
+               "3813": ("irap_acconto2", 0), "3800": ("irap_saldo", 1)}
+    scadenze = {}
+    for r in righe_modello(f24):
+        codice, anno, mese = r["codice"], r["anno"], r["mese"]
+        if not anno or r["importo_debito_cents"] <= 0:
             continue
-        tipo = _tipo_scadenza_da_codice(t['codice'])
-        if tipo:
-            tipi.add(tipo)
+        ids = []
+        if codice in annuali:
+            prefisso, offset = annuali[codice]
+            ids = [(f"{prefisso}_{anno}", anno + offset)]
+        elif codice in {"3918", "3930", "3925", "3916", "3914"}:
+            fasi = [fase for fase in ("acconto", "saldo") if r.get(fase)]
+            # Senza la casella stampata, un acconto tardivo e un saldo non
+            # si distinguono con certezza: il dettaglio resta nel Piano tributi.
+            ids = [(f"imu_{fase}_{anno}", anno) for fase in fasi]
+        elif codice in CODICI_IVA_MENSILE:
+            ids = [(f"iva_liq_{anno}_{int(codice[2:]):02d}", anno)]
+        elif mese and _tipo_scadenza_da_codice(codice) in ("RITENUTE", "INPS"):
+            anno_comp = anno + (1 if codice in {"3802", "3848"} and anno_pagamento > anno else 0)
+            tipo = _tipo_scadenza_da_codice(codice).lower()
+            ids = [(f"{tipo}_{anno_comp}_{mese:02d}", anno_comp)]
+        for sid, anno_sid in ids:
+            scadenze.setdefault((sid, anno_sid), set()).add(codice)
 
     marcate = []
-    for tipo in sorted(tipi):
-        anno_sid = anno_pag
-        if tipo == 'RITENUTE':
-            sid = f"ritenute_{anno_pag}_{mese_pag:02d}"
-        elif tipo == 'INPS':
-            sid = f"inps_{anno_pag}_{mese_pag:02d}"
-        elif tipo == 'IVA':
-            # Versamento il 16 del mese successivo alla competenza:
-            # competenza = mese di pagamento - 1.
-            mese_comp = mese_pag - 1 if mese_pag > 1 else 12
-            anno_comp = anno_pag if mese_pag > 1 else anno_pag - 1
-            anno_sid = anno_comp
-            sid = f"iva_liq_{anno_comp}_{mese_comp:02d}"
-        else:
-            continue
-        # Il calendario e' un modello generato in memoria (`genera_scadenze_anno`):
-        # in archivio sta solo lo stato della scadenza, e la riga nasce qui alla
-        # prima prova. Una scadenza gia' completata (a mano o da un'altra
-        # quietanza) non si tocca.
+    for (sid, anno_sid), codici in scadenze.items():
         esistente = await db[COLL_CALENDARIO].find_one(
             {"id": sid, "anno": anno_sid}, {"_id": 0, "completato": 1})
         if esistente and esistente.get("completato"):
@@ -120,14 +111,11 @@ async def _marca_scadenze_calendario(db, f24: dict, data_pagamento: str, quietan
         res = await db[COLL_CALENDARIO].update_one(
             {"id": sid, "anno": anno_sid},
             {"$set": {
-                "completato": True,
-                "data_completamento": data_pagamento,
-                "completato_da": "quietanza_f24",
-                "quietanza_id": quietanza_id,
-                "f24_id": f24.get("id"),
+                "completato": True, "data_completamento": data_pagamento,
+                "completato_da": "quietanza_f24", "quietanza_id": quietanza_id,
+                "f24_id": f24.get("id"), "codici_tributo": sorted(codici),
                 "updated_at": datetime.now(timezone.utc).isoformat(),
-            }, "$setOnInsert": {"created_at": datetime.now(timezone.utc).isoformat()}},
-            upsert=True,
+            }, "$setOnInsert": {"created_at": datetime.now(timezone.utc).isoformat()}}, upsert=True,
         )
         if res.modified_count or getattr(res, "upserted_id", None):
             marcate.append(sid)
@@ -523,10 +511,13 @@ async def importa_quietanza_bytes(
         riconciliazione_ader = {"matched": False, "reason": "errore_riconciliazione_ader"}
 
     # ── MATCHING AUTOMATICO CON F24 (v3) ─────────────────────────────────
-    abbinamento = await abbina_quietanza_a_f24(db, quietanza_doc)
+    try:
+        abbinamento = await abbina_quietanza_a_f24(db, quietanza_doc)
+    except Exception as exc:
+        logger.exception("Quietanza %s acquisita: collegamento facoltativo al modello non riuscito", file_id)
+        abbinamento = {"f24_matchati": [], "candidati": [], "errore": type(exc).__name__}
     f24_matchati = abbinamento["f24_matchati"]
     candidati_match = abbinamento["candidati"]
-    f24_da_pagare_tutti = abbinamento["f24_esaminati"]
 
     risultato = {
         "success": True,
@@ -564,73 +555,22 @@ async def importa_quietanza_bytes(
             "blockers": ["POLICY_CONTABILE_NON_DISPONIBILE"],
         }
 
-    compensazione_totale = saldo_cents({"saldo": saldo_quietanza}) == 0 and bool(
-        estrai_tributi_dettaglio(quietanza_doc))
-    if not f24_matchati:
-        # CASO 3 della specifica (la specifica del titolare (non è nel repository: vale il codice)):
-        # esiste SOLO la quietanza → mai ricostruire l'F24 in automatico.
-        # La quietanza resta registrata come prova di pagamento non associata
-        # (stato dedicato) e nasce un alert bloccante che chiede il modello.
-        # P2-I: distinguo "nessun F24 del soggetto" (vero Caso 3) da "un F24 del
-        # soggetto esiste ma non combacia" (verificare importi/periodo).
-        stato_senza_modello, _ = stato_quietanza_senza_modello(quietanza_doc, f24_da_pagare_tutti)
-        if len(candidati_match) > 1:
-            warning = "Più F24 coincidono al centesimo: associazione automatica sospesa."
-            stato = "f24_ambiguo"
-            stato_canonico = "QUIETANZA_PRESENTE_F24_AMBIGUO"
-        elif stato_senza_modello == "f24_non_corrispondente":
-            warning = "F24 presente ma non corrispondente: verificare importi/periodo/codici."
-            stato = "f24_non_corrispondente"
-            # stato canonico del prompt §9.3: F24 del soggetto esiste ma non combacia
-            stato_canonico = "QUIETANZA_PRESENTE_F24_NON_CORRISPONDENTE"
-        elif compensazione_totale:
-            # Saldo zero: la quietanza e' gia' la prova completa (debiti pagati
-            # coi crediti della stessa delega). Non si scarta e non si aspetta
-            # alcun addebito in banca; il modello del commercialista e' utile
-            # ma non blocca.
-            warning = ("F24 a saldo zero: tributi pagati interamente in compensazione, "
-                       "nessun addebito in banca atteso.")
-            stato = "compensazione_totale"
-            stato_canonico = "QUIETANZA_COMPENSAZIONE_TOTALE"
-        else:
-            warning = "F24 mancante — prego caricare il modello F24 corrispondente."
-            stato = "f24_mancante"
-            # stato canonico del prompt §9.3 (regola cardine: mai ricostruire l'F24)
-            stato_canonico = "QUIETANZA_PRESENTE_F24_MANCANTE"
-        risultato["warning"] = warning
-        risultato["stato_quietanza"] = stato_canonico
-        await db[COLL_QUIETANZE].update_one(
-            {"id": file_id},
-            {"$set": {
-                "stato_associazione": stato,
-                "stato_quietanza": stato_canonico,
-                "calcolo_fiscale_sospeso": stato != "compensazione_totale",
-                "compensazione_totale": compensazione_totale,
-            }},
-        )
-    if not f24_matchati and stato != "compensazione_totale":
-        alert = {
-            "id": str(uuid.uuid4()),
-            "tipo": "quietanza_senza_match",
-            "bloccante": True,
-            "quietanza_id": file_id,
-            "message": (
-                f"{warning} La quietanza {filename} (€{saldo_quietanza:.2f}) conferma il "
-                f"pagamento ma senza il modello F24 corretto la classificazione di codici, "
-                f"causali, crediti e periodi resta sospesa."
-            ),
-            "importo": saldo_quietanza,
-            "protocollo": protocollo,
-            "status": "pending",
-            "created_at": datetime.now(timezone.utc).isoformat(),
-        }
-        await db[COLL_F24_ALERTS].insert_one(alert.copy())
-    elif f24_matchati:
-        await db[COLL_QUIETANZE].update_one(
-            {"id": file_id},
-            {"$set": {"stato_associazione": "associata", "calcolo_fiscale_sospeso": False,
-                      "compensazione_totale": compensazione_totale}},
-        )
+    # Il modello e' un collegamento facoltativo. I tributi della quietanza
+    # validata sono pagati anche senza modello o con piu' modelli candidati.
+    patch = stato_fiscale_quietanza(quietanza_doc)
+    patch["stato_associazione"] = "associata" if f24_matchati else "autonoma"
+    await db[COLL_QUIETANZE].update_one({"id": file_id}, {"$set": patch})
+    risultato["stato_quietanza"] = patch["stato_quietanza"]
+    if abbinamento.get("errore"):
+        risultato["nota_abbinamento"] = "Quietanza acquisita; collegamento facoltativo al modello da riprovare."
+    if len(candidati_match) > 1:
+        risultato["nota_abbinamento"] = "Più modelli compatibili: tributi pagati, collegamento al modello da verificare."
+    try:
+        risultato["scadenze_completate"] = await _marca_scadenze_calendario(
+            db, {**quietanza_doc, "id": None}, data_pagamento, file_id)
+    except Exception as exc:
+        logger.exception("Quietanza %s: calendario non aggiornato", file_id)
+        risultato["scadenze_errore"] = type(exc).__name__
 
     # Una quietanza con sanzioni da ravvedimento cerca subito l'F24 del
     # commercialista che ravvede (codici e periodi, mai l'importo).
@@ -696,22 +636,14 @@ def saldo_cents(doc: dict) -> int:
     return 0
 
 
-def stato_quietanza_senza_modello(quietanza: dict, modelli: list) -> tuple:
-    """«Non corrispondente» solo se c'e' un modello dello stesso contribuente
-    con lo stesso saldo: e' quello da guardare. Altrimenti il modello manca, e
-    la cosa da fare e' caricarlo. Prima bastava un qualunque F24 del
-    contribuente, e 25 quietanze del 2026 senza modello risultavano
-    «non corrispondenti» invece che «F24 mancante»."""
-    dg = quietanza.get("dati_generali") or {}
-    cf = str(quietanza.get("codice_fiscale") or dg.get("codice_fiscale") or "").strip().upper()
-    saldo = saldo_cents(quietanza)
-    for f24 in modelli:
-        cf_f24 = str(
-            (f24.get("dati_generali") or {}).get("codice_fiscale") or f24.get("codice_fiscale") or ""
-        ).strip().upper()
-        if saldo and saldo_cents(f24) == saldo and (not cf or not cf_f24 or cf == cf_f24):
-            return ("f24_non_corrispondente", "QUIETANZA_PRESENTE_F24_NON_CORRISPONDENTE")
-    return ("f24_mancante", "QUIETANZA_PRESENTE_F24_MANCANTE")
+def stato_fiscale_quietanza(quietanza: dict) -> dict:
+    """Stato della prova fiscale, indipendente dai collegamenti a F24 e banca."""
+    compensata = saldo_cents(quietanza) == 0 and bool(estrai_tributi_dettaglio(quietanza))
+    return {
+        "stato_quietanza": "QUIETANZA_COMPENSAZIONE_TOTALE" if compensata else "PAGATO_QUIETANZA",
+        "calcolo_fiscale_sospeso": False,
+        "compensazione_totale": compensata,
+    }
 
 
 def _stato_banca_verificato(f24: dict) -> bool:
@@ -862,86 +794,65 @@ async def abbina_quietanza_a_f24(db, quietanza: dict) -> Dict[str, Any]:
     return esito
 
 
-async def ricollega_quietanze_orfane(db) -> Dict[str, Any]:
-    """Ripassa le quietanze rimaste senza F24 (giro di riconciliazione).
+async def allinea_quietanze_autonome(db) -> Dict[str, Any]:
+    """Rimuove i vecchi blocchi sul modello, per ID e con traccia dello stato precedente.
 
-    Un modello arrivato dopo la sua quietanza, o gia' pagato in banca quando
-    la quietanza e' arrivata, si ricollega qui senza nessun comando a mano.
+    Non cambia righe, importi, competenze o riscontri bancari. Ripetibile.
+    Quietanze illeggibili/non valide restano in verifica per il documento stesso.
     """
-    orfane = [
-        q for q in await db[COLL_QUIETANZE].find(
-            {"stato_associazione": {"$in": [
-                "f24_mancante", "f24_non_corrispondente", "f24_ambiguo",
-            ]}},
-            {"_id": 0, "pdf_data": 0},
-        ).to_list(2000)
-        if not q.get("f24_associati")
-    ]
-    collegate = 0
-    rietichettate = 0
-    for quietanza in orfane:
-        esito = await abbina_quietanza_a_f24(db, quietanza)
-        if not esito["f24_matchati"]:
-            # Lo stato dice cosa fare: caricare il modello o guardarne uno.
-            if len(esito["candidati"]) > 1:
-                continue
-            stato, canonico = stato_quietanza_senza_modello(quietanza, esito["f24_esaminati"])
-            if stato != quietanza.get("stato_associazione"):
-                rietichettate += 1
-                await db[COLL_QUIETANZE].update_one({"id": quietanza["id"]}, {"$set": {
-                    "stato_associazione": stato, "stato_quietanza": canonico,
-                }})
-            continue
-        collegate += 1
-        # Come all'import riuscito: associata, e lo stato «F24 mancante» o
-        # «non corrispondente» non vale piu'.
-        await db[COLL_QUIETANZE].update_one({"id": quietanza["id"]}, {
-            "$set": {"stato_associazione": "associata", "calcolo_fiscale_sospeso": False},
-            "$unset": {"stato_quietanza": ""},
-        })
-        alert = await db[COLL_F24_ALERTS].find_one(
-            {"tipo": "quietanza_senza_match", "quietanza_id": quietanza["id"],
-             "status": "pending"},
-            {"_id": 0, "id": 1},
-        )
-        if alert:
-            await db[COLL_F24_ALERTS].update_one({"id": alert["id"]}, {"$set": {
-                "status": "risolto",
-                "risolto_at": datetime.now(timezone.utc).isoformat(),
-                "risolto_da": "ricollega_quietanze_orfane",
-            }})
-    return {"orfane": len(orfane), "collegate": collegate, "rietichettate": rietichettate}
+    from app.services.f24_controllo_incrociato import _quietanza_legacy, pagamenti_da_quietanze
 
-
-async def allinea_quietanze_saldo_zero(db) -> Dict[str, Any]:
-    """Quietanze gia' importate a saldo zero con righe a debito: pagate in
-    compensazione, non «F24 mancante». Solo per id, idempotente; chiude gli
-    alert bloccanti «quietanza senza match» nati prima di questa regola."""
-    docs = await db[COLL_QUIETANZE].find(
-        {"stato_quietanza": {"$in": ["QUIETANZA_PRESENTE_F24_MANCANTE",
-                                     "QUIETANZA_PRESENTE_F24_NON_CORRISPONDENTE"]}},
-        {"_id": 0, "pdf_data": 0},
-    ).to_list(5000)
+    docs = await db[COLL_QUIETANZE].find({}, {"_id": 0, "pdf_data": 0}).to_list(10000)
     aggiornate = alert_chiusi = 0
+    alerts_per_quietanza = {}
+    for alert in await db[COLL_F24_ALERTS].find(
+        {"tipo": "quietanza_senza_match"}, {"_id": 0, "id": 1, "quietanza_id": 1, "status": 1},
+    ).to_list(10000):
+        if alert.get("status") not in ("resolved", "risolto"):
+            alerts_per_quietanza.setdefault(alert.get("quietanza_id"), []).append(alert)
     for q in docs:
-        if saldo_cents(q) != 0 or not estrai_tributi_dettaglio(q):
+        if q.get("entity_status") == "deleted" or not q.get("id"):
             continue
-        await db[COLL_QUIETANZE].update_one({"id": q["id"]}, {"$set": {
-            "stato_associazione": "compensazione_totale",
-            "stato_quietanza": "QUIETANZA_COMPENSAZIONE_TOTALE",
-            "calcolo_fiscale_sospeso": False,
-            "compensazione_totale": True,
-        }})
-        aggiornate += 1
-        alert = await db[COLL_F24_ALERTS].find(
-            {"quietanza_id": q["id"], "tipo": "quietanza_senza_match", "status": "pending"},
-            {"_id": 0, "id": 1},
-        ).to_list(20)
-        for a in alert:
-            await db[COLL_F24_ALERTS].update_one({"id": a["id"]}, {"$set": {
-                "status": "resolved",
-                "risolto_motivo": "F24 a saldo zero: pagato tutto in compensazione",
+        if not pagamenti_da_quietanze([_quietanza_legacy(q)]) or not estrai_tributi_dettaglio(q):
+            continue
+        patch = stato_fiscale_quietanza(q)
+        patch["stato_associazione"] = "associata" if q.get("f24_associati") else "autonoma"
+        if any(q.get(k) != v for k, v in patch.items()):
+            await db[COLL_QUIETANZE].update_one({"id": q["id"]}, {"$set": {
+                **patch, "allineamento_quietanza_autonoma": {
+                    "data": datetime.now(timezone.utc).isoformat(),
+                    "precedente": {k: q.get(k) for k in patch},
+                },
+            }})
+            aggiornate += 1
+        for alert in alerts_per_quietanza.get(q["id"], []):
+            await db[COLL_F24_ALERTS].update_one({"id": alert["id"]}, {"$set": {
+                "status": "resolved", "bloccante": False,
+                "risolto_motivo": "La quietanza alimenta direttamente i tributi pagati; modello F24 facoltativo",
                 "risolto_il": datetime.now(timezone.utc).isoformat(),
             }})
             alert_chiusi += 1
     return {"controllate": len(docs), "aggiornate": aggiornate, "alert_chiusi": alert_chiusi}
+
+
+async def ricollega_quietanze_orfane(db) -> Dict[str, Any]:
+    """Collega facoltativamente i modelli arrivati dopo, senza sospendere i tributi."""
+    allineamento = await allinea_quietanze_autonome(db)
+    docs = await db[COLL_QUIETANZE].find(
+        {"stato_associazione": "autonoma"}, {"_id": 0, "pdf_data": 0},
+    ).to_list(10000)
+    collegate = 0
+    for quietanza in docs:
+        esito = await abbina_quietanza_a_f24(db, quietanza)
+        if esito["f24_matchati"]:
+            await db[COLL_QUIETANZE].update_one({"id": quietanza["id"]}, {"$set": {
+                "stato_associazione": "associata", **stato_fiscale_quietanza(quietanza),
+            }})
+            collegate += 1
+    return {"orfane": len(docs), "collegate": collegate,
+            "rietichettate": allineamento["aggiornate"], **allineamento}
+
+
+async def allinea_quietanze_saldo_zero(db) -> Dict[str, Any]:
+    """Compatibilita' del job storico: tutte le quietanze valide sono autonome."""
+    return await allinea_quietanze_autonome(db)

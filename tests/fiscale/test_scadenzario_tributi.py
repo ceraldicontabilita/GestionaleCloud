@@ -124,7 +124,7 @@ def test_quietanze_a_saldo_zero_gia_importate_si_allineano():
     asyncio.run(db[qi.COLL_F24_ALERTS].insert_one(
         {"id": "al", "quietanza_id": "z", "tipo": "quietanza_senza_match", "status": "pending"}))
     r = asyncio.run(qi.allinea_quietanze_saldo_zero(db))
-    assert r == {"controllate": 2, "aggiornate": 1, "alert_chiusi": 1}
+    assert r == {"controllate": 2, "aggiornate": 2, "alert_chiusi": 1}
     z = asyncio.run(db[qi.COLL_QUIETANZE].find_one({"id": "z"}))
     assert z["stato_quietanza"] == "QUIETANZA_COMPENSAZIONE_TOTALE" and z["calcolo_fiscale_sospeso"] is False
     assert asyncio.run(qi.allinea_quietanze_saldo_zero(db))["aggiornate"] == 0

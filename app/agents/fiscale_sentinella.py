@@ -201,17 +201,20 @@ class FiscaleSentinella:
         `data_scadenza`, e un filtro su quel campo non trovava mai niente.
         """
         from app.services.scadenzario_tributi import scadenza_modello
+        from app.services.f24_controllo_incrociato import carica_quietanze, modelli_coperti_da_tributi_pagati
 
         oggi = date.today()
         tra15 = oggi + timedelta(days=15)
         candidati = await db["f24_unificato"].find(
             {"status": "da_pagare"}, {"_id": 0, "pdf_data": 0},
         ).to_list(500)
+        tutti_modelli = await db["f24_unificato"].find({}, {"_id": 0, "pdf_data": 0}).to_list(5000)
+        coperti = modelli_coperti_da_tributi_pagati(tutti_modelli, await carica_quietanze(db))
 
         for f24 in candidati:
-            # `status` resta «da_pagare» anche con la quietanza in archivio finche' la
-            # banca non l'ha provata: chi ha gia' versato non riceve un «in scadenza».
-            if stato_evidenza_pagamento(f24)["versato_documentalmente"]:
+            # Il tributo pagato per quietanza non attende modello o banca.
+            if (str(f24.get("id")) in coperti or
+                    stato_evidenza_pagamento(f24)["versato_documentalmente"]):
                 continue
             scadenza_txt = str(f24.get("data_scadenza") or "")[:10]
             fonte = "data_scadenza del modello"
