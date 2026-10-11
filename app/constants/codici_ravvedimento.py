@@ -34,3 +34,10 @@ SANZIONI_RITENUTE_PER_CODICE = {
     "1040": frozenset({"8948", "8906"}), "3802": frozenset({"8950", "8902"}),
     "3847": frozenset({"8952", "8926"}), "3848": frozenset({"8952", "8926"}),
 }
+
+# Accessori propri del tributo: mai attribuire, per esempio, la sanzione
+# IRAP della stessa delega a un versamento IRES o IVA.
+ACCESSORI_DICHIARAZIONI = {
+    "REDDITI_SC": {"8918": "Sanzione IRES", "1990": "Interessi ravvedimento IRES"},
+    "DICHIARAZIONE_IVA": {"8904": "Sanzione IVA", "1991": "Interessi ravvedimento IVA"},
+}
