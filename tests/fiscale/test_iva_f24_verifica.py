@@ -91,6 +91,9 @@ def test_modello_del_periodo_senza_codice_iva_non_diventa_pagamento_iva():
             {"codice_tributo": "1001", "periodo_riferimento": "01/2026", "importo_debito": 500},
             {"codice_tributo": "1701", "periodo_riferimento": "01/2026", "importo_debito": 100},
         ],
+        "sezione_inail": [
+            {"codice_sede": "P", "causale": "P", "importo_debito": 50},
+        ],
         "quietanza_id": "Q-GENNAIO",
         "movimento_bancario_id": "MOV-GENNAIO",
         "data_pagamento_effettivo": "2026-02-16",
