@@ -229,7 +229,19 @@ def _fixture_indice():
     return db
 
 
-def test_export_e_riproducibile_stessi_byte_per_ogni_formato():
+def test_export_e_riproducibile_stessi_byte_per_ogni_formato(monkeypatch):
+    from datetime import datetime, timezone
+    from types import SimpleNamespace
+    from openpyxl.writer import excel
+
+    # Due esportazioni in istanti diversi devono conservare gli stessi byte.
+    istanti = iter([datetime(2026, 10, 11, 10, 0, tzinfo=timezone.utc),
+                    datetime(2026, 10, 11, 10, 1, tzinfo=timezone.utc)])
+    class Orologio:
+        @staticmethod
+        def now(tz=None):
+            return next(istanti)
+    monkeypatch.setattr(excel, "datetime", SimpleNamespace(datetime=Orologio, timezone=timezone))
     db = _fixture_indice()
     for formato in indice.FORMATI:
         uno = indice.esporta(_run(indice.leggi_righe(db))["righe"], formato)
