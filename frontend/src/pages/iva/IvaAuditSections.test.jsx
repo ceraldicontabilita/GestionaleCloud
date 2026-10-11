@@ -112,4 +112,28 @@ describe('Confronto IVA: base completa del mese', () => {
     expect(within(confronto).getByText(/OCR da verificare · pag. 1/)).toBeInTheDocument();
     expect(within(confronto).getByText('LIPE da verificare')).toBeInTheDocument();
   });
+
+  it('mostra il modello del periodo ma non attribuisce quietanza e banca a un codice IVA assente', () => {
+    render(<ConfrontoIvaCommercialista anno={2026} loading={false} error={null} dati={{
+      mensile: [{
+        mese: 1, mese_nome: 'Gennaio', stato_calcolo: 'NON_CALCOLATO',
+        periodo_calcolato: false, stato_f24: 'f24_periodo_senza_codice_iva',
+        codice_tributo_iva: '6001', importo_f24_commercialista: null,
+        quietanza_presente: false, verificato_banca: false,
+        modelli_f24_periodo: [{ file: '2026-01 Gennaio - F24.pdf' }],
+        lipe: {
+          stato: 'LIPE_COPIE_COERENTI', vp4: 5047.43, vp5: 12779.61,
+          numero_copie: 3, page_number: 1,
+        },
+      }],
+      totali: {},
+    }} />);
+
+    const confronto = screen.getByTestId('iva-confronto-commercialista');
+    expect(within(confronto).getByText('Modello del periodo presente')).toBeInTheDocument();
+    expect(within(confronto).getByText('codice 6001 assente')).toBeInTheDocument();
+    expect(within(confronto).getByText(/Non attribuibile all’IVA/)).toBeInTheDocument();
+    expect(within(confronto).getByText(/3 copie coerenti, provenienze conservate/)).toBeInTheDocument();
+    expect(within(confronto).queryByText('Banca: verificata')).not.toBeInTheDocument();
+  });
 });

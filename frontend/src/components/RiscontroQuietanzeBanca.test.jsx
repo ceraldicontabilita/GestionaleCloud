@@ -19,13 +19,18 @@ const RISPOSTA = {
   riscontrati: [{
     chiave: 'p1', data: '2026-08-20', importo: 654.33, protocollo: '26082011065626134/000001',
     quietanze: [{ id: 'q1', pdf_url: '/api/originale/f24/q1', filename: 'q1.pdf' }],
-    addebito: { movimento_id: 'm1', data: '2026-08-20', importo: 654.33 },
+    addebito: {
+      movimento_id: 'm1', data: '2026-08-20', importo: 654.33,
+      riferimento_operazione: '2026-08-20-10.11.12.123456789012',
+      copie_tecniche: [{ movimento_id: 'm1-csv', data: '2026-08-21', fonte: 'export_bancario_operativo' }],
+    },
     motivazione: 'importo 654.33 EUR uguale al centesimo; DATA INCASSO nella causale: 20/08/2026',
     ravvedimento_di: [{ f24_id: 'orig', pdf_url: '/api/originale/f24/orig' }],
     inviato_il_it: '20/08/2026', programmato: false, tipo_versamento: 'ravvedimento', senza_modello: false,
   }],
   tributi_ripetuti: [{
     chiave: 'a||b', data: '2026-06-16', righe: '3918 2026 3574.00',
+    doppio_versamento_confermato: true,
     motivazione: 'stesse righe (3918 2026 3574.00) in 2 deleghe versate il 16/06/2026',
     pagamenti: [
       { chiave: 'a', protocollo: '26060212304532735/000001', importo: 1969.1, inviato_il_it: '02/06/2026',
@@ -63,8 +68,11 @@ describe('Quietanze F24 e addebiti in banca', () => {
     expect(api.get).toHaveBeenCalledWith('/api/f24-riconciliazione/quietanze-banca?anno=2026');
     expect(screen.getByText('Quietanza mancante')).toBeTruthy();
     expect(screen.getByText(/DATA INCASSO nella causale/)).toBeTruthy();
-    expect(screen.getByTestId('apri-addebito-m1').getAttribute('href'))
-      .toBe('/riconciliazione/banca?movimento=m1');
+    fireEvent.click(screen.getByTestId('apri-dettaglio-riscontrati:p1'));
+    expect(screen.getByTestId('movimento-dettaglio-m1')).toHaveTextContent('m1');
+    expect(screen.getByTestId('movimento-dettaglio-m1')).toHaveTextContent('2026-08-20-10.11.12.123456789012');
+    expect(screen.getByTestId('copie-tecniche-movimento')).toHaveTextContent('m1-csv');
+    expect(screen.getByTestId('dettaglio-f24-riscontrati:p1')).toBeTruthy();
     expect(screen.getByTestId('apri-quietanza-riscontrati:p1')).toBeTruthy();
     expect(screen.getByText(/234 quietanze/)).toBeTruthy();
   });
@@ -105,8 +113,48 @@ describe('Quietanze F24 e addebiti in banca', () => {
       'inviata il 02/06/2026 · programmata · Ordinario · senza modello del commercialista',
       'inviata il 16/06/2026 · non programmata · Ordinario · senza modello del commercialista',
     ]);
-    expect(screen.getByTestId('apri-addebito-ma')).toBeTruthy();
-    expect(screen.getByTestId('apri-addebito-mb')).toBeTruthy();
+    fireEvent.click(screen.getByTestId('apri-dettaglio-tributi_ripetuti:a||b'));
+    expect(screen.getByTestId('segnalazione-doppio-versamento')).toBeTruthy();
+    expect(screen.getByTestId('segnalazione-doppio-versamento')).toHaveTextContent('Doppio versamento riscontrato');
+    expect(screen.getByTestId('movimento-dettaglio-ma')).toBeTruthy();
+    expect(screen.getByTestId('movimento-dettaglio-mb')).toBeTruthy();
+    expect(screen.getAllByTestId(/^delega-dettaglio-/)).toHaveLength(2);
+  });
+
+  it('spiega quali dati mancano e non inventa un movimento bancario', async () => {
+    api.get.mockResolvedValueOnce({ data: {
+      ...RISPOSTA, riscontrati: [], tributi_ripetuti: [], addebiti_senza_quietanza: [],
+      quietanze_incomplete: [{
+        chiave: 'q21', data: '2026-07-21', importo: null, protocollo: '26072135472143961-000001',
+        quietanze: [{ id: 'q21', fonte: 'quietanze_f24', filename: '21-07.pdf', pdf_url: '/api/originale/quietanza/q21' }],
+        campi_mancanti: ['saldo della delega'], motivo: 'saldo della delega non letto',
+        motivazione: "saldo della delega non letto: non e' possibile cercare un addebito esatto nell'estratto conto. La quietanza resta prova documentale separata; nessun movimento bancario viene associato.",
+      }],
+    } });
+    render(<MemoryRouter><RiscontroQuietanzeBanca anno={2026} /></MemoryRouter>);
+    fireEvent.click(await screen.findByTestId('apri-dettaglio-quietanze_incomplete:q21'));
+    expect(screen.getByTestId('spiegazione-riscontro')).toHaveTextContent('saldo della delega non letto');
+    expect(screen.getByTestId('mancata-corrispondenza-banca')).toBeTruthy();
+    expect(screen.getByTestId('quietanza-id-q21')).toHaveTextContent('q21');
+  });
+
+  it('distingue i candidati non confermati dai movimenti già associati', async () => {
+    api.get.mockResolvedValueOnce({ data: {
+      ...RISPOSTA, riscontrati: [], tributi_ripetuti: [], addebiti_senza_quietanza: [],
+      da_verificare: [{
+        chiave: 'p-candidati', data: '2026-02-16', importo: 7465.55, livello: 'PROBABILE',
+        quietanze: [{ id: 'q-candidati', filename: 'q.pdf' }],
+        candidati: [
+          { movimento_id: 'm1', data: '2026-02-16', importo: 7465.55 },
+          { movimento_id: 'm2', data: '2026-02-17', importo: 7465.55 },
+        ],
+        motivazione: 'due candidati distinti: scegliere a mano',
+      }],
+    } });
+    render(<MemoryRouter><RiscontroQuietanzeBanca anno={2026} /></MemoryRouter>);
+
+    expect(await screen.findByText('2 candidati non confermati')).toBeTruthy();
+    expect(screen.queryByText('2 movimenti associati')).toBeNull();
   });
 
   it('il filtro mostra un gruppo solo, il più recente per primo', async () => {
@@ -146,7 +194,22 @@ describe('Quietanze F24 e addebiti in banca', () => {
     expect(screen.getByTestId('livello-da_verificare:p2').textContent).toContain('Livello: Parziale');
     expect(screen.getByTestId('livello-da_verificare:p2').textContent).toContain('differenza');
     expect(screen.getByTestId('livello-quietanze_senza_estratto:p3').textContent)
-      .toContain('Livello: Pagato, senza addebito in banca');
+      .toContain('Livello: Nessuna corrispondenza bancaria');
     expect(screen.getByTestId('filtro-quietanze_senza_estratto').textContent).toContain('(1)');
+    expect(screen.getByTestId('livello-quietanze_senza_estratto:p3').textContent)
+      .toContain('Nessuna corrispondenza bancaria');
+  });
+
+  it('non chiama doppio versamento due deleghe prive di due addebiti distinti', async () => {
+    const possibile = { ...RISPOSTA.tributi_ripetuti[0], doppio_versamento_confermato: false };
+    api.get.mockResolvedValueOnce({ data: {
+      ...RISPOSTA, riscontrati: [], addebiti_senza_quietanza: [], tributi_ripetuti: [possibile],
+    } });
+    render(<MemoryRouter><RiscontroQuietanzeBanca anno={2026} /></MemoryRouter>);
+
+    expect(await screen.findByText('Possibile duplicazione')).toBeTruthy();
+    fireEvent.click(screen.getByTestId('apri-dettaglio-tributi_ripetuti:a||b'));
+    expect(screen.getByTestId('segnalazione-doppio-versamento'))
+      .toHaveTextContent('non sono provati altrettanti addebiti bancari distinti');
   });
 });

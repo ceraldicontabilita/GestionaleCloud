@@ -1986,6 +1986,7 @@ export function TabellaAnalisiF24({ anno }) {
   const [limite, setLimite] = useState(200);
   const isMobile = useIsMobile();
   const [ricercaTributo, setRicercaTributo] = useState('');
+  const [ordineAnalisi, setOrdineAnalisi] = useState('periodo');
   const [pdfViewer, setPdfViewer] = useState(null); // {title, fetchUrl}
 
   const carica = async filtraAnno => {
@@ -2006,12 +2007,20 @@ export function TabellaAnalisiF24({ anno }) {
     carica(true);
   }, [anno]);
 
-  const righeFiltrate = (righe || []).filter(r => {
+  const righeFiltrateBase = (righe || []).filter(r => {
     const cerca = ricercaTributo.trim().toLowerCase();
     if (!cerca) return true;
     return `${(r.codici_tributo || []).join(' ')} ${(r.causali_inps || []).join(' ')} ${r.periodo_competenza || ''} ${r.file || ''}`
       .toLowerCase().includes(cerca);
   });
+  const righeFiltrate = ordineAnalisi === 'codice'
+    ? righeFiltrateBase
+      .flatMap(r => (r.righe_tributo || []).map((tributo, i) => ({
+        ...r, _rigaTributo: tributo, _chiaveVista: `${r.f24_id}:${tributo.codice}:${tributo.periodo}:${i}`,
+      })))
+      .sort((a, b) => String(a._rigaTributo.codice || '').localeCompare(String(b._rigaTributo.codice || ''), 'it', { numeric: true })
+        || String(b._rigaTributo.periodo || '').localeCompare(String(a._rigaTributo.periodo || '')))
+    : righeFiltrateBase;
 
   const cellaTh = {
     padding: '8px 8px', textAlign: 'left', fontWeight: 600, fontSize: 11,
@@ -2051,6 +2060,18 @@ export function TabellaAnalisiF24({ anno }) {
           placeholder="Cerca codice tributo, periodo o file"
           style={{ minWidth: 260, minHeight: 38, padding: '7px 10px', border: '1px solid #d0ccbe', borderRadius: 6 }}
         />
+        <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5, color: '#4c4a44' }}>
+          Ordina per
+          <select
+            aria-label="Ordina analisi F24"
+            value={ordineAnalisi}
+            onChange={e => { setOrdineAnalisi(e.target.value); setLimite(200); }}
+            style={{ minHeight: 38, padding: '7px 10px', border: '1px solid #d0ccbe', borderRadius: 6, background: 'white' }}
+          >
+            <option value="periodo">Periodo / modello F24</option>
+            <option value="codice">Codice tributo (una riga per codice)</option>
+          </select>
+        </label>
         {righe && (
           <span style={{ fontSize: 12, color: '#7a776e' }}>
             {righe.length} modelli · in ritardo:{' '}
@@ -2096,7 +2117,7 @@ export function TabellaAnalisiF24({ anno }) {
                 const inRitardo = r.stato_pagamento === 'pagato_in_ritardo';
                 return (
                   <tr
-                    key={r.f24_id || idx}
+                    key={r._chiaveVista || r.f24_id || idx}
                     data-testid={`riga-analisi-f24-${r.f24_id || idx}`}
                     style={{
                       borderBottom: '1px solid #f2f0e9',
@@ -2105,10 +2126,21 @@ export function TabellaAnalisiF24({ anno }) {
                     }}
                   >
                     <td style={{ ...cella, fontWeight: 700, whiteSpace: 'nowrap' }}>{etichettaM('Periodo competenza')}
-                      {r.periodo_competenza || '—'}
-                      {(r.codici_tributo || []).length > 0 && (
+                      {r._rigaTributo ? (
+                        <div data-testid={`codice-tributo-${r._rigaTributo.codice}`} style={{ whiteSpace: 'normal', minWidth: 190 }}>
+                          <div style={{ fontSize: 14, color: '#141413' }}>Codice {r._rigaTributo.codice}</div>
+                          <div style={{ fontSize: 11, color: '#5f5c55', fontWeight: 500 }}>{r._rigaTributo.descrizione}</div>
+                          <div style={{ fontSize: 11, color: '#7a776e' }}>
+                            Periodo riga {r._rigaTributo.periodo || 'non letto'} · F24 {r.periodo_competenza || 'senza periodo'}
+                          </div>
+                          <div style={{ fontSize: 11, color: '#7a776e' }}>
+                            Debito {formatEuro(r._rigaTributo.importo_debito || 0)} · credito {formatEuro(r._rigaTributo.importo_credito || 0)}
+                          </div>
+                        </div>
+                      ) : (r.periodo_competenza || '—')}
+                      {!r._rigaTributo && (r.codici_tributo || []).length > 0 && (
                         <div style={{ fontSize: 10.5, color: '#5b7a6b', fontFamily: 'monospace', marginTop: 2 }}>
-                          Codici: {r.codici_tributo.join(', ')}
+                          Codici (ordinati): {[...(r.codici_tributo || [])].sort((a, b) => String(a).localeCompare(String(b), 'it', { numeric: true })).join(', ')}
                         </div>
                       )}
                       {r.file && (
@@ -2130,6 +2162,9 @@ export function TabellaAnalisiF24({ anno }) {
                       <span style={{ padding: '3px 8px', borderRadius: 6, fontSize: 11, fontWeight: 700, background: stato.bg, color: stato.color, whiteSpace: 'nowrap' }}>
                         {stato.label}
                       </span>
+                      <div data-testid="ambito-stato-f24" style={{ marginTop: 4, maxWidth: 150, fontSize: 10.5, lineHeight: 1.3, color: '#7a776e' }}>
+                        Stato dell'intero modello F24{r._rigaTributo ? ` che contiene il codice ${r._rigaTributo.codice}` : ', non di un singolo codice'}.
+                      </div>
                     </td>
                     <td style={{ ...cella, whiteSpace: 'nowrap' }}>{etichettaM('Tipo versamento')}
                       {r.tipo_versamento === 'ordinario' ? 'Ordinario'

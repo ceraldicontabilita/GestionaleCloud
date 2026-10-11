@@ -67,6 +67,32 @@ def _codici(f24: Dict[str, Any]) -> set[str]:
     }
 
 
+def _tutti_codici(f24: Dict[str, Any]) -> List[str]:
+    """Codici/causali di tutte le sezioni, per spiegare il modello intero."""
+    return sorted({
+        str(r.get("tax_code") or "").strip()
+        for r in normalizza_righe_tributo(f24)
+        if r.get("tax_code")
+    })
+
+
+def _periodo_modello(f24: Dict[str, Any]) -> Optional[tuple[int, int]]:
+    """Periodo fiscale prevalente del modello, mai la data di addebito."""
+    from app.engines.tributi_engine import periodo_prevalente
+
+    try:
+        return periodo_prevalente(f24)
+    except (TypeError, ValueError, KeyError):
+        return None
+
+
+def _identita_documento(f24: Dict[str, Any]) -> str:
+    return str(
+        f24.get("id") or f24.get("document_id") or f24.get("sha256")
+        or f24.get("file_name") or f24.get("filename") or id(f24)
+    )
+
+
 def verifica_versamento_iva_da_documenti(
     *,
     anno: int,
@@ -83,8 +109,23 @@ def verifica_versamento_iva_da_documenti(
     scadenza = date.fromisoformat(deadline["scadenza_legale"])
     oggi = oggi or date.today()
     candidati: List[Dict[str, Any]] = []
+    modelli_periodo: Dict[str, Dict[str, Any]] = {}
 
     for f24 in f24_docs:
+        periodo_modello = _periodo_modello(f24)
+        if periodo_modello == (mese, anno):
+            evidenza_modello = stato_evidenza_pagamento(f24)
+            codici_modello = _tutti_codici(f24)
+            modelli_periodo[_identita_documento(f24)] = {
+                "f24_id": f24.get("id") or f24.get("document_id"),
+                "file": f24.get("file_name") or f24.get("filename"),
+                "periodo": f"{anno}-{mese:02d}",
+                "codici_tributo": codici_modello,
+                "codice_iva_presente": codice in codici_modello,
+                "quietanza_presente_modello": evidenza_modello.get("quietanza_presente", False),
+                "verificato_banca_modello": evidenza_modello.get("verificato_banca", False),
+                "stato_pagamento_modello": evidenza_modello.get("stato"),
+            }
         for riga in _righe_erario(f24):
             if str(riga.get("tax_code") or "").strip() != codice:
                 continue
@@ -109,6 +150,8 @@ def verifica_versamento_iva_da_documenti(
                 "saldo_f24": euros(saldo_f24_cents),
                 "quietanza_id": f24.get("quietanza_id"),
                 "evidenza_pagamento": evidenza,
+                "codici_tributo": sorted(codici),
+                "altri_codici_tributo": sorted(codici - {codice}),
                 "ravvedimento": bool(codici & CODICI_RAVVEDIMENTO_IVA),
                 "codici_ravvedimento": sorted(codici & CODICI_RAVVEDIMENTO_IVA),
             })
@@ -133,8 +176,9 @@ def verifica_versamento_iva_da_documenti(
     tardivo = bool(data_versamento_iso and data_versamento_iso > scadenza.isoformat())
     scaduto = oggi > scadenza and not versato_documentalmente
 
+    modelli_periodo_lista = list(modelli_periodo.values())
     if not candidati:
-        stato = "F24_NON_TROVATO"
+        stato = "F24_PERIODO_SENZA_CODICE_IVA" if modelli_periodo_lista else "F24_NON_TROVATO"
     elif len(candidati) > 1:
         stato = "F24_MULTIPLI_DA_VERIFICARE"
     elif pagato_banca:
@@ -163,6 +207,9 @@ def verifica_versamento_iva_da_documenti(
         "data_versamento_documentale": data_versamento_iso,
         "scaduto": scaduto,
         "f24_trovati": len(candidati),
+        "modelli_periodo_trovati": len(modelli_periodo_lista),
+        "modelli_periodo": modelli_periodo_lista,
+        "codice_iva_presente": bool(candidati),
         "f24": principale,
         "candidati": candidati,
         "debito_liquidazione": (

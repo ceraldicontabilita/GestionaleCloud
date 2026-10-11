@@ -48,3 +48,32 @@ def test_due_modelli_con_stessa_riga_iva_restano_ambigui():
     result = _run(VerificaCoerenza(_Db(docs)).trova_f24_iva_mensile(2026, 3))
     assert result["stato"] == "f24_ambiguo"
     assert result["importo_f24"] is None
+
+
+def test_modello_del_periodo_senza_6001_non_riusa_un_vecchio_pagamento_iva():
+    docs = [
+        {
+            "id": "F24-GEN-2026",
+            "file_name": "2026-01 Gennaio - F24.pdf",
+            "sezione_erario": [
+                {"codice_tributo": "1001", "periodo_riferimento": "01/2026", "importo_debito": 700},
+            ],
+            "quietanza_id": "Q-2026",
+            "movimento_bancario_id": "MOV-2026",
+            "data_pagamento_effettivo": "2026-02-16",
+        },
+        {
+            "id": "F24-GEN-2025",
+            "sezione_erario": [
+                {"codice_tributo": "6001", "anno_riferimento": "2025", "importo_debito": 534.06},
+            ],
+            "movimento_bancario_id": "MOV-2025",
+            "data_pagamento_effettivo": "2025-02-17",
+        },
+    ]
+    result = _run(VerificaCoerenza(_Db(docs)).trova_f24_iva_mensile(2026, 1))
+    assert result["stato"] == "f24_periodo_senza_codice_iva"
+    assert result["importo_f24"] is None
+    assert result["verificato_banca"] is False
+    assert result["movimento_bancario_id"] is None
+    assert result["modelli_periodo"][0]["file"] == "2026-01 Gennaio - F24.pdf"

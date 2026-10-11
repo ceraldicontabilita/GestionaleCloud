@@ -229,6 +229,13 @@ async def tabella_analisi(anno: Optional[int] = Query(None, ge=2000, le=2100)) -
                 for r in (d.get(sezione) or [])
                 if isinstance(r, dict) and (r.get("codice_tributo") or r.get("causale"))
             }),
+            # Il pagamento appartiene alla delega intera, non a una singola
+            # riga. Le righe sono esposte separatamente per ordinare e leggere
+            # per codice senza attribuire una prova bancaria al codice sbagliato.
+            "righe_tributo": sorted(a.get("righe") or [], key=lambda r: (
+                str(r.get("codice") or ""), str(r.get("periodo") or ""),
+            )),
+            "stato_riferito_a": "modello_f24_completo",
             "documento_collegato": {
                 "quietanza_id": quietanza_id,
                 "protocollo_quietanza": d.get("protocollo_quietanza"),

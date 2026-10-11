@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import logging
 from datetime import date, datetime, timezone
+from zoneinfo import ZoneInfo
 from typing import Any, Dict, Iterable, List, Optional
 
 logger = logging.getLogger(__name__)
@@ -34,7 +35,10 @@ CONFERMA_MASSIVA_TITOLARE = {
 
 
 def _oggi() -> date:
-    return datetime.now(timezone.utc).date()
+    # Le scadenze sono italiane: intorno alla mezzanotte Roma e UTC possono
+    # cadere in due giorni diversi e una scadenza odierna verrebbe trattata
+    # erroneamente come futura.
+    return datetime.now(ZoneInfo("Europe/Rome")).date()
 
 
 async def conferma_scadenza(db, *, anno: int, scadenza_id: str, note: Optional[str], template: Optional[Dict[str, Any]],

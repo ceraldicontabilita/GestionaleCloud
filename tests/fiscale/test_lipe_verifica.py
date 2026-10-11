@@ -144,7 +144,7 @@ def test_vp4_nativo_vuoto_vale_zero_e_quadra_il_credito():
     assert parsed["quadrature"] == {"vp6": True, "vp14": True}
 
 
-def test_lipe_duplicata_resta_ambigua_con_provenienza():
+def test_lipe_copie_con_stessi_valori_espongono_un_dato_comune_con_provenienza():
     async def scenario():
         db = ClientArchivioMemoria().db
         for suffix in ("A", "B"):
@@ -158,8 +158,30 @@ def test_lipe_duplicata_resta_ambigua_con_provenienza():
                 "page_number": 1, "text": "VP1 Mese 7\nVP4 100,00\nVP5 20,00",
             })
         result = await list_lipe_monthly_evidence(db, year=2026, company_id="CERALDI")
-        assert result[7]["stato"] == "LIPE_AMBIGUA"
+        assert result[7]["stato"] == "LIPE_COPIE_COERENTI"
+        assert result[7]["numero_copie"] == 2
+        assert result[7]["vp4_cents"] == 10000
+        assert result[7]["vp5_cents"] == 2000
         assert {item["document_id"] for item in result[7]["candidati"]} == {"LIPE-A", "LIPE-B"}
+
+    asyncio.run(scenario())
+
+
+def test_lipe_copie_con_valori_diversi_restano_ambigue():
+    async def scenario():
+        db = ClientArchivioMemoria().db
+        for suffix, vp4 in (("A", "100,00"), ("B", "101,00")):
+            await db.fiscal_documents.insert_one({
+                "id": f"LIPE-{suffix}", "company_id": "CERALDI",
+                "document_type": "LIPE", "filename": f"LIPE-{suffix}.pdf",
+                "source_metadata": {"tax_year": 2026},
+            })
+            await db.fiscal_pages.insert_one({
+                "document_id": f"LIPE-{suffix}", "version_id": f"V-{suffix}",
+                "page_number": 1, "text": f"VP1 Mese 7\nVP4 {vp4}\nVP5 20,00",
+            })
+        result = await list_lipe_monthly_evidence(db, year=2026, company_id="CERALDI")
+        assert result[7]["stato"] == "LIPE_AMBIGUA"
 
     asyncio.run(scenario())
 

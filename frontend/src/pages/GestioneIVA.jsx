@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { RefreshCw, Wallet, Calculator, CheckCircle2, Unlock } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import api from '../api';
@@ -84,6 +84,7 @@ export default function GestioneIVA() {
 
   // Dashboard IVA del mese (Fase 5)
   const [dashboard, setDashboard] = useState(null);
+  const liquidazioneRequestRef = useRef(0);
 
   // Pagina IVA unica: confronto F24 commercialista e scadenze mensili.
   const [confrontoCommercialista, setConfrontoCommercialista] = useState(null);
@@ -128,16 +129,24 @@ export default function GestioneIVA() {
   };
 
   const caricaLiquidazione = async (p = periodo) => {
-    getConCopia(`/api/iva/dashboard/${anno}/${mese}`, undefined, copia => copia && setDashboard(copia))
-      .then((d) => setDashboard(d.data))
+    const requestId = ++liquidazioneRequestRef.current;
+    const [annoRichiesto, meseRichiesto] = p.split('-').map(Number);
+    getConCopia(`/api/iva/dashboard/${annoRichiesto}/${meseRichiesto}`, undefined, copia => {
+      if (copia && requestId === liquidazioneRequestRef.current) setDashboard(copia);
+    })
+      .then((d) => {
+        if (requestId === liquidazioneRequestRef.current) setDashboard(d.data);
+      })
       .catch((e) => {
+        if (requestId !== liquidazioneRequestRef.current) return;
         setDashboard(null);
         setMsg({ tipo: 'errore', testo: 'Impossibile caricare il cruscotto IVA mensile: ' + (e.response?.data?.detail || e.message) });
       });
     try {
       const res = await api.get(`/api/iva/liquidazioni/${p}`);
-      setLiquidazione(res.data?.corrente || null);
+      if (requestId === liquidazioneRequestRef.current) setLiquidazione(res.data?.corrente || null);
     } catch (e) {
+      if (requestId !== liquidazioneRequestRef.current) return;
       setLiquidazione(null);
       setMsg({ tipo: 'errore', testo: 'Impossibile caricare la liquidazione IVA: ' + (e.response?.data?.detail || e.message) });
     }
@@ -694,7 +703,9 @@ export default function GestioneIVA() {
               marginTop: 8,
               borderColor: dashboard.versamento_iva.f24_trovati === 1
                 ? COLORS.success
-                : COLORS.warning,
+                : dashboard.versamento_iva.modelli_periodo_trovati > 0
+                  ? COLORS.warning
+                  : COLORS.danger,
             }}
             data-testid="iva-f24-documento"
           >
@@ -709,8 +720,8 @@ export default function GestioneIVA() {
                 <strong>{formatDateIT(dashboard.versamento_iva.scadenza)}</strong>
               </div>
               <div style={STILI.voce}>
-                <span style={STILI.voceLabel}>F24 trovato</span>
-                <strong>{dashboard.versamento_iva.f24_trovati || 0}</strong>
+                <span style={STILI.voceLabel}>Modello F24 del periodo</span>
+                <strong>{dashboard.versamento_iva.modelli_periodo_trovati || dashboard.versamento_iva.f24_trovati || 0}</strong>
               </div>
               <div style={STILI.voce}>
                 <span style={STILI.voceLabel}>Importo IVA nel F24</span>
@@ -727,13 +738,26 @@ export default function GestioneIVA() {
                     ? 'F24 acquisito'
                     : dashboard.versamento_iva.f24_trovati > 1
                       ? 'Associazione ambigua'
-                      : 'In attesa dalla posta'}
+                      : dashboard.versamento_iva.modelli_periodo_trovati > 0
+                        ? `Modello presente, codice ${dashboard.versamento_iva.codice_tributo} assente`
+                        : 'Nessun modello del periodo acquisito'}
                 </Badge>
               </div>
             </div>
             {dashboard.versamento_iva.f24_trovati > 1 && (
               <div style={STILI.msgErr} role="alert">
                 Più F24 trovati per lo stesso codice e anno: associazione ambigua, non sommare automaticamente.
+              </div>
+            )}
+            {dashboard.versamento_iva.stato === 'F24_PERIODO_SENZA_CODICE_IVA' && (
+              <div style={STILI.msgErr} role="status">
+                Il modello del periodo è presente, ma non contiene il codice IVA richiesto.
+                Quietanza e banca provano il pagamento dell’intero modello, non un versamento IVA assente.
+                {(dashboard.versamento_iva.modelli_periodo || []).map(modello => (
+                  <div key={modello.f24_id || modello.file} style={{ marginTop: 5 }}>
+                    File: {modello.file || 'nome non disponibile'}. Codici presenti: {(modello.codici_tributo || []).join(', ') || 'non letti'}.
+                  </div>
+                ))}
               </div>
             )}
           </div>
@@ -883,6 +907,7 @@ export default function GestioneIVA() {
       <ScadenzeIvaMensili
         anno={anno}
         dati={scadenzeMensili}
+        confronto={confrontoCommercialista}
         loading={controlliLoading}
         error={controlliError.scadenze}
       />

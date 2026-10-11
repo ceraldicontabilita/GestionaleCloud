@@ -240,6 +240,7 @@ async def list_lipe_monthly_evidence(db, *, year: int, company_id: str | None = 
                     "parser_version": "lipe-vp-v3-layout-aware",
                     "parse_method": parsed.get("parse_method"),
                     "raw_evidence": parsed["raw_evidence"],
+                    "quadrature": parsed.get("quadrature") or {},
                 })
 
     result: dict[int, dict[str, Any]] = {}
@@ -248,7 +249,37 @@ async def list_lipe_monthly_evidence(db, *, year: int, company_id: str | None = 
         if not items:
             result[month] = {"stato": "LIPE_NON_PRESENTE", "candidati": []}
         elif len(items) > 1:
-            result[month] = {"stato": "LIPE_AMBIGUA", "candidati": items}
+            # Copie documentali diverse non sono valori fiscali diversi. Se i
+            # campi VP estratti e le quadrature coincidono, mostriamo il dato
+            # comune conservando tutte le provenienze; valori discordanti
+            # restano invece realmente ambigui.
+            def firma(item: dict[str, Any]) -> tuple:
+                valori = tuple(sorted(
+                    (k, v) for k, v in item.items()
+                    if k.startswith("vp") and (k.endswith("_cents") or k.endswith("_side"))
+                ))
+                return valori, tuple(sorted((item.get("quadrature") or {}).items()))
+
+            firme = {firma(item) for item in items}
+            tutti_affidabili = all(item.get("confidence", 0) >= 1 for item in items)
+            if len(firme) == 1 and tutti_affidabili:
+                result[month] = {
+                    "stato": "LIPE_COPIE_COERENTI",
+                    "candidati": items,
+                    "numero_copie": len(items),
+                    "provenienze": [
+                        {
+                            "document_id": item.get("document_id"),
+                            "version_id": item.get("version_id"),
+                            "filename": item.get("filename"),
+                            "page_number": item.get("page_number"),
+                        }
+                        for item in items
+                    ],
+                    **items[0],
+                }
+            else:
+                result[month] = {"stato": "LIPE_AMBIGUA", "candidati": items}
         elif items[0].get("confidence", 0) < 1:
             result[month] = {"stato": "LIPE_DA_VERIFICARE", "candidati": items, **items[0]}
         else:

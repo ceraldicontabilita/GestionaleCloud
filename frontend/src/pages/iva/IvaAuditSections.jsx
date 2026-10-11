@@ -52,11 +52,14 @@ function EsitoF24({ mese }) {
   if (mese.lipe?.stato === 'LIPE_AMBIGUA' || mese.lipe?.stato === 'LIPE_DA_VERIFICARE') {
     return <Badge variant="warning">LIPE da verificare</Badge>;
   }
-  if (mese.lipe?.stato === 'LIPE_ESTRATTA' && mese.lipe?.coerente_gestionale === false) {
+  if (['LIPE_ESTRATTA', 'LIPE_COPIE_COERENTI'].includes(mese.lipe?.stato) && mese.lipe?.coerente_gestionale === false) {
     return <Badge variant="warning">Dati da verificare</Badge>;
   }
   if (daVersare <= 0) {
     return <Badge variant="info">Credito {euroOppure(aCredito)}</Badge>;
+  }
+  if (mese.stato_f24 === 'f24_periodo_senza_codice_iva') {
+    return <Badge variant="warning">Codice IVA assente</Badge>;
   }
   if (mese.stato_f24 === 'in_attesa_f24' || mese.importo_f24_commercialista == null) {
     return <Badge variant="warning">In attesa F24</Badge>;
@@ -129,18 +132,32 @@ export function ConfrontoIvaCommercialista({ anno, dati, loading, error }) {
                       )}
                     </td>
                     <td data-label="LIPE comunicata" style={{ padding: '10px 9px', textAlign: 'right' }}>
-                      {['LIPE_ESTRATTA', 'LIPE_DA_VERIFICARE'].includes(m.lipe?.stato) ? (
+                      {['LIPE_ESTRATTA', 'LIPE_DA_VERIFICARE', 'LIPE_COPIE_COERENTI'].includes(m.lipe?.stato) ? (
                         <span>
                           Esigibile VP4 {euroOppure(m.lipe.vp4)}<br />
                           Detraibile VP5 {euroOppure(m.lipe.vp5)}
                           <small style={{ display: 'block', color: m.lipe.stato === 'LIPE_DA_VERIFICARE' ? COLORS.warning : m.lipe.coerente_gestionale ? COLORS.success : COLORS.danger }}>
-                            {m.lipe.stato === 'LIPE_DA_VERIFICARE' ? 'OCR da verificare' : m.lipe.coerente_gestionale ? 'uguale al gestionale' : 'diversa dal gestionale'} · pag. {m.lipe.page_number || '—'}
+                            {m.lipe.stato === 'LIPE_DA_VERIFICARE'
+                              ? 'OCR da verificare'
+                              : m.lipe.stato === 'LIPE_COPIE_COERENTI'
+                                ? `${m.lipe.numero_copie} copie coerenti, provenienze conservate`
+                                : m.lipe.coerente_gestionale ? 'uguale al gestionale' : 'diversa dal gestionale'} · pag. {m.lipe.page_number || '—'}
                           </small>
                         </span>
                       ) : <span style={{ color: COLORS.textMuted }}>{m.lipe?.stato === 'LIPE_AMBIGUA' ? 'Più LIPE candidate' : '—'}</span>}
                     </td>
                     <td data-label="F24 commercialista" style={{ padding: '10px 9px', textAlign: 'right' }}>
-                      {m.importo_f24_commercialista == null ? '—' : (
+                      {m.stato_f24 === 'f24_periodo_senza_codice_iva' ? (
+                        <span>
+                          Modello del periodo presente
+                          <small style={{ display: 'block', color: COLORS.warning }}>
+                            codice {m.codice_tributo_iva || '—'} assente
+                          </small>
+                          <small style={{ display: 'block', color: COLORS.textMuted }}>
+                            {(m.modelli_f24_periodo?.[0]?.file || 'File acquisito')}
+                          </small>
+                        </span>
+                      ) : m.importo_f24_commercialista == null ? '—' : (
                         <span>
                           {euroOppure(m.importo_f24_commercialista)}
                           <small style={{ display: 'block', color: COLORS.textMuted }}>
@@ -150,8 +167,16 @@ export function ConfrontoIvaCommercialista({ anno, dati, loading, error }) {
                       )}
                     </td>
                     <td data-label="Pagamento" style={{ padding: '10px 9px', textAlign: 'right' }}>
-                      <small style={{ display: 'block' }}>Quietanza: {m.quietanza_presente ? 'presente' : 'assente'}</small>
-                      <small style={{ display: 'block' }}>Banca: {m.verificato_banca ? 'verificata' : 'non verificata'}</small>
+                      {m.stato_f24 === 'f24_periodo_senza_codice_iva' ? (
+                        <small style={{ display: 'block', color: COLORS.textMuted }}>
+                          Non attribuibile all’IVA: le prove riguardano il modello completo.
+                        </small>
+                      ) : (
+                        <>
+                          <small style={{ display: 'block' }}>Quietanza: {m.quietanza_presente ? 'presente' : 'assente'}</small>
+                          <small style={{ display: 'block' }}>Banca: {m.verificato_banca ? 'verificata' : 'non verificata'}</small>
+                        </>
+                      )}
                     </td>
                     <td data-label="Esito" style={{ padding: '10px 9px', textAlign: 'right' }}><EsitoF24 mese={m} /></td>
                   </tr>
@@ -171,8 +196,9 @@ export function ConfrontoIvaCommercialista({ anno, dati, loading, error }) {
   );
 }
 
-export function ScadenzeIvaMensili({ anno, dati, loading, error }) {
+export function ScadenzeIvaMensili({ anno, dati, confronto, loading, error }) {
   const scadenze = dati?.scadenze || [];
+  const confrontoPerMese = new Map((confronto?.mensile || []).map(item => [item.mese, item]));
 
   return (
     <section id="iva-scadenze" style={cardStyle} data-testid="iva-scadenze-mensili">
@@ -202,6 +228,8 @@ export function ScadenzeIvaMensili({ anno, dati, loading, error }) {
               const nonCalcolato = s.stato === 'NON_CALCOLATO' || s.saldo_cents == null;
               const aDebito = Boolean(s.da_versare_effettivo ?? s.da_versare);
               const giorniMancanti = s.giorni_senza_corrispettivo || [];
+              const riscontro = confrontoPerMese.get(s.mese);
+              const conteggi = s.conteggi || {};
               return (
                 <article key={s.mese} data-testid={`iva-scadenza-mese-${s.mese}`} style={{ padding: 12, border: `1px solid ${COLORS.border}`, borderLeft: `4px solid ${datiMancanti ? COLORS.danger : nonCalcolato ? COLORS.textMuted : aDebito ? COLORS.warning : COLORS.success}`, borderRadius: 8, background: COLORS.bgAlt }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center' }}>
@@ -223,6 +251,21 @@ export function ScadenzeIvaMensili({ anno, dati, loading, error }) {
                     </div>
                   )}
                   <div style={{ marginTop: 7, fontSize: 11, color: COLORS.textMuted }}>Scadenza {formatDateIT(s.data_scadenza)}</div>
+                  <div style={{ marginTop: 6, fontSize: 11, color: COLORS.textMuted }}>
+                    Fatture: {conteggi.fatture_periodo_attribuito ?? '—'}
+                    {' · '}IVA da verificare: {conteggi.detraibilita_da_verificare ?? '—'}
+                    {' · '}Chiusure RT: {s.giorni_con_corrispettivo ?? '—'}/{s.giorni_mese ?? '—'}
+                  </div>
+                  {riscontro?.lipe?.stato === 'LIPE_COPIE_COERENTI' && (
+                    <div style={{ marginTop: 4, fontSize: 11, color: COLORS.textMuted }}>
+                      LIPE: VP4 {euroOppure(riscontro.lipe.vp4)}, VP5 {euroOppure(riscontro.lipe.vp5)} ({riscontro.lipe.numero_copie} copie coerenti)
+                    </div>
+                  )}
+                  {riscontro?.stato_f24 === 'f24_periodo_senza_codice_iva' && (
+                    <div style={{ marginTop: 4, fontSize: 11, color: COLORS.warning }}>
+                      F24 del periodo presente; codice {riscontro.codice_tributo_iva} assente.
+                    </div>
+                  )}
                   <div style={{ marginTop: 8, display: 'grid', gap: 3, fontSize: 12 }}>
                     <span>Debito: <strong>{nonCalcolato ? '—' : euroOppure(s.iva_debito)}</strong></span>
                     <span>Credito: <strong>{nonCalcolato ? '—' : euroOppure(s.iva_credito)}</strong></span>
