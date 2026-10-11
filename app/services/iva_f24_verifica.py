@@ -121,7 +121,7 @@ def verifica_versamento_iva_da_documenti(
     }
     candidati.sort(key=lambda c: priorita.get(c["evidenza_pagamento"]["stato"], 9))
     principale = candidati[0] if candidati else None
-    pagato_banca = bool(principale and principale["evidenza_pagamento"]["pagato"])
+    pagato_banca = bool(principale and principale["evidenza_pagamento"]["verificato_banca"])
     versato_documentalmente = bool(
         principale and principale["evidenza_pagamento"].get("versato_documentalmente")
     )

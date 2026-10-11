@@ -109,9 +109,10 @@ def test_import_e_matching_automatico(monkeypatch):
     assert esito["success"] and not esito["duplicate"]
     assert len(esito["f24_matchati"]) == 1  # tolleranza €0.50 sul singolo tributo
     f24 = db[qi.COLL_F24_COMMERCIALISTA].docs[0]
-    assert f24["status"] == "da_pagare"
-    assert f24["stato_pagamento"] == "DA_VERIFICARE_BANCA"
-    assert f24["pagato"] is False
+    assert f24["status"] == "pagato"
+    assert f24["stato_pagamento"] == "PAGATO_QUIETANZA"
+    assert f24["pagato"] is True
+    assert f24["pagamento_verificato_banca"] is False
     assert f24["quietanza_id"] == esito["quietanza_id"]
     quietanza = db[qi.COLL_QUIETANZE].docs[0]
     assert quietanza["pdf_hash"]

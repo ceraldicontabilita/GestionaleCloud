@@ -55,7 +55,7 @@ ETICHETTE = {
     PAGATO_QUIETANZA: "Pagato (quietanza)",
     DA_PAGARE: "F24 arrivato, da pagare",
     SCADUTO_NON_PAGATO: "F24 scaduto, nessun pagamento",
-    MANCA_F24: "Manca F24",
+    MANCA_F24: "Non risulta pagato",
     NESSUN_F24: "Nessun F24 in archivio",
     FUTURO: "Non ancora scaduto",
     DA_VERIFICARE_A_MANO: "Fuori F24: da verificare",
@@ -272,7 +272,13 @@ def _data(testo: Optional[str]) -> Optional[date]:
 
 
 def _modelli_con_righe(registro: Dict[str, Any]) -> List[Tuple[Dict[str, Any], List[Dict[str, Any]]]]:
-    return [(f24, registro_f24.righe_modello(f24)) for f24 in registro["f24"]]
+    documenti = [(f24, registro_f24.righe_modello(f24)) for f24 in registro["f24"]]
+    for pagamento in registro_f24.pagamenti_da_quietanze(registro["quietanze"]):
+        if pagamento.get("_righe"):
+            # Proiezione di lettura, mai un modello F24 inventato o salvato.
+            documenti.append(({"_quietanza": pagamento, "data_versamento": pagamento.get("data")},
+                              pagamento["_righe"]))
+    return documenti
 
 
 def _righe_voce(voce: Dict[str, Any], righe: Iterable[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -308,10 +314,18 @@ def _casella(
     credito = voce.get("natura") == "credito"
     modelli: List[Dict[str, Any]] = []
     for f24, righe in trovati:
-        prove = registro_f24.prove_modello(f24, registro)
+        pagamento = f24.get("_quietanza")
+        prove = ({"pagato_banca": False, "quietanza_presente": True,
+                  "addebito_compatibile_non_agganciato": False, "addebiti_banca": [],
+                  "quietanze": [{"quietanza_id": q["id"]} for q in pagamento["quietanze"]],
+                  "data_versamento": pagamento["data"]}
+                 if pagamento else registro_f24.prove_modello(f24, registro))
         stato = _stato_da_prove(prove, scadenza, oggi)
         modelli.append({
             "f24_id": f24.get("id"),
+            "documento_id": pagamento["chiave"] if pagamento else f24.get("id"),
+            "tipo_documento": "quietanza" if pagamento else "f24",
+            "protocollo": pagamento.get("protocollo") if pagamento else None,
             "data_versamento": prove["data_versamento"],
             "giorni_ritardo": giorni_ritardo(_data(prove["data_versamento"]), scadenza),
             "giorni_dopo_nominale": (
@@ -326,7 +340,12 @@ def _casella(
                 for m in prove["addebiti_banca"] if m.get("movimento_id")
             ],
             "quietanze": [q["quietanza_id"] for q in prove["quietanze"] if q.get("quietanza_id")],
-            "pdf_url": registro_f24.PDF_F24_URL.format(f24_id=f24.get("id")),
+            "pdf_url": (pagamento["quietanze"][0]["pdf_url"] if pagamento
+                        else registro_f24.PDF_F24_URL.format(f24_id=f24.get("id"))),
+            "_righe": righe,
+            "_quietanza_leggibile": any(
+                q.get("righe") and any(p.get("quietanza_id") == q.get("id") for p in prove["quietanze"])
+                for q in registro["quietanze"]),
             "_doppione": _chiave_doppione(f24),
             "_firma": tuple(sorted((r["codice"], r.get("anno"), r.get("mese"), r["importo_debito_cents"],
                                     r["importo_credito_cents"]) for r in righe)),
@@ -338,16 +357,40 @@ def _casella(
     # quietanza) e il saldo cambia con i crediti compensati. Di due copie conta la piu' provata.
     per_chiave: Dict[Any, List[Dict[str, Any]]] = {}
     for m in modelli:
-        per_chiave.setdefault(m["_firma"], []).append(m)
+        # Due quietanze con protocolli diversi restano due versamenti veri,
+        # anche quando importo e periodo coincidono. Le copie sono gia' unite dal registro.
+        chiave = ("quietanza", m["documento_id"]) if m["tipo_documento"] == "quietanza" else m["_firma"]
+        per_chiave.setdefault(chiave, []).append(m)
     versamenti = []
     doppioni = 0
     for gruppo in per_chiave.values():
         gruppo.sort(key=lambda m: _PRIORITA.index(m["stato"]))
         versamenti.append(gruppo[0])
         doppioni += len(gruppo) - 1
-    for m in modelli:
-        m.pop("_doppione", None)
-        m.pop("_firma", None)
+    # Il modello e' il dovuto, la quietanza il pagato: non sommarli come due debiti.
+    # Confronto al centesimo per sezione/codice/anno/mese, anche per pagamenti parziali.
+    per_periodo: Dict[Any, Dict[str, int]] = {}
+    for m in versamenti:
+        for r in m["_righe"]:
+            chiave = (r["sezione"], r["codice"], r.get("anno"), r.get("mese"))
+            p = per_periodo.setdefault(chiave, {"dovuto": 0, "quietanza": 0, "provato": 0,
+                                              "credito_modello": 0, "credito_quietanza": 0})
+            deb, cred = r["importo_debito_cents"], r["importo_credito_cents"]
+            if m["tipo_documento"] == "quietanza":
+                p["quietanza"] += deb
+                p["credito_quietanza"] += cred
+            else:
+                p["dovuto"] += deb
+                p["credito_modello"] += cred
+                if m["stato"] == PAGATO or (m["stato"] == PAGATO_QUIETANZA
+                                            and not m["_quietanza_leggibile"]):
+                    p["provato"] += deb
+
+    debito = sum(max(p["dovuto"], p["quietanza"]) for p in per_periodo.values())
+    credito_cents = sum(max(p["credito_modello"], p["credito_quietanza"]) for p in per_periodo.values())
+    # Le righe lette sostituiscono i vecchi flag della quietanza; un riscontro
+    # bancario completo resta valido. Le due prove non si sommano tra loro.
+    residuo = sum(max(0, p["dovuto"] - max(p["quietanza"], p["provato"])) for p in per_periodo.values())
 
     if credito:
         stato = CREDITO_USATO if versamenti else CREDITO_ASSENTE
@@ -365,10 +408,15 @@ def _casella(
         # la casella prende lo stato peggiore, perche' uno non basta a
         # chiudere l'altro.
         stato = max((m["stato"] for m in versamenti), key=_PRIORITA.index)
+        if any(m["tipo_documento"] == "quietanza" for m in versamenti):
+            stato = (PAGATO_QUIETANZA if residuo == 0 else
+                     SCADUTO_NON_PAGATO if scadenza and scadenza < oggi else DA_PAGARE)
 
-    debito = sum(m["debito_cents"] for m in versamenti)
-    credito_cents = sum(m["credito_cents"] for m in versamenti)
-    ritardi = [m["giorni_ritardo"] for m in versamenti if m["giorni_ritardo"] is not None]
+    datati = [m for m in versamenti if m["tipo_documento"] == "quietanza"] or versamenti
+    ritardi = [m["giorni_ritardo"] for m in datati if m["giorni_ritardo"] is not None]
+    for m in modelli:
+        for campo in ("_doppione", "_firma", "_righe", "_quietanza_leggibile"):
+            m.pop(campo, None)
     return {
         "periodo": chiave_periodo,
         "etichetta_periodo": etichetta_periodo,
@@ -384,8 +432,10 @@ def _casella(
             and voce.get("obbligatorio", True)
             else None),
         "stato": stato,
-        "etichetta_stato": ETICHETTE[stato],
+        "etichetta_stato": ("Pagato in parte" if residuo > 0 and any(
+            m["tipo_documento"] == "quietanza" for m in versamenti) else ETICHETTE[stato]),
         "debito_cents": debito if versamenti else None,
+        "residuo_cents": residuo if versamenti else None,
         "importo": _euro(debito) if versamenti and debito else None,
         "credito": _euro(credito_cents) if versamenti and credito_cents else None,
         "modelli": modelli,

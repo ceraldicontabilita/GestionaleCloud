@@ -80,18 +80,24 @@ def _vista_delega(p: Dict[str, Any]) -> Dict[str, Any]:
 
 def costruisci(
     pagamenti: List[Dict[str, Any]], *, anno: Optional[int] = None, origine: Optional[str] = None,
-    oggi: Optional[str] = None,
+    oggi: Optional[str] = None, voci_piano: Optional[List[Dict[str, Any]]] = None,
 ) -> Dict[str, Any]:
+    from app.services.piano_tributi import PIANO_BASE
+
     oggi = oggi or date.today().isoformat()
     datati = [p for p in pagamenti if p.get("data") and p.get("_righe")]
-    anni = sorted({int(p["data"][:4]) for p in datati}, reverse=True)
+    anni = sorted({int(oggi[:4]), *(int(p["data"][:4]) for p in datati),
+                   *(r["anno"] for p in datati for r in p["_righe"] if r.get("anno"))}, reverse=True)
+    tutti_pagamenti = datati
     per_origine: Dict[str, int] = defaultdict(int)
     for p in datati:
         for o in p.get("origini") or ["altro"]:
             per_origine[o] += 1
     if origine:
         datati = [p for p in datati if origine in (p.get("origini") or ["altro"])]
-    anno = anno or (anni[0] if anni else None)
+    anno = anno or int(oggi[:4])
+    if anno not in anni:
+        anni = sorted([*anni, anno], reverse=True)
     dell_anno = [p for p in datati if anno and p["data"].startswith(str(anno))]
 
     # ── codici: debito e credito per mese di versamento ──────────────────
@@ -120,15 +126,30 @@ def costruisci(
 
     # ── mesi di riferimento non pervenuti (codici mensili, anno di riferimento) ──
     periodi: Dict[tuple, set] = defaultdict(set)
-    for p in datati:
+    for p in tutti_pagamenti:
         for r in p["_righe"]:
             if r.get("anno") == anno and r.get("mese") and int(r.get("importo_debito_cents") or 0) > 0:
                 periodi[(str(r.get("sezione") or ""), str(r.get("codice") or ""))].add(int(r["mese"]))
-    for chiave, mesi_pagati in periodi.items():
+    # Le attese esplicite non dipendono da quanti versamenti sono gia' arrivati.
+    # Le voci con codici alternativi (DM10/RC01) restano valutate insieme nel piano.
+    attesi = {}
+    for voce in PIANO_BASE if voci_piano is None else voci_piano:
+        cod = voce.get("codici") or []
+        if (voce.get("attivo", True) and voce.get("obbligatorio", True)
+                and voce.get("periodo") == "mese" and voce.get("anno_offset") == 0
+                and voce.get("natura") != "credito" and len(cod) == 1):
+            codice = str(cod[0])
+            sezione = voce.get("sezione") or (
+                "sezione_tributi_locali" if codice.startswith("384") else "sezione_erario")
+            attesi[(sezione, codice)] = set(voce.get("mesi") or range(1, 13))
+    for chiave in periodi.keys() | attesi.keys():
+        mesi_pagati = periodi[chiave]
         codice = chiave[1]
-        if codice.upper() in CODICI_RAVVEDIMENTO or len(mesi_pagati) < MIN_MESI_MENSILE:
+        if codice.upper() in CODICI_RAVVEDIMENTO or (
+                chiave not in attesi and len(mesi_pagati) < MIN_MESI_MENSILE):
             continue
-        mancanti = [m for m in range(1, 13) if m not in mesi_pagati and _periodo_scaduto(anno, m, oggi)]
+        mesi_attesi = sorted(attesi.get(chiave, range(1, 13)))
+        mancanti = [m for m in mesi_attesi if m not in mesi_pagati and _periodo_scaduto(anno, m, oggi)]
         c = codici.get(chiave)
         if c is None:  # riferimento di quest'anno versato solo l'anno dopo
             c = codici[chiave] = {
@@ -138,6 +159,10 @@ def costruisci(
                 "debito_cents": 0, "credito_cents": 0, "deleghe": 0,
             }
         c["mensile"] = True
+        c["anno_riferimento"] = anno
+        c["periodi_attesi"] = mesi_attesi
+        c["periodi_non_scaduti"] = [m for m in mesi_attesi if m not in mesi_pagati
+                                   and not _periodo_scaduto(anno, m, oggi)]
         c["periodi_pagati"] = sorted(mesi_pagati)
         c["mancanti"] = mancanti
     for c in codici.values():
@@ -210,6 +235,9 @@ def costruisci(
 
 
 async def vista_versamenti(db, *, anno: Optional[int] = None, origine: Optional[str] = None) -> Dict[str, Any]:
+    from app.services.piano_tributi import voci_piano
+
     registro = await reg.carica_registro(db)
     quietanze = [q for q in registro["quietanze"] if q.get("righe")]
-    return costruisci(reg.pagamenti_da_quietanze(quietanze), anno=anno, origine=origine)
+    return costruisci(reg.pagamenti_da_quietanze(quietanze), anno=anno, origine=origine,
+                      voci_piano=await voci_piano(db, scrivi=False))

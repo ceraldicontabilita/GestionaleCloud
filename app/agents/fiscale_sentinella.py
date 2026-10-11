@@ -105,13 +105,13 @@ class FiscaleSentinella:
                 "periodo_riferimento": {"$regex": periodo[:7] if periodo else ""},
                 "status": {"$ne": "eliminato"},
             }, {"_id": 0, "pdf_data": 0}).to_list(100)
-            pagati_banca = [
+            pagati_documentati = [
                 f for f in candidati_f24
                 if stato_evidenza_pagamento(f)["pagato"]
             ]
-            f24_pagato = pagati_banca[0] if pagati_banca else None
+            f24_pagato = pagati_documentati[0] if pagati_documentati else None
             f24_ravveduto = next(
-                (f for f in pagati_banca if f.get("has_ravvedimento")), None
+                (f for f in pagati_documentati if f.get("has_ravvedimento")), None
             )
 
         if f24_ravveduto:

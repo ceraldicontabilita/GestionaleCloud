@@ -188,12 +188,13 @@ def _relazioni_f24(db):
             if r["relation_type"] in ("settles_f24_receipt", "settles_f24_model")]
 
 
-def _nessun_pagamento_scritto(db):
+def _nessun_riscontro_bancario_scritto(db):
     quietanze, modelli, movimenti = _stato(db)
     for q in quietanze:
         assert "riscontro_banca" not in q and not q.get("movimento_bancario_id")
     for f in modelli:
-        assert f["pagato"] is False and f["status"] == "da_pagare" and not f.get("movimento_bancario_id")
+        assert f["pagato"] is True and f["status"] == "pagato"  # quietanza presente
+        assert f["pagamento_verificato_banca"] is False and not f.get("movimento_bancario_id")
     for m in movimenti:
         assert not m.get("riconciliato") and not m.get("quietanze_f24_ids") and not m.get("f24_ids")
 
@@ -209,7 +210,7 @@ def test_causale_senza_data_incasso_e_probabile_senza_scrivere_il_pagamento(ambi
     assert r["livello"] == reg.LIVELLO_PROBABILE and r["addebito"]["importo"] == 654.33
     assert "la causale non riporta la data d'incasso" in r["motivazione"]
     assert esito["riscontrati"] == []
-    _nessun_pagamento_scritto(db)
+    _nessun_riscontro_bancario_scritto(db)
     [(mov, _q, stato, regola)] = [x for x in _relazioni_f24(db) if x[1] == collezione(db, COLL_QUIETANZE_F24)[0]["id"]]
     assert (stato, regola) == ("pending", "f24_banca:PROBABILE")
     assert mov == collezione(db, COLL_ESTRATTO_CONTO)[0]["id"]
@@ -227,7 +228,7 @@ def test_due_addebiti_candidati_si_mostrano_tutti_e_nessuno_si_sceglie(ambiente)
     assert r["livello"] == reg.LIVELLO_PROBABILE and len(r["candidati"]) == 2
     assert {c["data"] for c in r["candidati"]} == {"2026-08-20", "2026-08-21"}
     assert esito["riscontrati"] == []
-    _nessun_pagamento_scritto(db)
+    _nessun_riscontro_bancario_scritto(db)
     assert sorted(s for *_x, s, _r in _relazioni_f24(db)) == ["pending", "pending"]
 
 
@@ -241,7 +242,7 @@ def test_differenza_sotto_cinque_euro_e_parziale_con_la_differenza(ambiente):
     [r] = esito["da_verificare"]
     assert r["livello"] == reg.LIVELLO_PARZIALE and r["differenza"] == 2.0
     assert "differenza +2.00 EUR" in r["motivazione"] and "da verificare con il commercialista" in r["motivazione"]
-    _nessun_pagamento_scritto(db)
+    _nessun_riscontro_bancario_scritto(db)
     assert all(s == "pending" and regola == "f24_banca:PARZIALE" for *_x, s, regola in _relazioni_f24(db))
     # il limite e' inclusivo: 5,00 EUR e' ancora parziale, 5,01 no (addebito orfano + nessun match)
     db2 = db_nuovo("scenari_f24_banca_soglia")

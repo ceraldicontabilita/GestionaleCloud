@@ -58,8 +58,7 @@ async def list_f24_models(anno: int = None) -> Dict[str, Any]:
             {"_id": 0, "pdf_data": 0}
         ).sort("created_at", -1).to_list(100)
 
-        # La quietanza viene mostrata insieme al relativo modello, ma eredita
-        # lo stato PAGATO soltanto se quel modello possiede la prova bancaria.
+        # La quietanza prova il versamento; il modello aggiunge l'eventuale riscontro bancario.
         f24_per_quietanza = {
             str(f.get("quietanza_id")): f
             for f in f24_uni
@@ -78,7 +77,7 @@ async def list_f24_models(anno: int = None) -> Dict[str, Any]:
             qid = q.get("id", "")
             # Dedup by protocollo_telematico (unique per F24)
             proto = q.get("protocollo_telematico", "")
-            dedup_key = proto if proto else f"{data_pag}_{saldo}"
+            dedup_key = (proto, data_pag, saldo) if proto else qid
             if dedup_key in seen_ids:
                 continue
             seen_ids.add(dedup_key)
@@ -86,8 +85,13 @@ async def list_f24_models(anno: int = None) -> Dict[str, Any]:
                 seen_ids.add(qid)
 
             evidenza = stato_evidenza_pagamento(
-                f24_per_quietanza.get(str(qid), q)
+                {**f24_per_quietanza.get(str(qid), {}),
+                 "quietanza_id": qid, "protocollo_quietanza": proto,
+                 "data_pagamento_quietanza": data_pag}
             )
+            modello = f24_per_quietanza.get(str(qid))
+            if modello and evidenza["pagato"]:
+                seen_ids.add(modello.get("id"))
             f24s.append({
                 "id": qid,
                 "tipo_modello": "F24",

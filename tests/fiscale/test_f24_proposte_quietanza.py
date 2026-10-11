@@ -71,7 +71,7 @@ def test_la_conferma_scrive_il_collegamento_ma_non_prova_la_banca():
         db, f24_id="m1", quietanza_id="q1", motivo="ravvedimento_stesso_tributo", utente="titolare"))
     assert esito["collegato"] and esito["protocollo"] == "25092200000000001"
     m = run(db["f24_unificato"].find_one({"id": "m1"}))
-    assert m["quietanza_id"] == "q1" and m["pagamento_verificato_banca"] is False and m["pagato"] is False
+    assert m["quietanza_id"] == "q1" and m["pagamento_verificato_banca"] is False and m["pagato"] is True
     assert m["collegamento_quietanza_titolare"]["differenza_totale_cents"] == 1399
     assert "m1" in run(db["quietanze_f24"].find_one({"id": "q1"}))["f24_associati"]
     # Un secondo collegamento sullo stesso modello e' rifiutato.

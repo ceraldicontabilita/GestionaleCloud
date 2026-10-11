@@ -1069,6 +1069,10 @@ def pagamenti_da_quietanze(quietanze: Iterable[Dict[str, Any]]) -> List[Dict[str
     """
     gruppi: Dict[str, List[Dict[str, Any]]] = {}
     for q in quietanze:
+        if (q.get("status") in ("eliminato", "quarantena", "pagamento_non_eseguito")
+                or (q.get("validazione") or {}).get("saldo_quadrato") is False
+                or (q.get("validazione") or {}).get("sezioni_quadrate") is False):
+            continue
         if q.get("protocollo") and q.get("data") and q.get("importo_cents") is not None:
             chiave = f"{q['protocollo']}|{q['data']}|{q['importo_cents']}"
         else:
@@ -1076,7 +1080,9 @@ def pagamenti_da_quietanze(quietanze: Iterable[Dict[str, Any]]) -> List[Dict[str
         gruppi.setdefault(chiave, []).append(q)
     pagamenti = []
     for chiave, copie in gruppi.items():
-        prima = copie[0]
+        # Un indice documentale puo' precedere la copia con le righe lette.
+        # Sono copie dello stesso pagamento: usare quella piu' completa, senza sommarle.
+        prima = max(copie, key=lambda q: len(q.get("righe") or []))
         inviato_il = data_invio_protocollo(prima.get("protocollo_originale"))
         ravvedimento_di = sorted({str(o) for q in copie for o in (q.get("ravvedimento_di") or [])})
         righe = prima.get("righe") or []
@@ -1087,6 +1093,7 @@ def pagamenti_da_quietanze(quietanze: Iterable[Dict[str, Any]]) -> List[Dict[str
             "importo_cents": prima.get("importo_cents"),
             "quietanze": [{"id": q.get("id"), "fonte": q.get("fonte"), "filename": q.get("filename"),
                            "pdf_url": url_pdf_quietanza(q)} for q in copie],
+            "f24_ids": sorted({fid for q in copie for fid in q.get("f24_ids") or []}),
             "origini": [o for o in ORIGINI if any(o in (q.get("origini") or []) for q in copie)],
             # Saldo zero con righe a debito: pagata tutta in compensazione,
             # nessun addebito in banca da cercare.

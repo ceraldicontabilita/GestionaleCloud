@@ -52,11 +52,11 @@ function Cella({ debito, credito }) {
   );
 }
 
-function Mancanti({ codice }) {
+function Mancanti({ codice, anno }) {
   if (!codice.mancanti?.length) return null;
   return (
     <div role="alert" style={{ color: COLORS.danger, fontSize: 12, marginTop: 2 }} data-testid={`mancanti-${codice.chiave}`}>
-      Non pervenuto: {codice.mancanti.map(m => MESI_LUNGHI[m - 1]).join(', ')}
+      {codice.codice}: non risulta pagato per {codice.mancanti.map(m => `${MESI_LUNGHI[m - 1]} ${codice.anno_riferimento || anno}`).join(', ')}.
     </div>
   );
 }
@@ -74,7 +74,7 @@ function Codici({ dati, isMobile }) {
               <span style={num}>{euro(c.debito_cents)}{c.credito_cents > 0 && <span style={{ color: COLORS.success }}> · −{euro(c.credito_cents)}</span>}</span>
             </div>
             <div style={{ fontSize: 12, color: COLORS.textMuted }}>{c.descrizione}</div>
-            <Mancanti codice={c} />
+            <Mancanti codice={c} anno={dati.anno} />
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6, marginTop: 6, fontSize: 11.5 }}>
               {c.mesi.filter(m => m.debito_cents || m.credito_cents).map(m => (
                 <div key={m.mese}>
@@ -105,11 +105,11 @@ function Codici({ dati, isMobile }) {
               <td style={{ padding: '6px 8px', minWidth: 180, maxWidth: 260 }}>
                 <strong>{c.codice}</strong>
                 <div style={{ fontSize: 11, color: COLORS.textMuted }}>{c.descrizione}</div>
-                <Mancanti codice={c} />
+                <Mancanti codice={c} anno={dati.anno} />
               </td>
               {c.mesi.map(m => (
                 <td key={m.mese} style={{ padding: '6px 8px', textAlign: 'right', verticalAlign: 'top',
-                  background: c.mancanti?.includes(m.mese) ? COLORS.dangerLight : undefined }}>
+                }}>
                   <Cella debito={m.debito_cents} credito={m.credito_cents} />
                 </td>
               ))}
@@ -120,8 +120,8 @@ function Codici({ dati, isMobile }) {
         </tbody>
       </table>
       <div style={{ padding: '8px 10px', fontSize: 12, color: COLORS.textMuted }}>
-        Colonne = mese del versamento (data della quietanza). «Non pervenuto» = mese di riferimento già scaduto
-        (il 16 del mese dopo) senza versamento, per i codici versati almeno 3 mesi nell'anno.
+        Colonne = mese del versamento (data della quietanza). Gli avvisi indicano i mesi di riferimento
+        già scaduti senza quietanza. Il 1001 è atteso ogni mese; i periodi non ancora scaduti non sono arretrati.
       </div>
     </div>
   );

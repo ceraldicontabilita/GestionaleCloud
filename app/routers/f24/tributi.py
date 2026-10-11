@@ -47,10 +47,12 @@ async def elenco_tributi(
 @istantanea(ttl=120)
 async def _pagamenti() -> Dict[str, Any]:
     from app.services import f24_controllo_incrociato as reg
+    from app.services.piano_tributi import voci_piano
 
     registro = await reg.carica_registro(Database.get_db())
     quietanze = [q for q in registro["quietanze"] if q.get("righe")]
-    return {"pagamenti": reg.pagamenti_da_quietanze(quietanze)}
+    return {"pagamenti": reg.pagamenti_da_quietanze(quietanze),
+            "voci_piano": await voci_piano(Database.get_db(), scrivi=False)}
 
 
 @router.get("/tributi/versamenti",
@@ -63,7 +65,8 @@ async def registro_versamenti(
     from app.services import registro_versamenti_f24 as versamenti
 
     dati = await _pagamenti()
-    return {**versamenti.costruisci(dati["pagamenti"], anno=anno, origine=origine),
+    return {**versamenti.costruisci(dati["pagamenti"], anno=anno, origine=origine,
+                                    voci_piano=dati.get("voci_piano")),
             "istantanea": dati.get("istantanea")}
 
 

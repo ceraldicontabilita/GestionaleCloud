@@ -476,6 +476,6 @@ def test_upload_auto_quietanza_reale_generata_attraversa_parser_e_router(monkeyp
     assert payload["data"]["f24_matchati"][0]["f24_id"] == "f24-1040-06-2026"
     assert second.json()["duplicate"] is True
     model = asyncio.run(db["f24_unificato"].find_one({"id": "f24-1040-06-2026"}))
-    assert model["pagato"] is False
+    assert model["pagato"] is True
     assert model["pagamento_verificato_banca"] is False
     assert model["data_pagamento_quietanza"] == "2026-07-21"

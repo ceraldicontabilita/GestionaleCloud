@@ -26,13 +26,32 @@ def test_quietanza_non_e_prova_bancaria():
     )
     evidenza = stato_evidenza_pagamento(doc)
     assert evidenza["stato"] == STATO_QUIETANZA_DA_VERIFICARE
-    assert evidenza["pagato"] is False
+    assert evidenza["pagato"] is True
+    assert evidenza["verificato_banca"] is False
     assert evidenza["versato_documentalmente"] is True
     assert evidenza["data_versamento_documentale"] == "2026-07-16"
 
     analisi = te.classifica_f24(doc)
-    assert analisi["data_pagamento"] is None
-    assert analisi["stato"] == "quietanza_presente_da_verificare_banca"
+    assert analisi["data_pagamento"] == "2026-07-16"
+    assert analisi["stato"] == "pagato_nei_termini"
+
+
+def test_quietanza_completa_non_attende_il_residuo_della_riconciliazione_bancaria():
+    evidenza = stato_evidenza_pagamento(_f24(
+        quietanza_id="q", data_pagamento_quietanza="2026-07-16",
+        allocazioni_banca=[{"id": "parziale"}], importo_residuo_cents=40000,
+        movimento_bancario_id="parziale", data_pagamento_effettivo="2026-07-16",
+    ))
+    assert evidenza["pagato"] is True
+    assert evidenza["verificato_banca"] is False
+
+
+def test_collegamento_quietanza_parziale_non_salda_l_intero_modello():
+    evidenza = stato_evidenza_pagamento(_f24(
+        quietanza_id="q", data_pagamento_quietanza="2026-07-16",
+        collegamento_quietanza_titolare={"righe": [{"differenza_cents": -40000}]},
+    ))
+    assert evidenza["pagato"] is False
 
 
 def test_movimento_bancario_identificato_e_prova_pagamento():
