@@ -9,10 +9,13 @@ from __future__ import annotations
 
 import asyncio
 import re
+from collections import Counter
 from collections import defaultdict
+from datetime import date
 from typing import Any
 
 from app.db_collections import COLL_FISCAL_DOCUMENT_VERSIONS, COLL_FISCAL_PAGES
+from app.constants.codici_ravvedimento import SANZIONI_RITENUTE_PER_CODICE
 from app.services.declaration_registry import DECLARATION_TYPES, TAX_CODES
 from app.services.fiscal_domain import stable_id
 from app.services import f24_controllo_incrociato as reg
@@ -135,7 +138,8 @@ def group_annual_dossiers(documents, components, pages, versions):
         identity = document_identity(doc, "\n".join(t for _, t in sorted(texts[doc["id"]])))
         originals.append({**_original(doc, identity, by_version.get(doc.get("current_version_id"))),
                           "document_type": doc["document_type"],
-                          "tax_codes": sorted({str(r.get("codice_tributo")) for r in (doc.get("quadri") or {}).get("st_righe") or [] if r.get("codice_tributo")})})
+                          "withholding_rows": [dict(r) for k in ("st_righe", "sv_righe") for r in (doc.get("quadri") or {}).get(k) or []],
+                          "tax_codes": sorted({str(r.get("codice_tributo")) for k in ("st_righe", "sv_righe") for r in (doc.get("quadri") or {}).get(k) or [] if r.get("codice_tributo")})})
     # Un quadro puo' non riportare l'anno; lo eredita solo dall'identificativo
     # esatto, e soltanto se tutti gli originali con quell'id concordano.
     by_ident = defaultdict(list)
@@ -165,7 +169,11 @@ def group_annual_dossiers(documents, components, pages, versions):
         elif matches or not identity["taxpayer_id"] or not identity["tax_year"]:
             unlinked.append(_original(doc, identity, component=True))
             continue
-        originals.append({**_original(doc, identity, component=True), "document_type": kind, "tax_codes": []})
+        parsed_quadri = (doc.get("parsed_metadata") or {}).get("quadri") or {}
+        withholding_rows = [dict(r) for k in ("st_righe", "sv_righe") for r in parsed_quadri.get(k) or []]
+        originals.append({**_original(doc, identity, component=True), "document_type": kind,
+                          "withholding_rows": withholding_rows,
+                          "tax_codes": sorted({str(r["codice_tributo"]) for r in withholding_rows if r.get("codice_tributo")})})
 
     groups = {}
     for original in originals:
@@ -216,14 +224,200 @@ def attach_receipts(dossiers, receipts):
             continue
         # Filtrare prima per CF evita che lo stesso protocollo di invio di
         # contribuenti diversi venga confuso dal raggruppamento dei versamenti.
-        for payment in reg.pagamenti_da_quietanze(by_cf.get(cf, [])):
+        payments = reg.pagamenti_da_quietanze(by_cf.get(cf, []))
+        for payment in payments:
             rows = [r for r in payment["_righe"] if r.get("codice") in dossier["tax_codes"] and _year(r.get("anno")) == year]
             if rows:
                 dossier["quietanze"].append({k: v for k, v in payment.items() if not k.startswith("_")} | {
                     "tax_rows": rows, "link_reason": "Stesso contribuente, codice tributo e anno d'imposta",
                 })
+        if dossier["document_type"] == "MODELLO_770":
+            dossier["withholding_check"] = reconcile_withholdings(dossier["originals"], payments)
+            # Anche le quietanze dell'anno dei redditi precedente e quelle
+            # delle sanzioni devono restare nel fascicolo quando provate dai
+            # righi ST/SV, senza cambiare il loro riferimento stampato.
+            attached = {p["chiave"]: p for p in dossier["quietanze"]}
+            by_key = {p["chiave"]: p for p in payments}
+            for group in dossier["withholding_check"]["groups"]:
+                for link in [*group["payments"], *group["sanzioni"]]:
+                    key = link["chiave"]
+                    payment = by_key[key]
+                    entry = attached.setdefault(key, {k: v for k, v in payment.items() if not k.startswith("_")} | {
+                        "tax_rows": [], "link_reason": "Riscontro sui righi ST/SV della dichiarazione"})
+                    row = link.get("receipt_row") or link.get("row")
+                    if row not in entry["tax_rows"]:
+                        entry["tax_rows"].append(row)
+            dossier["quietanze"] = list(attached.values())
         dossier["quietanze"].sort(key=lambda p: (p.get("data") or "", p["chiave"]), reverse=True)
         dossier["receipt_count"] = len(dossier["quietanze"])
+
+
+def _withholding_section(row):
+    if str(row.get("rigo", "")).startswith("SV"):
+        return "sezione_tributi_locali"
+    return "sezione_regioni" if row.get("sezione") == "II" else "sezione_erario"
+
+
+def _row_signature(row):
+    return tuple(row.get(k) for k in ("sezione", "codice_tributo", "anno", "mese", "regione",
+        "ritenute_operate_cents", "crediti_scomputo_cents", "importo_versato_cents", "interessi_cents",
+        "data_versamento", "ravvedimento", "note"))
+
+
+def _declared_withholdings(originals):
+    """Una casella per invio/quadro/modulo/rigo, con tutti i PDF che la provano.
+
+    Invii distinti restano distinti: non si presume che l'ultimo sostituisca
+    tutto il precedente (il 770 puo' essere trasmesso in gestione separata).
+    """
+    cells = {}
+    known_modules = defaultdict(set)
+    for original in originals:
+        for source in [original, *original.get("copies", [])]:
+            for row in source.get("withholding_rows", []):
+                if row.get("modulo"):
+                    known_modules[(source.get("declaration_identifier") or source["id"], row.get("rigo"), _row_signature(row))].add(row["modulo"])
+    for original in originals:
+        for source in [original, *original.get("copies", [])]:
+            for row in source.get("withholding_rows", []):
+                invio = source.get("declaration_identifier") or source["id"]
+                module = row.get("modulo")
+                matches = known_modules.get((invio, row.get("rigo"), _row_signature(row)), set())
+                if module is None and len(matches) == 1:
+                    module = next(iter(matches))
+                coordinate = (module, row.get("rigo")) if module else (
+                    row.get("pagina"), row.get("rigo"), _row_signature(row))
+                key = (invio, *coordinate)
+                source_ref = {k: source.get(k) for k in ("id", "filename", "pdf_url", "declaration_identifier")}
+                source_ref["page"] = row.get("pagina")
+                if key not in cells:
+                    cells[key] = {**row, "modulo": module, "submission": invio, "sources": [], "conflicting_source": False}
+                elif _row_signature(cells[key]) != _row_signature(row):
+                    cells[key]["conflicting_source"] = True
+                cells[key]["sources"].append(source_ref)
+    return list(cells.values())
+
+
+def reconcile_withholdings(originals, payments):
+    """Riscontro per riga dichiarata sul registro delle quietanze, senza F24.
+
+    Solo stesso contribuente (filtrato dal chiamante), sezione, codice,
+    anno e mese. Data/importo distinguono versamenti dello stesso periodo.
+    Addizionali a saldo e recupero 1701 possono riferirsi ai redditi dell'anno
+    precedente: in quel caso servono anche data esatta e totale esatto.
+    Sanzioni e crediti non aumentano l'importo del tributo pagato.
+    """
+    from app.services.scadenzario_tributi import scadenza_da_regola
+
+    groups = {}
+    for row in _declared_withholdings(originals):
+        tax_key = (_withholding_section(row), row.get("codice_tributo"), row.get("anno"), row.get("mese"))
+        key = (row["submission"], *tax_key, row.get("data_versamento"), row.get("regione"))
+        group = groups.setdefault(key, {"id": stable_id("withholding_check", *key), "submission": row["submission"],
+            "sezione": tax_key[0], "codice": tax_key[1], "anno": tax_key[2], "mese": tax_key[3],
+            "data_dichiarata": row.get("data_versamento"), "ente": row.get("regione"), "rows": []})
+        group["rows"].append(row)
+    result = []
+    claims = defaultdict(list)
+    for group in groups.values():
+        rows = group["rows"]
+        expected = [r.get("importo_versato_cents") for r in rows]
+        total = sum(expected) if all(isinstance(n, int) for n in expected) else None
+        by_date = defaultdict(list)
+        prior_year = defaultdict(list)
+        for payment in payments:
+            for index, receipt_row in enumerate(payment.get("_righe", [])):
+                if (receipt_row.get("sezione"), receipt_row.get("codice"), receipt_row.get("mese")) != (
+                        group["sezione"], group["codice"], group["mese"]):
+                    continue
+                if group["ente"] and str(receipt_row.get("ente") or "").lstrip("0") != str(group["ente"]).lstrip("0"):
+                    continue
+                if int(receipt_row.get("importo_debito_cents") or 0) <= 0:
+                    continue
+                if receipt_row.get("anno") == group["anno"]:
+                    by_date[payment.get("data")].append((payment, index, receipt_row))
+                elif (group["anno"] and receipt_row.get("anno") == group["anno"] - 1
+                      and (group["codice"] in {"3802", "3848"}
+                           or (group["codice"] == "1701" and all("P" in (r.get("note") or "") for r in rows)))):
+                    # Istruzioni AdE 770/2025, quadri ST/SV: il periodo della
+                    # trattenuta non coincide sempre con l'anno del reddito F24.
+                    # Non estendere ad altri codici né modificare l'anno fonte.
+                    prior_year[payment.get("data")].append((payment, index, receipt_row))
+        selected = by_date.get(group["data_dichiarata"], []) if group["data_dichiarata"] else []
+        date_differs = False
+        same_day_prior = prior_year.get(group["data_dichiarata"], []) if group["data_dichiarata"] else []
+        if same_day_prior and sum(r["importo_debito_cents"] for _, _, r in [*selected, *same_day_prior]) == total:
+            selected = [*selected, *same_day_prior]
+        if not selected and total is not None:
+            exact = [items for d, items in by_date.items() if d and sum(r["importo_debito_cents"] for _, _, r in items) == total]
+            if len(exact) == 1:
+                selected = exact[0]
+                date_differs = True
+        paid = sum(r["importo_debito_cents"] for _, _, r in selected) if selected else 0
+        ravv_declared = any(r.get("ravvedimento") for r in rows)
+        # Codici specifici delle sanzioni del sostituto. La sola presenza di
+        # una sanzione IVA nello stesso F24 non ravvede le ritenute.
+        sanctions = []
+        for payment in payments:
+            if not selected or payment.get("data") not in {p.get("data") for p, _, _ in selected}:
+                continue
+            for receipt_row in payment.get("_righe", []):
+                if (receipt_row.get("codice") in SANZIONI_RITENUTE_PER_CODICE.get(group["codice"], set())
+                        and receipt_row.get("sezione") == group["sezione"]
+                        and (receipt_row.get("anno"), receipt_row.get("mese")) in {
+                            (r.get("anno"), r.get("mese")) for _, _, r in selected}
+                        and (not group["ente"] or str(receipt_row.get("ente") or "").lstrip("0") == str(group["ente"]).lstrip("0"))
+                        and receipt_row.get("importo_debito_cents", 0) > 0):
+                    sanctions.append({"chiave": payment["chiave"], "row": receipt_row, "quietanze": payment["quietanze"], "data": payment["data"],
+                                      "note": "Sanzione del codice/periodo; nessuna ripartizione arbitraria fra più ritenute."})
+        warnings = []
+        reference_years = sorted({r["anno"] for _, _, r in selected})
+        if any(y != group["anno"] for y in reference_years):
+            warnings.append(f"Trattenuta nel 770: {group['mese']:02d}/{group['anno']}; anno dei redditi in quietanza: "
+                            + ", ".join(map(str, reference_years)) + ". Collegamento verificato per codice, mese, data e importo.")
+        if date_differs:
+            warnings.append("La data della quietanza differisce da quella dichiarata nel 770.")
+        if ravv_declared and selected and not sanctions:
+            warnings.append("Ravvedimento indicato nel 770; sanzione pertinente non individuata nelle quietanze.")
+        if sanctions and not ravv_declared:
+            warnings.append("Sanzione di ravvedimento presente; casella ravvedimento non marcata nel 770.")
+        links = [{"chiave": p["chiave"], "data": p["data"], "protocollo": p.get("protocollo"),
+                  "importo_cents": r["importo_debito_cents"], "quietanze": p["quietanze"], "receipt_row": r}
+                 for p, _, r in selected]
+        if not group["codice"] or not group["anno"] or not group["mese"] or total is None or any(r["conflicting_source"] for r in rows):
+            state, label = "DA_VERIFICARE", "Dati della dichiarazione da verificare"
+        elif selected and paid == total:
+            state, label = ("PAGATO_RAVVEDIMENTO", "Pagato · ravvedimento") if ravv_declared or sanctions else ("PAGATO", "Pagato")
+            scadenza, _ = scadenza_da_regola(group["sezione"], group["codice"], group["anno"], group["mese"])
+            if not ravv_declared and not sanctions and scadenza and any(p.get("data") and date.fromisoformat(p["data"]) > scadenza for p, _, _ in selected):
+                warnings.append("Pagamento dopo la scadenza ordinaria; ravvedimento da verificare.")
+        elif selected:
+            state, label = "IMPORTO_DIVERSO", "Importo quietanzato diverso dal 770"
+        elif total == 0:
+            state, label = "NESSUN_VERSAMENTO", "Nessun versamento dichiarato"
+        elif by_date or prior_year:
+            state, label = "DA_VERIFICARE", "Quietanze del periodo: abbinamento da verificare"
+        else:
+            state, label = "QUIETANZA_MANCANTE", "Pagamento non documentato · quietanza mancante"
+        group.update({"stato": state, "stato_label": label, "dichiarato_cents": total,
+            "quietanzato_cents": paid, "differenza_cents": paid - total if total is not None and selected else None,
+            "ravvedimento_dichiarato": ravv_declared, "sanzioni": sanctions, "warnings": warnings,
+            "payments": links, "candidates": [
+                {"data": d, "importo_cents": sum(r["importo_debito_cents"] for _, _, r in items),
+                 "anni_riferimento": sorted({r["anno"] for _, _, r in items}),
+                 "quietanze": [q for p, _, _ in items for q in p["quietanze"]]}
+                for d in sorted(set(by_date) | set(prior_year), key=lambda d: d or "")
+                if (items := [item for item in [*by_date[d], *prior_year[d]] if item not in selected])]})
+        for payment, index, _ in selected:
+            claims[(payment["chiave"], index)].append(group)
+        result.append(group)
+    for owners in claims.values():
+        if len(owners) > 1:
+            for group in owners:
+                group["stato"], group["stato_label"] = "DA_VERIFICARE", "Quietanza richiamata da più righe o invii"
+    result.sort(key=lambda g: (g["submission"], g["codice"] or "", g["anno"] or 0, g["mese"] or 0, g["data_dichiarata"] or ""))
+    return {"groups": result, "declared_rows": sum(len(g["rows"]) for g in result),
+            "counts": dict(Counter(g["stato"] for g in result)), "basis": "quietanze_per_codice_periodo_importo_data"}
 
 
 async def list_annual_dossiers(db, *, company_id: str, year: int | None = None,

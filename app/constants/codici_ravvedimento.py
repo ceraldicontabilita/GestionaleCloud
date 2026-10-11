@@ -25,3 +25,12 @@ CODICI_RAVVEDIMENTO = frozenset({
     # Interessi IMU/TASI/tributi locali
     "1507", "1508", "1509", "1510", "1511", "1512",
 })
+
+# Codici specifici del sostituto: non basta una sanzione qualsiasi nella
+# delega (es. 8904 IVA) per qualificare come ravveduta una ritenuta.
+SANZIONI_RITENUTE_PER_CODICE = {
+    "1001": frozenset({"8947", "8906"}), "1002": frozenset({"8947", "8906"}),
+    "1012": frozenset({"8947", "8906"}), "1701": frozenset({"8947", "8906"}),
+    "1040": frozenset({"8948", "8906"}), "3802": frozenset({"8950", "8902"}),
+    "3847": frozenset({"8952", "8926"}), "3848": frozenset({"8952", "8926"}),
+}

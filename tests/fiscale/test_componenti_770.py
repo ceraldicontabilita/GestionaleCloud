@@ -84,3 +84,13 @@ def test_frontespizio_770_importato_come_componente_con_anno_e_cf(monkeypatch):
     assert meta["codice_fiscale"] == "04523831214"
     assert meta["anno_imposta"] == 2019
     assert c770.quadro("01_Frontespizio.pdf", text.replace("AL SOSTITUTO", "AL CONTRIBUENTE")) is None
+
+
+def test_imported_component_preserves_printed_tax_rows_for_annual_reconciliation(monkeypatch):
+    from app.services import fiscal_document_ingestion as ingestion
+    from app.services import dichiarazioni_quadri as parser
+    expected={'tipo_letto':'MODELLO_770','sv_righe':[{'rigo':'SV2','modulo':1,'codice_tributo':'3848','importo_versato_cents':5700}]}
+    monkeypatch.setattr(ingestion,'extract_pdf_pages',lambda b:[{'page_number':1,'text':TESTO_ST}])
+    monkeypatch.setattr(parser,'estrai_quadri_pagine',lambda pages,kind:expected)
+    m=asyncio.run(c770.metadati(_Db(),filename='02_Quadro_SV_modulo_1.pdf',testo=TESTO_ST.replace('QUADRO ST','QUADRO SV'),content=b'%PDF-test'))
+    assert m['quadri']==expected and m['identificativo_dichiarazione']=='10523651165-0000002'
