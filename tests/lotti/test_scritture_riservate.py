@@ -73,8 +73,6 @@ OPERAZIONI_DI_REPARTO = {
     "produzione_consigliata:registra_decisione",
     "reclami_fornitori:crea_reclamo",
     "reclami_fornitori:aggiorna_stato_reclamo",
-    "ricette:aggiorna_foto",
-    "ricette:upload_foto",
     "ricezione_merce:registra_ricezione",
     "ricezione_merce:aggiorna_ricezione",
     "saima_ricettari:verifica_disponibilita_ricetta",
@@ -140,6 +138,7 @@ def test_scritture_delicate_riservate():
         "acquaviva:set_prezzi_prodotto", "saima_ricettari:aggiungi_ricettario",
         "saima_ricettari:elimina_ricettario", "schede_tecniche:scrape_scheda",
         "ricette:set_prezzo_vendita", "chiusure:segna_giorno_non_produttivo",
+        "ricette:aggiorna_foto", "ricette:upload_foto",
         "temperature_positive:aggiungi_operatore", "vendita_banco:elimina_vendita",
     ):
         assert nome in protette, nome

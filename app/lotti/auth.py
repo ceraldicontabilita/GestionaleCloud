@@ -283,8 +283,8 @@ async def require_admin(request: Request):
     un token dipendente supera il gate globale su TUTTE le rotte. Questa dipendenza
     va aggiunta esplicitamente agli endpoint distruttivi/di configurazione.
 
-    Richiede il token operativo con ruolo amministratore. Il PIN personale
-    viene verificato al login tablet e non viene inviato di nuovo nelle API.
+    Richiede il token operativo amministratore derivato dalla sessione ERP.
+    Il PIN personale non concede accesso amministrativo al tablet.
     """
     data = await _token_valido_e_non_revocato(request)
     if data and data.get("ruolo") == "amministratore":
