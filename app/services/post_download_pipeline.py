@@ -147,146 +147,44 @@ async def processa_cedolini_da_email(db: ArchivioDocumenti) -> Dict[str, Any]:
 # ============================================================
 
 async def processa_verbali_da_email(db: ArchivioDocumenti) -> Dict[str, Any]:
-    """
-    Processa verbali PDF scaricati da Gmail.
+    """Importa i PDF con il writer canonico e conserva la notifica separata."""
+    import asyncio
+    from app.services.verbali_document_import import process_verbale_document, _extract_text
+    from app.services.notifiche_pec_verbali import aggancia_notifiche_pec, metadati_notifica
 
-    Flusso:
-    1. Estrae targa dal PDF/filename/subject/folder
-    2. Collega al veicolo in veicoli_noleggio
-    3. Collega al dipendente (driver del veicolo)
-    4. Cerca quietanza pagamento (PagoPA, PayPal, bonifico)
-    5. Se pagato → registra trattenuta su busta paga del driver
-    """
-    stats = {
-        "processati": 0, "errori": 0, "nuovi_verbali": 0,
-        "con_targa": 0, "con_driver": 0, "pagati": 0, "trattenute_create": 0
-    }
-
-    cursor = db["verbali_email_attachments"].find({"processed": {"$ne": True}})
-    docs = await cursor.to_list(length=500)
-    logger.info(f"[PIPELINE-VERBALI] {len(docs)} verbali da processare")
-
-    # Carica veicoli per lookup targa → driver
-    veicoli_by_targa = {}
-    async for v in db["veicoli_noleggio"].find({}, {"_id": 0}):
-        if v.get("targa"):
-            veicoli_by_targa[v["targa"].upper()] = v
-
+    stats = {"processati": 0, "errori": 0, "nuovi_verbali": 0}
+    docs = await db["verbali_email_attachments"].find(
+        {"processed": {"$ne": True}}
+    ).to_list(length=500)
     for doc in docs:
         try:
-            filename = doc.get("filename", "")
-            subject = doc.get("email_subject", "")
-            source_folder = doc.get("email_info", {}).get("source_folder", "") if isinstance(doc.get("email_info"), dict) else ""
-
-            # Estrai targa da: filename, subject, folder, PDF content
-            targa = _extract_targa_from_text(f"{filename} {subject} {source_folder}")
-
-            # Estrai numero verbale dal nome cartella email o filename
-            numero_verbale = _extract_numero_verbale(filename, subject, source_folder)
-
-            if not numero_verbale:
-                numero_verbale = f"VERB-{doc['id'][:8]}"
-
-            # Dedup
-            existing = await db["verbali_noleggio"].find_one({
-                "$or": [
-                    {"numero_verbale": numero_verbale},
-                    {"pdf_hash": doc.get("pdf_hash")}
-                ]
-            })
-
-            if existing:
-                # Aggiorna con PDF se mancante
-                if not existing.get("pdf_data"):
-                    await db["verbali_noleggio"].update_one(
-                        {"id": existing["id"]},
-                        {"$set": {
-                            "pdf_data": doc.get("pdf_data"),
-                            "pdf_filename": filename,
-                            "pdf_hash": doc.get("pdf_hash"),
-                            "updated_at": datetime.now(timezone.utc).isoformat()
-                        }}
-                    )
-            else:
-                # Cerca veicolo e driver
-                veicolo_info = {}
-                driver_id = None
-                driver_nome = None
-
-                if targa:
-                    stats["con_targa"] += 1
-                    veicolo = veicoli_by_targa.get(targa.upper())
-                    if veicolo:
-                        veicolo_info = veicolo
-                        driver_id = veicolo.get("driver_id")
-                        driver_nome = veicolo.get("driver")
-                        if driver_id:
-                            stats["con_driver"] += 1
-
-                # Crea record verbale
-                verbale_doc = {
-                    "id": str(uuid.uuid4()),
-                    "numero_verbale": numero_verbale,
-                    "targa": targa,
-                    "driver": driver_nome,
-                    "driver_id": driver_id,
-
-                    "pdf_data": doc.get("pdf_data"),
-                    "pdf_filename": filename,
-                    "pdf_hash": doc.get("pdf_hash"),
-
-                    "email_subject": subject,
-                    "email_from": doc.get("email_from", ""),
-                    "email_date": doc.get("email_date", ""),
-                    "cartella_email": source_folder,
-
-                    "veicolo_marca": veicolo_info.get("marca"),
-                    "veicolo_modello": veicolo_info.get("modello"),
-                    "fornitore_noleggio": veicolo_info.get("fornitore_noleggio"),
-                    "contratto": veicolo_info.get("contratto"),
-
-                    "importo": None,  # Sarà estratto dal PDF con parser
-                    "data_verbale": None,
-                    "stato": "da_scaricare" if not doc.get("pdf_data") else "salvato",
-                    "quietanza_ricevuta": False,
-                    "quietanza_pdf": None,
-                    "data_pagamento": None,
-                    "metodo_pagamento": None,
-
-                    "trattenuta_cedolino": False,
-                    "trattenuta_mese": None,
-                    "trattenuta_anno": None,
-
-                    "source": "gmail_scan",
-                    "created_at": datetime.now(timezone.utc).isoformat(),
-                }
-
-                await db["verbali_noleggio"].insert_one(verbale_doc)
-                stats["nuovi_verbali"] += 1
-                logger.info(f"[PIPELINE-VERBALI] Nuovo: {numero_verbale} | Targa: {targa} | Driver: {driver_nome or 'N/A'}")
-
-            # Marca come processato
-            await db["verbali_email_attachments"].update_one(
-                {"id": doc["id"]},
-                {"$set": {"processed": True, "processed_at": datetime.now(timezone.utc).isoformat()}}
+            if not doc.get("pdf_data"):
+                continue
+            content = base64.b64decode(doc["pdf_data"], validate=True)
+            text = await asyncio.to_thread(_extract_text, content)
+            # La relata prova la notificazione, non e' un secondo verbale.
+            if "relazione di notificazione" in re.sub(r"\s+", " ", text).casefold():
+                continue
+            meta = metadati_notifica(doc.get("email_subject"), doc.get("email_from"), doc.get("email_date"))
+            result = await process_verbale_document(
+                db, document_id=doc["id"], content=content,
+                filename=doc.get("filename") or "documento.pdf", source="email_verbale",
+                parsed_metadata={"data_notifica": meta["data_notifica"]} if meta["data_notifica"] else None,
             )
-            stats["processati"] += 1
-
-        except Exception as e:
-            logger.error(f"[PIPELINE-VERBALI] Errore: {e}")
+            if result.get("verbale_id"):
+                await db["verbali_email_attachments"].update_one(
+                    {"id": doc["id"]}, {"$set": {
+                        "processed": True, "documento_associato_id": result["verbale_id"],
+                        "documento_associato_collection": "verbali_noleggio", "associato": True,
+                    }},
+                )
+                stats["processati"] += 1
+        except Exception as exc:
+            logger.error("[PIPELINE-VERBALI] %s: %s: %s", doc.get("id"), type(exc).__name__, exc)
             stats["errori"] += 1
-
-    logger.info(f"[PIPELINE-VERBALI] Completato: {stats}")
+    stats["notifiche_pec"] = await aggancia_notifiche_pec(db, dry_run=False)
     return stats
 
-
-
-
-
-
-# ============================================================
-# 4. PIPELINE QUIETANZE → PROVA PAGAMENTO F24
-# ============================================================
 
 async def processa_quietanze_da_email(db: ArchivioDocumenti) -> Dict[str, Any]:
     """

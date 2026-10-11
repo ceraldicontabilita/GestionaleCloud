@@ -264,13 +264,19 @@ def _extract_verbale_details(text: str) -> Dict[str, Any]:
     compact = re.sub(r"\s+", " ", text or "")
     register = re.search(r"Registro\s+n[.°º]?\s*([A-Z0-9/-]+)", compact, re.I)
     time_match = re.search(r"(?:alle\s+ore|ore)\s*(\d{1,2}:\d{2})", compact, re.I)
-    article = re.search(r"art(?:icolo)?[.\s]+(\d+)\s*(?:c(?:omma)?[.\s]+([\d, e]+))?", compact, re.I)
+    violation_articles = re.split(r"ha violato i seguenti articoli\s*:", compact, flags=re.I)
+    article_text = violation_articles[1] if len(violation_articles) > 1 else compact
+    article = re.search(r"art(?:icolo)?[.\s]+(\d+)\s*(?:c(?:omma)?[.\s]+([\d, e]+))?", article_text, re.I)
     location = re.search(
-        r"(?:in|presso)\s+(?:via|viale|piazza|corso)\s+(.+?)(?=\s+(?:per\s+aver|in\s+violazione|ai\s+sensi|art[.\s]))",
+        r"(?:in|presso)\s+(?:via|viale|piazza|corso)\s+(.+?)(?=\s+(?:per\s+aver|il\s+proprietario|in\s+violazione|ai\s+sensi|art[.\s]))",
         compact, re.I,
     )
     obligor = re.search(r"([A-Z][A-Z0-9 .'&-]+?)\s+(?:e['’]\s+)?indicat[oa]\s+come\s+obbligat[oa]\s+in\s+solido", compact, re.I)
     lessor = re.search(r"([A-Z][A-Z0-9 .'&-]+?)\s+(?:e['’]\s+)?indicat[oa]\s+come\s+societ[aà]\s+di\s+locazione", compact, re.I)
+    if not obligor:
+        obligor = re.search(r"Obbligato in solido in qualit[aà] di locatario:\s*(.+?)(?=,\s*residente)", compact, re.I)
+    if not lessor:
+        lessor = re.search(r"Societ[aà] di locazione:\s*(.+?)(?=,\s*residente)", compact, re.I)
     reduced = _extract_labeled_amount(r"(?:riduzione\s+del\s+30%|entro\s+5\s+giorni)", compact)
     ordinary = _extract_labeled_amount(r"(?:dal\s+sesto\s+al\s+sessantesimo\s+giorno|entro\s+60\s+giorni)", compact)
     issue_date = _extract_iso_date(r"(?:emesso|redatto|verbale).*?(\d{2}[/-]\d{2}[/-]\d{4})", compact)
@@ -465,6 +471,12 @@ async def leggi_documento_verbale(
         ai_data.get("tipo_documento") == "ricevuta_pagopa"
         or any(marker in combined.casefold() for marker in _RICEVUTA_MARKERS)
     )
+    # Importi con termine esplicito nel verbale prevalgono sui numeri
+    # dei bollettini prestampati (che non sono ricevute di pagamento).
+    if not is_receipt and local_details.get("importo_ridotto") is not None:
+        importo = local_details["importo_ridotto"]
+        importo_fonte = "pdf_termine_pagamento_ridotto"
+        importo_conflitto = False
     is_notice = pagopa_data.get("document_kind") == "AVVISO_PAGOPA"
     numero = normalizza_numero_verbale(numero)
     iuv = normalizza_iuv(iuv)
@@ -656,7 +668,7 @@ async def process_verbale_document(
         "ente_creditore": ai_data.get("ente_creditore") or pagopa_data.get("beneficiario"),
         "articolo_cds": ai_data.get("articolo_cds"),
         "descrizione_violazione": ai_data.get("descrizione_violazione"),
-        "responsabile": ai_data.get("responsabile"),
+        "responsabile": ai_data.get("responsabile") or ai_data.get("obbligato_in_solido"),
         "partita_iva_responsabile": ai_data.get("partita_iva_responsabile"),
         "indirizzo_violazione": ai_data.get("indirizzo_violazione"),
         "obbligato_in_solido": ai_data.get("obbligato_in_solido"),

@@ -519,7 +519,7 @@ async def gmail_full_scan_task():
         logger.error("[SCHEDULER-GMAIL] Errore scansione Gmail (%s): %s", type(e).__name__, e)
         return
     logger.info("[SCHEDULER-GMAIL] %s", {k: v for k, v in esito.items() if k != "pdf_per_categoria"})
-    if esito.get("pdf_salvati", 0) > 0:
+    if esito.get("success") is not False:
         try:
             from app.services.post_download_pipeline import esegui_pipeline_completa
             logger.info("[SCHEDULER-GMAIL] Pipeline: %s", await esegui_pipeline_completa(db))
@@ -1693,11 +1693,12 @@ def start_scheduler():
 
     scheduler.add_job(
         _mittenti_email_job,
-        "cron", hour=6, minute=5,
+        "interval", minutes=15,
+        next_run_time=avvio + timedelta(minutes=2),
         misfire_grace_time=300,
         coalesce=True,
         id="mittenti_email_sync",
-        name="Documenti da mittenti email attendibili: fatture estere XML + altri tipi (ogni giorno 6:05, ultimi 5 giorni)",
+        name="Documenti da mittenti email attendibili: fatture estere XML + altri tipi (ogni 15 minuti, ultimi 5 giorni)",
         replace_existing=True,
     )
 
@@ -2046,11 +2047,12 @@ def start_scheduler():
 
     scheduler.add_job(
         gmail_full_scan_task,
-        "cron", hour=5, minute=45,
+        "interval", minutes=15,
+        next_run_time=avvio + timedelta(minutes=1),
         misfire_grace_time=300,
         coalesce=True,
         id="gmail_full_scan",
-        name="Gmail Full Scan Multi-Cartella (ogni giorno 5:45, ultimi 5 giorni)",
+        name="Gmail Full Scan Multi-Cartella (ogni 15 minuti, ultimi 5 giorni)",
         replace_existing=True
     )
 

@@ -5101,7 +5101,7 @@ Non è un diario.
 - Supabase è backend dati.
 - cartella Drive unica attiva.
 - scheduler: restano ammessi i tre job `drive_cartella_unica`, `import_cartelle_drive` ed `enable_banking_giro`.
-- Su richiesta del titolare dell'11/10/2026, le altre 71 procedure periodiche sono ritirate nel codice (`app/scheduler_policy.py`): 59 ERP, 2 HR, 10 Lotti. `ENABLE_SCHEDULER`, una allowlist vuota o il pulsante di avvio Lotti non possono riattivarle. Sono bloccati anche il recupero HACCP/prezzi e la lettura AI differita all'avvio. Restano disponibili i comandi manuali e le elaborazioni conseguenti agli import.
+- Su richiesta del titolare dell'11/10/2026, le altre procedure periodiche sono ritirate nel codice (`app/scheduler_policy.py`): 59 ERP, 2 HR, 10 Lotti. `ENABLE_SCHEDULER`, una allowlist vuota o il pulsante di avvio Lotti non possono riattivarle. Sono bloccati anche il recupero HACCP/prezzi e la lettura AI differita all'avvio. Restano disponibili i comandi manuali e le elaborazioni conseguenti agli import.
 - protocollo incrementale periodico disattivato.
 - protocollo completo spento per memoria.
 
@@ -5456,3 +5456,7 @@ Il secondo Libro Unico reale (27 pagine) contiene il caso a tre pagine: per Lubr
 Collaudo locale del ripristino: suite completa backend offline 7.959 passati, 102 esclusi e 2 xfail; frontend ERP 665 passati. Build ERP/HR/Lotti/Menu riuscite, test HR 23, Lotti 253 e Menu 29 passati. I successivi aggiustamenti dei parser sono verificati separatamente con la suite Documenti e la peer review prima della pubblicazione. Questi esiti sono collaudi isolati: il deploy e l’importazione dei documenti reali non sono attestati da questi test.
 
 Le righe codificate vengono conservate con codice, descrizione, valori ordinati, pagina, testo delle celle e rettangoli di origine. CSC/TeamSystem con codici numerici richiedono intestazione della tabella e posizione nella colonna CODICE: non vengono interpretati come voci i codici anagrafici o gli importi della tabella presenze a destra. Le colonne recuperate senza una classificazione semantica certa hanno stato `colonne_non_classificate`; una riga senza importi decifrabili conserva il testo e ha stato `da_verificare`. Nessun valore di una voce grezza diventa automaticamente pagamento, netto o anticipo. Anche il caso di una base già presente nel testo deve conservare quantità e importo delle altre colonne.
+
+### Posta attendibile — richiesta del 12/10/2026
+
+Riattivati soltanto `gmail_full_scan` e `mittenti_email_sync`, ogni 15 minuti con primo giro dopo il riavvio. Restano ritirati gli altri 69 job. La pipeline Verbali usa `process_verbale_document`; la relata non crea un secondo verbale e i due PDF si agganciano attraverso `aggancia_notifiche_pec`. La registrazione dello scheduler non certifica importazione o pagamento: verificare gli esiti e i dati live.
