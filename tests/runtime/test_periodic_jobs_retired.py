@@ -73,6 +73,10 @@ def test_real_erp_start_registers_only_allowed_jobs(monkeypatch, caplog, allowli
             expected = KEPT_JOBS if allowlist is None else set(allowlist.split(","))
             assert periodic == expected
             assert not {job.id for job in jobs} & RETIRED_PERIODIC_JOBS
+            from datetime import datetime, timezone
+            for job_id in {"gmail_full_scan", "mittenti_email_sync"} & expected:
+                delta = (scheduler.get_job(job_id).next_run_time - datetime.now(timezone.utc)).total_seconds()
+                assert 0 < delta <= 120
             if allowlist is None:
                 assert scheduler.get_job("calendario_conferma_massiva") is not None
             assert "Job effettivamente registrati" in caplog.text

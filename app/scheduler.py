@@ -531,7 +531,7 @@ async def gmail_full_scan_task():
 def start_scheduler():
     """Avvia lo scheduler con i task programmati."""
     logger.info("🚀 [SCHEDULER] Configurazione scheduler...")
-    avvio = datetime.now()
+    avvio = datetime.now(timezone.utc)
 
     async def _domain_outbox_job():
         from app.services.domain_outbox_worker import processa_domain_outbox
