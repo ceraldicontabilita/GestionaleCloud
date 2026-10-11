@@ -18,11 +18,12 @@ function AnnualTaxCheck({ check, onOpen }) {
       <summary><strong>{c.label}</strong><span>{c.stato_label}</span>
         <span>Dichiarazione: {c.stato === 'SALDO_A_CREDITO' ? 'casella a debito non compilata' : euros(c.declared_cents)} · Quietanze confrontate: {euros(c.paid_cents)}</span></summary>
       <p>Invio {c.submission}{c.cutoff && <> · Versamenti fino alla presentazione del {c.cutoff}</>}</p>
+      {c.classification_review && <p className="declaration-withholding-warning"><strong>Totale riscontrabile; classificazione in dichiarazione da verificare.</strong></p>}
       {sources(c.field)}
       {c.credit?.cents != null && <p>Credito della dichiarazione: {euros(c.credit.cents)} {sources(c.credit)}</p>}
       {(c.context || []).filter(f => f.cents != null).map(f => <p key={f.name}>
         {({ vl30_iva_periodica_dovuta: 'IVA periodica dovuta', vl30_versata_comunicazioni: 'Quota IVA da comunicazioni di irregolarità', vl30_versata_cartelle: 'Quota IVA da cartelle' })[f.name]}: {euros(f.cents)} {sources(f)}
-        {f.name !== 'vl30_iva_periodica_dovuta' && <small> · Da verificare sulla quota d’imposta dell’atto: non sommata ai versamenti ordinari.</small>}
+        {f.name !== 'vl30_iva_periodica_dovuta' && <small> · Compresa nel totale dichiarato confrontato; sanzioni e interessi esclusi.</small>}
       </p>)}
       {c.difference_cents != null && c.difference_cents !== 0 && <p><strong>Differenza quietanze − dichiarazione: {euros(c.difference_cents)}</strong></p>}
       {(c.payments || []).map(p => <div key={p.id}>{p.codice} · {p.data || 'Data da verificare'} · {euros(p.amount_cents)} {receipts(p)}</div>)}
@@ -33,10 +34,22 @@ function AnnualTaxCheck({ check, onOpen }) {
     {(check.groups || []).map(g => <details key={g.codice} className="declaration-withholding declaration-withholding-pagato">
       <summary><strong>{g.codice} · {g.label}</strong><span>{g.ravvedimento ? 'Versamenti documentati · presente ravvedimento' : 'Versamento documentato'}</span><span>{euros(g.paid_cents)}</span></summary>
       {g.payments.map(p => <div key={p.id}>
-        <p>{p.data || 'Data da verificare'} · {euros(p.amount_cents)}{p.ravvedimento && ' · Con ravvedimento'}{p.compensazione_totale && ' · Quietanza a saldo zero, pagato in compensazione'}</p>
+        <p>{p.data || 'Data da verificare'} · {euros(p.amount_cents)}{p.riscontro_avviso ? ' · Pagato tramite avviso bonario (quietanza 9001)' : p.ravvedimento && ' · Con ravvedimento'}{p.compensazione_totale && ' · Quietanza a saldo zero, pagato in compensazione'}</p>
         {p.protocollo && <p className="fiscal-muted">Protocollo {p.protocollo}</p>}{receipts(p)}
       </div>)}
     </details>)}
+    {!!check.avvisi?.length && <section aria-label="Avvisi e compliance IVA">
+      <h4>Avvisi e compliance collegati</h4>
+      {check.avvisi.map(a => <details key={a.codice_atto} className="declaration-withholding">
+        <summary><strong>Atto {a.codice_atto} · {a.anno}</strong><span>{a.stato === 'PAGATA' ? 'Pagato tramite avviso bonario' : 'Pagamento avviso da verificare'}</span></summary>
+        <p>Totale avviso: {euros(a.totale_cents)} · Quietanze: {euros(a.versato_cents)}</p>
+        <p>Imposta: {euros(a.imposta_cents)} · Sanzioni: {euros(a.sanzioni_cents)} · Interessi: {euros(a.interessi_cents)}</p>
+        <p>{a.motivo}. La compliance è il documento che segnala l’anomalia; la prova di pagamento è la quietanza.</p>
+        <Button size="sm" variant="secondary" onClick={() => open(a.avviso)}>Apri avviso bonario</Button>
+        {(a.compliance || []).map(l => <Button key={l.id} size="sm" variant="secondary" onClick={() => open(l)}>Apri compliance</Button>)}
+        {receipts(a)}
+      </details>)}
+    </section>}
     {!!check.accessories?.length && <details className="declaration-withholding"><summary><strong>Sanzioni e interessi da ravvedimento</strong></summary>
       {check.accessories.map(p => <div key={p.id}><p>{p.codice} · {p.label} · {euros(p.amount_cents)} · {p.data}</p>
         <p>{p.principal_codes.length === 1 ? `Tributo ${p.principal_codes[0]} nella stessa quietanza` : 'Attribuzione al singolo tributo da verificare: importo non ripartito automaticamente.'}</p>{receipts(p)}</div>)}
@@ -126,10 +139,11 @@ export default function DeclarationDossier({ dossier, onOpen }) {
       <h4>Quietanze dei tributi dell’anno</h4>
       <p className="fiscal-muted">Collegate per contribuente e tributo dell’anno{dossier.document_type === 'MODELLO_770' ? ', oppure tramite il riscontro ST/SV' : ''}. Il riferimento stampato sulla quietanza resta visibile. Consultabili anche senza modello F24.</p>
       {(dossier.quietanze || []).map(payment => <section key={payment.chiave} className="declaration-dossier-submission">
-        <strong>{payment.data || 'Data non indicata'} · Saldo della quietanza {euros(payment.importo_cents)}</strong>
+        <strong>{payment.data || 'Data non indicata'} · {payment.riscontro_avviso ? 'Totale quietanze dell’avviso' : 'Saldo della quietanza'} {euros(payment.importo_cents)}</strong>
         {payment.protocollo && <p className="fiscal-muted">Protocollo {payment.protocollo}</p>}
         <ul>{(payment.tax_rows || []).map((row, i) => <li key={i}>
           <strong>{row.codice}</strong> · {row.mese ? `${String(row.mese).padStart(2, '0')}/` : ''}{row.anno}
+          {row.codice_originale && <> · Quota imposta dall’avviso, codice della quietanza {row.codice_originale}</>}
           {' · '}Debito {euros(row.importo_debito_cents)}{row.importo_credito_cents > 0 && <> · Credito {euros(row.importo_credito_cents)}</>}
         </li>)}</ul>
         {(payment.quietanze || []).map(fileRow)}

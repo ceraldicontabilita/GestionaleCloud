@@ -2981,6 +2981,27 @@ Serve a capire se i due sistemi stanno descrivendo la stessa posizione IVA.
 
 ## Catena di controllo
 
+**Regola del titolare 11/10/2026 — compliance, avvisi e chiusura IVA.** Quando
+un periodo risulta scoperto, i controlli devono cercare anche lettere di
+compliance, avvisi bonari/54-bis e quietanze 9001. Collegare compliance e avviso
+dal contribuente, protocollo LIPE e trimestre stampati; l'avviso alla quietanza
+dal CF, codice atto, anno e importi verificati. La compliance non prova il
+pagamento. La quietanza basta: non deve attendere un modello F24 o la banca.
+Solo la quota **imposta** del prospetto dell'avviso saldato concorre al mese IVA
+originario e al riscontro della dichiarazione annuale; sanzioni/interessi restano
+separati e il pagamento si chiama **avviso bonario**, non ravvedimento.
+Usare la proiezione unica `f24_controllo_incrociato.riscontri_avvisi_iva` negli
+incroci e nel fascicolo; non scrivere nuovi versamenti né cambiare il codice
+9001 dell'originale. Copie non sommate; rate incomplete, codici atto assenti,
+CF diversi, prospetti discordanti o non quadrati restano da verificare.
+Il giro `incroci_fiscali` deve chiudere gli alert del periodo/avviso coperto.
+Riscontrare il totale VL30 col. 3+4+5 alla data di presentazione, conservando
+visibili arrotondamenti e divergenze fra le colonne: totale coperto non equivale
+a dichiarazione interamente corretta.
+Caso di regressione: giugno 2024, atto 05354492513, quietanza 17/02/2025
+da 1.633,04 = IVA 1.463,15 + sanzioni 146,32 + interessi 23,57; IVA periodica
+2024 documentata 6.859,65, arrotondata a 6.860 in dichiarazione.
+
 La catena attesa è:
 
 **Fatture + corrispettivi → calcolo IVA Gestionale**

@@ -111,12 +111,17 @@ function Incroci({ stato, codice }) {
               {r.versamenti.map(v => (
                 <span key={`${v.id}-${v.periodo}`} style={{ display: 'inline-flex', gap: 6, alignItems: 'center', fontSize: 12.5 }}>
                   <ApriOriginale
+                    url={v.pdf_url}
                     tipo={v.quietanza ? 'quietanza' : 'f24'} id={v.id} variante="secondary"
                     testId={`apri-versamento-${v.id}`} titolo={`${v.quietanza ? 'Quietanza' : 'Modello'} ${v.protocollo || ''}`.trim()}
                   >
                     {euroOppure(v.importo)} del {dataOppure(v.data_versamento)}
                   </ApriOriginale>
                   <Link to={percorsoF24(v.id)}>Scheda</Link>
+                  {v.riscontro_avviso && <span>
+                    Pagato tramite avviso bonario · atto {v.riscontro_avviso.codice_atto}
+                    <ApriOriginale url={v.riscontro_avviso.avviso.pdf_url} variante="secondary" titolo="Avviso bonario">Apri avviso</ApriOriginale>
+                  </span>}
                 </span>
               ))}
             </div>
