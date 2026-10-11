@@ -12,6 +12,7 @@ import re
 from collections import defaultdict
 from typing import Any
 
+from app.db_collections import COLL_FISCAL_DOCUMENT_VERSIONS, COLL_FISCAL_PAGES
 from app.services.declaration_registry import DECLARATION_TYPES, TAX_CODES
 from app.services.fiscal_domain import stable_id
 from app.services import f24_controllo_incrociato as reg
@@ -228,12 +229,14 @@ def attach_receipts(dossiers, receipts):
 async def list_annual_dossiers(db, *, company_id: str, year: int | None = None,
                               declaration_type: str | None = None) -> dict[str, Any]:
     query = {"company_id": company_id, "document_type": {"$in": sorted(DECLARATION_TYPES)}}
+    if declaration_type:
+        query["document_type"] = declaration_type
     documents = await db["fiscal_documents"].find(query, {"_id": 0, "pdf_data": 0}).to_list(10000)
     documents = [d for d in documents if d.get("entity_status") != "deleted"]
     ids = [d["id"] for d in documents]
     versions, pages, components, receipts = await asyncio.gather(
-        db["fiscal_document_versions"].find({"company_id": company_id, "document_id": {"$in": ids}}, {"_id": 0}).to_list(10000),
-        db["fiscal_pages"].find({"company_id": company_id, "document_id": {"$in": ids}, "page_number": {"$lte": 3}}, {"_id": 0, "layout_words": 0}).to_list(30000),
+        db[COLL_FISCAL_DOCUMENT_VERSIONS].find({"company_id": company_id, "document_id": {"$in": ids}}, {"_id": 0}).to_list(10000),
+        db[COLL_FISCAL_PAGES].find({"company_id": company_id, "document_id": {"$in": ids}, "page_number": {"$lte": 3}}, {"_id": 0, "layout_words": 0}).to_list(30000),
         db["documents_inbox"].find({"document_type": {"$in": ["componente_770", "componente_dichiarazione"]},
                                    "$or": [{"company_id": company_id}, {"company_id": {"$exists": False}}]},
                                   {"_id": 0, "pdf_data": 0}).to_list(10000),
