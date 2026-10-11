@@ -28,6 +28,7 @@ from typing import Any, Dict, Iterable, List, Optional, Tuple
 from app.services import f24_controllo_incrociato as registro_f24
 from app.services.calendario_lavorativo import e_festivo
 from app.services.scadenzario_tributi import termine_effettivo
+from app.services.f24_payment_evidence import data_pagamento_banca, data_pagamento_quietanza
 from app.services.expectation_policy import (
     ExpectationStatus, expectation_fields, mandatory_expectations_closed,
 )
@@ -321,16 +322,24 @@ def _casella(
                   "data_versamento": pagamento["data"]}
                  if pagamento else registro_f24.prove_modello(f24, registro))
         stato = _stato_da_prove(prove, scadenza, oggi)
+        # La data prevista nel modello non dimostra un versamento nei termini.
+        # Per il ritardo si usa la quietanza, oppure l'addebito gia' agganciato.
+        date_quietanza = [pagamento.get("data")] if pagamento else [
+            data_pagamento_quietanza(f24), *(q.get("data") for q in prove["quietanze"])]
+        date_banca = ([data_pagamento_banca(f24), *(m.get("data") for m in prove["addebiti_banca"]
+                       if m.get("agganciato"))] if prove["pagato_banca"] else [])
+        date_provate = [d for valore in date_quietanza if (d := _data(valore))] or [
+            d for valore in date_banca if (d := _data(valore))]
+        data_prova = max(date_provate) if date_provate else None
         modelli.append({
             "f24_id": f24.get("id"),
             "documento_id": pagamento["chiave"] if pagamento else f24.get("id"),
             "tipo_documento": "quietanza" if pagamento else "f24",
             "protocollo": pagamento.get("protocollo") if pagamento else None,
             "data_versamento": prove["data_versamento"],
-            "giorni_ritardo": giorni_ritardo(_data(prove["data_versamento"]), scadenza),
+            "giorni_ritardo": giorni_ritardo(data_prova, scadenza),
             "giorni_dopo_nominale": (
-                (_data(prove["data_versamento"]) - nominale).days
-                if nominale and _data(prove["data_versamento"]) else None),
+                (data_prova - nominale).days if nominale and data_prova else None),
             "stato": stato,
             "debito_cents": sum(r["importo_debito_cents"] for r in righe),
             "credito_cents": sum(r["importo_credito_cents"] for r in righe),

@@ -249,7 +249,8 @@ def test_rotte_solo_admin_e_prima_della_rotta_dinamica():
 
 def test_scadenza_festiva_slitta_e_pagare_il_primo_lavorativo_non_e_ritardo():
     """Il 16/05/2026 e' sabato: si paga lunedi' 18 senza ravvedimento (0 giorni di ritardo)."""
-    f = _f24("f-apr", "2026-05-18", erario=[("1001", 4, 2026, 94079, 0)], movimento_bancario_id="m1")
+    f = _f24("f-apr", "2026-05-18", erario=[("1001", 4, 2026, 94079, 0)],
+             movimento_bancario_id="m1", data_pagamento_effettivo="2026-05-18")
     aprile = _mese(run(piano.griglia(_db(f), 2026, oggi=OGGI)), "ritenute_1001", 4)
     assert aprile["scadenza_nominale"] == "2026-05-16"
     assert aprile["scadenza"] == "2026-05-18"
@@ -259,7 +260,8 @@ def test_scadenza_festiva_slitta_e_pagare_il_primo_lavorativo_non_e_ritardo():
 
 
 def test_il_ritardo_si_conta_dal_termine_effettivo_e_il_ferragosto_va_al_20():
-    ritardo = _f24("f-mag", "2026-06-19", erario=[("1001", 5, 2026, 102651, 0)], movimento_bancario_id="m2")
+    ritardo = _f24("f-mag", "2026-06-19", erario=[("1001", 5, 2026, 102651, 0)],
+                   movimento_bancario_id="m2", data_pagamento_effettivo="2026-06-19")
     maggio = _mese(run(piano.griglia(_db(ritardo), 2026, oggi=OGGI)), "ritenute_1001", 5)
     assert maggio["scadenza"] == "2026-06-16" and maggio["giorni_ritardo"] == 3
     # luglio 2026: il 16/08 slitta al 20/08 (proroga estiva), non e' un giorno festivo qualunque
@@ -274,6 +276,24 @@ def test_un_tributo_non_pagato_dice_da_quanti_giorni_e_scaduto():
     assert giugno["giorni_ritardo"] is None
     assert giugno["giorni_scaduto"] == (OGGI - date(2026, 7, 16)).days
     assert _mese(g, "ritenute_1001", 10)["giorni_scaduto"] is None   # non ancora scaduto
+
+
+def test_modello_con_data_prevista_non_dichiara_un_versamento_nei_termini():
+    f = _f24("f-lug", "2026-08-20", erario=[("1001", 7, 2026, 10000, 0)])
+    luglio = _mese(run(piano.griglia(_db(f), 2026, oggi=OGGI)), "ritenute_1001", 7)
+    assert luglio["stato"] == piano.SCADUTO_NON_PAGATO
+    assert luglio["giorni_ritardo"] is None
+    assert luglio["modelli"][0]["giorni_ritardo"] is None
+    assert luglio["modelli"][0]["giorni_dopo_nominale"] is None
+
+
+def test_modello_alla_scadenza_e_quietanza_tardiva_usano_la_data_reale():
+    f = _f24("f-giu", "2026-07-16", erario=[("1001", 6, 2026, 10000, 0)], quietanza_id="q-giu")
+    db = _db(f)
+    run(db.quietanze_f24.insert_one(_quietanza("q-giu", mese=6, data="2026-07-22")))
+    giugno = _mese(run(piano.griglia(db, 2026, oggi=OGGI)), "ritenute_1001", 6)
+    assert giugno["giorni_ritardo"] == 6
+    assert all(m["giorni_ritardo"] == 6 for m in giugno["modelli"])
 
 
 def test_piu_anni_e_tutti_dal_piu_recente():
