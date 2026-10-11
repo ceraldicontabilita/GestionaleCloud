@@ -35,6 +35,9 @@ def quadro(filename: str, testo: str) -> Optional[str]:
     """
     nome = _NOME_QUADRO.search(filename or "")
     testo_maiuscolo = (testo or "").upper()
+    if ("frontespizio" in (filename or "").lower() and identificativo(testo_maiuscolo)
+            and re.search(r"DATI\s+RELATIVI\s+AL\s+SOSTITUTO", testo_maiuscolo)):
+        return "FRONTESPIZIO"
     if not nome or not identificativo(testo_maiuscolo):
         return None
     sigla = nome.group(1).upper()
@@ -65,10 +68,16 @@ async def dichiarazione_di(db, ident: Optional[str]) -> Optional[Dict[str, Any]]
 
 
 async def metadati(db, *, filename: str, testo: str) -> Dict[str, Any]:
+    from app.services.declaration_dossiers import document_identity
+
     ident = identificativo(testo)
     dichiarazione = await dichiarazione_di(db, ident)
     modulo = _NOME_QUADRO.search(filename or "")
+    identity = document_identity({"filename": filename, "document_type": "MODELLO_770"}, testo)
     return {
+        "declaration_type": "MODELLO_770",
+        "codice_fiscale": identity["taxpayer_id"],
+        "anno_imposta": identity["tax_year"],
         "quadro": quadro(filename, testo),
         "modulo": int(modulo.group(2)) if modulo and modulo.group(2) else None,
         "identificativo_dichiarazione": ident,

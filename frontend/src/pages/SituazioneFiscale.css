@@ -51,3 +51,17 @@
 .fiscal-f24-table tfoot th { background:#f7ebe4; color:#141413; }
 @media (max-width:1100px) { .fiscal-stats { grid-template-columns:repeat(3,minmax(140px,1fr)); } .fiscal-list-filters { grid-template-columns:repeat(2,minmax(180px,1fr)); position:static; } }
 @media (max-width:700px) { .fiscal-stats { display:flex; overflow-x:auto; } .fiscal-stats > * { min-width:160px; } .fiscal-list-filters { grid-template-columns:1fr; } .fiscal-data-grid { grid-template-columns:repeat(2,1fr); } .fiscal-record-header { align-items:flex-start; flex-direction:column; } .fiscal-actions button { width:100%; } .fiscal-pagination { justify-content:space-between; gap:8px; } .fiscal-f24-summary { grid-template-columns:auto 1fr; gap:10px; } .fiscal-f24-summary > .ds-badge,.fiscal-f24-totals { grid-column:1 / -1; } .fiscal-f24-totals { justify-content:space-between; } }
+.declaration-dossier { min-width: 0; overflow-wrap: anywhere; }
+.declaration-dossier h3, .declaration-dossier h4, .declaration-dossier h5 { margin: 10px 0; }
+.declaration-dossier p { margin: 8px 0; }
+.declaration-dossier-toggle { cursor: pointer; padding: 12px 0; font-weight: 600; }
+.declaration-dossier-submission { border-top: 1px solid #dedbd2; padding: 12px 0; }
+.declaration-dossier-file { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; padding: 10px 0; min-width: 0; }
+.declaration-dossier-file > div { flex: 1 1 240px; min-width: 0; }
+.declaration-dossier-copies { flex: 1 1 100%; }
+.declaration-dossier-copies > div { padding: 8px 0; }
+@media (max-width: 600px) {
+  .declaration-dossier-file { align-items: stretch; flex-direction: column; }
+  .declaration-dossier-file > div { flex-basis: auto; }
+  .declaration-dossier-copies { flex-basis: auto; }
+}

@@ -8,6 +8,21 @@ import SituazioneFiscale, { endpointFor, resolveDeclarationVersions } from './Si
 vi.mock('../api', () => ({ default: { get: vi.fn(), post: vi.fn() } }));
 vi.mock('../contexts/AnnoContext', () => ({ useAnnoGlobale: () => ({ anno: 2026 }) }));
 describe('Situazione fiscale dal registro F24', () => {
+  it('mostra un fascicolo annuale con il filtro per anno di imposta', async () => {
+    api.get.mockImplementation(path => Promise.resolve({ data: path === '/api/fiscal/summary' ? { counts: {} } : {
+      years: [2023, 2022], unlinked_components: [], items: path.includes('year=2022') ? [] : [{
+        id: 'dossier-770-2023', document_type: 'MODELLO_770', tax_year: 2023, taxpayer_id: '04523831214',
+        model_years: [2024], originals: [], quietanze: [], original_count: 2, receipt_count: 0,
+      }],
+    } }));
+    render(<MemoryRouter initialEntries={['/situazione-fiscale/dichiarazioni?year=2023&type=MODELLO_770']}><SituazioneFiscale /></MemoryRouter>);
+    expect(await screen.findByText('770 · Anno d’imposta 2023')).toBeInTheDocument();
+    expect(api.get).toHaveBeenCalledWith('/api/fiscal/declarations?raggruppa=true&year=2023&declaration_type=MODELLO_770');
+    fireEvent.change(screen.getByLabelText('Anno d’imposta'), { target: { value: '2022' } });
+    await waitFor(() => expect(screen.queryByText('770 · Anno d’imposta 2023')).not.toBeInTheDocument());
+    expect(api.get).toHaveBeenCalledWith('/api/fiscal/declarations?raggruppa=true&year=2022&declaration_type=MODELLO_770');
+  });
+
   it('la scheda «Da pagare» elenca i tributi da pagare', async () => {
     api.get.mockImplementation(path => Promise.resolve({ data: path === '/api/fiscal/summary'
       ? { counts: {} }

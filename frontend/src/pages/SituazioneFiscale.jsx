@@ -7,6 +7,7 @@ import { VisoreOriginale } from '../components/ApriOriginale';
 import { urlOriginale } from '../lib/vista';
 import { Badge, Button, Card, HubTabs, PageLoader, StatCard } from '../components/ds';
 import './SituazioneFiscale.css';
+import DeclarationDossier from '../components/DeclarationDossier';
 
 // Le schede che erano pagine a se' (Piano tributi, Tributi per codice, Ritenute): qui si
 // mostrano con la loro stessa vista, senza una seconda copia. I vecchi indirizzi
@@ -50,7 +51,7 @@ export const parametriElenco = ({ cerca = '', anno = '', stato = '', offset = 0 
 
 export const endpointFor = (tab, f24Filters = {}, taxCodeFilters = {}, elenco = {}) => {
   if (tab === 'dichiarazioni') {
-    const params = new URLSearchParams();
+    const params = new URLSearchParams({ raggruppa: 'true' });
     if (f24Filters.year) params.set('year', f24Filters.year);
     if (f24Filters.declarationType) params.set('declaration_type', f24Filters.declarationType);
     return `/api/fiscal/declarations?${params.toString()}`;
@@ -165,6 +166,8 @@ function ElenchiFiscali() {
   const query = useMemo(() => new URLSearchParams(location.search), [location.search]);
   const [declarationYear, setDeclarationYear] = useState(() => query.get('year') || '');
   const [declarationType, setDeclarationType] = useState(() => query.get('type') || '');
+  const [declarationYears, setDeclarationYears] = useState([]);
+  const [unlinkedComponents, setUnlinkedComponents] = useState([]);
   const [uploadCategory, setUploadCategory] = useState('automatica');
   const [uploading, setUploading] = useState(false);
   const declarationInput = useRef(null);
@@ -209,6 +212,10 @@ function ElenchiFiscali() {
       if (dataResult.status === 'fulfilled') {
         const payload = dataResult.value.data || {};
         setItems(payload.items || []);
+        if (tab === 'dichiarazioni') {
+          setDeclarationYears(payload.years || []);
+          setUnlinkedComponents(payload.unlinked_components || []);
+        }
         setElencoMeta(SERVER_TABS.has(tab) ? payload : null);
         setMostrati(RIGHE_PER_PAGINA);
         setTaxCodeMeta(payload.catalog || null);
@@ -561,8 +568,8 @@ function ElenchiFiscali() {
           <label style={{ paddingBottom: 8 }}><input type="checkbox" checked={f24CreditsOnly} onChange={event => setF24CreditsOnly(event.target.checked)} /> Solo righe a credito</label>
         </div>}
         {tab === 'dichiarazioni' && <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'end', marginBottom: 14 }}>
-          <label>Anno<br /><select value={declarationYear} onChange={event => setDeclarationYear(event.target.value)} style={{ padding: 8 }}>
-            <option value="">Tutti</option>{[2026, 2025, 2024, 2023, 2022, 2021, 2020].map(year => <option key={year}>{year}</option>)}
+          <label>Anno d’imposta<br /><select value={declarationYear} onChange={event => setDeclarationYear(event.target.value)} style={{ padding: 8 }}>
+            <option value="">Tutti</option>{[...new Set([...declarationYears, ...(declarationYear ? [Number(declarationYear)] : [])])].sort((a, b) => b - a).map(year => <option key={year}>{year}</option>)}
           </select></label>
           <label>Tipo<br /><select value={declarationType} onChange={event => setDeclarationType(event.target.value)} style={{ padding: 8 }}>
             <option value="">Tutte</option><option value="MODELLO_770">770</option><option value="DICHIARAZIONE_IVA">IVA</option>
@@ -575,6 +582,12 @@ function ElenchiFiscali() {
           <input ref={declarationInput} type="file" accept="application/pdf,.pdf" hidden onChange={uploadDeclaration} disabled={uploading} />
           <Button variant="primary" disabled={uploading} onClick={() => declarationInput.current?.click()}>{uploading ? 'Caricamento…' : 'Inserisci dichiarazione'}</Button>
         </div>}
+        {tab === 'dichiarazioni' && unlinkedComponents.length > 0 && <details className="fiscal-record declaration-dossier">
+          <summary>{unlinkedComponents.length} PDF da attribuire a un fascicolo</summary>
+          {unlinkedComponents.map(file => <div className="declaration-dossier-file" key={file.id}>
+            <span>{file.filename}</span><Button size="sm" variant="secondary" onClick={() => setOriginaleAperto({ url: file.pdf_url, titolo: file.filename })}>Apri PDF originale</Button>
+          </div>)}
+        </details>}
         {tab === 'codici-tributo' && <>
           {taxCodeMeta && <div style={{ margin: '0 0 14px', padding: '12px 14px', borderRadius: 10, background: '#f7ebe4', border: '1px solid #c2ddd0' }}>
             <strong>Catalogo Agenzia delle Entrate:</strong> {taxCodeMeta.record_count} classificazioni · {taxCodeMeta.distinct_codes} codici distinti · acquisito il {taxCodeMeta.acquired_at || 'dato non disponibile'}
@@ -695,6 +708,7 @@ function ElenchiFiscali() {
             </details>
           </article>;
           const technicalLabel = String(labelForClaim(item) || '');
+          if (tab === 'dichiarazioni' && item.originals) return <DeclarationDossier key={entityId} dossier={item} onOpen={setOriginaleAperto} />;
           const title = tab === 'f24' ? `${item.tax_code || item.section || 'Riga F24'} · ${item.reference_period || 'periodo non indicato'}`
             : tab === 'dichiarazioni' ? `${item.document_type} · ${item.filing_year || 'anno da verificare'}`
               : (tab === 'tributi' && item.source_kind === F24_ROW) ? `${item.tax_code || 'Codice non indicato'} · ${item.description || item.section || 'Tributo F24'}`

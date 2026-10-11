@@ -71,6 +71,33 @@ def test_payload_sul_record_quietanza_f24(ambiente):
     assert res.headers["content-disposition"].startswith("inline")
 
 
+def test_originale_dichiarazione_recupera_versione_esatta_per_hash(ambiente):
+    from app.config import settings
+    app, inserisci, _ = ambiente
+    cf = settings.FISCAL_COMPANY_ID
+    sha = hashlib.sha256(PDF).hexdigest()
+    inserisci("fiscal_documents", {"id": "decl", "company_id": cf, "current_version_id": "v1"})
+    inserisci("fiscal_document_versions", {"id": "v1", "document_id": "decl", "company_id": cf, "sha256": sha})
+    # Il vecchio collegamento punta ad un'altra versione, quello recuperato
+    # con la stessa impronta appartiene a una registrazione duplicata.
+    inserisci("documents_inbox", {"id": "old", "company_id": cf, "fiscal_document_id": "decl", "pdf_data": _b64(PDF+b"vecchio")})
+    inserisci("documents_inbox", {"id": "correct", "company_id": cf, "fiscal_document_id": "altra-copia", "sha256": sha, "pdf_data": _b64(PDF)})
+    with _client(app) as client:
+        r = client.get("/api/originale/documento_fiscale/decl")
+    assert r.status_code == 200 and r.content == PDF
+
+
+def test_originale_dichiarazione_non_apre_pdf_di_altra_azienda(ambiente):
+    from app.config import settings
+    app, inserisci, _ = ambiente
+    sha = hashlib.sha256(PDF).hexdigest()
+    inserisci("fiscal_documents", {"id": "decl", "company_id": settings.FISCAL_COMPANY_ID, "current_version_id": "v1"})
+    inserisci("fiscal_document_versions", {"id": "v1", "document_id": "decl", "company_id": settings.FISCAL_COMPANY_ID, "sha256": sha})
+    inserisci("documents_inbox", {"id": "foreign", "company_id": "another", "sha256": sha, "pdf_data": _b64(PDF)})
+    with _client(app) as client:
+        assert client.get("/api/originale/documento_fiscale/decl").status_code == 404
+
+
 def test_f24_cerca_prima_il_modello_poi_la_quietanza(ambiente):
     app, inserisci, _ = ambiente
     inserisci("f24_unificato", {"id": "m1", "pdf_data": _b64(PDF)})

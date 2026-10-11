@@ -300,6 +300,7 @@ async def _cedolino(db, ident: str, indice: int) -> Originale:
 async def _documento_fiscale(db, ident: str, indice: int) -> Originale:
     """Documento fiscale: l'originale e' nel deposito Documenti (``documents_inbox``)."""
     from app.config import settings
+    from app.db_collections import COLL_FISCAL_DOCUMENT_VERSIONS
 
     azienda = settings.FISCAL_COMPANY_ID
     documento = await db["fiscal_documents"].find_one({"company_id": azienda, "id": ident}, {"_id": 0})
@@ -309,12 +310,28 @@ async def _documento_fiscale(db, ident: str, indice: int) -> Originale:
     filtro = ({"id": inbox_id, "company_id": azienda} if inbox_id
               else {"company_id": azienda, "fiscal_document_id": documento.get("id")})
     sorgente = await db["documents_inbox"].find_one(filtro, {"_id": 0})
-    for candidato in (sorgente, documento):
+    versione = (await db[COLL_FISCAL_DOCUMENT_VERSIONS].find_one(
+        {"company_id": azienda, "id": documento["current_version_id"], "document_id": ident}, {"_id": 0})
+        if documento.get("current_version_id") else None)
+    impronta = (versione or {}).get("sha256")
+    # Un originale puo' servire piu' registrazioni/copie dello stesso PDF.
+    # Il riferimento al solo fiscal_document_id non basta: recuperiamo la
+    # versione esatta tramite impronta, sempre nello stesso archivio aziendale.
+    per_impronta = (await db["documents_inbox"].find_one(
+        {"company_id": azienda, "$or": [{"sha256": impronta}, {"file_hash": impronta}]}, {"_id": 0})
+        if impronta else None)
+    errore_impronta = None
+    for candidato in (sorgente, per_impronta, documento):
         if candidato:
             try:
-                return await _da_record(candidato, predefinito="documento.pdf", tipo="documento_fiscale", ident=ident)
+                return await _da_record(candidato, predefinito="documento.pdf", tipo="documento_fiscale", ident=ident,
+                                        impronta=impronta)
             except OriginaleNonDisponibile:
                 continue
+            except OriginaleNonCorrispondente as exc:
+                errore_impronta = exc
+    if errore_impronta:
+        raise errore_impronta
     raise OriginaleNonDisponibile("Originale non disponibile", {
         "tipo": "documento_fiscale", "id": ident, "provato": ["documents_inbox", "fiscal_documents"]})
 
