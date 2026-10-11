@@ -753,6 +753,38 @@ def controlla_riga(
                 "addebiti_banca": [a for _, p, _, _ in valutati for a in p["addebiti_banca"]],
             }
 
+    # Il tributo dell'avviso può essere documentato direttamente dalla quietanza,
+    # anche se il modello non è mai stato caricato o ha una data diversa.
+    prove_tributo, pagato_cents = [], 0
+    for pagamento in pagamenti_da_quietanze(registro["quietanze"]):
+        righe_pagate = [r for r in pagamento["_righe"]
+                       if r["codice"] == codice and r["anno"] == periodo["anno"]
+                       and (periodo["mese"] is None or r["mese"] == periodo["mese"])
+                       and (not riga_avviso.get("sezione") or r["sezione"] == riga_avviso["sezione"])
+                       and (not riga_avviso.get("ente") or r.get("ente") == riga_avviso["ente"])]
+        importo_pagato = sum(r["importo_debito_cents"] for r in righe_pagate)
+        if importo_pagato <= 0:
+            continue
+        pagato_cents += importo_pagato
+        prova = pagamento["quietanze"][0]
+        prove_tributo.append({
+            "quietanza_id": prova["id"], "pdf_url": prova["pdf_url"],
+            "data": pagamento["data"], "data_it": data_italiana(pagamento["data"]),
+            "protocollo": pagamento["protocollo"], "importo": euro(importo_pagato),
+            "agganciata": False, "criterio": "tributo_e_competenza",
+        })
+    if prove_tributo:
+        residuo = max(importo_cents - pagato_cents, 0)
+        esito.update({"quietanze": prove_tributo, "importo_pagato": euro(pagato_cents),
+                      "residuo": euro(residuo), "differenza": euro(importo_cents - pagato_cents),
+                      "differenza_cents": importo_cents - pagato_cents})
+        if residuo <= TOLLERANZA_IMPORTO_CENTS:
+            esito.update({"esito": ESITO_COPERTO,
+                          "motivazione": "tributo pagato per quietanza della stessa competenza; riscontro bancario separato"})
+        else:
+            esito.update({"esito": ESITO_IMPORTO_DIVERSO,
+                          "motivazione": f"quietanze per {euro(pagato_cents):.2f} €; residuo dell'avviso {euro(residuo):.2f} € da verificare"})
+
     esito["indizi"] = (
         indizi_riga_mancante(codice, periodo, importo_cents, registro)
         if esito["esito"] in (ESITO_NON_TROVATO, ESITO_IMPORTO_DIVERSO) else []
@@ -829,7 +861,10 @@ async def controlla_avviso(
         per_esito[e["esito"]] += 1
         totali[e["esito"]] += e["importo_cents"]
     totale = sum(e["importo_cents"] for e in esiti)
-    coperto = totali[ESITO_COPERTO]
+    coperto = totali[ESITO_COPERTO] + sum(
+        min(e["importo_cents"], centesimi(e.get("importo_pagato")) or 0)
+        for e in esiti if e["esito"] == ESITO_IMPORTO_DIVERSO
+    )
     versato_senza_quietanza = totali[ESITO_PAGATO_SENZA_QUIETANZA]
     return {
         "numero_avviso": numero_avviso,

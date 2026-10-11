@@ -142,3 +142,22 @@ def test_solleciti_controllano_tributi_pagati_senza_riutilizzarli_o_inventare_ab
     sbagliato = deepcopy(q)
     sbagliato["sezione_erario"][0]["mese"] = "06"
     assert not reg.modelli_coperti_da_tributi_pagati([f], [reg._quietanza_legacy(sbagliato)])
+
+
+def test_avviso_coperto_dalla_quietanza_senza_modello_ne_banca_e_senza_contare_copie():
+    archivio = db()
+    q = quietanza(sezione_erario=[riga("1001")])
+    run(archivio.quietanze_f24.insert_many([q, {**q, "id": "copia"}]))
+    avviso = {"codice_tributo": "1001", "periodo": "05/2026", "importo": 100}
+    risultato = run(reg.controlla_avviso(archivio, [avviso], includi_cedolini_hr=False))
+    voce = risultato["righe"][0]
+    assert voce["esito"] == reg.ESITO_COPERTO
+    assert voce["importo_pagato"] == 100 and voce["residuo"] == 0
+    assert len(voce["quietanze"]) == 1 and voce["quietanze"][0]["pdf_url"]
+    assert risultato["riepilogo"]["totale_scoperto"] == 0
+    parziale_result = run(reg.controlla_avviso(archivio, [{**avviso, "importo": 150}], includi_cedolini_hr=False))
+    parziale = parziale_result["righe"][0]
+    assert parziale["esito"] == reg.ESITO_IMPORTO_DIVERSO and parziale["residuo"] == 50
+    assert parziale_result["riepilogo"]["totale_scoperto"] == 50
+    altro_mese = run(reg.controlla_avviso(archivio, [{**avviso, "periodo": "06/2026"}], includi_cedolini_hr=False))["righe"][0]
+    assert altro_mese["esito"] == reg.ESITO_NON_TROVATO and not altro_mese["quietanze"]
