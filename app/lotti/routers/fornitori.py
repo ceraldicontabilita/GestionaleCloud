@@ -255,7 +255,6 @@ async def get_fornitori(stato: Optional[str] = None, search: Optional[str] = Non
         nome_lower = _chiave_fornitore(nome_norm)
         if nome_lower not in seen_names:
             seen_names[nome_lower] = nome_norm
-    fornitori_fatture = list(seen_names.values())
 
     # Una sola query per tutte le info fornitori
     fornitori_db = await db.fornitori.find({}, {"_id": 0}).to_list(2000)
@@ -279,6 +278,9 @@ async def get_fornitori(stato: Optional[str] = None, search: Optional[str] = Non
         if not n:
             continue
         key = _chiave_fornitore(n)
+        # Una scheda resta visibile anche senza fatture HACCP: la scelta di
+        # escludere il fornitore dal magazzino non dipende dagli acquisti.
+        seen_names.setdefault(key, n)
         existing = fornitori_map.get(key)
         if existing is None:
             fornitori_map[key] = f
@@ -330,7 +332,7 @@ async def get_fornitori(stato: Optional[str] = None, search: Optional[str] = Non
     riparazioni = []  # (nome, escluso, tipo_fornitura, deciso_il)
 
     result = []
-    for nome in fornitori_fatture:
+    for nome in seen_names.values():
         if not nome:
             continue
         nome_lower = _chiave_fornitore(nome)
