@@ -41,11 +41,10 @@ logger = logging.getLogger(__name__)
 COLL_MOVIMENTI = "movimenti_contabili"
 COLL_PIANO_CONTI = "piano_conti"
 
-# Interruttore del libro giornale. Decisione del titolare (07/10/2026): il
-# libro giornale non gli serve e le registrazioni restano SPENTE; il registro
-# operativo e' la Prima Nota cassa/banca. Difetto spento: si accende solo con
-# ``LIBRO_GIORNALE_ATTIVO=true``. Le letture (pagina giornale, bilancio dai
-# movimenti esistenti) non cambiano; cambia solo che non si scrive nulla.
+# Interruttore del libro giornale: riattivazione richiesta dal titolare
+# l'11/10/2026, configurata con ``LIBRO_GIORNALE_ATTIVO=true`` su Render.
+# In assenza di configurazione resta spento. La Prima Nota cassa/banca
+# mantiene il proprio motore; le letture delle scritture esistenti non cambiano.
 MOTIVO_DISATTIVATO = "libro giornale spento (LIBRO_GIORNALE_ATTIVO)"
 
 

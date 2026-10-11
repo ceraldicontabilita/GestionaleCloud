@@ -1724,11 +1724,11 @@ Una riga entra quando possiede significato contabile sufficiente.
 
 ## PRODUZIONE
 
-Il libro giornale è **spento** per decisione del titolare (07/10/2026): non gli serve. Il registro operativo è la Prima Nota cassa/banca (§23).
+Il titolare ha richiesto la **riattivazione** del libro giornale l'11/10/2026, superando la decisione del 07/10/2026. La configurazione versionata imposta `LIBRO_GIORNALE_ATTIVO=true`; l'applicazione al servizio Render e il riavvio devono essere verificati prima di dichiararlo attivo in produzione. Il registro operativo resta la Prima Nota cassa/banca (§23).
 
 Interruttore unico nel motore: `LIBRO_GIORNALE_ATTIVO` (difetto spento). Con l'interruttore spento `registra_fattura`, `registra_corrispettivo`, `registra_scrittura_semplice`, storni, pregresso e job rispondono `stato = disattivato` e non scrivono nulla; `_scrivi_movimento` rifiuta comunque (`GiornaleDisattivato`). Le letture delle scritture già esistenti non cambiano. I test accendono l'interruttore per collaudare il motore.
 
-Non riaccenderlo senza decisione del titolare. Le regole che seguono valgono quando è acceso.
+La riattivazione non attesta la completezza delle scritture storiche. Le regole che seguono valgono quando è acceso.
 
 Motore:
 

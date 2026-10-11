@@ -56,6 +56,9 @@ services:
       # delle app). Le tre SUPABASE_* restano nella dashboard Render.
       - key: DATA_BACKEND
         value: "supabase"
+      # Riattivazione richiesta dal titolare l'11/10/2026.
+      - key: LIBRO_GIORNALE_ATTIVO
+        value: "true"
       - key: SUPABASE_URL
         sync: false
       - key: SUPABASE_PUBLISHABLE_KEY

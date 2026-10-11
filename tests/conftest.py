@@ -45,8 +45,8 @@ def pytest_configure(config):
     guard.setattr(socket.socket, "connect", connect)
     guard.setattr(socket.socket, "connect_ex", connect_ex)
     config.add_cleanup(guard.undo)
-# Il libro giornale e' spento in produzione (CLAUDE.md §24, titolare 07/10/2026):
-# i test del motore lo accendono per collaudarne la logica; il difetto spento
+# I test del motore accendono esplicitamente il libro giornale per collaudarne
+# la logica indipendentemente dalla configurazione live; il difetto spento
 # e' verificato a parte in tests/contabilita/test_libro_giornale_spento.py.
 os.environ.setdefault("LIBRO_GIORNALE_ATTIVO", "true")
 
