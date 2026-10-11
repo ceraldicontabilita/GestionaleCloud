@@ -657,7 +657,7 @@ async def process_verbale_document(
         "importo_centesimi": amount_to_cents(importo),
         "importo_fonte": importo_fonte,
         "importo_conflitto_risolto": importo_conflitto,
-        "data_verbale": ai_data.get("data_verbale"),
+        "data_verbale": ai_data.get("data_verbale") or ai_data.get("data_emissione"),
         "data_violazione": violation_date,
         "data_scadenza": pagopa_data.get("data_scadenza"),
         "codice_avviso": pagopa_data.get("codice_avviso"),
