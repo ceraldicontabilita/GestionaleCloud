@@ -17,7 +17,7 @@ describe('PIN condiviso e MFA ERP', () => {
     auth.loginWithPin.mockResolvedValue({ mfa_required: true, challenge_token: 'synthetic-challenge' });
     auth.verifyMfaLogin.mockResolvedValue({});
     render(<Login />);
-    fireEvent.change(screen.getByLabelText('PIN'), { target: { value: '74926183' } });
+    for (const key of '74926183') fireEvent.keyDown(screen.getByLabelText('PIN'), { key });
     fireEvent.click(screen.getByRole('button', { name: 'Accedi' }));
     const code = await screen.findByLabelText('Codice MFA');
     expect(auth.loginWithPin).toHaveBeenCalledWith('74926183');
@@ -31,7 +31,7 @@ describe('PIN condiviso e MFA ERP', () => {
   it('mostra il blocco tentativi senza navigare', async () => {
     auth.loginWithPin.mockRejectedValue({ response: { status: 429, data: { detail: 'Troppi tentativi' } } });
     render(<Login />);
-    fireEvent.change(screen.getByLabelText('PIN'), { target: { value: '74926183' } });
+    for (const key of '74926183') fireEvent.keyDown(screen.getByLabelText('PIN'), { key });
     fireEvent.click(screen.getByRole('button', { name: 'Accedi' }));
     expect(await screen.findByRole('alert')).toHaveTextContent('Troppi tentativi');
     expect(navigate).not.toHaveBeenCalled();
