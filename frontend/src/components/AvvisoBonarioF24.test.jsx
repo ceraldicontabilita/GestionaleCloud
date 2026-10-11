@@ -6,6 +6,7 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 
 vi.mock('../api', () => ({ default: { post: vi.fn() } }));
+vi.mock('./ApriOriginale', () => ({ VisoreOriginale: ({ title, url, onClose }) => <div role="dialog" aria-label={title}><span>{url}</span><button onClick={onClose}>Chiudi PDF</button></div> }));
 
 import api from '../api';
 import AvvisoBonarioF24, { ESITI_AVVISO } from './AvvisoBonarioF24';
@@ -69,6 +70,24 @@ describe('Interroga avviso bonario (PR 11)', () => {
     fireEvent.click(screen.getByTestId('btn-interroga-avviso'));
     expect(api.post).not.toHaveBeenCalled();
     expect(screen.getByRole('alert').textContent).toContain('almeno una riga');
+  });
+  it('apre la quietanza che prova il tributo anche senza modello F24', async () => {
+    api.post.mockResolvedValueOnce({ data: {
+      riepilogo: { totale_avviso: 100, totale_coperto: 100, totale_scoperto: 0 },
+      fonti: { f24: 0, quietanze: 1, movimenti_f24_banca: 0 },
+      righe: [{ codice_tributo: '1001', periodo: '05/2026', importo: 100, esito: 'COPERTO', righe_f24: [],
+        quietanze: [{ quietanza_id: 'q1', data_it: '22/07/2026', importo: 100, criterio: 'tributo_e_competenza', pdf_url: '/api/originale/quietanza/q1' }] }],
+    } });
+    render(<MemoryRouter><AvvisoBonarioF24 /></MemoryRouter>);
+    fireEvent.change(screen.getByLabelText('Codice tributo riga 1'), { target: { value: '1001' } });
+    fireEvent.change(screen.getByLabelText('Periodo riga 1'), { target: { value: '05/2026' } });
+    fireEvent.change(screen.getByLabelText('Importo riga 1'), { target: { value: '100' } });
+    fireEvent.click(screen.getByTestId('btn-interroga-avviso'));
+    fireEvent.click(await screen.findByRole('button', { name: 'Apri quietanza' }));
+    expect(screen.getByText('pagamento del tributo documentato')).toBeTruthy();
+    expect(screen.getByRole('dialog', { name: 'Quietanza 22/07/2026' }).textContent).toContain('/api/originale/quietanza/q1');
+    fireEvent.click(screen.getByRole('button', { name: 'Chiudi PDF' }));
+    expect(screen.queryByRole('dialog')).toBeNull();
   });
   it('mostra gli indizi di una riga non trovata come da verificare, mai come pagamento', async () => {
     api.post.mockResolvedValueOnce({

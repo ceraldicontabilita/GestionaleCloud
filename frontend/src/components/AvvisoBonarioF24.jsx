@@ -117,7 +117,10 @@ function ListaProve({ riga, onApriPdf }) {
         <div key={`${q.fonte}-${q.quietanza_id}`} data-testid={`avviso-quietanza-${q.quietanza_id}`}>
           <strong>Quietanza</strong> {q.data_it || '—'} · prot. {q.protocollo || '—'}
           {q.importo != null && <> · {formatEuro(q.importo)}</>}
-          {' '}<span style={{ fontSize: 11, color: q.agganciata ? PALETTE.bosco : PALETTE.ocra }}>{q.agganciata ? 'agganciata' : 'compatibile, non agganciata'}</span>
+          {' '}<span style={{ fontSize: 11, color: q.criterio === 'tributo_e_competenza' || q.agganciata ? PALETTE.bosco : PALETTE.ocra }}>
+            {q.criterio === 'tributo_e_competenza' ? 'pagamento del tributo documentato' : q.agganciata ? 'agganciata' : 'compatibile, non agganciata'}
+          </span>
+          {q.pdf_url && <button type="button" onClick={() => onApriPdf(q)} style={{ ...stileBottone(false), padding: '2px 8px', minHeight: 26, fontSize: 11 }}>Apri quietanza</button>}
           <div style={{ fontSize: 11, color: PALETTE.grigio }}>{q.filename}</div>
         </div>
       ))}
@@ -305,7 +308,7 @@ export default function AvvisoBonarioF24() {
                     {r.differenza == null ? '—' : formatEuro(r.differenza)}
                   </td>
                   <td style={{ ...stileTd, minWidth: 320 }}>
-                    <ListaProve riga={r} onApriPdf={(m) => setPdfViewer({ title: `F24 ${m.file_name || m.f24_id}`, url: m.pdf_url })} />
+                    <ListaProve riga={r} onApriPdf={(m) => setPdfViewer({ title: m.quietanza_id ? `Quietanza ${m.data_it || m.protocollo || ''}` : `F24 ${m.file_name || m.f24_id}`, url: m.pdf_url, type: m.quietanza_id ? 'quietanza' : 'f24' })} />
                   </td>
                   <td style={{ ...stileTd, minWidth: 220, color: PALETTE.grigio }}>
                     {r.motivazione}
@@ -330,7 +333,7 @@ export default function AvvisoBonarioF24() {
         <VisoreOriginale
           title={pdfViewer.title}
           url={pdfViewer.url}
-          documentType="f24"
+          documentType={pdfViewer.type || 'f24'}
           onClose={() => setPdfViewer(null)}
         />
       )}

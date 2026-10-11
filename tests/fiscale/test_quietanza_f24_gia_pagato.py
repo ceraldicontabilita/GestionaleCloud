@@ -74,8 +74,8 @@ def test_orfana_si_aggancia_al_modello_gia_pagato_senza_declassarlo():
                 await db[COLL_F24_ALERTS].find_one({"id": "al-1"}))
 
     esito, secondo, f24, quietanza, alert = asyncio.run(scenario())
-    assert esito == {"orfane": 1, "collegate": 1, "rietichettate": 0}
-    assert secondo == {"orfane": 0, "collegate": 0, "rietichettate": 0}
+    assert esito["orfane"] == 1 and esito["collegate"] == 1 and esito["alert_chiusi"] == 1
+    assert secondo["orfane"] == 0 and secondo["collegate"] == 0 and secondo["aggiornate"] == 0
     assert f24["quietanza_id"] == "q-apr"
     assert f24["protocollo_quietanza"] == "26051810582342599/000001"
     # Resta pagato in banca: la quietanza non lo riporta «da verificare».
@@ -83,8 +83,8 @@ def test_orfana_si_aggancia_al_modello_gia_pagato_senza_declassarlo():
     assert f24["pagamento_verificato_banca"] is True
     assert quietanza["f24_associati"] == ["f24-apr"]
     assert quietanza["stato_associazione"] == "associata"
-    assert "stato_quietanza" not in quietanza
-    assert alert["status"] == "risolto"
+    assert quietanza["stato_quietanza"] == "PAGATO_QUIETANZA"
+    assert alert["status"] == "resolved"
 
 
 def test_due_modelli_uguali_non_si_collega_niente():
@@ -199,7 +199,7 @@ def test_saldo_diverso_non_e_lo_stesso_versamento():
     assert asyncio.run(scenario())["f24_matchati"] == []
 
 
-def test_quietanza_senza_modello_si_dichiara_f24_mancante():
+def test_quietanza_senza_modello_resta_pagata_e_autonoma():
     db = _db()
 
     async def scenario():
@@ -216,5 +216,5 @@ def test_quietanza_senza_modello_si_dichiara_f24_mancante():
 
     esito, quietanza = asyncio.run(scenario())
     assert esito["rietichettate"] == 1
-    assert quietanza["stato_associazione"] == "f24_mancante"
-    assert quietanza["stato_quietanza"] == "QUIETANZA_PRESENTE_F24_MANCANTE"
+    assert quietanza["stato_associazione"] == "autonoma"
+    assert quietanza["stato_quietanza"] == "PAGATO_QUIETANZA"

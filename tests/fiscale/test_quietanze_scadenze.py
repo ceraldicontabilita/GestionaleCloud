@@ -7,8 +7,7 @@ univoco quietanza ↔ modello (`abbina_quietanza_a_f24`). Il calendario e' un
 modello generato in memoria (`genera_scadenze_anno`) e in archivio sta solo lo
 stato: la riga nasce con la prima prova (upsert per `id` e `anno`), con
 `completato_da=quietanza_f24` (evidenza documentale, distinta dalla conferma a
-mano). Una scadenza gia' completata non si tocca. Ritenute/INPS sul mese di
-versamento, IVA sul mese di competenza (mese di pagamento - 1).
+mano). Una scadenza gia' completata non si tocca. Tutte le sezioni usano la competenza stampata, anche per versamenti tardivi.
 """
 import asyncio
 
@@ -52,31 +51,31 @@ def _cal(db):
     return {(d["id"], d.get("anno")): d for d in _run(db[qi.COLL_CALENDARIO].find({}, {"_id": 0}).to_list(50))}
 
 
-def _f24(tributi):
+def _f24(tributi, periodo="01/2026"):
     """Costruisce un F24 fittizio con i tributi dati (codice, sezione)."""
     doc = {"id": "F24X", "sezione_erario": [], "sezione_inps": []}
     for cod in tributi:
         if cod.upper().startswith(('DM', 'C', 'RC')) and not cod.isdigit():
-            doc["sezione_inps"].append({"causale": cod, "periodo_riferimento": "", "importo_debito": 100})
+            doc["sezione_inps"].append({"causale": cod, "periodo_riferimento": periodo, "importo_debito": 100})
         else:
-            doc["sezione_erario"].append({"codice_tributo": cod, "periodo_riferimento": "", "importo_debito": 100})
+            doc["sezione_erario"].append({"codice_tributo": cod, "periodo_riferimento": periodo, "importo_debito": 100})
     return doc
 
 
-def test_marca_ritenute_e_inps_sul_mese_di_pagamento():
+def test_marca_ritenute_e_inps_sul_mese_di_competenza():
     db = _db([
-        {"id": "ritenute_2026_02", "anno": 2026, "completato": False},
+        {"id": "ritenute_2026_01", "anno": 2026, "completato": False},
         {"id": "ritenute_2026_03", "anno": 2026, "completato": False},  # altro mese: non toccare
     ])
     marcate = _run(qi._marca_scadenze_calendario(db, _f24(['1040', 'DM10']), "2026-02-16", "Q1"))
-    assert set(marcate) == {"ritenute_2026_02", "inps_2026_02"}
+    assert set(marcate) == {"ritenute_2026_01", "inps_2026_01"}
     cal = _cal(db)
-    assert cal[("ritenute_2026_02", 2026)]["completato"] is True
-    assert cal[("ritenute_2026_02", 2026)]["completato_da"] == "quietanza_f24"
-    assert cal[("ritenute_2026_02", 2026)]["quietanza_id"] == "Q1"
+    assert cal[("ritenute_2026_01", 2026)]["completato"] is True
+    assert cal[("ritenute_2026_01", 2026)]["completato_da"] == "quietanza_f24"
+    assert cal[("ritenute_2026_01", 2026)]["quietanza_id"] == "Q1"
     # la riga INPS non era in archivio (il calendario e' un modello): nasce qui
-    assert cal[("inps_2026_02", 2026)]["completato"] is True
-    assert cal[("inps_2026_02", 2026)]["f24_id"] == "F24X"
+    assert cal[("inps_2026_01", 2026)]["completato"] is True
+    assert cal[("inps_2026_01", 2026)]["f24_id"] == "F24X"
     assert cal[("ritenute_2026_03", 2026)]["completato"] is False  # marzo intatto
 
 
@@ -91,38 +90,38 @@ def test_marca_iva_sul_mese_di_competenza():
 def test_iva_gennaio_competenza_dicembre_anno_precedente():
     # IVA pagata il 16/01/2026 → competenza dicembre 2025 → iva_liq_2025_12, anno 2025
     db = _db()
-    marcate = _run(qi._marca_scadenze_calendario(db, _f24(['6012']), "2026-01-16", "Q3"))
+    marcate = _run(qi._marca_scadenze_calendario(db, _f24(['6012'], '12/2025'), "2026-01-16", "Q3"))
     assert marcate == ["iva_liq_2025_12"]
     assert ("iva_liq_2025_12", 2025) in _cal(db)
 
 
 def test_rc01_non_marca_nulla():
-    db = _db([{"id": "inps_2026_02", "anno": 2026, "completato": False}])
+    db = _db([{"id": "inps_2026_01", "anno": 2026, "completato": False}])
     marcate = _run(qi._marca_scadenze_calendario(db, _f24(['RC01']), "2026-02-16", "Q4"))
     assert marcate == []
-    assert _cal(db)[("inps_2026_02", 2026)]["completato"] is False
+    assert _cal(db)[("inps_2026_01", 2026)]["completato"] is False
 
 
 def test_non_ritocca_scadenza_gia_completata():
-    db = _db([{"id": "ritenute_2026_02", "anno": 2026, "completato": True,
+    db = _db([{"id": "ritenute_2026_01", "anno": 2026, "completato": True,
                "completato_da": "conferma_manuale"}])
     marcate = _run(qi._marca_scadenze_calendario(db, _f24(['1040']), "2026-02-16", "Q5"))
     assert marcate == []
-    riga = _cal(db)[("ritenute_2026_02", 2026)]
+    riga = _cal(db)[("ritenute_2026_01", 2026)]
     assert riga["completato_da"] == "conferma_manuale" and "quietanza_id" not in riga
     assert len(_cal(db)) == 1  # nessuna seconda riga dall'upsert
 
 
 def test_senza_data_pagamento_non_marca():
-    db = _db([{"id": "ritenute_2026_02", "anno": 2026, "completato": False}])
+    db = _db([{"id": "ritenute_2026_01", "anno": 2026, "completato": False}])
     marcate = _run(qi._marca_scadenze_calendario(db, _f24(['1040']), "", "Q6"))
     assert marcate == []
-    assert _cal(db)[("ritenute_2026_02", 2026)]["completato"] is False
+    assert _cal(db)[("ritenute_2026_01", 2026)]["completato"] is False
 
 
 def test_secondo_giro_non_riscrive():
     db = _db()
-    assert _run(qi._marca_scadenze_calendario(db, _f24(['1040']), "2026-02-16", "Q7")) == ["ritenute_2026_02"]
+    assert _run(qi._marca_scadenze_calendario(db, _f24(['1040']), "2026-02-16", "Q7")) == ["ritenute_2026_01"]
     assert _run(qi._marca_scadenze_calendario(db, _f24(['1040']), "2026-02-16", "Q7")) == []
     assert len(_cal(db)) == 1
 
@@ -153,8 +152,8 @@ def test_l_abbinamento_univoco_segna_la_scadenza_del_calendario():
     esito = _run(qi.abbina_quietanza_a_f24(db, _quietanza("Q1")))
 
     [m] = esito["f24_matchati"]
-    assert m["f24_id"] == "F1" and m["scadenze_completate"] == ["ritenute_2026_02"]
-    riga = _cal(db)[("ritenute_2026_02", 2026)]
+    assert m["f24_id"] == "F1" and m["scadenze_completate"] == ["ritenute_2026_01"]
+    riga = _cal(db)[("ritenute_2026_01", 2026)]
     assert riga["completato_da"] == "quietanza_f24" and riga["quietanza_id"] == "Q1" and riga["f24_id"] == "F1"
 
 

@@ -169,8 +169,15 @@ async def controlla_scadenze_f24() -> Dict[str, Any]:
     scadenze_imminenti = []
     scadenze_scadute = []
     alert_generati = 0
+    from app.services.f24_controllo_incrociato import carica_quietanze, modelli_coperti_da_tributi_pagati
+    from app.services.f24_payment_evidence import stato_evidenza_pagamento
+    tutti_modelli = await db[COLLECTION_F24].find({}, {"_id": 0, "pdf_data": 0}).to_list(5000)
+    coperti = modelli_coperti_da_tributi_pagati(tutti_modelli, await carica_quietanze(db))
     
     for f24 in f24_list:
+        if (str(f24.get("id")) in coperti or
+                stato_evidenza_pagamento(f24)["versato_documentalmente"]):
+            continue
         data_scadenza = _parse_data_scadenza(f24)
         if not data_scadenza:
             continue
@@ -310,7 +317,7 @@ async def segnala_f24_in_ritardo(db, oggi: Optional[date] = None) -> Dict[str, A
     from app.constants.canale_documento import (
         STATO_ALERT_APERTO, STATO_ALERT_IGNORATO,
     )
-    from app.db_collections import COLL_QUIETANZE_F24
+    from app.services.f24_controllo_incrociato import carica_quietanze, modelli_coperti_da_tributi_pagati
     from app.services.alert_engine import COLL_ALERTS, genera_alert, risolvi_alert
     from app.services.f24_payment_evidence import stato_evidenza_pagamento
     from app.services.scadenzario_tributi import ravvedimento_atteso_modello
@@ -326,11 +333,13 @@ async def segnala_f24_in_ritardo(db, oggi: Optional[date] = None) -> Dict[str, A
     # Quietanze agganciate dal lato della quietanza (`f24_associati`): il
     # modello non sempre porta `quietanza_id`.
     con_quietanza = set()
-    for q in await db[COLL_QUIETANZE_F24].find({}, {"_id": 0, "f24_associati": 1, "status": 1,
-                                                    "entity_status": 1}).to_list(5000):
-        if q.get("entity_status") == "deleted" or str(q.get("status") or "").lower() in {"eliminato", "deleted"}:
+    quietanze = await carica_quietanze(db)
+    for q in quietanze:
+        if str(q.get("status") or "").lower() in {"eliminato", "deleted", "quarantena", "pagamento_non_eseguito"}:
             continue
-        con_quietanza.update(str(v) for v in (q.get("f24_associati") or []) if v)
+        con_quietanza.update(q.get("f24_ids") or [])
+    tutti_modelli = await db[COLLECTION_F24].find({}, {"_id": 0, "pdf_data": 0}).to_list(5000)
+    con_quietanza.update(modelli_coperti_da_tributi_pagati(tutti_modelli, quietanze))
 
     alert_esistenti: Dict[str, Dict[str, Any]] = {}
     for a in await db[COLL_ALERTS].find(

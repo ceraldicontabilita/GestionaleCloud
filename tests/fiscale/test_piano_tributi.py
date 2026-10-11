@@ -397,7 +397,7 @@ def test_gestione_separata_non_e_obbligatoria_nessun_f24_non_e_manca_f24():
     """CXX si versa solo se nel mese ci sono compensi: l'assenza dell'F24 non e' una mancanza dichiarata."""
     g = run(piano.griglia(_db(), 2026, oggi=OGGI))
     gennaio = _mese(g, "inps_cxx", 1)
-    assert gennaio["stato"] == piano.NESSUN_F24 and gennaio["etichetta_stato"] == "Nessun F24 in archivio"
+    assert gennaio["stato"] == piano.NESSUN_F24 and gennaio["etichetta_stato"] == "Nessun versamento documentato"
     assert gennaio["giorni_scaduto"] is None and gennaio["mandatory"] is False
     assert not any(m["codici"] == ["CXX"] for m in g["mancano"])
     # le voci obbligatorie restano «Manca F24»

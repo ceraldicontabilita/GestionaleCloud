@@ -972,10 +972,10 @@ def start_scheduler():
             from app.services.quietanze_import import allinea_quietanze_saldo_zero
             r = await allinea_quietanze_saldo_zero(db)
             if r["aggiornate"]:
-                logger.info("[SCHEDULER-F24] quietanze a saldo zero allineate=%s alert chiusi=%s",
+                logger.info("[SCHEDULER-F24] quietanze autonome allineate=%s alert chiusi=%s",
                             r["aggiornate"], r["alert_chiusi"])
         except Exception as e:
-            logger.error("[SCHEDULER-F24] saldo zero: %s: %s", type(e).__name__, e)
+            logger.error("[SCHEDULER-F24] quietanze autonome: %s: %s", type(e).__name__, e)
         try:
             # Scadenzario: ogni riga pagata, in termini / in ritardo / ravveduta.
             from app.services.scadenzario_tributi import aggiorna as aggiorna_scadenzario

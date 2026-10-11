@@ -136,13 +136,12 @@ def test_ordine_banca_quietanza_modello(ambiente):
     db, letti, mp = ambiente
     _importa_estratto(db, mp, [ADDEBITO])
     q = _importa_quietanza(db, letti)
-    assert q["warning"].startswith("F24 mancante")      # prova senza modello: mai ricostruito
-    bloccanti = collezione(db, "f24_riconciliazione_alerts")
-    assert [a["status"] for a in bloccanti] == ["pending"] and bloccanti[0]["bloccante"] is True
+    assert not q.get("warning")
+    assert collezione(db, "f24_riconciliazione_alerts") == []
+    assert collezione(db, "f24_unificato") == []
     _importa_modello(db, letti)
     _verifica_certo(db)
-    # arrivato il modello, l'alert bloccante «F24 mancante» non e' piu' vero e si chiude
-    assert [a["status"] for a in collezione(db, "f24_riconciliazione_alerts")] == ["risolto"]
+    assert collezione(db, "f24_riconciliazione_alerts") == []
     [qz] = collezione(db, COLL_QUIETANZE_F24)
     assert qz["stato_associazione"] == "associata" and qz["calcolo_fiscale_sospeso"] is False
 
@@ -317,7 +316,7 @@ def test_quietanza_di_un_altro_contribuente_non_si_aggancia_al_modello_nemmeno_c
     _importa_modello(db, letti)
     letti[b"%PDF-altro-cf"] = quietanza_parsed(RITENUTE_07, "2026-08-20", PROTOCOLLO, cf="12345678901")
     q = run(qi.importa_quietanza_bytes(db, b"%PDF-altro-cf", "altro.pdf", fonte="test"))
-    assert q["f24_matchati"] == [] and q["stato_quietanza"] == "QUIETANZA_PRESENTE_F24_MANCANTE"
+    assert q["f24_matchati"] == [] and q["stato_quietanza"] == "PAGATO_QUIETANZA"
     [f] = collezione(db, COLL_F24)
     assert not f.get("quietanza_id") and f["pagato"] is False
 

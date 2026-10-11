@@ -55,7 +55,7 @@ ETICHETTE = {
     COMPENSATO: "Pagato in compensazione (F24 a zero)",
     DA_PAGARE: "Da pagare",
     SCADUTO: "Scaduto, non pagato",
-    ATTESO: "Atteso, manca l'F24",
+    ATTESO: "Non risulta pagato",
     CREDITO: "A credito, compensato",
     SANZIONE: "Sanzione pagata",
     INTERESSI: "Interessi pagati",

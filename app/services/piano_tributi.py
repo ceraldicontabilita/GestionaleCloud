@@ -6,7 +6,7 @@ dichiara una volta i tributi ricorrenti (voci del piano) e ogni voce apre,
 per ogni periodo dell'anno, un'**attesa** (``expectation_policy``) che le
 prove successive possono soltanto soddisfare:
 
-* nessun F24 e scadenza passata → «manca F24»;
+* nessuna prova di pagamento e scadenza passata → «non risulta pagato»;
 * F24 arrivato senza prova di pagamento → «da pagare» (o in ritardo);
 * quietanza che contiene il codice del tributo → ``SODDISFATTO`` («Pagato
   (quietanza)»): il codice fa parte della delega e la banca addebita l'intera
@@ -54,10 +54,10 @@ ETICHETTE = {
     PAGATO: "Pagato (banca)",
     DA_CONFERMARE_BANCA: "Addebito da confermare",
     PAGATO_QUIETANZA: "Pagato (quietanza)",
-    DA_PAGARE: "F24 arrivato, da pagare",
-    SCADUTO_NON_PAGATO: "F24 scaduto, nessun pagamento",
+    DA_PAGARE: "Da pagare",
+    SCADUTO_NON_PAGATO: "Non risulta pagato",
     MANCA_F24: "Non risulta pagato",
-    NESSUN_F24: "Nessun F24 in archivio",
+    NESSUN_F24: "Nessun versamento documentato",
     FUTURO: "Non ancora scaduto",
     DA_VERIFICARE_A_MANO: "Fuori F24: da verificare",
     CREDITO_USATO: "Credito usato",
@@ -285,6 +285,8 @@ def _modelli_con_righe(registro: Dict[str, Any]) -> List[Tuple[Dict[str, Any], L
 def _righe_voce(voce: Dict[str, Any], righe: Iterable[Dict[str, Any]]) -> List[Dict[str, Any]]:
     codici = {registro_f24.normalizza_codice(c) for c in voce.get("codici") or []}
     sezione = voce.get("sezione")
+    if sezione == "sezione_inail" and codici & {"P", "INAIL"}:
+        codici.update({"P", "INAIL"})
     return [r for r in righe if r["codice"] in codici and (not sezione or r["sezione"] == sezione)]
 
 
@@ -348,6 +350,9 @@ def _casella(
                  "link": m["link"]}
                 for m in prove["addebiti_banca"] if m.get("movimento_id")
             ],
+            "prove_quietanza": ([{"pdf_url": q["pdf_url"], "data": pagamento["data"],
+                                  "protocollo": pagamento.get("protocollo")} for q in pagamento["quietanze"][:1]]
+                                if pagamento else [q for q in prove["quietanze"] if q.get("pdf_url")]),
             "quietanze": [q["quietanza_id"] for q in prove["quietanze"] if q.get("quietanza_id")],
             "pdf_url": (pagamento["quietanze"][0]["pdf_url"] if pagamento
                         else registro_f24.PDF_F24_URL.format(f24_id=f24.get("id"))),
@@ -357,7 +362,7 @@ def _casella(
                 for q in registro["quietanze"]),
             "_doppione": _chiave_doppione(f24),
             "_firma": tuple(sorted((r["codice"], r.get("anno"), r.get("mese"), r["importo_debito_cents"],
-                                    r["importo_credito_cents"]) for r in righe)),
+                                    r["importo_credito_cents"], r.get("ente", ""), r.get("matricola", "")) for r in righe)),
         })
     # Due modelli con stessa data e stesso saldo sono lo stesso versamento
     # registrato due volte: contano una volta, e la casella lo dice.
@@ -381,7 +386,8 @@ def _casella(
     per_periodo: Dict[Any, Dict[str, int]] = {}
     for m in versamenti:
         for r in m["_righe"]:
-            chiave = (r["sezione"], r["codice"], r.get("anno"), r.get("mese"))
+            codice = "DM10" if voce.get("id") == "inps_dm10" and r["codice"] == "RC01" else r["codice"]
+            chiave = (r["sezione"], codice, r.get("anno"), r.get("mese"), r.get("ente", ""), r.get("matricola", ""))
             p = per_periodo.setdefault(chiave, {"dovuto": 0, "quietanza": 0, "provato": 0,
                                               "credito_modello": 0, "credito_quietanza": 0})
             deb, cred = r["importo_debito_cents"], r["importo_credito_cents"]
@@ -427,6 +433,9 @@ def _casella(
         for campo in ("_doppione", "_firma", "_righe", "_quietanza_leggibile"):
             m.pop(campo, None)
     return {
+        "quietanze_pagamento": list({q["pdf_url"]: q for m in (
+            [m for m in modelli if m["tipo_documento"] == "quietanza"] or modelli)
+            for q in m["prove_quietanza"] if q.get("pdf_url")}.values()),
         "periodo": chiave_periodo,
         "etichetta_periodo": etichetta_periodo,
         "scadenza": scadenza.isoformat() if scadenza else None,
@@ -473,6 +482,12 @@ def caselle_voce(voce: Dict[str, Any], anno: int, modelli, registro, oggi: date)
             for f24, righe in modelli:
                 mie = [r for r in _righe_voce(voce, righe)
                        if r["mese"] == mese and (anno_riga is None or r["anno"] == anno_riga)]
+                if voce.get("anno_offset") == -1:
+                    # Il saldo usa l'anno d'imposta precedente, ma una
+                    # quietanza gia' pagata l'anno prima non chiude rate future.
+                    dv = _data(registro_f24.data_versamento_modello(f24))
+                    if dv and dv < date(anno, mese, 1):
+                        mie = []
                 if anno_riga is None:
                     # Crediti con anno di riferimento variabile: conta il mese di versamento.
                     dv = _data(registro_f24.data_versamento_modello(f24))
@@ -495,10 +510,19 @@ def caselle_voce(voce: Dict[str, Any], anno: int, modelli, registro, oggi: date)
             for f24, righe in modelli:
                 mie = [r for r in _righe_voce(voce, righe) if r["anno"] == anno_riga]
                 dv = _data(registro_f24.data_versamento_modello(f24))
-                if entro and dv and dv > date(anno, int(entro[0]), int(entro[1])):
-                    mie = []
-                if dal and dv and dv < date(anno, int(dal[0]), int(dal[1])):
-                    mie = []
+                if voce.get("gruppo") == "IMU":
+                    # La casella acconto/saldo stampata prevale sulla data: un
+                    # acconto ravveduto a dicembre non paga il saldo di dicembre.
+                    fase = "acconto" if entro else "saldo"
+                    mie = [r for r in mie if r.get(fase) or (
+                        not r.get("acconto") and not r.get("saldo") and dv
+                        and (not entro or dv <= date(anno, *map(int, entro)))
+                        and (not dal or dv >= date(anno, *map(int, dal))))]
+                else:
+                    if entro and (not dv or dv > date(anno, int(entro[0]), int(entro[1]))):
+                        mie = []
+                    if dal and (not dv or dv < date(anno, int(dal[0]), int(dal[1]))):
+                        mie = []
                 if mie:
                     trovati.append((f24, mie))
             caselle.append(_casella(voce, anno, f"{int(mese_s):02d}", f"scad. {scadenza:%d/%m/%Y}",
@@ -524,28 +548,38 @@ def caselle_voce(voce: Dict[str, Any], anno: int, modelli, registro, oggi: date)
     return caselle
 
 
-def _codici_fuori_piano(voci, modelli, anno: int) -> List[Dict[str, Any]]:
-    """Codici versati nell'anno che nessuna voce copre: si vedono, non si attendono."""
+def _codici_fuori_piano(voci, modelli, anno: int, registro, oggi: date) -> List[Dict[str, Any]]:
+    """Ogni codice documentato fuori dal piano: importi, stato e prova apribile.
+
+    Senza una ricorrenza aziendale configurata non inventa mensilita' dovute.
+    """
+    from app.services.scadenzario_tributi import scadenza_da_regola
+
     coperti = {registro_f24.normalizza_codice(c) for v in voci for c in v.get("codici") or []}
-    trovati: Dict[str, Dict[str, Any]] = {}
-    for f24, righe in modelli:
-        dv = _data(registro_f24.data_versamento_modello(f24))
-        if not dv or dv.year != anno:
-            continue
+    trovati = {}
+    for doc, righe in modelli:
+        dv = _data(registro_f24.data_versamento_modello(doc))
         for r in righe:
-            if r["codice"] in coperti or not r["codice"]:
+            if r["codice"] in coperti or not r["codice"] or (r.get("anno") != anno and (not dv or dv.year != anno)):
                 continue
-            voce = trovati.setdefault(r["codice"], {
-                "codice": r["codice"], "descrizione": r.get("descrizione") or "",
-                "sezione": r["sezione"], "versamenti": [],
-            })
-            voce["versamenti"].append({
-                "f24_id": f24.get("id"), "data_versamento": dv.isoformat(),
-                "periodo_riferimento": r["periodo_riferimento"],
-                "importo_debito": _euro(r["importo_debito_cents"]),
-                "importo_credito": _euro(r["importo_credito_cents"]),
-            })
-    return sorted(trovati.values(), key=lambda v: v["codice"])
+            key = (r["sezione"], r["codice"], r.get("anno"), r.get("mese"))
+            documento_id = (doc.get("_quietanza") or {}).get("chiave") or doc.get("id")
+            documenti = trovati.setdefault(key, {})
+            documenti.setdefault(documento_id, (doc, []))[1].append(r)
+    risultato = []
+    for (sezione, codice, a, m), per_documento in sorted(trovati.items(), key=lambda x: str(x[0])):
+        documenti = list(per_documento.values())
+        scadenza, fonte = scadenza_da_regola(sezione, codice, a, m)
+        credito = all(r["importo_debito_cents"] == 0 for _, rr in documenti for r in rr)
+        voce = {"id": f"extra:{sezione}:{codice}", "codici": [codice], "obbligatorio": True,
+                "natura": "credito" if credito else "debito"}
+        casella = _casella(voce, anno, f"{a}-{m}", registro_f24.etichetta_periodo({"anno": a, "mese": m}),
+                           scadenza, documenti, registro, oggi)
+        risultato.append({"codice": codice, "sezione": sezione,
+                          "descrizione": documenti[0][1][0].get("descrizione") or "",
+                          "casella": casella, "scadenza_fonte": fonte,
+                          "versamenti": casella["modelli"]})
+    return risultato
 
 
 def _con_atteso_dalle_buste(voce: Dict[str, Any], anno: int, caselle: List[Dict[str, Any]],
@@ -623,7 +657,7 @@ def _griglia_anno(voci, registro, modelli, anno: int, oggi: date,
         "modelli_doppi": sum(c["modelli_doppi"] for c in tutte),
         # L'anno e' chiuso solo quando ogni attesa obbligatoria e' positiva.
         "anno_chiuso": mandatory_expectations_closed(obbligatorie),
-        "fuori_piano": _codici_fuori_piano(voci, modelli, anno),
+        "fuori_piano": _codici_fuori_piano(voci, modelli, anno, registro, oggi),
     }
 
 

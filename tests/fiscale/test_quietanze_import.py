@@ -151,36 +151,24 @@ def test_quietanza_drive_conserva_solo_riferimento(monkeypatch):
     assert "pdf_data" not in doc
 
 
-def test_senza_match_crea_alert(monkeypatch):
-    """Nessun F24 corrispondente → warning + alert quietanza_senza_match."""
+def test_quietanza_autonoma_popola_tributi_senza_blocchi_o_modelli_fittizi(monkeypatch):
     _patch_parser(monkeypatch, PARSED_OK)
-    db = _FakeDb()
-    esito = asyncio.run(qi.importa_quietanza_bytes(db, b"%PDF-altro", "q2.pdf"))
-    assert esito["success"]
+    db = ClientArchivioMemoria()["autonoma"]
+    esito = asyncio.run(qi.importa_quietanza_bytes(db, b"%PDF-altro", "q.pdf"))
+    assert esito["success"] and not esito.get("warning")
     assert esito["f24_matchati"] == []
-    assert esito.get("warning")
-    alerts = db[qi.COLL_F24_ALERTS].docs
-    assert len(alerts) == 1 and alerts[0]["tipo"] == "quietanza_senza_match"
-
-
-def test_quietanza_senza_f24_stato_canonico_e_nessuna_ricostruzione(monkeypatch):
-    """§9.3 (regola cardine): quietanza senza F24 → stato canonico
-    QUIETANZA_PRESENTE_F24_MANCANTE, alert bloccante, calcolo sospeso e NESSUN
-    F24 ricostruito automaticamente."""
-    _patch_parser(monkeypatch, PARSED_OK)
-    db = _FakeDb()
-    esito = asyncio.run(qi.importa_quietanza_bytes(db, b"%PDF-altro", "q3.pdf"))
-
-    assert esito.get("stato_quietanza") == "QUIETANZA_PRESENTE_F24_MANCANTE"
-    quietanza = db[qi.COLL_QUIETANZE].docs[0]
-    assert quietanza["stato_quietanza"] == "QUIETANZA_PRESENTE_F24_MANCANTE"
-    assert quietanza["calcolo_fiscale_sospeso"] is True
-    # alert bloccante
-    alerts = db[qi.COLL_F24_ALERTS].docs
-    assert alerts and alerts[0].get("bloccante") is True
-    # NESSUN F24 ricostruito in automatico (regola cardine CLAUDE.md)
-    assert db["f24_unificato"].docs == []
-    assert db["f24_models"].docs == []
+    assert esito["stato_quietanza"] == "PAGATO_QUIETANZA"
+    q = asyncio.run(db[qi.COLL_QUIETANZE].find_one({"id": esito["quietanza_id"]}))
+    assert q["calcolo_fiscale_sospeso"] is False and q["stato_associazione"] == "autonoma"
+    assert asyncio.run(db[qi.COLL_F24_ALERTS].count_documents({})) == 0
+    assert asyncio.run(db[qi.COLL_F24_COMMERCIALISTA].count_documents({})) == 0
+    assert esito["scadenze_completate"] == ["ritenute_2026_05"]
+    from app.services.piano_tributi import griglia
+    from datetime import date
+    g = asyncio.run(griglia(db, 2026, date(2026, 7, 1)))
+    r = next(v for v in g["voci"] if v["voce"]["id"] == "ritenute_1001")
+    maggio = next(c for c in r["caselle"] if c["periodo"] == "05")
+    assert maggio["stato"] == "pagato_quietanza" and maggio["importo"] == "1000.00"
 
 
 def test_parsing_fallito_non_salva(monkeypatch):

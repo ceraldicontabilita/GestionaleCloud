@@ -2960,7 +2960,7 @@ La LIPE **non deve vincere automaticamente sul calcolo IVA del gestionale**. È 
 - Se lo scostamento è significativo, il sistema apre una verifica e cerca fatture, note di credito, periodi IVA e altri documenti che possano spiegare la divergenza.
 - La LIPE non modifica automaticamente fatture, IVA detraibile, periodi o liquidazioni per far tornare i numeri.
 - Se manca l'F24, una LIPE valida può generare **l'attesa del tributo**. La quietanza Agenzia delle Entrate con protocollo può soddisfare documentalmente quell'attesa quando codice, periodo e importo sono coerenti.
-- Questa catena **non crea retroattivamente un F24 mai acquisito**: il modello continua a risultare mancante e, se arriva in seguito, viene inserito nella catena già esistente senza duplicare pagamento o quietanza.
+- Questa catena **non crea retroattivamente un F24 mai acquisito**: il modello è facoltativo e, se arriva in seguito, viene inserito nella catena già esistente senza duplicare pagamento o quietanza.
 
 
 La LIPE non serve soltanto come documento fiscale da archiviare.
@@ -3197,7 +3197,7 @@ Non significa:
 
 **abbiamo ricostruito il modello F24 originale**
 
-Il modello F24 continua a risultare mancante.
+Il modello F24 resta un collegamento facoltativo: la sua assenza non sospende il tributo né genera un avviso di mancato pagamento.
 
 ---
 
@@ -3290,6 +3290,12 @@ Distinguere:
 La quietanza dimostra il versamento.
 
 La quietanza rende il tributo pagato anche senza modello F24 e senza abbinamento bancario.
+Vale per Erario, INPS, regioni, comuni e IMU. Non generare blocchi o alert «F24 mancante»
+per una quietanza valida. Il calendario usa la competenza stampata, mai il mese del bonifico.
+IMU: acconto 16 giugno e saldo 16 dicembre, con slittamenti del calendario; i flag stampati
+acconto/saldo prevalgono sulla data di un pagamento tardivo. Le voci del piano configurato
+restano attese anche senza documenti, senza stimare importi. Il clic sul tributo pagato apre
+la quietanza; più quietanze permettono la scelta. Solo scaduti senza prova vanno in rosso.
 Si usa il periodo di riferimento delle righe, non il mese dell'addebito. Il modello arrivato dopo
 non crea un secondo pagamento; le copie della quietanza contano una volta e i versamenti parziali
 lasciano il residuo aperto. Il 1001 è atteso nei dodici mesi: dopo la scadenza effettiva, il mese

@@ -156,7 +156,7 @@ def test_f24_a_saldo_zero_e_compensato_senza_addebito_atteso_e_senza_alert_blocc
     letti[b"%PDF-zero"] = quietanza_parsed(SALDO_ZERO, "2026-08-20", "26081811065626134/000003")
     esito_q = run(qi.importa_quietanza_bytes(db, b"%PDF-zero", "zero.pdf", fonte="test"))
     assert esito_q["stato_quietanza"] == "QUIETANZA_COMPENSAZIONE_TOTALE"
-    assert "nessun addebito in banca atteso" in esito_q["warning"]
+    assert not esito_q.get("warning")
     assert collezione(db, "f24_alerts") == [] and "compensazione" in esito_q["riscontro_banca"]["saltato"]
     # c'e' un estratto del periodo (altri addebiti) ma nessuno da 0: niente «quietanza senza addebito»
     _importa_estratto(db, mp, [{"data": "2026-08-03", "importo": -10.0, "descrizione": causale_i24("03/08/2026")},
