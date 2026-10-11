@@ -68,11 +68,11 @@ def _codici(f24: Dict[str, Any]) -> set[str]:
 
 
 def _tutti_codici(f24: Dict[str, Any]) -> List[str]:
-    """Codici/causali di tutte le sezioni, per spiegare il modello intero."""
+    """Codici tributo/contributo, senza spacciare la causale INAIL per codice."""
     return sorted({
         str(r.get("tax_code") or "").strip()
         for r in normalizza_righe_tributo(f24)
-        if r.get("tax_code")
+        if r.get("tax_code") and r.get("section") != "INAIL"
     })
 
 
