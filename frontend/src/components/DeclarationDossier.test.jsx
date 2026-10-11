@@ -3,6 +3,32 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import DeclarationDossier from './DeclarationDossier';
 
+it('IVA: apre rigo e quietanza, mostra differenza e separa credito dal pagamento', () => {
+  const onOpen=vi.fn();
+  const payment={id:'p',codice:'6007',data:'2025-02-17',amount_cents:98252,ravvedimento:true,
+    quietanze:[{id:'q',filename:'Quietanza IVA.pdf',pdf_url:'/originale/iva-q'}]};
+  render(<DeclarationDossier onOpen={onOpen} dossier={{document_type:'DICHIARAZIONE_IVA',tax_year:2024,originals:[],tax_check:{
+    paid_cents:539650,comparisons:[{id:'vl30',submission:'INVIO-IVA',label:'IVA periodica dichiarata versata',
+      stato:'IMPORTO_DIVERSO',stato_label:'Differenza da verificare',declared_cents:686000,paid_cents:539650,
+      difference_cents:-146350,cutoff:'2025-04-18',warnings:[],payments:[payment],
+      field:{sources:[{id:'vl',filename:'IVA.pdf',pdf_url:'/originale/iva',row:'VL30',column:3,page:8}]}}],
+    groups:[{codice:'6007',label:'IVA mese 07',paid_cents:98252,ravvedimento:true,payments:[payment]}],
+    credits:[{...payment,id:'credit',codice:'6099',amount_cents:357400}],
+    accessories:[{...payment,id:'interest',codice:'1991',label:'Interessi ravvedimento IVA',amount_cents:929,principal_codes:['6007']}]
+  }}} />);
+  fireEvent.click(screen.getByText('Apri fascicolo'));
+  expect(screen.getByText('Differenza da verificare').closest('details')).toHaveClass('declaration-withholding-importo_diverso');
+  fireEvent.click(screen.getByText('IVA periodica dichiarata versata'));
+  fireEvent.click(screen.getByRole('button',{name:'Apri VL30 col. 3 · pagina 8'}));
+  expect(onOpen).toHaveBeenLastCalledWith({url:'/originale/iva',titolo:'IVA.pdf'});
+  fireEvent.click(screen.getAllByRole('button',{name:'Apri quietanza'})[0]);
+  expect(onOpen).toHaveBeenLastCalledWith({url:'/originale/iva-q',titolo:'Quietanza IVA.pdf'});
+  expect(screen.getByText(/Differenza quietanze/)).toHaveTextContent(/1\.?463,50/);
+  expect(screen.getByText(/Tributi documentati/)).toHaveTextContent(/5\.?396,50/);
+  expect(screen.getByText('Crediti utilizzati in compensazione')).toBeInTheDocument();
+  expect(screen.getByText(/presente ravvedimento/)).toBeInTheDocument();
+});
+
 describe('Fascicolo dichiarazione annuale', () => {
   it('riunisce invii e allegati e apre ogni originale e la quietanza senza F24', () => {
     const onOpen = vi.fn();

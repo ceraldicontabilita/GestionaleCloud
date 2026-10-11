@@ -4,6 +4,50 @@ import { Button } from './ds';
 const labels = { MODELLO_770: '770', DICHIARAZIONE_IVA: 'IVA', REDDITI_SC: 'Redditi SC', DICHIARAZIONE_IRAP: 'IRAP', LIPE: 'LIPE', ELENCO_PERCIPIENTI: 'Percipienti' };
 const euros = cents => cents == null ? 'Non disponibile' : new Intl.NumberFormat('it-IT', { style: 'currency', currency: 'EUR' }).format(cents / 100);
 
+function AnnualTaxCheck({ check, onOpen }) {
+  const open = file => onOpen({ url: file.pdf_url, titolo: file.filename || 'Originale' });
+  const receipts = payment => [...new Map((payment.quietanze || []).map(q => [q.pdf_url, q])).values()].map(q =>
+    <Button key={q.pdf_url} size="sm" variant="secondary" disabled={!q.pdf_url} onClick={() => open(q)}>Apri quietanza</Button>);
+  const sources = field => (field?.sources || []).map((s, i) => <Button key={`${s.id}-${i}`} size="sm" variant="secondary" onClick={() => open(s)}>
+    Apri {s.row}{s.column ? ` col. ${s.column}` : ''} · pagina {s.page}
+  </Button>);
+  return <section aria-label="Riscontro IRES IVA" className="declaration-withholdings">
+    <h4>Tributi e quietanze di pagamento</h4>
+    <p>Tributi documentati: <strong>{euros(check.paid_cents)}</strong>. Sanzioni, interessi e crediti in compensazione sono indicati separatamente.</p>
+    {(check.comparisons || []).map(c => <details key={c.id} className={`declaration-withholding declaration-withholding-${c.stato.toLowerCase()}`}>
+      <summary><strong>{c.label}</strong><span>{c.stato_label}</span>
+        <span>Dichiarazione: {c.stato === 'SALDO_A_CREDITO' ? 'casella a debito non compilata' : euros(c.declared_cents)} · Quietanze confrontate: {euros(c.paid_cents)}</span></summary>
+      <p>Invio {c.submission}{c.cutoff && <> · Versamenti fino alla presentazione del {c.cutoff}</>}</p>
+      {sources(c.field)}
+      {c.credit?.cents != null && <p>Credito della dichiarazione: {euros(c.credit.cents)} {sources(c.credit)}</p>}
+      {(c.context || []).filter(f => f.cents != null).map(f => <p key={f.name}>
+        {({ vl30_iva_periodica_dovuta: 'IVA periodica dovuta', vl30_versata_comunicazioni: 'Quota IVA da comunicazioni di irregolarità', vl30_versata_cartelle: 'Quota IVA da cartelle' })[f.name]}: {euros(f.cents)} {sources(f)}
+        {f.name !== 'vl30_iva_periodica_dovuta' && <small> · Da verificare sulla quota d’imposta dell’atto: non sommata ai versamenti ordinari.</small>}
+      </p>)}
+      {c.difference_cents != null && c.difference_cents !== 0 && <p><strong>Differenza quietanze − dichiarazione: {euros(c.difference_cents)}</strong></p>}
+      {(c.payments || []).map(p => <div key={p.id}>{p.codice} · {p.data || 'Data da verificare'} · {euros(p.amount_cents)} {receipts(p)}</div>)}
+      {(c.warnings || []).map((w, i) => <p className="declaration-withholding-warning" key={i}>{w}</p>)}
+    </details>)}
+    {!!check.excluded_originals?.length && <p className="fiscal-muted">{check.excluded_originals.length} documenti senza invio identificato o di altro tipo restano consultabili tra gli originali; non sono sommati alle dichiarazioni presentate.</p>}
+    <p className="fiscal-muted">Il pagamento del singolo codice è provato dalla quietanza, anche in compensazione e senza un modello F24 separato. Il riepilogo annuale non determina da solo l’importo dovuto di ogni mese.</p>
+    {(check.groups || []).map(g => <details key={g.codice} className="declaration-withholding declaration-withholding-pagato">
+      <summary><strong>{g.codice} · {g.label}</strong><span>{g.ravvedimento ? 'Versamenti documentati · presente ravvedimento' : 'Versamento documentato'}</span><span>{euros(g.paid_cents)}</span></summary>
+      {g.payments.map(p => <div key={p.id}>
+        <p>{p.data || 'Data da verificare'} · {euros(p.amount_cents)}{p.ravvedimento && ' · Con ravvedimento'}{p.compensazione_totale && ' · Quietanza a saldo zero, pagato in compensazione'}</p>
+        {p.protocollo && <p className="fiscal-muted">Protocollo {p.protocollo}</p>}{receipts(p)}
+      </div>)}
+    </details>)}
+    {!!check.accessories?.length && <details className="declaration-withholding"><summary><strong>Sanzioni e interessi da ravvedimento</strong></summary>
+      {check.accessories.map(p => <div key={p.id}><p>{p.codice} · {p.label} · {euros(p.amount_cents)} · {p.data}</p>
+        <p>{p.principal_codes.length === 1 ? `Tributo ${p.principal_codes[0]} nella stessa quietanza` : 'Attribuzione al singolo tributo da verificare: importo non ripartito automaticamente.'}</p>{receipts(p)}</div>)}
+    </details>}
+    {!!check.credits?.length && <details className="declaration-withholding"><summary><strong>Crediti utilizzati in compensazione</strong></summary>
+      <p>Questi importi sono crediti utilizzati, non versamenti del codice a saldo.</p>
+      {check.credits.map(p => <div key={p.id}><p>{p.codice} · {p.data} · {euros(p.amount_cents)}</p>{receipts(p)}</div>)}
+    </details>}
+  </section>;
+}
+
 export default function DeclarationDossier({ dossier, onOpen }) {
   const submissions = new Map();
   for (const original of dossier.originals || []) {
@@ -34,6 +78,7 @@ export default function DeclarationDossier({ dossier, onOpen }) {
     <p>{dossier.original_count} PDF originali · {dossier.receipt_count || 0} quietanze di pagamento</p>
     <details>
       <summary className="declaration-dossier-toggle">Apri fascicolo</summary>
+      {dossier.tax_check && <AnnualTaxCheck check={dossier.tax_check} onOpen={onOpen} />}
       {checks.length > 0 && <section aria-label="Riscontro ritenute dichiarate" className="declaration-withholdings">
         <h4>Tributi dichiarati e quietanze</h4>
         <p>{dossier.withholding_check.declared_rows} righe ST/SV · {Object.entries(dossier.withholding_check.counts).map(([state, n]) => `${paymentStates[state] || state}: ${n}`).join(' · ')}</p>
@@ -79,7 +124,7 @@ export default function DeclarationDossier({ dossier, onOpen }) {
         {files.map(fileRow)}
       </section>)}
       <h4>Quietanze dei tributi dell’anno</h4>
-      <p className="fiscal-muted">Collegate per contribuente e tributo dell’anno, oppure tramite il riscontro ST/SV. Il riferimento stampato sulla quietanza resta visibile. Consultabili anche senza modello F24.</p>
+      <p className="fiscal-muted">Collegate per contribuente e tributo dell’anno{dossier.document_type === 'MODELLO_770' ? ', oppure tramite il riscontro ST/SV' : ''}. Il riferimento stampato sulla quietanza resta visibile. Consultabili anche senza modello F24.</p>
       {(dossier.quietanze || []).map(payment => <section key={payment.chiave} className="declaration-dossier-submission">
         <strong>{payment.data || 'Data non indicata'} · Saldo della quietanza {euros(payment.importo_cents)}</strong>
         {payment.protocollo && <p className="fiscal-muted">Protocollo {payment.protocollo}</p>}

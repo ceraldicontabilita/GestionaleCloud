@@ -68,7 +68,7 @@ __all__ = [
 # comunicazioni 54-bis/36-bis. Il marcatore `quadri_controllati_v` sul
 # documento dice con quale versione e' stato letto: l'arretrato e' chi non
 # porta quella corrente.
-PARSER_VERSION = "dichiarazioni-quadri-v4"
+PARSER_VERSION = "dichiarazioni-quadri-v5"
 
 #: Tipo letto dal contenuto -> tipi d'archivio che quel contenuto corregge.
 #: Nessuna dichiarazione vera cambia tipo: solo i marcatori generici.
@@ -110,6 +110,7 @@ CAMPI_PER_TIPO: Dict[str, Dict[str, str]] = {
         "RN1": "rn1_reddito",
         "RN2": "rn2_perdita",
         "RN17": "rn17_ires_dovuta_differenza",
+        "RN24": "rn24_imposta_a_credito",
     },
     "DICHIARAZIONE_IRAP": {
         "IR26": "ir26_importo_a_debito",
@@ -117,8 +118,18 @@ CAMPI_PER_TIPO: Dict[str, Dict[str, str]] = {
     },
 }
 
+# Caselle numerate: RN22 e VL30 occupano più righe fisiche. Non prendere
+# l'ultima cifra della riga (totale/altro versamento): leggere la colonna.
+COLONNE_PER_TIPO = {
+    "REDDITI_SC": {"RN22.2": "rn22_acconti_versati", "RN23.3": "rn23_imposta_a_debito"},
+    "DICHIARAZIONE_IVA": {
+        "VL30.2": "vl30_iva_periodica_dovuta", "VL30.3": "vl30_iva_periodica_versata",
+        "VL30.4": "vl30_versata_comunicazioni", "VL30.5": "vl30_versata_cartelle",
+    },
+}
+
 _ETICHETTE_QUADRO = re.compile(
-    r"\b(VE26|VF71|VL1|VL2|VL3|VL4|VL9|VL25|VL32|VL33|VL38|VL39|VX1|VX2|VX5|RN1|RN2|RN17|IR26|IR27)\b"
+    r"\b(VE26|VF71|VL1|VL2|VL3|VL4|VL9|VL25|VL30|VL32|VL33|VL38|VL39|VX1|VX2|VX5|RN1|RN2|RN17|RN22|RN23|RN24|IR26|IR27)\b"
 )
 _RE_ISA = re.compile(r"Esito del ricalcolo|INDICE\s+SINTETICO\s+DI\s+AFFIDABILIT", re.I)
 #: Il frontespizio dell'esito ISA («DATI RICALCOLATI», motore «Il tuo Isa»)
@@ -310,9 +321,47 @@ def _campo(valore: Optional[Decimal], motivo: Optional[str], pagina: Optional[in
     return campo
 
 
+def valore_colonna(parole, etichetta, colonna):
+    """Casella identificata dal numero stampato, entro il rigo del modello.
+
+    Coordinate relative alle etichette: nessun importo scelto per ordine del
+    testo. Una colonna non riconosciuta resta non disponibile, mai zero.
+    """
+    labels = [w for w in parole if _testo(w) == etichetta and _f(w, "x0") <= _X_MAX_ETICHETTA]
+    if len(labels) != 1:
+        return {"valore": None, "motivo": "colonna_non_identificata", "candidati": []}
+    y = _f(labels[0], "y0")
+    others = [_f(w, "y0") for w in parole if re.fullmatch(etichetta[:2] + r"\d+", _testo(w))
+              and _f(w, "x0") <= _X_MAX_ETICHETTA and w is not labels[0]]
+    # RN22 ha le prime due caselle sopra l'etichetta; RN23 inizia dopo la
+    # seconda linea di RN22. Non riutilizzare il suo marcatore «3».
+    above = {"RN22": 18, "RN23": 2, "VL30": 40}[etichetta]
+    top = max([y - above, *[v + 9 for v in others if v < y]])
+    bottom = min([v for v in others if v > y] or [y + 50])
+    block = [w for w in parole if top <= _f(w, "y0") < bottom]
+    markers = [w for w in block if _testo(w) == str(colonna)
+               and _f(w, "y1") - _f(w, "y0") <= 8 and _f(w, "x0") > _f(labels[0], "x1")]
+    cells = []
+    for marker in markers:
+        candidates = [w for w in block if _RE_SEGNAPOSTO.fullmatch(_testo(w))
+                      and -2 <= _f(w, "y0") - _f(marker, "y0") <= 15
+                      and 15 < _f(w, "x0") - _f(marker, "x0") < 140]
+        if candidates:
+            cells.append(min(candidates, key=lambda w: _f(w, "x0")))
+    if len(cells) != 1:
+        return {"valore": None, "motivo": "colonna_non_identificata", "candidati": []}
+    cell = cells[0]
+    # Il lettore esistente conserva gestione di casella vuota, decimali e
+    # ambiguità; gli altri segnaposti non possono diventare il valore scelto.
+    selected = [w for w in block if w is cell or (not _RE_SEGNAPOSTO.fullmatch(_testo(w))
+                and _f(cell, "x0") - 80 < _f(w, "x0") < _f(cell, "x1"))]
+    return valore_rigo([{"text": etichetta, "x0": 0, "y0": _f(cell, "y0")}, *selected], etichetta)
+
+
 def _leggi_righi(pagine: List[Dict[str, Any]], righi: Dict[str, str]) -> Dict[str, Dict[str, Any]]:
     campi: Dict[str, Dict[str, Any]] = {}
-    for rigo, nome in righi.items():
+    for specifica, nome in righi.items():
+        rigo, _, colonna = specifica.partition(".")
         # L'etichetta puo' stare nel testo o solo fra le parole con coordinate
         # (l'OCR a volte la salda alla descrizione del rigo).
         pagine_col_rigo = [
@@ -333,7 +382,7 @@ def _leggi_righi(pagine: List[Dict[str, Any]], righi: Dict[str, str]) -> Dict[st
             if not parole:
                 senza_coordinate.append(numero)
                 continue
-            esito = valore_rigo(parole, rigo)
+            esito = valore_colonna(parole, rigo, int(colonna)) if colonna else valore_rigo(parole, rigo)
             if esito["motivo"] == "ambiguo":
                 ambigui.extend(esito["candidati"])
             elif esito["valore"] is not None:
@@ -352,6 +401,8 @@ def _leggi_righi(pagine: List[Dict[str, Any]], righi: Dict[str, str]) -> Dict[st
             campi[nome] = _campo(None, "pagina_senza_coordinate", senza_coordinate[0], rigo)
         else:
             campi[nome] = _campo(None, "rigo_non_trovato", None, rigo)
+        if colonna:
+            campi[nome]["colonna"] = int(colonna)
     return campi
 
 
@@ -787,7 +838,7 @@ def estrai_quadri_pagine(pagine: Iterable[Dict[str, Any]], document_type: Option
                 esito["anno_imposta"] = int(m.group(1)) - 1
                 esito["anno_imposta_fonte"] = "modello_redditi_anno_meno_uno"
     else:
-        esito["campi"] = _leggi_righi(elenco, CAMPI_PER_TIPO[tipo])
+        esito["campi"] = _leggi_righi(elenco, {**CAMPI_PER_TIPO[tipo], **COLONNE_PER_TIPO.get(tipo, {})})
 
     esito["campi_da_verificare"] = sorted(
         nome for nome, campo in esito["campi"].items() if campo.get("motivo") == "ambiguo"

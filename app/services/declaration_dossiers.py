@@ -12,10 +12,11 @@ import re
 from collections import Counter
 from collections import defaultdict
 from datetime import date
+from decimal import Decimal, ROUND_HALF_UP
 from typing import Any
 
 from app.db_collections import COLL_FISCAL_DOCUMENT_VERSIONS, COLL_FISCAL_PAGES
-from app.constants.codici_ravvedimento import SANZIONI_RITENUTE_PER_CODICE
+from app.constants.codici_ravvedimento import SANZIONI_RITENUTE_PER_CODICE, ACCESSORI_DICHIARAZIONI
 from app.services.declaration_registry import DECLARATION_TYPES, TAX_CODES
 from app.services.fiscal_domain import stable_id
 from app.services import f24_controllo_incrociato as reg
@@ -138,6 +139,8 @@ def group_annual_dossiers(documents, components, pages, versions):
         identity = document_identity(doc, "\n".join(t for _, t in sorted(texts[doc["id"]])))
         originals.append({**_original(doc, identity, by_version.get(doc.get("current_version_id"))),
                           "document_type": doc["document_type"],
+                          "tax_fields": (doc.get("quadri") or {}).get("campi") or {},
+                          "parsed_type": (doc.get("quadri") or {}).get("tipo_letto"),
                           "withholding_rows": [dict(r) for k in ("st_righe", "sv_righe") for r in (doc.get("quadri") or {}).get(k) or []],
                           "tax_codes": sorted({str(r.get("codice_tributo")) for k in ("st_righe", "sv_righe") for r in (doc.get("quadri") or {}).get(k) or [] if r.get("codice_tributo")})})
     # Un quadro puo' non riportare l'anno; lo eredita solo dall'identificativo
@@ -172,6 +175,7 @@ def group_annual_dossiers(documents, components, pages, versions):
         parsed_quadri = (doc.get("parsed_metadata") or {}).get("quadri") or {}
         withholding_rows = [dict(r) for k in ("st_righe", "sv_righe") for r in parsed_quadri.get(k) or []]
         originals.append({**_original(doc, identity, component=True), "document_type": kind,
+                          "tax_fields": parsed_quadri.get("campi") or {}, "parsed_type": parsed_quadri.get("tipo_letto"),
                           "withholding_rows": withholding_rows,
                           "tax_codes": sorted({str(r["codice_tributo"]) for r in withholding_rows if r.get("codice_tributo")})})
 
@@ -225,12 +229,15 @@ def attach_receipts(dossiers, receipts):
         # Filtrare prima per CF evita che lo stesso protocollo di invio di
         # contribuenti diversi venga confuso dal raggruppamento dei versamenti.
         payments = reg.pagamenti_da_quietanze(by_cf.get(cf, []))
+        allowed_codes = set(dossier["tax_codes"]) | set(ACCESSORI_DICHIARAZIONI.get(dossier["document_type"], {}))
         for payment in payments:
-            rows = [r for r in payment["_righe"] if r.get("codice") in dossier["tax_codes"] and _year(r.get("anno")) == year]
+            rows = [r for r in payment["_righe"] if r.get("codice") in allowed_codes and _year(r.get("anno")) == year]
             if rows:
                 dossier["quietanze"].append({k: v for k, v in payment.items() if not k.startswith("_")} | {
                     "tax_rows": rows, "link_reason": "Stesso contribuente, codice tributo e anno d'imposta",
                 })
+        if dossier["document_type"] in ACCESSORI_DICHIARAZIONI:
+            dossier["tax_check"] = reconcile_annual_taxes(dossier, payments)
         if dossier["document_type"] == "MODELLO_770":
             dossier["withholding_check"] = reconcile_withholdings(dossier["originals"], payments)
             # Anche le quietanze dell'anno dei redditi precedente e quelle
@@ -250,6 +257,144 @@ def attach_receipts(dossiers, receipts):
             dossier["quietanze"] = list(attached.values())
         dossier["quietanze"].sort(key=lambda p: (p.get("data") or "", p["chiave"]), reverse=True)
         dossier["receipt_count"] = len(dossier["quietanze"])
+
+
+def _tax_field(originals, name):
+    """Stessa casella nello stesso invio: copie non si sommano e non prevalgono."""
+    readings = [(o, o.get("tax_fields", {}).get(name, {})) for o in originals]
+    readings = [(o, f) for o, f in readings if f.get("valore") is not None or f.get("motivo") in ("casella_vuota", "ambiguo")]
+    signatures = {(f.get("valore"), f.get("motivo")) for _, f in readings}
+    ambiguous = len(signatures) > 1 or any(f.get("motivo") == "ambiguo" for _, f in readings)
+    field = readings[0][1] if readings else {}
+    return {"name": name, "cents": None if ambiguous else reg.centesimi(field.get("valore")),
+            "reason": "ambiguo" if ambiguous else field.get("motivo", "campo_non_letto"),
+            "sources": [{"id": o["id"], "pdf_url": o["pdf_url"], "filename": o["filename"],
+                         "page": f.get("pagina"), "row": f.get("rigo"), "column": f.get("colonna"),
+                         "value": f.get("valore")} for o, f in readings]}
+
+
+def _filing_date(value):
+    match = re.fullmatch(r"(\d{1,2})/(\d{1,2})/(\d{4})", str(value or ""))
+    if match:
+        try:
+            return date(int(match[3]), int(match[2]), int(match[1])).isoformat()
+        except ValueError:
+            return None
+    return reg._data_iso(value)
+
+
+def _code_label(code):
+    if code in {str(n) for n in range(6001, 6013)}:
+        return f"IVA mese {int(code) - 6000:02d}"
+    return {"2001": "Primo acconto IRES", "2002": "Secondo / unico acconto IRES", "2003": "Saldo IRES",
+            "6099": "Saldo IVA", "6013": "Acconto IVA mensile", "6035": "Acconto IVA trimestrale",
+            **{str(6030 + n): f"IVA trimestre {n}" for n in range(1, 5)}}.get(code, "IVA subforniture")
+
+
+def reconcile_annual_taxes(dossier, payments):
+    """Riscontro in lettura IRES/IVA sul registro quietanze esistente.
+
+    Istruzioni AdE Redditi SC 2025, RN22/RN23; IVA 2025, VL30/VX1.
+    L'annuale riepiloga gli acconti/versamenti: non inventa dovuti mensili.
+    Sanzioni, interessi e crediti non sono sommati al capitale versato.
+    """
+    kind, year = dossier["document_type"], dossier["tax_year"]
+    codes, accessory_codes = TAX_CODES[kind], ACCESSORI_DICHIARAZIONI[kind]
+    debits, credits, accessories = [], [], []
+    for payment in payments:
+        rows = [(i, r) for i, r in enumerate(payment["_righe"])
+                if _year(r.get("anno")) == year and r.get("sezione") == "sezione_erario"]
+        principal_codes = sorted({r["codice"] for _, r in rows if r.get("codice") in codes and r.get("importo_debito_cents", 0) > 0})
+        for i, row in rows:
+            code = row.get("codice")
+            link = {"id": stable_id("tax_receipt_row", payment["chiave"], i), "chiave": payment["chiave"],
+                    "data": payment.get("data"), "protocollo": payment.get("protocollo"),
+                    "quietanze": payment["quietanze"], "row": row, "codice": code,
+                    "compensazione_totale": payment.get("compensazione_totale", False)}
+            if code in codes:
+                if row.get("importo_debito_cents", 0) > 0:
+                    debits.append({**link, "amount_cents": row["importo_debito_cents"]})
+                if row.get("importo_credito_cents", 0) > 0:
+                    credits.append({**link, "amount_cents": row["importo_credito_cents"]})
+            elif code in accessory_codes and row.get("importo_debito_cents", 0) > 0:
+                accessories.append({**link, "amount_cents": row["importo_debito_cents"],
+                                    "label": accessory_codes[code], "principal_codes": principal_codes})
+    groups = []
+    for code in sorted({p["codice"] for p in debits}):
+        matches = [p for p in debits if p["codice"] == code]
+        ravveduti = {a["chiave"] for a in accessories if a["principal_codes"] == [code]}
+        for p in matches:
+            p["ravvedimento"] = p["chiave"] in ravveduti
+        groups.append({"codice": code, "label": _code_label(code), "payments": matches,
+                       "paid_cents": sum(p["amount_cents"] for p in matches),
+                       "ravvedimento": any(p["ravvedimento"] for p in matches)})
+
+    submissions, excluded = defaultdict(list), []
+    for original in dossier["originals"]:
+        # Precompilata, ISA o allegato non diventano una dichiarazione inviata.
+        if (original.get("parsed_type") not in (None, kind) or not original.get("declaration_identifier")):
+            excluded.append(original["id"])
+        else:
+            submissions[original["declaration_identifier"]].append(original)
+    comparisons = []
+    for submission, originals in submissions.items():
+        dates = {_filing_date(o.get("filed_at")) for o in originals if o.get("filed_at")}
+        cutoff = next(iter(dates)) if len(dates) == 1 and None not in dates else None
+        if kind == "REDDITI_SC":
+            specs = [("rn22_acconti_versati", "Acconti IRES dichiarati", {"2001", "2002"}, True),
+                     ("rn23_imposta_a_debito", "Saldo IRES dichiarato", {"2003"}, False)]
+            credit_name = "rn24_imposta_a_credito"
+            context_names = []
+        else:
+            specs = [("vl30_iva_periodica_versata", "IVA periodica dichiarata versata", codes - {"6099"}, True),
+                     ("vx1_da_versare", "Saldo IVA dichiarato", {"6099"}, False)]
+            credit_name = "vx2_a_credito"
+            context_names = ["vl30_iva_periodica_dovuta", "vl30_versata_comunicazioni", "vl30_versata_cartelle"]
+        credit = _tax_field(originals, credit_name)
+        for name, label, selected_codes, as_of_filing in specs:
+            field = _tax_field(originals, name)
+            eligible = [p for p in debits if p["codice"] in selected_codes]
+            selected = [p for p in eligible if not as_of_filing or (cutoff and p["data"] and p["data"] <= cutoff)]
+            not_compared = [p for p in eligible if p not in selected]
+            paid = sum(p["amount_cents"] for p in selected)
+            declared = field["cents"]
+            warnings = []
+            state, state_label = "DA_VERIFICARE", "Importo dichiarato da verificare"
+            difference = None if declared is None else paid - declared
+            if declared is not None:
+                # I modelli dichiarativi espongono euro interi. Rounding
+                # esplicito, non una tolleranza che copra differenze maggiori.
+                rounded = int((Decimal(paid) / 100).quantize(Decimal("1"), rounding=ROUND_HALF_UP)) * 100
+                if paid == declared or (declared % 100 == 0 and rounded == declared):
+                    state, state_label = "PAGATO", "Importo riscontrato nelle quietanze"
+                    if difference:
+                        warnings.append("Riscontro all'euro del modello; la differenza di arrotondamento resta visibile.")
+                elif not selected and declared > 0:
+                    state, state_label = "QUIETANZA_MANCANTE", "Pagamento non documentato nelle quietanze disponibili"
+                else:
+                    state, state_label = "IMPORTO_DIVERSO", "Differenza da verificare"
+                if declared == 0 and paid == 0:
+                    state, state_label = "NESSUN_VERSAMENTO", "Nessun importo dichiarato da versare"
+            elif field["reason"] == "casella_vuota" and credit["cents"] is not None and credit["cents"] > 0 and not as_of_filing:
+                state, state_label = "SALDO_A_CREDITO", "Dichiarazione a credito: nessun saldo a debito indicato"
+                if selected:
+                    state, state_label = "DA_VERIFICARE", "Versamento a saldo presente con dichiarazione a credito"
+            if as_of_filing and (not cutoff or any(not p["data"] for p in eligible)):
+                state, state_label = "DA_VERIFICARE", "Data di presentazione o versamento da verificare"
+            if not_compared:
+                warnings.append("Versamenti successivi alla presentazione o senza data esclusi dal confronto del dichiarato; restano visibili tra i tributi pagati.")
+            if kind == "REDDITI_SC" and as_of_filing:
+                warnings.append("RN22 colonna 2 può comprendere anche acconti ricevuti per trasparenza (RF68/RK). Le differenze richiedono il controllo del modello originale.")
+            comparisons.append({"id": stable_id("annual_tax_check", submission, name), "submission": submission,
+                                "label": label, "field": field, "credit": credit if not as_of_filing else None,
+                                "context": [_tax_field(originals, n) for n in context_names] if as_of_filing else [],
+                                "stato": state, "stato_label": state_label, "declared_cents": declared,
+                                "paid_cents": paid, "difference_cents": difference, "payments": selected,
+                                "excluded_payments": not_compared, "cutoff": cutoff if as_of_filing else None,
+                                "warnings": warnings})
+    return {"groups": groups, "comparisons": comparisons, "credits": credits, "accessories": accessories,
+            "paid_cents": sum(p["amount_cents"] for p in debits), "excluded_originals": excluded,
+            "basis": "quietanze_per_contribuente_codice_anno_riferimento"}
 
 
 def _withholding_section(row):
