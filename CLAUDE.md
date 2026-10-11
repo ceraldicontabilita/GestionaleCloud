@@ -172,6 +172,10 @@ Applicazioni:
 
 Il vecchio `/colazioni` reindirizza a `/convenzioni`.
 
+Servizio canonico Render: `srv-d92emmgjs32c738octfg` (workspace `tea-d4o6eb2dbo4c73aaev80`). ERP, HR, Lotti, Menu e Colazioni sono serviti qui; il database non va duplicato per accorpare le interfacce.
+
+Il servizio `srv-db5vmqvlk1mc73bddga0` e' una copia di deploy, non il proprietario di un dominio o di un archivio separato. Il sito statico `colazioni-bb.onrender.com` puo' essere mantenuto soltanto come reindirizzamento di compatibilita' a `https://impresasemplice.online/convenzioni/`, conservando query string e frammento di voucher, hotel e inviti. Non eliminarlo finche' esistono link o QR distribuiti con quell'host: la cancellazione del servizio interrompe anche il reindirizzamento.
+
 Il catch-all della SPA ERP deve essere registrato dopo le sotto-app.
 
 Il prefisso nudo di un `Mount` deve essere reindirizzato alla versione con `/`.
