@@ -16,9 +16,9 @@ Le regole, nell'ordine in cui contano:
   sostituito da una ritrasmissione; a credito il dovuto è zero. Un periodo
   senza VP14 letto non è «zero», è «non determinabile»: nessun alert;
 * **un versamento si conta una volta**: le quietanze prima (una per
-  protocollo e saldo), i modelli del commercialista solo quando nessuna
-  quietanza con righe li copre (stesso protocollo, aggancio esplicito o
-  stessa data e saldo, com'è già in `prove_modello`). Fuori i modelli
+  protocollo e saldo), i modelli del commercialista solo con prova di
+  pagamento e quando nessuna quietanza con righe li copre. Un modello
+  predisposto o un addebito soltanto compatibile non è un pagamento. Fuori i modelli
   annullati, stornati o in quarantena e ogni documento il cui saldo non
   quadra (`validazione.saldo_quadrato` falso): finiscono in `guardia`;
 * **l'anno sta sulla riga** del tributo, mai sul documento: un F24 IVA di
@@ -229,6 +229,12 @@ def versamenti_dal_registro(registro: Dict[str, Any]) -> Dict[str, Any]:
         if copre:
             esclusi.append({"id": fid, "filename": nome, "fonte": "f24_unificato",
                             "motivo": f"coperto dalla quietanza {copre[0]}: le righe si contano da lei"})
+            continue
+        quietanza_identificata = any(q.get("agganciata") or q.get("criterio") == "protocollo"
+                                    for q in prove["quietanze"])
+        if not prove["pagato_banca"] and not quietanza_identificata:
+            esclusi.append({"id": fid, "filename": nome, "fonte": "f24_unificato",
+                            "motivo": "modello predisposto senza prova di pagamento: non sommato ai versamenti"})
             continue
         righe = reg.righe_modello(f24)
         versamenti.append({

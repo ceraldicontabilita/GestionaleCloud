@@ -138,7 +138,7 @@ def test_un_versamento_su_un_mese_a_credito_si_segnala():
 # ── I versamenti vengono dal motore degli incroci ─────────────────────────
 #
 # `f24_iva_per_periodo` non esiste piu': dovuto, versato e stato li calcola
-# `incroci_fiscali.incroci` (quietanze prima, modelli solo se scoperti, anno
+# `incroci_fiscali.incroci` (quietanze prima, modelli pagati solo se scoperti, anno
 # sulla riga, soglia 1,00 EUR) e qui si aggiunge solo la colonna del gestionale.
 
 from app.services.archivio_documenti_memoria import ClientArchivioMemoria
@@ -147,6 +147,9 @@ from app.services.archivio_documenti_memoria import ClientArchivioMemoria
 def _modello(codice, anno, importo, nome="F24.pdf", status=None, id_=None):
     return {
         "id": id_ or f"m-{nome}", "file_name": nome, "status": status or "da_pagare",
+        # Questi casi verificano versamenti provati, non semplici prospetti.
+        "movimento_bancario_id": f"bank-{nome}",
+        "data_addebito_banca": f"{int(anno) + 1}-01-16",
         "dati_generali": {"data_versamento": f"{int(anno) + 1}-01-16"},
         "sezione_erario": [{
             "codice_tributo": codice, "anno": anno, "importo_debito": importo,

@@ -302,7 +302,7 @@ def test_una_quietanza_si_conta_una_volta_per_protocollo_e_saldo_e_il_modello_co
     assert motivi["q-a-copia"].startswith("stesso protocollo") and motivi["m-6006"].startswith("coperto dalla quietanza")
 
 
-def test_un_modello_scoperto_conta_ma_uno_stornato_o_in_quarantena_no():
+def test_un_modello_predisposto_non_conta_come_pagamento():
     db = _db()
     _run(db.lipe_periodi.insert_one(_lipe("2025-01", 534.06)))
     _run(db.f24_unificato.insert_many([
@@ -317,8 +317,8 @@ def test_un_modello_scoperto_conta_ma_uno_stornato_o_in_quarantena_no():
          "sezione_erario": [{"codice_tributo": "6001", "anno": "2024", "importo_debito": 999.0}]},
     ]))
     (riga,) = _run(mod.incroci(db))["confronti_iva_mensile"]
-    assert riga["versato_f24"] == 534.06 and riga["stato"] == "OK"
-    assert riga["f24_sources"] == ["F24 gennaio.pdf"]
+    assert riga["versato_f24"] == 0 and riga["stato"] == "MANCANTE"
+    assert riga["f24_sources"] == []
 
 
 def test_gli_indizi_a_3_euro_restano_indizi_e_non_alert():

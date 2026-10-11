@@ -34,7 +34,7 @@ from typing import Any, Awaitable, Callable, Dict, Iterable, List, Optional, Set
 
 from app.services.originale_documento import url_originale
 from app.db_collections import (
-    COLL_ESTRATTO_CONTO, COLL_F24, COLL_FISCAL_DOCUMENTS, COLL_QUIETANZE_F24,
+    COLL_ESTRATTO_CONTO, COLL_F24, COLL_FISCAL_DOCUMENTS, COLL_FISCAL_PAGES, COLL_QUIETANZE_F24,
 )
 from app.constants.canale_documento import CANALI, canali_documento
 from app.constants.codici_ravvedimento import CODICI_RAVVEDIMENTO
@@ -1195,7 +1195,7 @@ async def carica_avvisi_fiscali(db, company_id=None):
         query["company_id"] = company_id
     docs = await db[COLL_FISCAL_DOCUMENTS].find(query, {"_id": 0, "pdf_data": 0}).to_list(2000)
     docs = [d for d in docs if d.get("entity_status") != "deleted"]
-    pages = await db["fiscal_pages"].find({"document_id": {"$in": [d["id"] for d in docs]}, "page_number": 1},
+    pages = await db[COLL_FISCAL_PAGES].find({"document_id": {"$in": [d["id"] for d in docs]}, "page_number": 1},
                                         {"_id": 0, "layout_words": 0}).to_list(4000) if docs else []
     refs = {}
     for d in docs:

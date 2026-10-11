@@ -108,6 +108,9 @@ def test_current_sources_link_compliance_and_close_month_and_alert_idempotently(
         await db['fiscal_pages'].insert_one({'document_id':'compliance','version_id':'v2','page_number':1,
             'text':'Codice fiscale contribuente: 04523831214 II trimestre 2024 identificativo n.361428083 del 18/09/2024'})
         await db['quietanze_f24'].insert_one(receipt()['documento'])
+        await db['f24_unificato'].insert_one({'id':'model-june','file_name':'F24 iva giugno 2024.pdf',
+            'status':'da_pagare','totali':{'saldo_netto':1463.15},
+            'sezione_erario':[{'codice_tributo':'6006','anno':'2024','importo_debito':1463.15}]})
         await db[inc.COLL_LIPE].insert_one({'id':'june', 'periodo':'2024-06','quadratura_ok':True,
             'iva_da_versare_o_credito':1463.15,'iva_da_versare_o_credito_segno':'debito'})
         await db[inc.COLL_ALERTS].insert_one({'id':'old','codice':inc.ALERT_IVA_MENSILE,
@@ -117,6 +120,7 @@ def test_current_sources_link_compliance_and_close_month_and_alert_idempotently(
         assert result['comunicazioni_54bis'][0]['stato'] == 'PAGATA'
         assert result['avvisi_iva_riscontro'][0]['compliance'][0]['id'] == 'compliance'
         assert not result['confronti_iva_mensile'][0]['ravvedimento_rilevato']
+        assert result['confronti_iva_mensile'][0]['versato_f24'] == 1463.15
         assert (await inc.applica_alert(db,result,anni_completi=False))['chiusi'] == 1
         assert (await inc.applica_alert(db,result,anni_completi=False))['chiusi'] == 0
     asyncio.run(scenario())

@@ -2995,6 +2995,8 @@ incroci e nel fascicolo; non scrivere nuovi versamenti né cambiare il codice
 9001 dell'originale. Copie non sommate; rate incomplete, codici atto assenti,
 CF diversi, prospetti discordanti o non quadrati restano da verificare.
 Il giro `incroci_fiscali` deve chiudere gli alert del periodo/avviso coperto.
+Un F24 soltanto predisposto non è un secondo pagamento: negli incroci non
+si somma alla quietanza ordinaria o alla quota d'imposta dell'avviso saldato.
 Riscontrare il totale VL30 col. 3+4+5 alla data di presentazione, conservando
 visibili arrotondamenti e divergenze fra le colonne: totale coperto non equivale
 a dichiarazione interamente corretta.
