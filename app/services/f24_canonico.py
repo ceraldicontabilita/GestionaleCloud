@@ -214,6 +214,9 @@ async def importa_modello_bytes(
     existing = await db[COLL].find_one(
         {"f24_dedup_key": documento["f24_dedup_key"]}, {"_id": 0, "id": 1}
     )
+    if not existing:
+        from app.services.f24_doppioni import modello_uguale
+        existing = await modello_uguale(db, documento)
     if existing:
         # Lo stesso PDF letto di nuovo rinfresca le righe, mai lo stato di pagamento: lo scrivono i
         # motori (quietanza, banca, doppioni). Riportarlo a «da pagare» cancellava la prova gia'
@@ -293,9 +296,16 @@ def _contribuente(doc: Dict[str, Any]) -> str:
 
 
 def chiave_f24(doc: Dict[str, Any]) -> str:
-    """Chiave naturale stabile di un modello F24 per la deduplica: stesso
-    contribuente + periodo + saldo + hash PDF + protocollo → stessa chiave.
-    Non dipende dall'`id` (che varia tra le collezioni legacy)."""
+    """Identità fiscale completa, indipendente dal nome e dai byte del PDF.
+
+    Senza righe/contribuente resta la chiave documentale storica: dati
+    incompleti non autorizzano un accorpamento fiscale.
+    """
+    from app.services.f24_doppioni import identita_f24
+
+    fiscale = identita_f24(doc)
+    if fiscale:
+        return "f24_v2_" + hashlib.sha256(fiscale.encode("utf-8")).hexdigest()
     pdf_hash = str(doc.get("pdf_hash") or doc.get("pdf_data_hash") or doc.get("file_hash") or "")
     protocollo = str(doc.get("protocollo") or doc.get("protocollo_telematico") or "")
     base = f"{_contribuente(doc)}|{_periodo(doc)}|{_saldo(doc)}|{pdf_hash}|{protocollo}"
@@ -384,7 +394,10 @@ async def salva_f24(
         # `$set` intero riscriveva nome del file, fonte e metadati con quelli
         # dell'ultima copia, e l'allegato email puntato dal modello cambiava a
         # ogni rinvio.
-        patch = {k: v for k, v in doc.items() if k not in _CAMPI_PROVENIENZA}
+        patch = {k: v for k, v in doc.items() if k not in _CAMPI_PROVENIENZA
+                 and k not in _CAMPI_STATO_PAGAMENTO
+                 and k not in {"quietanza_id", "movimento_bancario_id", "data_pagamento_effettivo",
+                               "data_pagamento_quietanza", "riconciliato_quietanza"}}
         if not esistente.get("source_metadata") and doc.get("source_metadata"):
             patch["source_metadata"] = doc["source_metadata"]
         await db[COLL].update_one({"f24_dedup_key": chiave}, {"$set": patch})
@@ -398,12 +411,23 @@ async def salva_f24(
 
     uguale = await modello_uguale(db, doc)
     if uguale:
+        if not uguale.get("sostituisce_f24_id"):
+            await db[COLL].update_one({"id": uguale["id"]}, {"$set": {
+                "f24_dedup_key": chiave, "idempotency_key": f"f24:{chiave}"}})
         await _annota_provenienza(db, uguale, doc, source)
         return uguale["id"]
 
     doc.setdefault("id", str(uuid4()))
     doc.setdefault("created_at", datetime.now(timezone.utc).isoformat())
-    await db[COLL].insert_one(doc.copy())
+    from app.services.supabase_runtime_database import DocumentoDuplicatoRemoto
+    try:
+        await db[COLL].insert_one(doc.copy())
+    except DocumentoDuplicatoRemoto as exc:
+        vincitore = exc.id_esistente_per_chiave.get(doc["idempotency_key"])
+        if not vincitore:
+            raise
+        # Solo chi inserisce davvero pubblica il fatto e apre l'operazione.
+        return str(vincitore)
     # Il fatto nasce qui, una volta sola: alla prima scrittura del modello, da
     # qualunque ingresso. Le copie successive (sopra) non lo ripubblicano, e una
     # quietanza non e' un modello (`e_quietanza`).

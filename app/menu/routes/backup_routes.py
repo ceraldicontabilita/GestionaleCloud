@@ -1,6 +1,13 @@
-from fastapi import APIRouter, HTTPException, Depends, BackgroundTasks
+from fastapi import APIRouter, HTTPException, Depends, BackgroundTasks, Query
+from anyio import from_thread
+from app.database import Database
+from app.services.blob_store import blob_store_per_runtime
+from app.services.verified_backup_archive import salva_file, ricomponi_file, elimina_file
+from starlette.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse
 from datetime import datetime
+from uuid import uuid4
+from starlette.background import BackgroundTask
 import json
 import re
 import shutil
@@ -27,14 +34,12 @@ BACKUP_TABLES = [
     "menu_orders",
     "menu_warehouse_items",
     "menu_warehouse_movements",
+    "menu_allergeni_esclusioni",
+    "menu_sale",
 ]
 
-# Tabelle con id intero (le altre hanno id testo)
-INTEGER_ID_TABLES = {"menu_categories", "menu_subcategories", "menu_products"}
-
-
 # Solo archivi nati da create_backup: niente nomi arbitrari su disco.
-_NOME_BACKUP = re.compile(r"^ceraldi_backup_\d{8}_\d{6}\.tar\.gz$")
+_NOME_BACKUP = re.compile(r"^ceraldi_backup_\d{8}_\d{6}(?:_\d{6})?\.tar\.gz$")
 
 
 def _file_backup(filename: str) -> Path:
@@ -78,12 +83,6 @@ def _leggi_archivio(archivio: Path) -> dict:
     return tabelle
 
 
-def _delete_all_rows(table: str):
-    if table in INTEGER_ID_TABLES:
-        supabase.table(table).delete().neq("id", -1).execute()
-    else:
-        supabase.table(table).delete().neq("id", "___none___").execute()
-
 
 class BackupInfo:
     def __init__(self, filename: str, path: Path):
@@ -102,13 +101,15 @@ def create_backup(
 ):
     """Crea un dump JSON di tutte le tabelle dell'app (Supabase)."""
     try:
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
         backup_name = f"ceraldi_backup_{timestamp}"
         backup_dir = BACKUP_DIR / backup_name
         backup_dir.mkdir(exist_ok=True)
 
-        for table in BACKUP_TABLES:
-            rows = supabase.table(table).select("*").execute().data
+        snapshot = supabase.rpc("gc_export_menu_backup", {}).execute().data
+        if not isinstance(snapshot, dict) or set(snapshot) != set(BACKUP_TABLES):
+            raise ValueError("Snapshot Menu incompleta")
+        for table, rows in snapshot.items():
             with open(backup_dir / f"{table}.json", "w") as f:
                 json.dump(rows, f, default=str)
 
@@ -122,6 +123,7 @@ def create_backup(
             shutil.rmtree(backup_dir, ignore_errors=True)
 
         backup_info = BackupInfo(archive_name, archive_path)
+        from_thread.run(_salva_persistente, archive_name, archive_path, username)
 
         return {
             "success": True,
@@ -138,106 +140,93 @@ def create_backup(
         raise HTTPException(status_code=500, detail=f"Backup failed: {str(e)}") from e
 
 
+REGISTRO = "menu_backup_registro"
+
+
+def _store():
+    return blob_store_per_runtime(Database.get_db())
+
+
+async def _salva_persistente(filename, path, username):
+    manifesto = await salva_file(filename, path, {"created_by": username},
+                                 store=_store(), namespace="menu")
+    await Database.get_db()[REGISTRO].update_one({"id": filename},
+        {"$set": {"id": filename, **manifesto}}, upsert=True)
+    return manifesto
+
+
+async def _file_persistente(filename):
+    if not _NOME_BACKUP.fullmatch(filename or ""):
+        raise HTTPException(status_code=400, detail="Invalid backup file")
+    manifesto = await Database.get_db()[REGISTRO].find_one({"id": filename}, {"_id": 0})
+    if manifesto:
+        path = BACKUP_DIR / f"{uuid4().hex}_{filename}"
+        # Rilettura verificata anche con un file locale: /tmp e' solo una cache.
+        await ricomponi_file(manifesto, str(path), store=_store())
+        return path
+    return _file_backup(filename)  # vecchi export locali ancora scaricabili
+
+
 @router.get("/list")
 async def list_backups(username: str = Depends(verify_token)):
-    """List all available backups"""
-    try:
-        backups = []
-        for file_path in BACKUP_DIR.glob("*.tar.gz"):
-            backup_info = BackupInfo(file_path.name, file_path)
-            backups.append({
-                "filename": backup_info.filename,
-                "size": backup_info.size,
-                "created_at": backup_info.created_at
-            })
-
-        backups.sort(key=lambda x: x["created_at"], reverse=True)
-
-        return {
-            "backups": backups,
-            "total": len(backups)
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e)) from e
+    righe = await Database.get_db()[REGISTRO].find({}, {"_id": 0}).to_list(None)
+    backups = [{"filename": m["id"], "size": m["bytes"],
+                "created_at": m["verificato_at"], "verificato": m["verificato"],
+                "persistente": True} for m in righe]
+    return {"backups": sorted(backups, key=lambda m:m["created_at"], reverse=True), "total": len(backups)}
 
 
 @router.get("/download/{filename}")
 async def download_backup(filename: str, username: str = Depends(verify_token)):
-    """Download a backup file"""
-    try:
-        file_path = _file_backup(filename)
-
-        return FileResponse(
-            path=str(file_path),
-            filename=filename,
-            media_type='application/gzip'
-        )
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e)) from e
+    path = await _file_persistente(filename)
+    cleanup = BackgroundTask(path.unlink, missing_ok=True) if path.name != filename else None
+    return FileResponse(str(path), filename=filename, media_type="application/gzip", background=cleanup, headers={"Cache-Control": "private, no-store"})
 
 
 @router.get("/public-download/{filename}")
 async def public_download_backup(filename: str, _username: str = Depends(verify_token)):
-    """Legacy URL retained for clients, but downloads are always authenticated."""
-    try:
-        file_path = _file_backup(filename)
-
-        return FileResponse(
-            path=str(file_path),
-            filename=filename,
-            media_type='application/gzip'
-        )
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e)) from e
+    return await download_backup(filename, username=_username)
 
 
 @router.delete("/delete/{filename}")
 async def delete_backup(filename: str, username: str = Depends(verify_token)):
-    """Delete a backup file"""
-    try:
-        file_path = _file_backup(filename)
-        file_path.unlink()
-
-        return {
-            "success": True,
-            "message": f"Backup '{filename}' deleted successfully"
-        }
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e)) from e
+    if not _NOME_BACKUP.fullmatch(filename or ""):
+        raise HTTPException(status_code=400, detail="Invalid backup file")
+    manifesto = await Database.get_db()[REGISTRO].find_one({"id": filename}, {"_id": 0})
+    if manifesto:
+        await elimina_file(manifesto, store=_store(), namespace="menu")
+        await Database.get_db()[REGISTRO].delete_one({"id": filename})
+    elif not (BACKUP_DIR / filename).exists():
+        raise HTTPException(status_code=404, detail="Backup not found")
+    (BACKUP_DIR / filename).unlink(missing_ok=True)
+    return {"success": True, "message": "Backup deleted"}
 
 
 @router.post("/restore/{filename}")
-def restore_backup(filename: str, username: str = Depends(verify_token)):
+def restore_backup(filename: str, username: str = Depends(verify_token), dry_run: bool = Query(False)):
     """Restore database from a JSON backup (Supabase).
 
     L'archivio si legge e si controlla tutto PRIMA di cancellare: prima le
     tabelle venivano svuotate e solo dopo si scopriva un archivio illeggibile.
     """
-    file_path = _file_backup(filename)
+    file_path = from_thread.run(_file_persistente, filename) if Database.db is not None else _file_backup(filename)
     try:
         tabelle = _leggi_archivio(file_path)
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Restore failed: {str(e)}") from e
+    finally:
+        if file_path.name != filename:
+            file_path.unlink(missing_ok=True)
 
+    if set(tabelle) != set(BACKUP_TABLES):
+        raise HTTPException(status_code=400, detail="Backup incompleto: nessuna tabella e' stata modificata")
     try:
-        # Figli prima dei genitori per il delete, genitori prima dei figli per l'insert
-        for table in reversed(BACKUP_TABLES):
-            _delete_all_rows(table)
-        for table in BACKUP_TABLES:
-            rows = tabelle.get(table)
-            if rows:
-                supabase.table(table).insert(rows).execute()
-
-        return {
-            "success": True,
-            "message": "Database restored successfully",
-            "restored_by": username
-        }
+        # Una sola RPC SQL: ogni errore annulla tutte le tabelle. Nessun delete
+        # eseguito tramite richieste HTTP indipendenti.
+        result = supabase.rpc("gc_restore_menu_backup", {"p_tables": tabelle,
+                              "p_dry_run": dry_run is True}).execute().data
+        return {"success": True, "dry_run": dry_run is True,
+                "message": "Backup verificato" if dry_run is True else "Database restored successfully",
+                "restored_by": username, "result": result}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Restore failed: {str(e)}") from e
+        raise HTTPException(status_code=409, detail="Ripristino non confermato: nessuna modifica parziale") from e

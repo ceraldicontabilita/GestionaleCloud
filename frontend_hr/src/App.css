@@ -1,5 +1,4 @@
 /* ===== Ceraldi Lotti Design System — token + font ===== */
-@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
 :root {
   --primary: #5b7a6b; --primary-soft: #e8efe9; --sidebar: #3f5a4e;
   --bg: #faf7f0; --card: #fffefb;

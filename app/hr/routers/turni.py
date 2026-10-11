@@ -4,6 +4,7 @@ rivalidazione, pubblicazione con notifica al dipendente.
 """
 import logging
 from datetime import datetime, timezone, timedelta
+from zoneinfo import ZoneInfo
 from typing import Dict, Any, List
 from uuid import uuid4
 from fastapi import APIRouter, HTTPException, Body, Depends
@@ -215,12 +216,12 @@ COLL_PREF = "turni_preferenze_riposo"
 
 
 def _lunedi_corrente() -> str:
-    oggi = datetime.now(timezone.utc).date()
+    oggi = datetime.now(ZoneInfo("Europe/Rome")).date()
     return (oggi - timedelta(days=oggi.weekday())).isoformat()
 
 
 def _lunedi_prossimo() -> str:
-    oggi = datetime.now(timezone.utc).date()
+    oggi = datetime.now(ZoneInfo("Europe/Rome")).date()
     return (oggi - timedelta(days=oggi.weekday()) + timedelta(days=7)).isoformat()
 
 
@@ -254,7 +255,7 @@ COLL_DISP_BAR = "turni_disponibilita_bar"
 @router.get("/disponibilita-bar", summary="Le mie disponibilità a coprire il bar")
 async def mie_disponibilita_bar(identity: Dict[str, Any] = Depends(get_identity)):
     db = Database.get_db()
-    oggi = datetime.now(timezone.utc).date().isoformat()
+    oggi = datetime.now(ZoneInfo("Europe/Rome")).date().isoformat()
     return await db[COLL_DISP_BAR].find(
         {"dipendente_id": identity["id"], "al": {"$gte": oggi}},
         {"_id": 0}).sort("dal", 1).to_list(50)

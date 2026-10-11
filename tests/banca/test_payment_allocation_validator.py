@@ -4,6 +4,7 @@ from app.services.payment_allocation_validator import (
     to_cents,
     validate_invoice_allocation,
 )
+import pytest
 
 
 def test_to_cents_uses_decimal_and_italian_separators():
@@ -38,3 +39,16 @@ def test_credit_note_cannot_receive_check_payment():
     result = validate_invoice_allocation(invoice, 10000)
     assert result["allowed"] is False
     assert result["reason"] == "nota_di_credito_non_pagabile"
+
+
+@pytest.mark.parametrize("value", [True, False, "NaN", "Infinity", "-Infinity"])
+def test_importi_non_finiti_o_booleani_non_diventano_denaro(value):
+    assert to_cents(value) == 0
+
+
+def test_quota_centesimi_serializzata_non_viene_moltiplicata_per_cento():
+    invoice = {"total_amount": 100, "importo_pagato": 60,
+               "payment_allocations": [{"quota_cents": "6000", "status": "confirmed"}]}
+    result = validate_invoice_allocation(invoice, 4000)
+    assert result["allowed"]
+    assert result["committed_cents"] == 6000

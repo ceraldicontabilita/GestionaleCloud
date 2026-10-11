@@ -571,6 +571,19 @@ async def ignora_alert(alert_id: str) -> Dict[str, Any]:
 # VERIFICA CODICE TRIBUTO
 # ============================================
 
+@router.post('/commercialista/{precedente_id}/sostituito-da/{vigente_id}')
+async def sostituisci_versione_f24(precedente_id: str, vigente_id: str,
+    _admin: Dict[str, Any] = Depends(get_current_admin_user)) -> Dict[str, Any]:
+    from app.services.f24_versioni import sostituisci_versione
+    from app.services.supabase_runtime_database import ConcurrentDocumentChange
+    try:
+        return await sostituisci_versione(Database.get_db(), precedente_id, vigente_id,
+            actor=_admin.get('email') or _admin.get('username') or 'admin')
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except ConcurrentDocumentChange as exc:
+        raise HTTPException(status_code=409, detail='F24 modificato contemporaneamente: ricaricare') from exc
+
 @router.get("/verifica-codice/{codice_tributo}")
 @handle_errors
 async def verifica_codice_tributo(

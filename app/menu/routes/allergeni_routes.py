@@ -215,3 +215,16 @@ def revoca_esclusione(tipo: Tipo, riferimento_id: int, _username: str = Depends(
     if not (res.data or []):
         raise HTTPException(status_code=404, detail="Esclusione non trovata")
     return {"success": True, "tipo": tipo, "riferimento_id": riferimento_id}
+
+
+@router.get("/coerenza")
+async def coerenza_catalogo(_username: str = Depends(verify_token)):
+    """Fonti, prezzi e allergeni: nessun collegamento viene inventato o corretto."""
+    from starlette.concurrency import run_in_threadpool
+    from app.lotti.db import database
+    from app.services.catalogo_coerenza import verifica_catalogo
+    prodotti = await run_in_threadpool(lambda: supabase.table("menu_products").select("id,name,name_it,origine,lotti_ref,price,allergens,visible").execute().data or [])
+    allergeni = await run_in_threadpool(lambda: supabase.table("menu_allergens").select("id").execute().data or [])
+    ricette = await database.ricette.find({}, {"id": 1, "allergeni": 1, "allergeni_auto": 1,
+        "prezzo_vendita": 1, "prezzo_tavolo": 1, "menu_pubblico": 1}).to_list(None)
+    return verifica_catalogo(prodotti, ricette, {r["id"] for r in allergeni})

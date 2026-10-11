@@ -636,19 +636,19 @@ README.md
 
 # Toolchain frontend
 
-Attualmente le applicazioni non utilizzano tutte la stessa toolchain:
+Le quattro applicazioni React usano Vite per le build:
 
 ```text
 ERP        Vite
 HR         Vite
-Menu       CRA
-Lotti      CRA
+Menu       Vite
+Lotti      Vite
 B&B        frontend statico
 ```
 
 Questa è la situazione da considerare nel lavoro quotidiano.
 
-L'eventuale unificazione della toolchain è un obiettivo di ristrutturazione e non deve essere data per già completata.
+Menu e Lotti conservano CRACO/Jest soltanto per i test esistenti; le build usano la configurazione condivisa `frontend_shared/viteMiniApp.mjs` e mantengono `/menu/` e `/lotti/`.
 
 ---
 

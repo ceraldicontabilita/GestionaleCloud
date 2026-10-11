@@ -19,7 +19,7 @@ if (!['127.0.0.1','localhost','[::1]'].includes(origine.hostname)
   try {
   const result = [];
   for (const width of [360,390,768]) {
-    const context = await browser.newContext({ viewport: { width, height: 900 } });
+    const context = await browser.newContext({ viewport: { width, height: 900 }, timezoneId: 'Europe/Rome' });
     // Il browser puo' raggiungere solo il backend fixture locale.
     await context.route('**/*', async route => {
       const u = new URL(route.request().url());
@@ -28,25 +28,27 @@ if (!['127.0.0.1','localhost','[::1]'].includes(origine.hostname)
     });
     const page = await context.newPage();
     const errors = [], forbidden = [];
-    page.on('pageerror', e => errors.push(e.name));
+    page.on('pageerror', e => errors.push(e.message));
     page.on('response', r => { if (r.status() >= 400) forbidden.push({ status:r.status(),path:new URL(r.url()).pathname }); });
     await page.goto(`${base}/hr/portale`);
-    await page.getByRole('button', {name:'Persona',exact:true}).click();
+    try { await page.getByRole('button', {name:'Persona',exact:true}).click({timeout:5000}); } catch(e) {
+      console.error(JSON.stringify({width,url:page.url(),body:(await page.locator('body').innerText()).slice(0,1000),errors,forbidden})); throw e;
+    }
     for (const digit of ['1','2','3','4']) await page.getByTestId(`pin-key-${digit}`).click();
     await page.getByTestId('pin-key-submit').click();
     await page.getByRole('button',{name:'Turni azienda',exact:true}).waitFor();
     await page.getByRole('button',{name:'Turni azienda',exact:true}).click();
-    await page.locator('button[title^="Prova · Lunedì:"]').waitFor();
+    await page.locator('button[aria-label="Prova, Lunedì: turno successivo"], button[title^="Prova · Lunedì:"]').waitFor();
     assert.equal(new URL(page.url()).pathname,'/hr/dipendenti/turni');
     const networkWrite = page.waitForResponse(r => r.url().includes('/assegnazioni-turni') && r.request().method()==='POST');
-    await page.locator('button[title^="Prova · Lunedì:"]').click();
+    await page.locator('button[aria-label="Prova, Lunedì: turno successivo"], button[title^="Prova · Lunedì:"]').click();
     assert.equal((await networkWrite).status(),200);
     await page.waitForTimeout(350);
     // Lo stesso database fixture e' condiviso dalle tre viewport. Se il
     // ciclo e' arrivato al vuoto, il tap successivo assegna il primo turno.
-    if ((await page.locator('button[title^="Prova · Lunedì:"]').innerText()).trim() === '—') {
+    if ((await page.locator('button[aria-label="Prova, Lunedì: turno successivo"], button[title^="Prova · Lunedì:"]').innerText()).trim() === '—') {
       const nextWrite = page.waitForResponse(r => r.url().includes('/assegnazioni-turni') && r.request().method()==='POST');
-      await page.locator('button[title^="Prova · Lunedì:"]').click();
+      await page.locator('button[aria-label="Prova, Lunedì: turno successivo"], button[title^="Prova · Lunedì:"]').click();
       assert.equal((await nextWrite).status(),200);
     }
     const verification = await page.evaluate(async () => {

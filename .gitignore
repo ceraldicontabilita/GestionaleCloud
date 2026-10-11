@@ -74,3 +74,6 @@ yarn-error.log*
 .vscode/
 .claude/settings.local.json
 scripts/print_agent_config.json
+
+# Cache locale della CLI Supabase
+supabase/.temp/

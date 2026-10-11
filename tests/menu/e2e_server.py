@@ -12,6 +12,7 @@ _ambiente_fixture = ambiente_isolato(os.environ)
 os.environ.clear()
 os.environ.update(_ambiente_fixture)
 os.environ["ENABLE_SCHEDULER"] = "false"
+os.environ["LOTTI_TEST_MEMORY"] = "1"
 os.environ["MENU_JWT_SECRET"] = "menu-e2e-isolato-solo-test-non-produzione"
 
 from fastapi import FastAPI
@@ -41,6 +42,9 @@ for modulo in (menu_routes, allergeni_routes, qrcode_routes):
 
 db = ClientArchivioMemoria()["menu_e2e_isolato"]
 
+
+async def _db():
+    return db
 
 menu_routes._db_legacy = _db
 menu_app.dependency_overrides[qrcode_routes.verify_token] = lambda: "admin_isolato"

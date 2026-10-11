@@ -41,8 +41,12 @@ def identita_f24(doc: Dict[str, Any]) -> Optional[str]:
         return None
     dg = doc.get("dati_generali") or {}
     contribuente = str(doc.get("codice_fiscale") or dg.get("codice_fiscale") or "").strip().upper()
+    if not contribuente:
+        return None
     firma = sorted(
-        (r["codice"], r["periodo_riferimento"] or "", r["importo_debito_cents"], r["importo_credito_cents"])
+        (r["sezione"] or "", r["codice"], r["mese"] or "", r["anno"] or "",
+         r["ente"], r["matricola"], r["acconto"], r["saldo"],
+         r["importo_debito_cents"], r["importo_credito_cents"])
         for r in righe
     )
     return "|".join([
@@ -92,6 +96,10 @@ async def modello_uguale(db, doc: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     for esistente in await db[COLL].find({}, {"_id": 0, "pdf_data": 0}).to_list(5000):
         if attivo(esistente) and identita_f24(esistente) == chiave:
             return esistente
+        if identita_f24(esistente) == chiave and esistente.get("sostituito_da_f24_id"):
+            vigente = await db[COLL].find_one({"id": esistente["sostituito_da_f24_id"]})
+            if vigente and attivo(vigente):
+                return vigente
     return None
 
 

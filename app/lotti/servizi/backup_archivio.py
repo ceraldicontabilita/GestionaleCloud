@@ -20,17 +20,9 @@ backup è un errore, non un file in elenco.
 """
 from __future__ import annotations
 
-import base64
-import hashlib
-import json
-import logging
-import os
-from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 from app.services.blob_store import BlobStore, blob_store_per_runtime
-
-logger = logging.getLogger(__name__)
 
 PARTE_BYTES = 3 * 1024 * 1024
 PREFISSO_PARTE = "lotti-backup:"
@@ -39,93 +31,27 @@ REGISTRO = "backup_registro"
 MAX_BACKUPS = 7
 
 
-class BackupNonPersistente(RuntimeError):
-    """L'archivio persistente non è disponibile o il dato riletto non combacia."""
+from app.services.verified_backup_archive import (
+    BackupNonPersistente, salva_file, ricomponi_file, elimina_file,
+)
 
 
 def archivio() -> BlobStore:
     from app.database import Database
-
     return blob_store_per_runtime(Database.db)
-
-
-def _sha256_file(percorso: str) -> str:
-    h = hashlib.sha256()
-    with open(percorso, "rb") as fh:
-        for blocco in iter(lambda: fh.read(1024 * 1024), b""):
-            h.update(blocco)
-    return h.hexdigest()
 
 
 async def salva(nome: str, percorso: str, riepilogo: Dict[str, Any], *,
                 store: Optional[BlobStore] = None, richiedi_persistenza: bool = True) -> Dict[str, Any]:
-    """Carica il file in parti, rilegge ogni parte e restituisce il manifesto verificato."""
-    store = store or archivio()
-    if richiedi_persistenza and not store.persistent:
-        raise BackupNonPersistente("archivio Supabase non disponibile: il backup non sopravviverebbe")
-    parti: List[Dict[str, Any]] = []
-    caricate: List[str] = []
-    try:
-        with open(percorso, "rb") as fh:
-            indice = 0
-            for blocco in iter(lambda: fh.read(PARTE_BYTES), b""):
-                impronta = hashlib.sha256(blocco).hexdigest()
-                chiave = f"{PREFISSO_PARTE}{nome}:{indice:04d}:sha256:{impronta}"
-                testo = base64.b64encode(blocco).decode("ascii")
-                await store.put(chiave, testo)
-                caricate.append(chiave)
-                riletto = await store.get(chiave)
-                if riletto is None or hashlib.sha256(base64.b64decode(riletto)).hexdigest() != impronta:
-                    raise BackupNonPersistente(f"parte {indice} riletta diversa dall'originale")
-                parti.append({"chiave": chiave, "sha256": impronta, "bytes": len(blocco)})
-                indice += 1
-        manifesto = {
-            "nome": nome,
-            "sha256": _sha256_file(percorso),
-            "bytes": os.path.getsize(percorso),
-            "parti": parti,
-            "verificato": True,
-            "verificato_at": datetime.now(timezone.utc).isoformat(),
-            **riepilogo,
-        }
-        chiave_manifesto = PREFISSO_MANIFESTO + nome
-        await store.put(chiave_manifesto, base64.b64encode(
-            json.dumps(manifesto, ensure_ascii=False).encode("utf-8")).decode("ascii"))
-        caricate.append(chiave_manifesto)
-        return manifesto
-    except Exception:
-        if caricate:
-            try:
-                await store.delete(caricate)
-            except Exception as exc:  # noqa: BLE001 - si segnala, l'errore vero è sopra
-                logger.error("[backup] parti di %s non rimosse dopo l'errore: %s %s",
-                             nome, type(exc).__name__, exc)
-        raise
+    return await salva_file(nome, percorso, riepilogo, store=store or archivio(),
+                            namespace="lotti", part_bytes=PARTE_BYTES,
+                            richiedi_persistenza=richiedi_persistenza)
 
 
 async def ricomponi(manifesto: Dict[str, Any], destinazione: str, *,
                     store: Optional[BlobStore] = None) -> str:
-    """Riscrive il file da parti verificate; solleva se una parte manca o è diversa."""
-    store = store or archivio()
-    h = hashlib.sha256()
-    with open(destinazione, "wb") as out:
-        for parte in manifesto.get("parti") or []:
-            testo = await store.get(parte["chiave"])
-            if testo is None:
-                raise BackupNonPersistente(f"parte mancante: {parte['chiave']}")
-            dati = base64.b64decode(testo)
-            if hashlib.sha256(dati).hexdigest() != parte["sha256"]:
-                raise BackupNonPersistente(f"parte alterata: {parte['chiave']}")
-            h.update(dati)
-            out.write(dati)
-    if h.hexdigest() != manifesto.get("sha256"):
-        raise BackupNonPersistente("il file ricomposto non ha l'impronta del manifesto")
-    return destinazione
+    return await ricomponi_file(manifesto, destinazione, store=store or archivio())
 
 
 async def elimina(manifesto: Dict[str, Any], *, store: Optional[BlobStore] = None) -> int:
-    """Toglie parti e manifesto di un backup (per chiave, mai con filtro)."""
-    store = store or archivio()
-    chiavi = [p["chiave"] for p in manifesto.get("parti") or []]
-    chiavi.append(PREFISSO_MANIFESTO + manifesto["nome"])
-    return await store.delete(chiavi)
+    return await elimina_file(manifesto, store=store or archivio(), namespace="lotti")

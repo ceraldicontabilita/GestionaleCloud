@@ -178,9 +178,9 @@ const BackupManager = () => {
               Informazioni sul Backup
             </h4>
             <ul className="text-sm text-[#2f4a3e] space-y-1">
-              <li>Il backup includerà tutti i dati del database MongoDB</li>
-              <li>I file vengono compressi in formato .tar.gz</li>
-              <li>Conserva i backup in un luogo sicuro</li>
+              <li>Il backup include catalogo, ordini e configurazioni del Menu.</li>
+              <li>I file compressi sono conservati nel database e verificati con un’impronta.</li>
+              <li>Il backup resta disponibile anche dopo un riavvio o deploy.</li>
             </ul>
           </div>
 

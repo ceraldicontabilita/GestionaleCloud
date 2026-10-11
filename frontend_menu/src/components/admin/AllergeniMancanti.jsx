@@ -54,6 +54,7 @@ const auth = () => ({
  */
 const AllergeniMancanti = () => {
   const [dati, setDati] = useState(null);
+  const [coerenza, setCoerenza] = useState(null);
   const [esclusioni, setEsclusioni] = useState([]);
   const [caricamento, setCaricamento] = useState(true);
   const [mostraEsclusioni, setMostraEsclusioni] = useState(false);
@@ -63,11 +64,13 @@ const AllergeniMancanti = () => {
   const carica = async () => {
     setCaricamento(true);
     try {
-      const [mancanti, escl] = await Promise.all([
+      const [mancanti, escl, fonti] = await Promise.all([
         axios.get(`${BACKEND_URL}/api/admin/allergeni/mancanti`, auth()),
         axios.get(`${BACKEND_URL}/api/admin/allergeni/esclusioni`, auth()),
+        axios.get(`${BACKEND_URL}/api/admin/allergeni/coerenza`, auth()).catch(() => null),
       ]);
       setDati(mancanti.data);
+      setCoerenza(fonti?.data || null);
       setEsclusioni(escl.data.esclusioni || []);
     } catch (error) {
       toast({
@@ -152,6 +155,19 @@ const AllergeniMancanti = () => {
 
   return (
     <>
+      {coerenza?.prodotti_da_verificare > 0 && (
+        <Card className="mb-6" style={{ borderColor: AVVISO }}>
+          <CardHeader><CardTitle className="text-base">Fonti del catalogo da verificare</CardTitle></CardHeader>
+          <CardContent>
+            <p className="mb-3">{coerenza.prodotti_da_verificare} prodotti richiedono una verifica; {coerenza.pubblicati_da_verificare} sono visibili nel menu.</p>
+            <ul className="space-y-2">{coerenza.prodotti.map(p => (
+              <li key={p.id}><strong>{p.nome}</strong>: {p.problemi.join('; ')}.</li>
+            ))}</ul>
+            <a className="inline-block mt-3 underline" href="/lotti/">Apri Lotti per verificare le ricette</a>
+          </CardContent>
+        </Card>
+      )}
+      {!coerenza && <p className="mb-3 text-sm">Verifica dei collegamenti alle ricette non disponibile. Riprova aggiornando la pagina.</p>}
       <Card
         className="mb-6"
         style={{

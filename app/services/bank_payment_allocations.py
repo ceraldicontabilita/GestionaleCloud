@@ -17,6 +17,7 @@ from app.services.identity_matching import (
 )
 from app.services.payment_allocation_validator import (
     existing_invoice_allocations_cents,
+    integer_cents,
     invoice_total_cents,
     to_cents,
     validate_invoice_allocation,
@@ -222,8 +223,8 @@ def _supplier_key(invoice: Dict[str, Any]) -> str:
 
 
 def _requested_cents(item: Dict[str, Any], invoice: Dict[str, Any]) -> int:
-    if isinstance(item.get("quota_cents"), int):
-        return int(item["quota_cents"])
+    if "quota_cents" in item:
+        return integer_cents(item["quota_cents"])
     if item.get("quota") not in (None, ""):
         return to_cents(item["quota"])
     total = invoice_payable_cents(invoice)
@@ -306,6 +307,66 @@ async def validate_bank_invoice_allocations(
 async def persist_bank_invoice_allocations(
     db, movement: Dict[str, Any], allocations: List[Dict[str, Any]], *, actor: str,
 ) -> Dict[str, Any]:
+    """Rivalida e conferma tutti i fatti nella stessa transazione del runtime.
+
+    La guardia della fattura usa lo stato letto per la validazione. Un'altra
+    richiesta che consuma il residuo prima della prenotazione viene respinta;
+    una che lo modifica dopo provoca il conflitto ottimistico al commit.
+    """
+    from app.services.supabase_runtime_database import ConcurrentDocumentChange
+
+    async def apply():
+        movement_collection = collezione_del_movimento(movement)
+        fresh_movement = await db[movement_collection].find_one({"id": movement.get("id")})
+        if fresh_movement is None:
+            raise HTTPException(status_code=404, detail="Movimento bancario non trovato")
+        associations = [{"id": item["fattura_id"], "quota_cents": item["quota_cents"]}
+                        for item in allocations]
+        current = await validate_bank_invoice_allocations(db, fresh_movement, associations)
+        previous = await db["bank_payment_allocations"].find({
+            "movimento_id": fresh_movement["id"],
+            "status": {"$nin": ["reversed", "stornata", "annullata"]},
+        }).to_list(None)
+        desired = {item["allocation_id"]: item["quota_cents"] for item in current}
+        if previous and {item["allocation_id"]: integer_cents(item["quota_cents"])
+                         for item in previous} != desired:
+            raise HTTPException(status_code=409, detail="Movimento gia' attribuito: stornare le quote prima di cambiarle")
+        movement_selector = {"id": fresh_movement["id"]}
+        for field in ("payment_allocation_revision", "riconciliato", "importo"):
+            movement_selector[field] = fresh_movement[field] if field in fresh_movement else {"$exists": False}
+        reservation = await db[movement_collection].update_one(movement_selector, {"$set": {
+            "payment_allocation_revision": str(uuid4()),
+        }})
+        if not reservation.matched_count:
+            raise HTTPException(status_code=409, detail="Movimento modificato: ricaricare e riprovare")
+        for item in current:
+            invoice = item["invoice"]
+            selector = {"id": invoice["id"]}
+            for field in ("payment_allocations", "importo_pagato", "assegni_collegati"):
+                selector[field] = invoice[field] if field in invoice else {"$exists": False}
+            reservation = await db["invoices"].update_one(selector, {"$set": {
+                "payment_allocation_revision": str(uuid4()),
+            }})
+            if not reservation.matched_count:
+                raise HTTPException(status_code=409, detail="Residuo fattura modificato: ricaricare e riprovare")
+        return await _persist_bank_invoice_allocations(db, fresh_movement, current, actor=actor)
+
+    try:
+        transaction = getattr(type(db), "transaction", None)
+        if transaction is None:  # archivio isolato dei test; produzione usa Supabase
+            return await _persist_bank_invoice_allocations(db, movement, allocations, actor=actor)
+        current_transaction = getattr(db, "_current_transaction", None)
+        if callable(current_transaction) and current_transaction() is not None:
+            return await apply()
+        async with db.transaction():
+            return await apply()
+    except ConcurrentDocumentChange as exc:
+        raise HTTPException(status_code=409, detail="Pagamento modificato da un'altra richiesta: riprovare") from exc
+
+
+async def _persist_bank_invoice_allocations(
+    db, movement: Dict[str, Any], allocations: List[Dict[str, Any]], *, actor: str,
+) -> Dict[str, Any]:
     """Persiste quote e collegamenti reciproci in modo idempotente.
 
     E' l'UNICO motore "fattura pagata da banca" (audit del commercialista
@@ -330,6 +391,7 @@ async def persist_bank_invoice_allocations(
     for item in allocations:
         public = {key: value for key, value in item.items() if key != "invoice"}
         public.update({
+            "idempotency_key": public["allocation_id"],
             "movimento_id": movement_id,
             "operation_id": operation_id,
             "metodo_pagamento": metodo,
@@ -441,6 +503,8 @@ async def persist_bank_invoice_allocations(
             )
         except Exception:
             logger.exception("Scadenze non aggiornate per la fattura %s", invoice_id)
+            if getattr(type(db), "transaction", None) is not None:
+                raise
         try:
             await _aggiorna_partita_aperta(
                 db, invoice_id=invoice_id, quota_cents=item["quota_cents"],
@@ -449,6 +513,8 @@ async def persist_bank_invoice_allocations(
             )
         except Exception:
             logger.exception("Partita aperta non aggiornata per la fattura %s", invoice_id)
+            if getattr(type(db), "transaction", None) is not None:
+                raise
         await record_bank_invoice_allocation(
             db, movement=movement, invoice=invoice,
             allocation={**{k: v for k, v in item.items() if k != "invoice"},

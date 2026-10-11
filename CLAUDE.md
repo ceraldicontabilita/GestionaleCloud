@@ -176,6 +176,23 @@ Servizio canonico Render: `srv-d92emmgjs32c738octfg` (workspace `tea-d4o6eb2dbo4
 
 Il servizio `srv-db5vmqvlk1mc73bddga0` e' una copia di deploy, non il proprietario di un dominio o di un archivio separato. Il sito statico `colazioni-bb.onrender.com` puo' essere mantenuto soltanto come reindirizzamento di compatibilita' a `https://impresasemplice.online/convenzioni/`, conservando query string e frammento di voucher, hotel e inviti. Non eliminarlo finche' esistono link o QR distribuiti con quell'host: la cancellazione del servizio interrompe anche il reindirizzamento.
 
+
+## Collaudo del campione e limiti della ricostruzione
+
+Campione giugno 2026, verificato l'11/10/2026: 118 fatture ERP, 294 movimenti BPM, 16 cedolini HR e 31 pagamenti HR alla data effettiva. Il replay locale (`scripts/collaudo_campione.py`) esclude tutte le credenziali e blocca la rete: 115 scritture Dare/Avere quadrate, nessuna seconda scrittura alla reimportazione, 3 fatture restano `da_verificare`. Le quote salari conservano il totale dei pagamenti. Le assegnazioni dei conti a bassa confidenza richiedono comunque verifica del commercialista; una quadratura non certifica la classificazione fiscale.
+
+L'archivio di produzione non contiene ancora il giornale storico: la prova locale non lo ricostruisce in produzione e non dimostra un saldo dipendente senza i riporti dei mesi precedenti.
+
+Le quote bancarie passano dalla transazione del runtime, con prenotazione ottimistica di movimento e fatture, rifiuto 409 dei conflitti e rollback di tutte le proiezioni. Un errore di scadenza o partita non puo' lasciare il solo pagamento confermato. I campi `*_cents` restano centesimi anche se serializzati come testo.
+
+L'identita' F24 v2 usa contribuente, scadenza, saldo e righe complete (sezione, codice, periodo, ente/matricola, flag, debito e credito); il nome e l'hash del PDF sono soltanto provenienza. Il vincolo unico Postgres impedisce due importazioni concorrenti e soltanto l'inserimento vincente pubblica l'evento. La rilettura non modifica il pagamento. Versioni con crediti diversi richiedono una sostituzione esplicita amministrativa: `POST /api/f24-riconciliazione/commercialista/{precedente_id}/sostituito-da/{vigente_id}`. La transazione conserva gli originali, collega le versioni e annulla la partita e gli alert della versione superata; non genera pagamenti. Un diverso importo a debito non viene accorpato dal solo mese/nome file. Una versione superata riletta torna alla vigente.
+
+Menu e Lotti compilano con Vite, conservando i rispettivi prefissi e i test CRACO/Jest. ERP e HR restano su Vite. Il modulo condiviso espone al browser soltanto variabili `REACT_APP_*` e il prefisso pubblico.
+
+La verifica `Menu > Menu e allergeni` confronta ricetta, allergeni, prezzo e visibilita' senza cambiare i dati. Sono stati osservati 7 collegamenti a ricette mancanti (6 prodotti visibili): non ricostruire una ricetta o gli allergeni dal solo nome del prodotto.
+
+I backup Menu e Lotti usano lo stesso archivio binario persistente verificato. Il Menu esporta in un'unica snapshot SQL tutte le 10 tabelle e registra il manifesto in `menu_backup_registro`. `/tmp` serve soltanto durante il download. Il ripristino Menu usa una sola transazione SQL, rifiuta archivi incompleti e protegge i collegamenti B&B. La simulazione `dry_run=true` non modifica le tabelle; il ripristino effettivo dell'intero database operativo non fa parte del collaudo. Il lettore amministrativo degli originali cerca il medesimo id prima in ERP e poi in HR; non usa nomi o periodi come identita'. Il portale HR mantiene il font remoto opzionale, separato dai CSS dinamici, e usa Europe/Rome per le settimane di turno. Stato dei job: `GET /api/admin/automazioni/stato`, riservato all'amministratore; registrazione e prossima esecuzione non certificano gli esiti degli import.
+
 Il catch-all della SPA ERP deve essere registrato dopo le sotto-app.
 
 Il prefisso nudo di un `Mount` deve essere reindirizzato alla versione con `/`.

@@ -822,7 +822,7 @@ export function ProdottiTab() {
                 </tr>)}</tbody>
               </table></div>
             </>}
-        </div>}
+        </div>
       </>}
     </section>
   );

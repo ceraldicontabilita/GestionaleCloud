@@ -86,7 +86,53 @@ def test_ripristino_ignora_percorsi_estranei(tmp_path, monkeypatch):
         "../fuori.json": "[]",
         "ceraldi_backup_20260924_120000/tabella_estranea.json": "[]",
     })
-    esito = br.restore_backup(nome, username="admin")
-    assert esito["success"]
-    assert ("insert", "menu_categories", 1) in finto.registro
+    with pytest.raises(HTTPException) as exc:
+        br.restore_backup(nome, username="admin")
+    assert exc.value.status_code == 400
+    assert finto.registro == []
     assert not (tmp_path.parent / "fuori.json").exists()
+
+
+def test_backup_sopravvive_alla_perdita_del_disco_temporaneo(tmp_path, monkeypatch):
+    import asyncio
+    from app.services.archivio_documenti_memoria import ClientArchivioMemoria
+    from app.services.blob_store import MemoryBlobStore
+    class Persistent(MemoryBlobStore):
+        persistent = True
+    db=ClientArchivioMemoria()['menu_backup_isolato']
+    store=Persistent()
+    monkeypatch.setattr(br.Database,'get_db',classmethod(lambda cls:db))
+    monkeypatch.setattr(br,'_store',lambda:store)
+    monkeypatch.setattr(br,'BACKUP_DIR',tmp_path)
+    name='ceraldi_backup_20261011_120000.tar.gz'
+    original=tmp_path/name
+    _archivio(original,{f'ceraldi_backup_20261011_120000/{table}.json':'[]' for table in br.BACKUP_TABLES})
+    expected=original.read_bytes()
+    async def scenario():
+        await br._salva_persistente(name,original,'admin_isolato')
+        original.unlink()  # come un deploy Render
+        listed=await br.list_backups(username='admin_isolato')
+        assert listed['backups'][0]['persistente'] is True
+        restored=await br._file_persistente(name)
+        assert restored.read_bytes()==expected
+        assert set(br._leggi_archivio(restored))==set(br.BACKUP_TABLES)
+    asyncio.run(scenario())
+
+
+def test_ripristino_completo_usa_una_sola_rpc(tmp_path, monkeypatch):
+    class Result:
+        data={'dry_run':False}
+        def execute(self):return self
+    class Client:
+        def __init__(self):self.calls=[]
+        def rpc(self,name,payload):self.calls.append((name,payload));return Result()
+        def table(self,*args):raise AssertionError('Scrittura non atomica')
+    client=Client()
+    monkeypatch.setattr(br,'supabase',client)
+    monkeypatch.setattr(br.Database,'db',None)
+    monkeypatch.setattr(br,'BACKUP_DIR',tmp_path)
+    name='ceraldi_backup_20261011_120000.tar.gz'
+    _archivio(tmp_path/name,{f'ceraldi_backup_20261011_120000/{table}.json':'[]' for table in br.BACKUP_TABLES})
+    assert br.restore_backup(name,username='admin')['success']
+    assert len(client.calls)==1
+    assert client.calls[0][0]=='gc_restore_menu_backup'

@@ -24,7 +24,7 @@ if (!['127.0.0.1', 'localhost', '[::1]'].includes(new URL(base).hostname)) {
     await admin.getByRole('button', { name: 'Modifica Prodotto di prova', exact: true }).click();
     let dialog = admin.getByRole('dialog');
     await dialog.getByLabel('Nome Italiano').fill('Prodotto aggiornato');
-    await dialog.getByLabel('Prezzo', { exact: true }).fill('5.25€');
+    await dialog.getByLabel('Prezzo al tavolo', { exact: true }).fill('5.25€');
     await dialog.getByRole('button', { name: 'Latte', exact: true }).click();
     await dialog.getByRole('button', { name: 'Uova', exact: true }).click();
     await dialog.getByRole('button', { name: 'Salva', exact: true }).click();
@@ -44,7 +44,7 @@ if (!['127.0.0.1', 'localhost', '[::1]'].includes(new URL(base).hostname)) {
     await admin.reload();
     await admin.getByRole('button', { name: 'Modifica Prodotto aggiornato', exact: true }).click();
     dialog = admin.getByRole('dialog');
-    assert.equal(await dialog.getByLabel('Prezzo', { exact: true }).inputValue(), '5.25€');
+    assert.equal(await dialog.getByLabel('Prezzo al tavolo', { exact: true }).inputValue(), '5.25€');
     await dialog.getByRole('switch').click();
     await dialog.getByRole('button', { name: 'Salva', exact: true }).click();
     await dialog.waitFor({ state: 'hidden' });
@@ -56,11 +56,14 @@ if (!['127.0.0.1', 'localhost', '[::1]'].includes(new URL(base).hostname)) {
     await clienti.getByText('Ricetta di prova', { exact: true }).waitFor();
     assert.equal(await clienti.locator('#item-100').count(), 0);
 
+    // Lotti possiede la ricetta: il Menu deve aprire quella fonte, senza
+    // proporre un secondo editor concorrente di prezzo e allergeni.
+    await context.route('**/lotti/**', route => route.fulfill({status:200,contentType:'text/html',body:'<h1>Ricetta in Lotti</h1>'}));
     await admin.getByRole('button', { name: 'Modifica Ricetta di prova', exact: true }).click();
-    dialog = admin.getByRole('dialog');
-    assert.equal(await dialog.getByLabel('Prezzo', { exact: true }).isDisabled(), true);
-    assert.equal(await dialog.getByRole('button', { name: 'Salva', exact: true }).isDisabled(), true);
-    await dialog.getByRole('button', { name: 'Annulla', exact: true }).click();
+    await admin.waitForURL('**/lotti/**');
+    assert.equal(new URL(admin.url()).pathname, '/lotti/');
+    await admin.goto(`${base}/menu/admin`);
+    await admin.getByRole('tab', { name: 'Menu e allergeni' }).waitFor();
     for (const width of [360, 390, 768]) {
       for (const page of [admin, clienti]) {
         await page.setViewportSize({ width, height: 900 });

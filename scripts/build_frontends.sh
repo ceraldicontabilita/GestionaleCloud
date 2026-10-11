@@ -2,7 +2,7 @@
 # Compila il frontend del gestionale e quelli delle app portate pari pari
 # (frontend_lotti, frontend_menu, frontend_hr, ...): ogni cartella
 # frontend_*/ con un package.json viene installata e compilata con la propria
-# toolchain (CRA o Vite). Cartelle assenti vengono saltate.
+# toolchain Vite. Cartelle assenti vengono saltate.
 #
 # Uso:
 #   bash scripts/build_frontends.sh          # tutto: gestionale + app
@@ -37,7 +37,5 @@ for dir in frontend_*/; do
   fi
   # --include=dev: su Render NODE_ENV=production e npm salterebbe le devDependencies
   # (vite, react-scripts, craco): il build fallirebbe con "Cannot find module".
-  # CI=false: le build CRA non devono fallire per i warning ESLint (stessa
-  # scelta della CI originale di Lotti); per Vite la variabile e' innocua.
   CI=false npm --prefix "$dir" run build
 done

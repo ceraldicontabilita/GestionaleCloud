@@ -640,3 +640,18 @@ async def fatture_azzera_scadenze_stato(
     from app.services import recupero_fatture_pregresso as recupero
 
     return await recupero.stato_azzeramento_scadenze(Database.get_db())
+
+
+@router.get("/automazioni/stato")
+async def stato_automazioni(_admin: Dict[str, Any] = Depends(get_current_admin_user)):
+    """Stato effettivo, senza avviare job o cambiare la loro policy."""
+    import os
+    from app.scheduler import scheduler
+    jobs = [{"id": job.id, "prossima_esecuzione": (
+        getattr(job, "next_run_time", None).isoformat() if getattr(job, "next_run_time", None) else None
+    )} for job in scheduler.get_jobs()]
+    return {"scheduler_in_esecuzione": scheduler.running,
+            "ruolo_processo": os.getenv("PROCESS_ROLE", "combined"),
+            "allowlist": [v.strip() for v in os.getenv("SCHEDULER_JOB_ALLOWLIST", "").split(",") if v.strip()],
+            "jobs": sorted(jobs, key=lambda j:j["id"]),
+            "esito": "registrati" if jobs else "nessun_job_registrato"}

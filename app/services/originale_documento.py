@@ -292,7 +292,16 @@ async def _cedolino(db, ident: str, indice: int) -> Originale:
 
     doc = await db["cedolini"].find_one({"id": ident}, {"_id": 0})
     if not doc:
-        raise DocumentoNonTrovato("Busta paga non trovata", {"id": ident})
+        # Gli id HR sono canonici del dominio HR, non alias degli id ERP.
+        # Si cerca soltanto lo stesso id, mai nome/mese o importi somiglianti.
+        from app.hr.database import Database as HRDatabase
+        try:
+            hr_db = HRDatabase.get_db()
+        except RuntimeError as exc:
+            raise DocumentoNonTrovato("Busta paga non trovata", {"id": ident}) from exc
+        doc = await hr_db["cedolini"].find_one({"id": ident}, {"_id": 0})
+        if not doc:
+            raise DocumentoNonTrovato("Busta paga non trovata", {"id": ident})
     return await _f24_da_record({**doc, "file_name": doc.get("filename") or doc.get("pdf_filename") or "cedolino.pdf"},
                                 "cedolino", ident, carica_originale)
 

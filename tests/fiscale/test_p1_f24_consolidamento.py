@@ -75,7 +75,9 @@ def test_salva_f24_idempotente():
     id2 = _run(salva_f24(db, dict(doc, status="pagato"), source="test"))  # stesso F24, aggiornato
     assert id1 == id2               # stesso documento, non duplicato
     assert len(db.c.docs) == 1      # una sola riga
-    assert db.c.docs[0]["status"] == "pagato"   # update applicato
+    # Una rilettura non modifica lo stato: il pagamento richiede evidenze
+    # e passa dai motori di riconciliazione, non dal parser/importatore.
+    assert db.c.docs[0]["status"] == "da_pagare"
     assert db.c.docs[0]["f24_dedup_key"].startswith("f24_")
 
 

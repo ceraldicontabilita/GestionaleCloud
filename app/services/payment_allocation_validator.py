@@ -19,7 +19,7 @@ def to_cents(value: Any) -> int:
     if value is None or value == "":
         return 0
     if isinstance(value, bool):
-        return int(value) * 100
+        return 0
     text = str(value).strip().replace(" ", "")
     if not text:
         return 0
@@ -33,8 +33,24 @@ def to_cents(value: Any) -> int:
     elif "," in text:
         text = text.replace(",", ".")
     try:
-        return int((Decimal(text) * 100).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
-    except (InvalidOperation, ValueError):
+        amount = Decimal(text)
+        if not amount.is_finite():
+            return 0
+        return int((amount * 100).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+    except (InvalidOperation, ValueError, OverflowError):
+        return 0
+
+
+def integer_cents(value: Any) -> int:
+    """Un campo *_cents resta in centesimi anche quando JSON lo porta come testo."""
+    if isinstance(value, bool) or value is None:
+        return 0
+    try:
+        amount = Decimal(str(value).strip())
+        if not amount.is_finite() or amount != amount.to_integral_value():
+            return 0
+        return int(amount)
+    except (InvalidOperation, ValueError, OverflowError):
         return 0
 
 
@@ -80,8 +96,7 @@ def existing_invoice_allocations_cents(
             linked += quota
     bank_links = invoice.get("payment_allocations") or []
     bank_linked = sum(
-        to_cents(link.get("quota_cents")) if not isinstance(link.get("quota_cents"), int)
-        else int(link.get("quota_cents"))
+        integer_cents(link.get("quota_cents"))
         for link in bank_links
         if isinstance(link, dict)
         and (not exclude_allocation_id or str(link.get("allocation_id")) != str(exclude_allocation_id))

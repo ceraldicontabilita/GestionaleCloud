@@ -387,3 +387,15 @@ def test_gli_indirizzi_di_apertura_eliminati_non_esistono_piu():
     for alias in ("/api/f24-public/pdf/{f24_id}", "/api/documenti/documento/{doc_id}/download",
                   "/api/fiscal/documents/{document_id}/content"):
         assert alias in percorsi
+
+
+def test_originale_cedolino_hr_rintracciato_per_id_canonico(ambiente, monkeypatch):
+    from app.hr.database import Database as HRDatabase
+    app, _, _ = ambiente
+    hr=ClientArchivioMemoria()['originale_hr']
+    monkeypatch.setattr(HRDatabase,'get_db',staticmethod(lambda:hr))
+    _run(hr['cedolini'].insert_one({'id':'hr-c1','filename':'cedolino.pdf','pdf_data':_b64(PDF)}))
+    response=_client(app).get('/api/originale/cedolino/hr-c1')
+    assert response.status_code==200
+    assert response.content==PDF
+    assert _client(app).get('/api/originale/cedolino/hr-altro').status_code==404
