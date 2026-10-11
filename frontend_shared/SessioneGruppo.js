@@ -15,6 +15,7 @@ const CHIAVI_LOCALI_SESSIONE = Object.freeze([
 ]);
 
 const CHIAVI_SESSIONE_TAB = Object.freeze([
+  "sess", // sessione Colazioni B&B
   "tablet_operatore",
   "lotti_pagina_richiesta",
 ]);

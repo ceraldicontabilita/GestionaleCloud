@@ -40,7 +40,7 @@ const POSTAZIONI = ["laboratorio", "pasticceria", "sala", "bar"];
 export const RUOLI_LOTTI = [
   { id: "operatore", label: "Operatore", aiuto: "Produce, registra temperature e lotti." },
   { id: "haccp", label: "Responsabile HACCP", aiuto: "In più: registri, anomalie, conformità, frigoriferi, smaltimento." },
-  { id: "caporeparto", label: "Caporeparto", aiuto: "In più: ricette e produzione del suo reparto, smaltimento lotti." },
+  { id: "caporeparto", label: "Caporeparto", aiuto: "In più: produzione del suo reparto e smaltimento lotti. Ricette solo in consultazione." },
 ];
 export const REPARTI_CAPOREPARTO = ["pasticceria", "rosticceria", "bar", "altro"];
 const HR_ANAGRAFICA = "/hr/dipendenti/anagrafica";
@@ -259,7 +259,7 @@ export default function ImpostazioniPersonaleView() {
         {ruolo === "caporeparto" && (
           <div style={{ marginTop: 8 }}>
             <div style={{ fontSize: 11, color: reparti.length ? MUTED : WARN, fontWeight: 600, marginBottom: 4 }}>
-              {reparti.length ? "Reparti di cui è caporeparto" : "Scegli il reparto: senza, non può modificare niente"}
+              {reparti.length ? "Reparti di cui è caporeparto" : "Scegli il reparto per autorizzare la gestione della produzione"}
             </div>
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
               {REPARTI_CAPOREPARTO.map((rep) => {

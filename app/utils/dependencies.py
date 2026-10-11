@@ -2,7 +2,7 @@
 FastAPI dependencies for dependency injection.
 Provides reusable dependencies for authentication, database, etc.
 """
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from typing import Optional, Dict, Any
 from jose import jwt, JWTError
@@ -19,27 +19,28 @@ security = HTTPBearer(auto_error=False)
 
 
 async def get_current_user(
-    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security)
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
+    request: Request = None,
 ) -> Dict[str, Any]:
     """
     Dependency to get current authenticated user from JWT token.
 
-    In produzione ogni richiesta che arriva qui è già passata per
-    AuthenticationMiddleware (safety net globale su tutte le rotte /api/*
-    non whitelistate), quindi credentials è già garantito non-None. Questo
-    controllo fallisce chiuso (401) invece di restituire un utente admin
-    fittizio, così una futura rotta whitelistata che usi questa dependency
-    non ottiene accesso admin gratuito senza token.
+    AuthenticationMiddleware controlla firma, scadenza e revoche sulle rotte
+    /api/* protette. Qui si usa la stessa credenziale (bearer oppure cookie),
+    senza inventare un ruolo quando manca o non è valida.
     """
-    if credentials is None:
+    # Stessa selezione del middleware: bearer se presente, altrimenti cookie
+    # centrale HttpOnly. I ritorni da B&B e i link diretti non hanno un bearer.
+    token = credentials.credentials if credentials else (
+        request.cookies.get("access_token") if request is not None else None
+    )
+    if not token:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Authentication required",
             headers={"WWW-Authenticate": "Bearer"}
         )
 
-    token = credentials.credentials
-    
     try:
         # Decode JWT token
         payload = jwt.decode(
@@ -50,7 +51,7 @@ async def get_current_user(
         
         # Extract user data
         user_id: str = payload.get("sub")
-        if user_id is None:
+        if not user_id or payload.get("purpose"):
             raise AuthenticationError("Invalid token: missing user ID")
         
         # Check token expiration (timezone-aware)

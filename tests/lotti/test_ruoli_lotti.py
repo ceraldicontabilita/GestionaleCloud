@@ -2,7 +2,7 @@
 
 - ogni ruolo passa solo sulle sue API, gli altri ricevono 403 con codice;
 - il ruolo si rilegge dalla scheda HR a ogni operazione: tolto, vale subito;
-- il caporeparto modifica solo le ricette del proprio reparto;
+- tutti i dipendenti consultano le ricette senza modificarle;
 - il ruolo si assegna sulla scheda HR e arriva al tablet col login.
 
 Database finti (mongomock), token firmati con un segreto di prova.
@@ -87,7 +87,7 @@ def test_matrice_dei_permessi():
 
     assert ruoli.permessi_di("operatore") == []
     assert ruoli.permessi_di("haccp") == ["frigoriferi", "haccp_anomalie", "haccp_conformita", "haccp_registri", "smaltimento"]
-    assert ruoli.permessi_di("caporeparto") == ["produzione", "ricette", "smaltimento"]
+    assert ruoli.permessi_di("caporeparto") == ["produzione", "smaltimento"]
     assert ruoli.permessi_di("amministratore") == sorted(ruoli.PERMESSI)
     # un ruolo sconosciuto non promuove nessuno
     assert ruoli.normalizza_ruolo("admin") == "operatore"
@@ -109,9 +109,9 @@ def test_ogni_ruolo_passa_solo_sulle_sue_api(ambiente):
 
     assert client.post("/registri", headers=capo).status_code == 403
     assert client.post("/smalti", headers=capo).status_code == 200
-    assert client.put("/ricette/r-dolce", headers=capo).status_code == 200
+    assert client.put("/ricette/r-dolce", headers=capo).status_code == 403
     fuori = client.put("/ricette/r-salato", headers=capo)
-    assert fuori.status_code == 403 and fuori.headers["x-error-code"] == "REPARTO_NON_AUTORIZZATO"
+    assert fuori.status_code == 403 and fuori.headers["x-error-code"] == "RUOLO_NON_AUTORIZZATO"
 
     assert client.post("/registri").status_code == 401
 
@@ -182,6 +182,71 @@ def test_il_titolare_passa_ovunque():
     assert ruoli.reparto_ammesso("amministratore", [], "rosticceria")
 
 
+@pytest.mark.parametrize("persona", ["hr-op", "hr-haccp", "hr-capo"])
+def test_api_ricette_consultabili_ma_non_modificabili_dai_dipendenti(ambiente, monkeypatch, persona):
+    from app.lotti.routers import ricette
+
+    _t, db, _hr = ambiente
+    monkeypatch.setattr(ricette, "db", db)
+    app = FastAPI()
+    app.include_router(ricette.router)
+    client = TestClient(app)
+    headers = _token(persona)
+    prima = run(db.ricette.find_one({"id": "r-dolce"}))
+    assert client.get("/ricette/r-dolce", headers=headers).json()["nome"] == "Babà"
+    for metodo, path, dati in [
+        ("post", "/ricette", {"nome": "Clonata"}),
+        ("put", "/ricette/r-dolce", {"nome": "Modificata"}),
+        ("patch", "/ricette/r-dolce", {"nome": "Modificata"}),
+        ("put", "/ricette/r-dolce/ingredienti-dettaglio", []),
+        ("put", "/ricette/r-dolce/scheda", {"occhiello": "Modificato"}),
+        ("put", "/ricette/r-dolce/foto?foto_url=/immagine.png", None),
+        ("delete", "/ricette/r-dolce", None),
+    ]:
+        r = client.request(metodo, path, json=dati, headers=headers)
+        assert r.status_code == 403, (persona, metodo, path, r.text)
+    r = client.post("/ricette/r-dolce/upload-foto", headers=headers,
+                    files={"file": ("foto.png", b"fixture", "image/png")})
+    assert r.status_code == 403
+    assert run(db.ricette.find_one({"id": "r-dolce"})) == prima
+    assert run(db.ricette.count_documents({})) == 2
+
+    # Anche una produzione non può cambiare le impostazioni della ricetta.
+    from app.lotti.routers import lotti_produzione
+    monkeypatch.setattr(lotti_produzione, "db", db)
+    app.include_router(lotti_produzione.router)
+    r = client.post("/registra-produzione-lotto", headers=headers, params={
+        "ricetta_id": "r-dolce", "pezzi": 1, "pezzi_base": 1,
+        "data_produzione": "2026-10-11", "memorizza_durata": True,
+    })
+    assert r.status_code == 403
+    assert run(db.ricette.find_one({"id": "r-dolce"})) == prima
+
+
+def test_admin_centrale_puo_ancora_modificare_foto(ambiente, monkeypatch):
+    from app.lotti.auth import make_token
+    from app.lotti.routers import ricette
+    from app.services import group_session
+
+    _t, db, _hr = ambiente
+    monkeypatch.setattr(ricette, "db", db)
+    monkeypatch.setattr("app.database.Database.get_db", staticmethod(lambda: db))
+    group_session._azzera_cache()
+
+    async def sincronizza(_id):
+        return {"ok": True}
+
+    monkeypatch.setattr(ricette, "_sincronizza_menu", sincronizza)
+    app = FastAPI()
+    app.include_router(ricette.router)
+    tk = make_token("erp:fixture", "Titolare", "amministratore", via="sessione_erp", sid="sid:fixture-ricetta")
+    r = TestClient(app).put("/ricette/r-dolce/foto", params={"foto_url": "/foto-nuova.png"},
+                           headers={"Authorization": f"Bearer {tk}"})
+    assert r.status_code == 200
+    assert run(db.ricette.find_one({"id": "r-dolce"}))["foto_url"] == "/foto-nuova.png"
+    group_session._azzera_cache()
+
+
 def test_ruolo_si_assegna_sulla_scheda_hr_e_arriva_al_login(ambiente):
     from fastapi import HTTPException
     from starlette.requests import Request
@@ -201,7 +266,7 @@ def test_ruolo_si_assegna_sulla_scheda_hr_e_arriva_al_login(ambiente):
         run(t.imposta_ruolo_operatore("hr-capo2", t.RuoloOperatore(ruolo="caporeparto", reparti=["cucina"]), richiesta))
 
     esito = run(t.imposta_ruolo_operatore("hr-capo2", t.RuoloOperatore(ruolo="caporeparto"), richiesta))
-    assert esito["avviso"] and esito["permessi"] == ["produzione", "ricette", "smaltimento"]
+    assert esito["avviso"] and esito["permessi"] == ["produzione", "smaltimento"]
 
     esito = run(t.imposta_ruolo_operatore(
         "hr-capo2", t.RuoloOperatore(ruolo="caporeparto", reparti=["Pasticceria"]), richiesta))

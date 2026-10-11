@@ -3364,7 +3364,10 @@ Stati:
 
 Un PIN personale per persona.
 
-Un solo PIN amministratore centrale, salvo eccezioni esplicite Lotti.
+Un solo PIN amministratore centrale per Gestionale, HR, Lotti, Menu e B&B.
+Anche entrando direttamente in B&B o Lotti si usa il login del Gestionale,
+con ritorno alla sezione richiesta e senza un secondo PIN durante la sessione.
+Il PIN personale HR identifica il dipendente: non apre una sessione amministrativa.
 
 Non creare login admin paralleli.
 
@@ -3837,6 +3840,11 @@ Il Gestionale e i comandi riservati restano protetti anche lato server.
 ### Operatore
 
 L'operatore entra dal tablet con il proprio PIN personale.
+
+I dipendenti, compresi caporeparto e responsabili HACCP, possono consultare le
+ricette ma non crearle, clonarle, modificarle o cambiarne le foto. Queste
+scritture sono riservate all'amministratore anche sul backend. Restano i
+permessi operativi del reparto su produzione, magazzino e registri.
 
 Vede soltanto le card previste dalla sua mansione e dai suoi permessi.
 

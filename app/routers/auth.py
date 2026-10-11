@@ -40,6 +40,9 @@ async def _decode_token(request: Request) -> dict:
     except jwt.InvalidTokenError as exc:
         raise HTTPException(status_code=401, detail="Token non valido") from exc
 
+    if not payload.get("sub") or payload.get("purpose"):
+        raise HTTPException(status_code=401, detail="Sessione non valida")
+
     # Blacklist controllata SOLO dopo che firma/scadenza sono già valide
     # (review Codex su PR #65, stesso fix già fatto nel middleware globale
     # ma dimenticato qui: /api/auth/verify bypassa il middleware essendo
@@ -48,6 +51,10 @@ async def _decode_token(request: Request) -> dict:
     from app.utils.token_blacklist import TokenBlacklistUnavailable, is_revocato
     try:
         revocato = await is_revocato(Database.get_db(), token)
+        if not revocato and payload.get("sid"):
+            from app.services.group_session import sessione_revocata
+            from app.utils.token_blacklist import chiave_sessione
+            revocato = await sessione_revocata(chiave_sessione(payload, token))
     except TokenBlacklistUnavailable as exc:
         raise HTTPException(
             status_code=503, detail="Verifica sessione temporaneamente non disponibile"
@@ -70,10 +77,16 @@ async def verify_token(request: Request) -> str:
 
 
 @router.get("/auth/verify")
-async def verify(request: Request):
+async def verify(request: Request, response: Response):
     """Compatibilità AuthContext frontend: verifica sessione attiva."""
     from app.utils.ruoli import normalizza_ruolo, RUOLI_VALIDI
     payload = await _decode_token(request)
+    # Ripristina la copia usata dalle richieste bearer dopo il passaggio tra
+    # app. Il token è quello appena verificato, mai una nuova sessione.
+    response.headers["X-Token-Rinnovato"] = (
+        request.cookies.get("access_token") or request.headers.get("Authorization", "")[7:]
+    )
+    response.headers["Cache-Control"] = "no-store"
     email = payload["sub"]
     ruolo = normalizza_ruolo(payload.get("role"))
     if ruolo not in RUOLI_VALIDI:

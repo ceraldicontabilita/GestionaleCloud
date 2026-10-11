@@ -11,12 +11,12 @@ vi.mock('../contexts/AuthContext', () => ({ useAuth: () => auth }));
 vi.mock('react-router-dom', () => ({ useNavigate: () => navigate }));
 
 describe('PIN condiviso e MFA ERP', () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => { vi.clearAllMocks(); auth.isAuthenticated = false; });
 
   it('non apre ERP prima della verifica MFA richiesta dal server', async () => {
     auth.loginWithPin.mockResolvedValue({ mfa_required: true, challenge_token: 'synthetic-challenge' });
     auth.verifyMfaLogin.mockResolvedValue({});
-    render(<Login />);
+    const view = render(<Login />);
     for (const key of '74926183') fireEvent.keyDown(screen.getByLabelText('PIN'), { key });
     fireEvent.click(screen.getByRole('button', { name: 'Accedi' }));
     const code = await screen.findByLabelText('Codice MFA');
@@ -24,8 +24,11 @@ describe('PIN condiviso e MFA ERP', () => {
     expect(navigate).not.toHaveBeenCalled();
     fireEvent.change(code, { target: { value: '123456' } });
     fireEvent.click(screen.getByRole('button', { name: 'Verifica e accedi' }));
+    await waitFor(() => expect(auth.verifyMfaLogin).toHaveBeenCalledWith('synthetic-challenge', '123456'));
+    auth.isAuthenticated = true;
+    view.rerender(<Login />);
     await waitFor(() => expect(navigate).toHaveBeenCalledWith('/', { replace: true }));
-    expect(auth.verifyMfaLogin).toHaveBeenCalledWith('synthetic-challenge', '123456');
+    expect(navigate).toHaveBeenCalledTimes(1);
   });
 
   it('mostra il blocco tentativi senza navigare', async () => {
@@ -45,6 +48,9 @@ describe('ritorno dopo il login', () => {
     expect(destinazioneDopoLogin('?next=/lotti/')).toBe('/lotti/');
     expect(destinazioneDopoLogin('?next=/hr')).toBe('/hr');
     expect(destinazioneDopoLogin('?next=/menu/admin')).toBe('/menu/admin');
+    expect(destinazioneDopoLogin('?next=' + encodeURIComponent('/convenzioni/#/titolare/fatture'))).toBe('/convenzioni/#/titolare/fatture');
+    expect(destinazioneDopoLogin('?next=/menu/../../esterno')).toBe('');
+    expect(destinazioneDopoLogin('?next=' + encodeURIComponent('/menu/\\evil'))).toBe('');
     expect(destinazioneDopoLogin('?next=https://evil.example')).toBe('');
     expect(destinazioneDopoLogin('?next=//evil.example/lotti')).toBe('');
     expect(destinazioneDopoLogin('?next=/fatture')).toBe('');

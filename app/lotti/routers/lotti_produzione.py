@@ -11,7 +11,7 @@ import json
 from datetime import datetime, timezone, date, timedelta
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, Query, Depends
+from fastapi import APIRouter, HTTPException, Query, Depends, Request
 from fastapi.responses import HTMLResponse, Response
 
 from app.lotti.db import database as db
@@ -1467,6 +1467,13 @@ async def _chiudi_lotto_creato_al_banco(lotto: dict) -> dict:
             "data_consumo": adesso, "posizione": posizione, "frigo_numero": ""}
 
 
+async def _permesso_durata_ricetta(request: Request, memorizza_durata: bool = Query(False)):
+    # La scadenza del lotto è operativa; cambiare la durata della ricetta
+    # per tutte le produzioni successive è una modifica amministrativa.
+    if memorizza_durata:
+        await require_permesso("ricette")(request)
+
+
 @router.post("/registra-produzione-lotto")
 async def registra_produzione_e_crea_lotto(
     ricetta_id: str = Query(...),
@@ -1483,6 +1490,7 @@ async def registra_produzione_e_crea_lotto(
     operation_id: Optional[str] = Query(None),    # ← idempotenza doppio tocco (tranche 4)
     destinazione: Optional[str] = None,           # banco immediato o deposito
     lievitazione_json: Optional[str] = None,       # ← ore e temperature di oggi (query)
+    _durata=Depends(_permesso_durata_ricetta),
 ):
     """
     Registra una produzione e:

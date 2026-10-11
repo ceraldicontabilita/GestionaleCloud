@@ -4,11 +4,12 @@ Decisione del titolare (26/09/2026). Oltre all'operatore esistono:
 
 - **responsabile HACCP** (``haccp``): registri, anomalie, dichiarazione di
   conformità, frigoriferi e congelatori; può anche smaltire un lotto;
-- **caporeparto** (``caporeparto``): ricette e produzione del **proprio**
-  reparto, smaltimento lotti.
+- **caporeparto** (``caporeparto``): produzione del **proprio** reparto,
+  smaltimento lotti. Le ricette sono consultabili da tutti gli operatori,
+  ma creazione e modifica sono riservate all'amministratore.
 
-Il titolare (``amministratore``) entra dal Gestionale oppure col proprio PIN
-personale associato alla scheda HR e può tutto.
+Il titolare (``amministratore``) entra con la sessione centrale del Gestionale
+e può tutto. Il PIN personale HR non concede privilegi amministrativi.
 
 Il ruolo sta sulla **scheda HR** (``lotti_ruolo``, ``lotti_reparti``):
 l'anagrafica HR comanda e Lotti ne tiene solo la proiezione in
@@ -45,12 +46,12 @@ PERMESSI: Dict[str, frozenset] = {
     "haccp_anomalie": frozenset({HACCP}),
     "frigoriferi": frozenset({HACCP}),
     "smaltimento": frozenset({HACCP, CAPOREPARTO}),
-    "ricette": frozenset({CAPOREPARTO}),
+    "ricette": frozenset(),
     "produzione": frozenset({CAPOREPARTO}),
 }
 
 # Permessi che valgono solo sul reparto della persona (il titolare li ha su tutti).
-PERMESSI_PER_REPARTO = frozenset({"ricette", "produzione"})
+PERMESSI_PER_REPARTO = frozenset({"produzione"})
 
 ETICHETTE_PERMESSO = {
     "haccp_registri": "correggere i registri HACCP",

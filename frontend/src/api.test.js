@@ -12,6 +12,13 @@ vi.mock('sonner', () => ({ toast: { loading: vi.fn(), dismiss: vi.fn() } }));
 const errore = (data, status = 400) => ({ response: { status, data }, message: 'Request failed' });
 
 describe('messaggioErrore', () => {
+  it('ripristina il token verificato quando si torna da una app con il cookie', async () => {
+    localStorage.removeItem('auth_token');
+    await api.get('/api/auth/verify', { adapter: config => Promise.resolve({
+      data: { ok: true }, status: 200, headers: { 'x-token-rinnovato': 'sessione-verificata' }, config,
+    }) });
+    expect(localStorage.getItem('auth_token')).toBe('sessione-verificata');
+  });
   it('usa message e cita il riferimento del log', () => {
     expect(messaggioErrore(errore({
       code: 'CONFLITTO', message: 'Fattura gia\' pagata', detail: 'Fattura gia\' pagata', correlation_id: 'abc123',

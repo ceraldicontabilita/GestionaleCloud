@@ -56,7 +56,7 @@ api.interceptors.response.use(
     if (error.response?.status === 401) {
       // Token scaduto o invalido - redirect a login
       localStorage.removeItem('auth_token');
-      if (!window.location.pathname.includes('/login')) {
+      if (!error.config?.__verificaSessione && !window.location.pathname.includes('/login')) {
         window.location.href = '/login';
       }
       return Promise.reject(error);
