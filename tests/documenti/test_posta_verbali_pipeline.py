@@ -53,3 +53,17 @@ def test_importi_scadenza_del_verbale_prevalgono_su_bollettino(monkeypatch):
     assert result["ai_data"]["articolo_cds"] == "7"
     assert result["ai_data"]["obbligato_in_solido"] == "CERALDI GROUP SRL"
     assert result["ai_data"]["societa_locazione"] == "LEASYS S.P.A."
+
+
+def test_data_emissione_del_pdf_salvata_come_data_verbale(monkeypatch):
+    from app.services import verbali_document_import as writer
+    from app.services import pagopa_receipts
+    db = AsyncMongoMockClient().db
+    text = "Verbale n. A26111311018 data verbale 27/07/2026 targato HB411GV entro 5 giorni euro 52,40"
+    monkeypatch.setattr(writer, "_extract_text", lambda _: text)
+    monkeypatch.setattr(pagopa_receipts, "parse_receipt_pdf", lambda *a, **kw: {})
+    async def run():
+        result = await writer.process_verbale_document(db, document_id="d1", content=b"pdf", filename="originale.pdf")
+        verbale = await db.verbali_noleggio.find_one({"id": result["verbale_id"]})
+        assert verbale["data_verbale"] == "2026-07-27"
+    asyncio.run(run())
