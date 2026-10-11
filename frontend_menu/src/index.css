@@ -115,3 +115,15 @@ code {
         border-bottom-color: inherit;
     }
 }
+
+/* Le azioni del pannello restano leggibili e utilizzabili anche sul telefono. */
+@media (max-width:768px) {
+  button, [role="button"], [role="tab"], summary, select, textarea,
+  input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]) { min-height:44px; }
+  button, [role="button"], [role="tab"], summary { min-width:44px; }
+  main, [role="dialog"] { min-width:0; overflow-wrap:anywhere; }
+  [role="tablist"] { height:auto; flex-wrap:wrap; }
+  [role="dialog"] { max-width:calc(100vw - 32px); }
+}
+
+:root, .dark { --tabelle-card-bg: hsl(var(--card)); }

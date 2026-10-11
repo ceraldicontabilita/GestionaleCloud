@@ -144,6 +144,8 @@ jobs:
           sleep 4
       - name: Audit layout
         run: node scripts/audit-layout.cjs
+      - name: Card mobile con righe complete, griglie e dialoghi
+        run: MOBILE_CARDS_APP=ERP node scripts/audit-mobile-cards.cjs
       - name: Audit viewer documenti
         run: node scripts/audit-viewer.cjs
       - name: E2E viste fiscali e del personale

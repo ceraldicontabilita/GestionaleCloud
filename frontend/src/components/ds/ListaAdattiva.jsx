@@ -21,7 +21,9 @@ import { TableWrap, Table, Th, Td } from './Table';
  * Spec colonna:
  *  { key, label, render?(item), align?, mono?, tdStyle?|fn(item),
  *    ruoloCard: 'titolo'|'sottotitolo'|'importo'|'dettaglio'|'azioni'|'omesso',
- *    hideMobile?, hideDesktop? }
+ *    hideDesktop? }
+ * Le vecchie opzioni hideMobile/omesso non nascondono campi con etichetta:
+ * tutti i dettagli della riga restano consultabili anche sul telefono.
  */
 export function ListaAdattiva({
   colonne = [],
@@ -154,7 +156,9 @@ export function ListaAdattiva({
     const colSottotitolo = colonne.find(c => c.ruoloCard === 'sottotitolo');
     const colImporto = colonne.find(c => c.ruoloCard === 'importo');
     const colAzioni = colonne.find(c => c.ruoloCard === 'azioni');
-    const colDettagli = colonne.filter(c => c.ruoloCard === 'dettaglio' && !c.hideMobile);
+    // Sul telefono restano anche i campi secondari: nessun dato sparisce per la larghezza.
+    const principali = new Set([colTitolo, colSottotitolo, colImporto, colAzioni]);
+    const colDettagli = colonne.filter(c => !principali.has(c) && c.label);
 
     return (
       <div data-testid={testId} style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -169,6 +173,7 @@ export function ListaAdattiva({
               border: `1px solid ${COLORS.border}`,
               boxShadow: SHADOWS.sm,
               minWidth: 0,
+              overflowWrap: 'anywhere',
             }}
           >
             {renderCard ? (
@@ -217,11 +222,11 @@ export function ListaAdattiva({
                   )}
                 </div>
                 {(colDettagli.length > 0 || colAzioni) && (
-                  // Dettagli e azioni sulla STESSA riga: card più bassa,
-                  // entrano più righe per schermata
+                  // Le azioni possono andare a capo senza comprimere i dettagli.
                   <div
                     style={{
                       display: 'flex',
+                      flexWrap: 'wrap',
                       justifyContent: 'space-between',
                       alignItems: 'center',
                       gap: 8,
@@ -238,17 +243,17 @@ export function ListaAdattiva({
                         color: COLORS.textMuted,
                         flexWrap: 'wrap',
                         minWidth: 0,
-                        flex: 1,
+                        flex: '1 1 220px',
                       }}
                     >
                       {colDettagli.map(c => (
-                        <span key={c.key} style={{ whiteSpace: 'nowrap' }}>
-                          {`${c.label}: `}
+                        <div key={c.key} style={{ minWidth: 0, maxWidth: '100%', whiteSpace: 'normal', overflowWrap: 'anywhere' }}>
+                          {typeof c.label === 'string' ? `${c.label}: ` : null}
                           {valore(c, item)}
-                        </span>
+                        </div>
                       ))}
                     </div>
-                    {colAzioni && <div style={{ flexShrink: 0 }}>{valore(colAzioni, item)}</div>}
+                    {colAzioni && <div style={{ minWidth: 0, maxWidth: '100%' }}>{valore(colAzioni, item)}</div>}
                   </div>
                 )}
               </>

@@ -413,7 +413,8 @@ describe('Stati e resa responsive della pagina Assegni', () => {
   it('usa card senza tabella su schermo mobile', async () => {
     window.innerWidth = 375;
     api.get.mockImplementation(rispostaPagina([
-      { id: 'a1', numero: '0208770985', stato: 'incassato', importo: 9760 },
+      { id: 'a1', numero: 'CARNET-0208770985', stato: 'incassato', importo: 9760,
+        numero_fattura: '120', data_fattura: '2025-06-15' },
     ]));
 
     renderPagina();
@@ -421,6 +422,8 @@ describe('Stati e resa responsive della pagina Assegni', () => {
     const lista = await screen.findByTestId('assegni-table');
     await waitFor(() => expect(lista.querySelector('table')).toBeNull());
     expect(lista).toHaveStyle({ display: 'flex', flexDirection: 'column' });
+    expect(lista).toHaveTextContent('CARNET-0208770985');
+    expect(lista).toHaveTextContent('15/06/2025');
   });
 });
 

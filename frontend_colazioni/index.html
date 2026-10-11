@@ -146,7 +146,7 @@ a{color:var(--brand);font-weight:600}a:visited{color:var(--brand)}
 .morning-cart{position:sticky;bottom:74px;z-index:4;box-shadow:0 8px 30px rgba(0,0,0,.18)}
 .order-line{padding:7px 0;border-bottom:1px solid var(--line)}
 @media(max-width:620px){
- main{padding-left:12px;padding-right:12px}.card{margin-left:0;margin-right:0}.catalog-tools{grid-template-columns:1fr}.catalog-grid{grid-template-columns:1fr}.catalog-card{grid-template-columns:68px minmax(0,1fr)}.catalog-card img,.catalog-card .no-photo{width:68px;height:68px}.catalog-price-row{align-items:center}.catalog-price-row input{flex-basis:108px}
+ main{padding-left:16px;padding-right:16px}.card{margin-left:0;margin-right:0}.catalog-tools{grid-template-columns:1fr}.catalog-grid{grid-template-columns:1fr}.catalog-card{grid-template-columns:68px minmax(0,1fr)}.catalog-card img,.catalog-card .no-photo{width:68px;height:68px}.catalog-price-row{align-items:center}.catalog-price-row input{flex-basis:108px}
  .hotel-tabs{top:56px}
  .owner-tabs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:5px;overflow:visible}.owner-tabs button{width:100%;min-width:0;padding:8px 4px;border-radius:11px;font-size:11px;line-height:1.15;white-space:normal;min-height:42px}
  .booking-room-grid{grid-template-columns:1fr}.booking-room-head{align-items:flex-start}.booking-room{padding:12px}
@@ -156,7 +156,24 @@ a{color:var(--brand);font-weight:600}a:visited{color:var(--brand)}
 .review-hero h2{font-size:28px;line-height:1.08;letter-spacing:-.02em;margin:4px 0 10px}.review-hero p{margin:0;opacity:.9}
 .consent-box{border:1px solid var(--line);border-radius:14px;padding:14px;margin:12px 0}.consent-box h3{margin-bottom:5px}.consent-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px}.consent-actions .btn{min-height:44px}.consent-actions .chosen{background:var(--ok);border-color:var(--ok);color:#fff}
 .review-links{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:10px}.review-qr{text-align:center}.review-qr .qr{min-height:184px;align-items:center}.privacy-note{font-size:12px;color:var(--mute);line-height:1.55}.review-destination{width:100%;min-height:54px;margin:6px 0;font-size:16px}.review-success{text-align:center;padding:24px 10px}.review-success h2{font-size:30px;letter-spacing:-.02em}
+/* Telefono: navigazione e dettagli a capo, senza trascinamenti laterali. */
+@media (max-width:768px){
+ main{overflow-x:visible;min-width:0}
+ header{flex-wrap:wrap}header h1{flex-basis:100%;white-space:normal;overflow:visible}
+ header #gestionale{color:inherit;display:inline-flex;align-items:center;min-height:44px}
+ header [hidden]{display:none!important}
+ .tabs,.nap-tabs{flex-wrap:wrap;overflow:visible}
+ .row{flex-wrap:wrap}.row>*{min-width:0;max-width:100%;overflow-wrap:anywhere}
+ .card{min-width:0;overflow-wrap:anywhere}
+ button,.btn,select,input:not([type=checkbox]):not([type=radio]),summary{min-height:44px!important}
+ button,summary{min-width:44px}
+ input,select,textarea{max-width:100%;min-width:0;box-sizing:border-box}
+ .card a,.nap-actions a{display:inline-flex;align-items:center;min-height:44px;overflow-wrap:anywhere}
+ .owner-tabs button,.hotel-tabs button{min-height:44px}
+ .scroll:has(table[data-card="si"]){overflow:visible}
+}
 </style>
+<script type="module">import { avviaTabelleCard } from "/frontend-shared/tabelleCard.js"; avviaTabelleCard();</script>
 </head>
 <body>
 <div class="demo">VERSIONE DI PROVA</div>

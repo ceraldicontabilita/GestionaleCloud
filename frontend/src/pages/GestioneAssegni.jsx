@@ -3,7 +3,7 @@ import api from '../api';
 import { useAnnoGlobale } from '../contexts/AnnoContext';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import { formatEuro, formatDateIT, formatDateGGMM, STYLES, COLORS, SHADOWS, BORDER_RADIUS, useIsMobile } from '../lib/utils';
+import { formatEuro, formatDateIT, STYLES, COLORS, SHADOWS, BORDER_RADIUS, useIsMobile } from '../lib/utils';
 import { PageLayout } from '../components/PageLayout';
 import ModalFattura from '../components/ModalFattura';
 import { useConfirm } from '../components/ui/ConfirmDialog';
@@ -2522,9 +2522,7 @@ export default function GestioneAssegni() {
                       fontSize: 13,
                     }}
                   >
-                    {/* Su mobile solo il progressivo: il prefisso carnet
-                        è identico su tutto il blocchetto */}
-                    {isMobile ? assegno.numero?.split('-')[1] || assegno.numero : assegno.numero}
+                    {assegno.numero}
                   </span>
                 ),
               },
@@ -2740,10 +2738,10 @@ export default function GestioneAssegni() {
                             Fatt. {assegno.numero_fattura}
                           </span>
                         )}
-                        {/* Su mobile solo GG/MM: l'anno è nel selettore globale */}
+                        {/* La data completa distingue anche le fatture di anni diversi. */}
                         {assegno.data_fattura && (
                           <span style={{ color: COLORS.textMuted, fontSize: 11 }}>
-                            ({formatDateGGMM(assegno.data_fattura)})
+                            ({formatDateIT(assegno.data_fattura)})
                           </span>
                         )}
                         {(assegno.fattura_collegata ||

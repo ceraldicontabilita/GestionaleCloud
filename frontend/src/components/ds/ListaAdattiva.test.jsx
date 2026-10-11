@@ -40,6 +40,7 @@ describe('ListaAdattiva responsive', () => {
     expect(container.querySelector('table')).toBeNull();
     expect(screen.getByText('Fornitore completo')).toBeInTheDocument();
     expect(screen.getByText('10,00 €')).toBeInTheDocument();
+    expect(screen.getByText(/test@example.it/)).toBeInTheDocument();
   });
 
   it('azzera lo scroll orizzontale quando cambia il filtro', () => {

@@ -4,7 +4,10 @@ import { waitFor } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
 
 const html = readFileSync('../frontend_colazioni/index.html', 'utf8');
-const script = [...html.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/g)].map(m => m[1]).join('\n');
+// Il VM esercita lo script classico della sessione. Il modulo delle card viene
+// caricato dal browser e verificato dal collaudo Playwright delle cinque app.
+const script = [...html.matchAll(/<script([^>]*)>([\s\S]*?)<\/script>/g)]
+  .filter(m => !/type=["']module["']/.test(m[1])).map(m => m[2]).join('\n');
 
 function avvia(status = 200, sessione = null) {
   localStorage.clear();
