@@ -5033,8 +5033,9 @@ Non è un diario.
 - Render serve `main`.
 - Supabase è backend dati.
 - cartella Drive unica attiva.
-- scheduler attivo.
-- protocollo incrementale attivo.
+- scheduler: restano ammessi i tre job `drive_cartella_unica`, `import_cartelle_drive` ed `enable_banking_giro`.
+- Su richiesta del titolare dell'11/10/2026, le altre 71 procedure periodiche sono ritirate nel codice (`app/scheduler_policy.py`): 59 ERP, 2 HR, 10 Lotti. `ENABLE_SCHEDULER`, una allowlist vuota o il pulsante di avvio Lotti non possono riattivarle. Sono bloccati anche il recupero HACCP/prezzi e la lettura AI differita all'avvio. Restano disponibili i comandi manuali e le elaborazioni conseguenti agli import.
+- protocollo incrementale periodico disattivato.
 - protocollo completo spento per memoria.
 
 ## Fatture

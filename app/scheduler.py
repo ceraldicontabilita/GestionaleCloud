@@ -1,7 +1,4 @@
-"""
-Scheduler per task automatici.
-- Email Verbali: Scan automatico ogni ora
-"""
+"""Scheduler per i task ammessi dalla policy permanente e dalla configurazione."""
 import logging
 import uuid
 import asyncio
@@ -12,6 +9,7 @@ import os
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.combining import OrTrigger
 from apscheduler.triggers.cron import CronTrigger
+from app.scheduler_policy import scheduler_job_enabled
 
 
 def _sync_acceso(nome: str) -> bool:
@@ -62,8 +60,7 @@ class SchedulerConLease(AsyncIOScheduler):
 
     def add_job(self, func, trigger=None, args=None, kwargs=None, id=None, **options):
         job_id = id or getattr(func, "__name__", str(uuid.uuid4()))
-        selezionati = {value.strip() for value in os.getenv("SCHEDULER_JOB_ALLOWLIST", "").split(",") if value.strip()}
-        if selezionati and job_id not in selezionati:
+        if not scheduler_job_enabled(job_id):
             return None
 
         @wraps(func)
@@ -79,6 +76,14 @@ class SchedulerConLease(AsyncIOScheduler):
             kwargs=kwargs,
             id=id,
             **options,
+        )
+
+    def start(self, paused=False):
+        super().start(paused=paused)
+        logger.info(
+            "[SCHEDULER] Job effettivamente registrati (%s): %s",
+            len(self.get_jobs()),
+            ", ".join(sorted(job.id for job in self.get_jobs())) or "nessuno",
         )
 
 
@@ -2257,12 +2262,6 @@ def start_scheduler():
 
     scheduler.start()
     logger.info("✅ [SCHEDULER] Scheduler avviato")
-    logger.info("   - Gmail Full Scan (tutte cartelle): ogni giorno 5:45, ultimi 5 giorni")
-    logger.info("   - Verbali Email: ogni ora")
-    logger.info("   - Scadenze Partite Aperte: ogni giorno ore 7:00")
-    logger.info("   - Scadenze F24: ogni giorno ore 8:00 e 14:00")
-    logger.info("   - Recupero Fatture PayPal mancanti: ogni giorno ore 5:30")
-    logger.info("   - PayPal automatico (API, banca, fatture, posta): ore 3:20 e 14:20")
 
 
 def stop_scheduler():

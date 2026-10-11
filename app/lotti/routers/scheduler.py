@@ -3,7 +3,7 @@ import logging
 """
 scheduler.py — Task automatici periodici per HACCP Ceraldi.
 
-Job registrati:
+Definizioni storiche (ritirate dalla policy permanente l'11/10/2026):
   01:00  aggiorna_riferimenti_fatture  — riscrive numeri fattura >30gg nei lotti
   01:30  pulisci_lotti_scaduti         — elimina lotti scaduti >30gg non in ricetta
   ogni:15 sync_gestionale_fatture     — riceve fatture da GestionaleCloud
@@ -16,6 +16,7 @@ import re
 import asyncio
 from datetime import datetime, timezone, timedelta
 from app.scheduler import SchedulerConLease
+from app.scheduler_policy import LOTTI_RETIRED_JOBS, scheduler_job_enabled
 from apscheduler.triggers.cron import CronTrigger
 from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel
@@ -403,6 +404,8 @@ async def job_lettura_articoli_ai():
 
 
 async def _lettura_articoli_ai_dopo_avvio():
+    if not scheduler_job_enabled("lettura_articoli_ai"):
+        return
     await asyncio.sleep(180)
     await job_lettura_articoli_ai()
 
@@ -471,6 +474,9 @@ async def job_sincronizza_operatori_hr():
 
 def setup_scheduler():
     global scheduler_started
+    if not any(scheduler_job_enabled(job_id) for job_id in LOTTI_RETIRED_JOBS):
+        logger.info("[Scheduler Lotti] Procedure periodiche disattivate definitivamente")
+        return
     if scheduler_started:
         return
 
@@ -572,6 +578,10 @@ async def _catchup_jobs_mancanti():
     Se l'ora attuale supera l'orario pianificato e non c'è log di oggi,
     esegue subito il job (una sola volta per giornata).
     """
+    if not any(scheduler_job_enabled(job_id) for job_id in (
+        "haccp_daily_generation", "pipeline_aggiornamento",
+    )):
+        return
     try:
         # Aspetta qualche secondo che il backend sia pronto
         await asyncio.sleep(10)
@@ -587,11 +597,13 @@ async def _catchup_jobs_mancanti():
 
         # Mappa job → (ora_trigger, funzione)
         jobs_da_verificare = [
-            ("haccp_daily", 7, 0, job_genera_haccp_giornaliero),
-            ("pipeline_aggiornamento", 4, 0, job_pipeline_aggiornamento),
+            ("haccp_daily_generation", "haccp_daily", 7, 0, job_genera_haccp_giornaliero),
+            ("pipeline_aggiornamento", "pipeline_aggiornamento", 4, 0, job_pipeline_aggiornamento),
         ]
 
-        for job_name, ora, minuto, fn in jobs_da_verificare:
+        for job_id, job_name, ora, minuto, fn in jobs_da_verificare:
+            if not scheduler_job_enabled(job_id):
+                continue
             # Trigger orario in Europe/Rome già passato?
             trigger_dt = datetime(ora_it.year, ora_it.month, ora_it.day, ora, minuto, tzinfo=tz)
             if ora_it < trigger_dt:
@@ -647,6 +659,8 @@ async def get_scheduler_status():
 @router.post("/start")
 async def start_scheduler(_admin=Depends(require_admin)):
     setup_scheduler()
+    if not scheduler.running:
+        return {"success": False, "message": "Procedure periodiche disattivate definitivamente"}
     return {"success": True, "message": "Scheduler avviato"}
 
 

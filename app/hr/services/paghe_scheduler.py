@@ -14,6 +14,7 @@ paghe_mensili/pagamenti_esiti — qui si automatizza solo la chiamata.
 """
 import logging
 from datetime import datetime, timedelta
+from app.scheduler_policy import scheduler_job_enabled
 
 logger = logging.getLogger(__name__)
 _scheduler = None
@@ -34,6 +35,8 @@ async def sincronizza_paghe_periodico():
 def start_scheduler():
     """Avvia il job periodico (best-effort). No-op se APScheduler manca."""
     global _scheduler
+    if not scheduler_job_enabled("sincronizza_paghe"):
+        return None
     if _scheduler:
         return _scheduler
     try:
