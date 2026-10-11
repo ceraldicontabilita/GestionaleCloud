@@ -9,7 +9,7 @@ export const LIVELLI_RISCONTRO = {
   CERTO: 'Certo',
   PROBABILE: 'Probabile',
   PARZIALE: 'Parziale',
-  NESSUN_MATCH: 'Pagato, senza addebito in banca',
+  NESSUN_MATCH: 'Nessuna corrispondenza bancaria',
   MOVIMENTO_ORFANO: 'Addebito senza F24',
 };
 
@@ -42,7 +42,7 @@ export const LEGENDA = {
       ['Certo', "Importo uguale al centesimo, addebito entro due giorni lavorativi dalla data di incasso e causale di delega."],
       ['Probabile', "Importo e giorni tornano ma manca la data di incasso, oppure ci sono più addebiti possibili: si mostrano tutti, nessuno è applicato."],
       ['Parziale', "Differenza sotto 5 euro: si vede quanto."],
-      ['Pagato, senza addebito in banca', "La quietanza (con il suo protocollo) prova il pagamento: qui manca solo l'addebito nell'estratto conto, o l'estratto del periodo."],
+      ['Nessuna corrispondenza bancaria', "La quietanza con protocollo e' una prova documentale del versamento, ma non sostituisce l'addebito nell'estratto conto. Qui manca il movimento bancario o l'estratto del periodo."],
       ['Addebito senza F24', "In banca c'è un addebito di delega ma nessun F24 corrispondente: serve la quietanza."],
       ['Saldo zero', "Tutto pagato in compensazione con crediti: nessun addebito in banca da cercare."],
       ['Periodo', "Il mese o l'anno a cui si riferisce il tributo, scritto sulla riga. Non è la data del pagamento. «0101» è la rata unica, non gennaio."],

@@ -122,8 +122,7 @@ class VerificaCoerenza:
         l'eventuale addebito bancario dell'intero modello non modifica il
         valore IVA da confrontare.
         """
-        from app.routers.ritenute import _tributi_di
-        from app.services.f24_payment_evidence import stato_evidenza_pagamento
+        from app.services.iva_f24_verifica import verifica_versamento_iva_da_documenti
         from app.services.tax_payment_query import TaxPaymentQueryService
 
         periodo = f"{anno}-{mese:02d}"
@@ -132,92 +131,66 @@ class VerificaCoerenza:
         if docs is None:
             docs = await TaxPaymentQueryService(self.db).list_documents()
             self._f24_docs_cache = docs
-        candidati = []
-        for f24 in docs:
-            righe = _tributi_di(f24)
-            for riga in righe:
-                if riga.get("codice") != codice:
-                    continue
-                periodo_riga = riga.get("periodo")
-                source = next((
-                    item for item in (f24.get("righe_tributo_normalizzate") or [])
-                    if item.get("ordinal") - 1 == riga.get("indice")
-                ), {})
-                source_fields = source.get("source_fields") or {}
-                explicit_year = str(
-                    source_fields.get("anno_riferimento") or source_fields.get("anno") or ""
-                )
-                periodo_verificato = periodo_riga == periodo or (
-                    not periodo_riga and explicit_year == str(anno)
-                )
-                if periodo_riga and periodo_riga != periodo:
-                    continue
-                candidati.append({
-                    "f24": f24,
-                    "riga": riga,
-                    "periodo_verificato": periodo_verificato,
-                    "altri_codici": sorted({
-                        t.get("codice") for t in righe
-                        if t.get("codice") and t.get("codice") != codice
-                    }),
-                })
-
-        # Deduplica la stessa sorgente eventualmente salvata con più alias.
-        unici = {}
-        for c in candidati:
-            f24 = c["f24"]
-            identita = str(
-                f24.get("id") or f24.get("document_id") or f24.get("sha256")
-                or f24.get("filename") or f24.get("file_name") or ""
-            )
-            key = (identita, c["riga"].get("indice"))
-            unici[key] = c
-        candidati = list(unici.values())
-
-        if not candidati:
+        esito = verifica_versamento_iva_da_documenti(
+            anno=anno, mese=mese, f24_docs=docs,
+        )
+        if esito["stato"] == "F24_NON_TROVATO":
             return {
                 "codice_tributo": codice,
                 "periodo": periodo,
                 "stato": "in_attesa_f24",
                 "importo_f24": None,
                 "documenti_candidati": 0,
+                "modelli_periodo": [],
             }
-
-        verificati = [c for c in candidati if c["periodo_verificato"]]
-        migliori = verificati or candidati
-        if len(migliori) != 1:
+        if esito["stato"] == "F24_PERIODO_SENZA_CODICE_IVA":
+            return {
+                "codice_tributo": codice,
+                "periodo": periodo,
+                "stato": "f24_periodo_senza_codice_iva",
+                "importo_f24": None,
+                "importo_f24_cents": None,
+                "documenti_candidati": 0,
+                "modelli_periodo": esito["modelli_periodo"],
+                "modelli_periodo_trovati": esito["modelli_periodo_trovati"],
+                "codice_iva_presente": False,
+                # La prova del modello intero non diventa prova di un tributo IVA assente.
+                "quietanza_presente": False,
+                "pagato_banca": False,
+                "verificato_banca": False,
+                "movimento_bancario_id": None,
+            }
+        if esito["stato"] == "F24_MULTIPLI_DA_VERIFICARE":
             return {
                 "codice_tributo": codice,
                 "periodo": periodo,
                 "stato": "f24_ambiguo",
                 "importo_f24": None,
-                "documenti_candidati": len(migliori),
+                "documenti_candidati": esito["f24_trovati"],
+                "modelli_periodo": esito["modelli_periodo"],
             }
-
-        c = migliori[0]
-        f24 = c["f24"]
-        evidenza = stato_evidenza_pagamento(f24)
-        importo_cents = (
-            c["riga"].get("importo_cents") if c["periodo_verificato"] else None
-        )
+        c = esito["f24"]
+        evidenza = c["evidenza_pagamento"]
+        importo_cents = c["importo_iva_cents"]
         return {
             "codice_tributo": codice,
             "periodo": periodo,
-            "stato": "f24_ricevuto" if c["periodo_verificato"] else "periodo_f24_da_verificare",
+            "stato": "f24_ricevuto",
             # Il valore numerico resta per compatibilita' della UI; ogni
             # confronto usa esclusivamente l'intero in centesimi.
             "importo_f24": importo_cents / 100 if importo_cents is not None else None,
             "importo_f24_cents": importo_cents,
-            "periodo_verificato": c["periodo_verificato"],
+            "periodo_verificato": True,
             "documenti_candidati": 1,
-            "f24_multi_tributo": bool(c["altri_codici"]),
-            "altri_codici_tributo": c["altri_codici"],
+            "f24_multi_tributo": bool(c["altri_codici_tributo"]),
+            "altri_codici_tributo": c["altri_codici_tributo"],
             "stato_pagamento_intero_f24": evidenza["stato"],
             "quietanza_presente": evidenza.get("quietanza_presente", False),
-            "quietanza_id": f24.get("quietanza_id"),
+            "quietanza_id": c.get("quietanza_id"),
             "pagato_banca": evidenza.get("pagato", False),
             "verificato_banca": evidenza.get("verificato_banca", False),
             "movimento_bancario_id": evidenza.get("movimento_bancario_id"),
+            "modelli_periodo": esito["modelli_periodo"],
         }
     
     async def verifica_versamenti_vs_banca(self, anno: int, mese: int = None) -> List[Dict]:

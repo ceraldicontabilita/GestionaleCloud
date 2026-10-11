@@ -233,6 +233,9 @@ async def confronto_iva_completo(anno: int) -> Dict[str, Any]:
                 "verificato_banca": f24_iva.get("verificato_banca", False),
                 "movimento_bancario_id": f24_iva.get("movimento_bancario_id"),
                 "stato_pagamento_f24": f24_iva.get("stato_pagamento_intero_f24"),
+                "modelli_f24_periodo": f24_iva.get("modelli_periodo", []),
+                "modelli_f24_periodo_trovati": f24_iva.get("modelli_periodo_trovati", 0),
+                "codice_iva_presente": f24_iva.get("codice_iva_presente"),
                 "lipe": iva.get("lipe"),
             })
         

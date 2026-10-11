@@ -253,6 +253,8 @@ describe('Riconciliazione banca → fattura / prima nota, F24 → quietanza / ba
           f24_id: 'f24-a', file: 'F24_gen.pdf', periodo_competenza: '01/2026', scadenza_naturale: '2026-02-16',
           data_pagamento: '2026-02-16', giorni_ritardo: 0, stato_pagamento: 'pagato_nei_termini',
           tipo_versamento: 'ordinario', causali_inps: [], codici_tributo: ['1001'],
+          righe_tributo: [{ codice: '1001', periodo: '01/2026', descrizione: 'Ritenute lavoro dipendente', importo_debito: 1500, importo_credito: 0 }],
+          stato_riferito_a: 'modello_f24_completo',
           documento_collegato: {
             quietanza_id: 'Q-1', protocollo_quietanza: '26010112345', quietanza_fonte: 'fiscal_documents',
             quietanza_url: '/api/fiscal/documents/Q-1/content',
@@ -271,7 +273,11 @@ describe('Riconciliazione banca → fattura / prima nota, F24 → quietanza / ba
     const quietanza = await screen.findByTestId('link-quietanza-f24-a');
     expect(screen.getByTestId('apri-f24-f24-a')).toHaveTextContent('F24');
     expect(screen.queryByTestId('link-movimento-f24-f24-a')).toBeNull();
-    fireEvent.click(quietanza);
+    expect(screen.getByTestId('ambito-stato-f24')).toHaveTextContent('intero modello F24');
+    fireEvent.change(screen.getByLabelText('Ordina analisi F24'), { target: { value: 'codice' } });
+    expect(screen.getByTestId('codice-tributo-1001')).toHaveTextContent('Codice 1001');
+    expect(screen.getByTestId('codice-tributo-1001')).toHaveTextContent('Debito € 1.500,00');
+    fireEvent.click(screen.getByTestId('link-quietanza-f24-a'));
     expect(await screen.findByText(/Quietanza F24 01\/2026 · protocollo 26010112345/)).toBeInTheDocument();
   });
 });

@@ -102,6 +102,10 @@ def test_tabella_f24_espone_quietanza_e_movimento_bancario(monkeypatch):
         return await f24_analisi.tabella_analisi(anno=None)
 
     esito = _run(scenario())
+    riga_a = next(r for r in esito["righe"] if r["f24_id"] == "f24-a")
+    assert riga_a["stato_riferito_a"] == "modello_f24_completo"
+    assert riga_a["righe_tributo"][0]["codice"] == "1001"
+    assert riga_a["righe_tributo"][0]["periodo"] == "01/2026"
     per_id = {r["f24_id"]: r["documento_collegato"] for r in esito["righe"]}
     assert per_id["f24-a"]["quietanza_url"] == "/api/originale/documento_fiscale/Q-1"
     assert per_id["f24-a"]["quietanza_fonte"] == "fiscal_documents"

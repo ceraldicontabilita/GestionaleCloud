@@ -1,7 +1,8 @@
 """Conferma massiva del calendario fiscale decisa dal titolare (07/10/2026):
 «dal 2015 ad oggi tranne Intrastat», con lo stesso writer della pagina."""
 import asyncio
-from datetime import date
+from datetime import date, datetime
+from zoneinfo import ZoneInfo
 
 from app.routers import fiscalita_italiana as fi
 from app.services import calendario_conferme as cc
@@ -12,6 +13,10 @@ OGGI = date(2026, 10, 7)
 
 def _db(nome):
     return ClientArchivioMemoria()[nome]
+
+
+def test_oggi_del_calendario_usa_il_giorno_italiano():
+    assert cc._oggi() == datetime.now(ZoneInfo("Europe/Rome")).date()
 
 
 def test_la_simulazione_conta_senza_scrivere():

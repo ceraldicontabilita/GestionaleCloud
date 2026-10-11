@@ -83,6 +83,30 @@ def test_iva_f24_anno_diverso_non_viene_collegato():
     assert esito["stato"] == "F24_NON_TROVATO"
 
 
+def test_modello_del_periodo_senza_codice_iva_non_diventa_pagamento_iva():
+    modello = {
+        "id": "F24-GENNAIO-2026",
+        "file_name": "2026-01 Gennaio - F24.pdf",
+        "sezione_erario": [
+            {"codice_tributo": "1001", "periodo_riferimento": "01/2026", "importo_debito": 500},
+            {"codice_tributo": "1701", "periodo_riferimento": "01/2026", "importo_debito": 100},
+        ],
+        "quietanza_id": "Q-GENNAIO",
+        "movimento_bancario_id": "MOV-GENNAIO",
+        "data_pagamento_effettivo": "2026-02-16",
+    }
+    esito = verifica_versamento_iva_da_documenti(
+        anno=2026, mese=1, f24_docs=[modello], oggi=date(2026, 2, 17),
+    )
+    assert esito["stato"] == "F24_PERIODO_SENZA_CODICE_IVA"
+    assert esito["modelli_periodo_trovati"] == 1
+    assert esito["codice_iva_presente"] is False
+    assert esito["pagato_banca"] is False
+    assert esito["versato_documentalmente"] is False
+    assert esito["modelli_periodo"][0]["verificato_banca_modello"] is True
+    assert esito["modelli_periodo"][0]["codici_tributo"] == ["1001", "1701"]
+
+
 def test_iva_luglio_scade_il_20_agosto():
     assert scadenza_iva_mensile(2026, 7).isoformat() == "2026-08-20"
 

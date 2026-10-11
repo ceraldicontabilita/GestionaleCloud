@@ -102,9 +102,13 @@ def _deposito_registrato(monkeypatch):
 
     chiamate = []
 
-    async def _fake_deposita(db, contenuto, *, nome_file, origine, drive_file_id=None, dry_run=False):
+    async def _fake_deposita(
+        db, contenuto, *, nome_file, origine, drive_file_id=None, dry_run=False,
+        source_document_id=None,
+    ):
         chiamate.append({"nome_file": nome_file, "origine": origine,
-                         "drive_file_id": drive_file_id, "dry_run": dry_run})
+                         "drive_file_id": drive_file_id, "dry_run": dry_run,
+                         "source_document_id": source_document_id})
         return {"depositati": ["2026-01"], "scartati": []}
 
     monkeypatch.setattr(lipe_deposito, "deposita_lipe", _fake_deposita)
@@ -125,7 +129,7 @@ def test_una_lipe_caricata_deposita_i_periodi(monkeypatch):
 
     assert chiamate == [{"nome_file": "LIPE_2024_Itrim_358048737.pdf",
                          "origine": "documenti_upload_auto", "drive_file_id": "drv-1",
-                         "dry_run": False}]
+                         "dry_run": False, "source_document_id": "doc-1"}]
     assert result["lipe"]["depositati"] == ["2026-01"]
     assert result["success"] is True
 

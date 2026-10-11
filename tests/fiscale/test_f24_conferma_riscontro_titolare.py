@@ -180,6 +180,13 @@ def test_la_quietanza_probabile_confermata_prova_anche_il_suo_modello():
     assert f["pagato"] is True and f["movimento_bancario_id"] == "m1"
     rel = _relazioni(db, "q1")
     assert ("m1", "confirmed", "titolare") in rel
+    # Il refresh rilegge la decisione persistita: non torna PROBABILE.
+    dopo = _run(reg.riconcilia_f24_banca(db, dry_run=True))
+    assert dopo["da_verificare"] == []
+    [salvata] = dopo["riscontrati"]
+    assert salvata["addebito"]["movimento_id"] == "m1"
+    assert salvata["conferma_titolare"]["motivo"] == "causale_senza_data_incasso"
+    assert "abbinamento salvato dal titolare" in salvata["motivazione"]
     # anche con l'id della quietanza nella rotta: e' la stessa scheda
     assert _conferma(db, "q1", "m1", motivo="causale_senza_data_incasso")["gia_confermato"] is True
 

@@ -102,6 +102,48 @@ def test_due_addebiti_compatibili_restano_candidati():
     assert esito["riscontrati"] == []
 
 
+def test_pdf_ufficiale_ed_export_con_stesso_riferimento_sono_un_solo_addebito():
+    riferimento = "2026-02-16-22.36.07.657724014835"
+    ufficiale = {
+        **_m("m-pdf", "2026-02-16", -7465.55, "16/02/2026", riferimento),
+        "fonte_documento": "estratto_conto_ufficiale_pdf",
+        "source_filename": "Estratto conto corrente_31-03-2026.pdf",
+        "banca": "Banco BPM", "rapporto": "5462 - 03406 - 178800005462",
+        "livello_evidenza": "ufficiale",
+        "evidenza_bancaria_ufficiale": True,
+    }
+    operativo = {
+        **_m("m-csv", "2026-02-17", -7465.55, "16/02/2026", riferimento),
+        "fonte_documento": "export_bancario_operativo",
+        "source_filename": "ElencoEntrateUsciteAndamento.csv",
+        "livello_evidenza": "provvisoria",
+    }
+
+    esito = _riscontri([_q("q1", "2026-02-16", 7465.55)], [operativo, ufficiale])
+
+    assert esito["da_verificare"] == []
+    [r] = esito["riscontrati"]
+    assert r["addebito"]["movimento_id"] == "m-pdf"
+    assert r["addebito"]["riferimento_operazione"] == riferimento
+    assert r["addebito"]["fonte"] == "estratto_conto_ufficiale_pdf"
+    assert r["addebito"]["conto"] == "5462 - 03406 - 178800005462"
+    assert r["addebito"]["copie_tecniche"] == [{
+        "movimento_id": "m-csv", "data": "2026-02-17",
+        "fonte": "export_bancario_operativo", "livello_evidenza": "provvisoria",
+    }]
+
+
+def test_stesso_importo_e_date_vicine_non_bastano_a_unire_due_addebiti():
+    esito = _riscontri(
+        [_q("q1", "2026-06-16", 915.00)],
+        [_m("m1", "2026-06-16", -915.00, "16/06/2026", "2026-06-16-09.00.00.111111111111"),
+         _m("m2", "2026-06-17", -915.00, "16/06/2026", "2026-06-16-09.00.01.222222222222")],
+    )
+
+    [r] = esito["da_verificare"]
+    assert {c["movimento_id"] for c in r["candidati"]} == {"m1", "m2"}
+
+
 def test_due_copie_della_stessa_quietanza_sono_un_pagamento():
     esito = _riscontri(
         [_q("q1", "2026-04-08", 1294.00, "26030611002055014/000001"),
@@ -110,6 +152,31 @@ def test_due_copie_della_stessa_quietanza_sono_un_pagamento():
     )
     [r] = esito["riscontrati"]
     assert {q["id"] for q in r["quietanze"]} == {"q1", "q2"}
+
+
+def test_copia_senza_saldo_si_unisce_alla_quietanza_completa_se_univoca():
+    completa = reg._quietanza_legacy(_q("q-completa", "2026-07-21", 286.00, "26072135472143961/000001"))
+    incompleta = {
+        **completa, "id": "q-indice", "fonte": "fiscal_documents",
+        "importo_cents": None, "righe": [], "filename": "indice.pdf",
+    }
+
+    pagamenti = reg.pagamenti_da_quietanze([incompleta, completa])
+
+    assert len(pagamenti) == 1
+    assert pagamenti[0]["importo_cents"] == 28600
+    assert {q["id"] for q in pagamenti[0]["quietanze"]} == {"q-completa", "q-indice"}
+
+
+def test_copia_senza_saldo_resta_separata_se_il_protocollo_contiene_piu_deleghe():
+    q1 = reg._quietanza_legacy(_q("q1", "2023-08-21", 5959.18, "23081114592059905/000001"))
+    q2 = reg._quietanza_legacy(_q("q2", "2023-08-21", 12.95, "23081114592059905/000001"))
+    incerta = {**q1, "id": "q-incerta", "importo_cents": None, "righe": []}
+
+    pagamenti = reg.pagamenti_da_quietanze([q1, q2, incerta])
+
+    assert len(pagamenti) == 3
+    assert any(p["chiave"] == "id:q-incerta" for p in pagamenti)
 
 
 def test_stesso_protocollo_importi_diversi_sono_due_pagamenti():
@@ -149,7 +216,10 @@ def test_quietanza_senza_addebito_solo_se_l_estratto_copre_quei_giorni():
 def test_una_quietanza_senza_saldo_letto_si_dichiara_incompleta():
     esito = _riscontri([_q("q1", "2026-05-18", 0)], [])
     [q] = esito["quietanze_incomplete"]
-    assert q["motivo"] == "saldo non letto"
+    assert q["motivo"] == "saldo della delega non letto"
+    assert q["campi_mancanti"] == ["saldo della delega"]
+    assert "non e' possibile cercare un addebito esatto" in q["motivazione"]
+    assert "nessun movimento bancario viene associato" in q["motivazione"]
 
 
 # ── la scrittura ───────────────────────────────────────────────────────────
@@ -303,6 +373,22 @@ def test_lo_stesso_tributo_in_due_deleghe_dello_stesso_giorno_si_segnala():
     assert "inviata il 02/06/2026, addebitata il 17/06/2026" in t["motivazione"]
     assert "inviata il 16/06/2026" in t["motivazione"]
     assert {p["programmato"] for p in t["pagamenti"]} == {True, False}
+    assert t["doppio_versamento_confermato"] is True
+    assert t["stato_duplicazione"] == "DOPPIO_VERSAMENTO_CONFERMATO"
+    assert "movimento bancario distinto" in t["motivazione"]
+
+
+def test_due_deleghe_senza_due_addebiti_non_diventano_doppio_versamento():
+    righe = [("3918", "2026", 3574.00, 0)]
+    q1 = _q_righe("q1", "2026-06-16", 3574.00, "26060212304532735/000001", righe)
+    q2 = _q_righe("q2", "2026-06-16", 3784.00, "26061631545528157/000001",
+                  righe + [("1040", "05/2026", 210.00, 0)])
+
+    [t] = _riscontri([q1, q2], [])["tributi_ripetuti"]
+
+    assert t["doppio_versamento_confermato"] is False
+    assert t["stato_duplicazione"] == "POSSIBILE_DUPLICAZIONE_DELEGA"
+    assert "non si puo' dichiarare un doppio versamento" in t["motivazione"]
 
 
 def test_le_rate_mensili_non_sono_tributi_ripetuti():

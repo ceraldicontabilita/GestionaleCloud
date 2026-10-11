@@ -81,6 +81,15 @@ _RE_NOME_QUIETANZA = re.compile(
     r"^(?P<data>\d{4}-\d{2}-\d{2})__F24_(?P<n>\d+)__quietanza_AE(?:__prot_(?P<prot>[0-9A-Za-z-]+))?",
 )
 
+# Identificativo operativo che Banco BPM scrive in fondo alla causale I24.
+# Lo stesso addebito puo' comparire due volte nell'archivio (PDF ufficiale ed
+# export operativo), anche con data contabile diversa di un giorno. Importo e
+# vicinanza di data NON bastano a unirli: questa impronta completa, invece, e'
+# l'identita' verificabile della singola operazione bancaria.
+_RE_RIF_OPERAZIONE_I24 = re.compile(
+    r"(?<!\d)(20\d{2}-\d{2}-\d{2}-\d{2}\.\d{2}\.\d{2}\.\d{6,})(?!\d)"
+)
+
 
 # ── conversioni ──────────────────────────────────────────────────────────────
 
@@ -1134,22 +1143,46 @@ def pagamenti_da_quietanze(quietanze: Iterable[Dict[str, Any]]) -> List[Dict[str
     21/08/2023). Due copie dello stesso pagamento coincidono in tutti e tre.
     Senza protocollo, o senza data e saldo, la quietanza fa pagamento da sola.
     """
-    gruppi: Dict[str, List[Dict[str, Any]]] = {}
+    attive: List[Dict[str, Any]] = []
     for q in quietanze:
         if (str(q.get("status") or "").lower() in ("eliminato", "deleted", "annullato", "stornato", "quarantena", "pagamento_non_eseguito")
                 or (q.get("validazione") or {}).get("saldo_quadrato") is False
                 or (q.get("validazione") or {}).get("sezioni_quadrate") is False):
             continue
+        attive.append(q)
+
+    # Una copia documentale indicizzata puo' avere protocollo e data ma non il
+    # saldo, mentre la quietanza letta contiene lo stesso protocollo, la stessa
+    # data e l'importo. Non e' un secondo pagamento "incompleto": la si unisce
+    # soltanto quando esiste un unico gruppo completo compatibile. Se lo stesso
+    # protocollo contiene piu' deleghe/importi, resta separata e da verificare.
+    complete_per_protocollo_data: Dict[Tuple[str, str], Set[str]] = {}
+    complete_per_protocollo: Dict[str, Set[str]] = {}
+    for q in attive:
+        if q.get("protocollo") and q.get("data") and q.get("importo_cents") is not None:
+            chiave = f"{q['protocollo']}|{q['data']}|{q['importo_cents']}"
+            complete_per_protocollo_data.setdefault((q["protocollo"], q["data"]), set()).add(chiave)
+            complete_per_protocollo.setdefault(q["protocollo"], set()).add(chiave)
+
+    gruppi: Dict[str, List[Dict[str, Any]]] = {}
+    for q in attive:
         if q.get("protocollo") and q.get("data") and q.get("importo_cents") is not None:
             chiave = f"{q['protocollo']}|{q['data']}|{q['importo_cents']}"
         else:
-            chiave = f"id:{q.get('id')}"
+            candidati = set()
+            if q.get("protocollo") and q.get("data"):
+                candidati = complete_per_protocollo_data.get((q["protocollo"], q["data"]), set())
+            if not candidati and q.get("protocollo"):
+                candidati = complete_per_protocollo.get(q["protocollo"], set())
+            chiave = next(iter(candidati)) if len(candidati) == 1 else f"id:{q.get('id')}"
         gruppi.setdefault(chiave, []).append(q)
     pagamenti = []
     for chiave, copie in gruppi.items():
         # Un indice documentale puo' precedere la copia con le righe lette.
         # Sono copie dello stesso pagamento: usare quella piu' completa, senza sommarle.
-        prima = max(copie, key=lambda q: len(q.get("righe") or []))
+        prima = max(copie, key=lambda q: (
+            q.get("importo_cents") is not None, bool(q.get("data")), len(q.get("righe") or []),
+        ))
         inviato_il = data_invio_protocollo(prima.get("protocollo_originale"))
         ravvedimento_di = sorted({str(o) for q in copie for o in (q.get("ravvedimento_di") or [])})
         righe = prima.get("righe") or []
@@ -1358,6 +1391,7 @@ def modelli_coperti_da_tributi_pagati(modelli, quietanze) -> Set[str]:
 def _vista_addebito(m: Dict[str, Any]) -> Dict[str, Any]:
     data = data_movimento(m)
     mid = str(m.get("id") or m.get("fingerprint"))
+    info_f24 = m.get("f24_info") or {}
     return {
         "movimento_id": mid,
         "data": data,
@@ -1365,15 +1399,26 @@ def _vista_addebito(m: Dict[str, Any]) -> Dict[str, Any]:
         "importo": euro(importo_movimento_cents(m)),
         "descrizione": m.get("descrizione") or m.get("descrizione_originale"),
         "data_incasso": data_incasso_causale(m),
+        "riferimento": (info_f24.get("riferimento") or m.get("riferimento")
+                        or m.get("numero_operazione") or m.get("trn") or m.get("cro")),
+        "fonte": (m.get("fonte_documento") or m.get("source_filename")
+                  or m.get("fonte") or m.get("source")),
+        "banca": m.get("banca"),
+        "conto": (m.get("rapporto") or m.get("conto") or m.get("conto_contabile")
+                  or m.get("iban")),
+        "stato_riconciliazione": m.get("stato_riconciliazione"),
+        "tipo_riconciliazione": m.get("tipo_riconciliazione"),
+        "riferimento_operazione": m.get("_riferimento_operazione_i24"),
+        "copie_tecniche": m.get("_copie_tecniche") or [],
         "link": f"/riconciliazione/banca?movimento={mid}",
     }
 
 
 def prova_quietanza(p) -> str:
-    """Il protocollo e' la prova del pagamento: senza, la quietanza resta da verificare."""
+    """Descrive la prova documentale senza trasformarla in prova bancaria."""
     if p.get("protocollo"):
-        return "pagato per quietanza (il protocollo la prova)"
-    return "quietanza senza protocollo: pagamento da verificare"
+        return "quietanza con protocollo presente: prova documentale del versamento, non prova dell'addebito bancario"
+    return "quietanza senza protocollo: versamento documentale e addebito bancario da verificare"
 
 
 def _vista_pagamento(p: Dict[str, Any]) -> Dict[str, Any]:
@@ -1384,6 +1429,8 @@ def _vista_pagamento(p: Dict[str, Any]) -> Dict[str, Any]:
         "data_it": data_italiana(p["data"]),
         "importo": euro(p["importo_cents"]),
         "quietanze": p["quietanze"],
+        "f24_ids": p.get("f24_ids") or [],
+        "origini": p.get("origini") or [],
         "inviato_il": p.get("inviato_il"),
         "inviato_il_it": data_italiana(p["inviato_il"]) if p.get("inviato_il") else None,
         "programmato": p.get("programmato"),
@@ -1399,6 +1446,75 @@ def _vista_pagamento(p: Dict[str, Any]) -> Dict[str, Any]:
 
 def _mid(m: Dict[str, Any]) -> str:
     return str(m.get("id") or m.get("fingerprint"))
+
+
+def riferimento_operazione_i24(m: Dict[str, Any]) -> Optional[str]:
+    """Riferimento univoco stampato dalla banca nella causale della delega.
+
+    Non usa data/importo come identita': serve il token completo con data,
+    ora, microsecondi e progressivo. Un testo senza quel token non viene mai
+    deduplicato automaticamente.
+    """
+    testo = " ".join(str(m.get(c) or "") for c in ("descrizione", "descrizione_originale"))
+    trovato = _RE_RIF_OPERAZIONE_I24.search(testo)
+    return trovato.group(1) if trovato else None
+
+
+def _qualita_movimento_bancario(m: Dict[str, Any]) -> Tuple[int, int, int, str]:
+    """Ordina le copie: prima l'estratto ufficiale e la riga gia' collegata."""
+    fonte = " ".join(str(m.get(c) or "").lower() for c in (
+        "fonte_documento", "source_filename", "fonte", "source",
+    ))
+    ufficiale = bool(
+        m.get("evidenza_bancaria_ufficiale") is True
+        or str(m.get("livello_evidenza") or "").lower() == "ufficiale"
+        or "estratto_conto_ufficiale" in fonte
+        or ("estratto conto" in fonte and ".pdf" in fonte)
+    )
+    collegato = bool(
+        m.get("riconciliato") is True or m.get("f24_ids") or m.get("quietanze_f24_ids")
+        or m.get("fattura_id") or m.get("fattura_ids") or m.get("allocazioni")
+    )
+    completo = sum(bool(m.get(c)) for c in ("banca", "rapporto", "source_filename", "estratto_originale_id"))
+    return (int(ufficiale), int(collegato), completo, str(m.get("created_at") or ""))
+
+
+def movimenti_bancari_unici(movimenti: Iterable[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Una operazione I24 per riferimento bancario, senza cancellare dati.
+
+    Le copie restano elencate in ``_copie_tecniche`` per audit. Due addebiti
+    con lo stesso importo, anche in giorni vicini, restano distinti se non
+    condividono l'identico riferimento operativo della banca.
+    """
+    gruppi: Dict[Tuple[str, int], List[Dict[str, Any]]] = {}
+    senza_riferimento: List[Dict[str, Any]] = []
+    for originale in movimenti:
+        m = dict(originale)
+        riferimento = riferimento_operazione_i24(m)
+        importo = importo_movimento_cents(m)
+        if not riferimento or importo is None:
+            senza_riferimento.append(m)
+            continue
+        m["_riferimento_operazione_i24"] = riferimento
+        gruppi.setdefault((riferimento, importo), []).append(m)
+
+    unici = list(senza_riferimento)
+    for (_riferimento, _importo), copie in gruppi.items():
+        tenuta = max(copie, key=_qualita_movimento_bancario)
+        altre = [c for c in copie if c is not tenuta]
+        if altre:
+            tenuta["_copie_tecniche"] = [
+                {
+                    "movimento_id": _mid(c),
+                    "data": data_movimento(c),
+                    "fonte": c.get("fonte_documento") or c.get("source_filename")
+                             or c.get("fonte") or c.get("source"),
+                    "livello_evidenza": c.get("livello_evidenza"),
+                }
+                for c in altre
+            ]
+        unici.append(tenuta)
+    return unici
 
 
 def _abbina(
@@ -1500,13 +1616,44 @@ def riscontri_quietanze_banca(
     confrontati). Un pagamento o un addebito con piu' candidati resta da
     verificare con l'elenco dei candidati: niente si sceglie a caso.
     """
+    quietanze = list(quietanze)
+    quietanze_per_id = {str(q.get("id")): q for q in quietanze if q.get("id")}
     pagamenti = pagamenti_da_quietanze(quietanze)
-    addebiti = [m for m in movimenti if e_addebito_delega(m) and data_movimento(m)]
+    addebiti = movimenti_bancari_unici(
+        m for m in movimenti if e_addebito_delega(m) and data_movimento(m)
+    )
+    addebiti_per_id: Dict[str, Dict[str, Any]] = {}
+    for m in addebiti:
+        addebiti_per_id[_mid(m)] = m
+        for copia in m.get("_copie_tecniche") or []:
+            addebiti_per_id[str(copia.get("movimento_id"))] = m
     date_banca = sorted(data_movimento(m) for m in addebiti)
     copertura = (date_banca[0], date_banca[-1]) if date_banca else (None, None)
 
+    # Una conferma del titolare gia' scritta e' una decisione persistita, non un
+    # candidato da ricalcolare. Senza questa precedenza, al refresh una causale
+    # ancora priva di DATA INCASSO tornava PROBABILE e sembrava che la richiesta
+    # di correzione non fosse stata salvata. Il movimento deve comunque esistere
+    # nell'estratto: un id memorizzato senza la riga bancaria non viene inventato.
+    conferme_manuali: Dict[str, Dict[str, Any]] = {}
+    for p in pagamenti:
+        for q in p.get("quietanze") or []:
+            originale = quietanze_per_id.get(str(q.get("id"))) or {}
+            doc = originale.get("documento") or {}
+            riscontro = doc.get("riscontro_banca") or {}
+            conferma = riscontro.get("conferma_titolare") or {}
+            movimento_id = str(doc.get("movimento_bancario_id") or riscontro.get("movimento_id") or "")
+            movimento = addebiti_per_id.get(movimento_id)
+            if conferma and movimento:
+                conferme_manuali[p["chiave"]] = {
+                    "movimento": movimento, "riscontro": riscontro, "conferma": conferma,
+                }
+                break
+
+    automatici = [p for p in pagamenti if p["chiave"] not in conferme_manuali]
     unita = [{"chiave": p["chiave"], "data": p["data"], "importo_cents": p["importo_cents"],
-              "incasso_obbligatorio": True} for p in pagamenti]
+              "incasso_obbligatorio": True} for p in automatici]
+    unita_per_chiave = {u["chiave"]: u for u in unita}
     candidati, per_addebito = _abbina(unita, addebiti, soglia_parziale_cents)
 
     riscontri: List[Dict[str, Any]] = []
@@ -1515,15 +1662,45 @@ def riscontri_quietanze_banca(
     senza_estratto: List[Dict[str, Any]] = []
     incompleti: List[Dict[str, Any]] = []
     compensate: List[Dict[str, Any]] = []
-    for p, u in zip(pagamenti, unita):
+    for p in pagamenti:
+        manuale = conferme_manuali.get(p["chiave"])
+        if manuale:
+            conferma = manuale["conferma"]
+            riscontro = manuale["riscontro"]
+            riscontri.append({
+                **_vista_pagamento(p),
+                "livello": LIVELLO_CERTO,
+                "livello_originale": conferma.get("livello") or riscontro.get("livello"),
+                "addebito": _vista_addebito(manuale["movimento"]),
+                "stato": RISCONTRO_CERTO,
+                "conferma_titolare": conferma,
+                "motivazione": (
+                    f"abbinamento salvato dal titolare: {conferma.get('motivo_testo') or conferma.get('motivo') or 'motivazione registrata'}"
+                ),
+            })
+            continue
+        u = unita_per_chiave[p["chiave"]]
         if p["data"] and p.get("compensazione_totale"):
             compensate.append({**_vista_pagamento(p), "stato": "COMPENSATA", "motivazione": (
                 "saldo zero: tributi pagati interamente con i crediti della stessa delega, "
                 "nessun addebito in banca atteso")})
             continue
         if not p["data"] or not p["importo_cents"]:
-            incompleti.append({**_vista_pagamento(p), "motivo": (
-                "data di pagamento non letta" if not p["data"] else "saldo non letto")})
+            mancanti = []
+            if not p["data"]:
+                mancanti.append("data di pagamento")
+            if not p["importo_cents"]:
+                mancanti.append("saldo della delega")
+            motivo = " e ".join(mancanti) + (" non letti" if len(mancanti) > 1 else " non letto")
+            incompleti.append({
+                **_vista_pagamento(p),
+                "campi_mancanti": mancanti,
+                "motivo": motivo,
+                "motivazione": (
+                    f"{motivo}: non e' possibile cercare un addebito esatto nell'estratto conto. "
+                    "La quietanza resta prova documentale separata; nessun movimento bancario viene associato."
+                ),
+            })
             continue
         valutazione = _valuta(u, candidati.get(p["chiave"]), per_addebito)
         if valutazione and valutazione["scelto"]:
@@ -1563,6 +1740,7 @@ def riscontri_quietanze_banca(
                     "periodo per il riscontro in banca: caricare l'estratto del periodo")})
 
     usati = set(per_addebito)
+    usati.update(_mid(v["movimento"]) for v in conferme_manuali.values())
     addebiti_senza = [
         {**_vista_addebito(m), "livello": LIVELLO_MOVIMENTO_ORFANO, "motivazione": (
             "addebito di delega F24 senza quietanza di pari importo e data: "
@@ -1624,7 +1802,12 @@ def riscontri_modelli_banca(
         for a in ([r["addebito"]] if r.get("addebito") else []) + list(r.get("candidati") or []):
             reclamati.add(a["movimento_id"])
 
-    per_id_movimento = {_mid(m): m for m in registro["movimenti"]}
+    movimenti = movimenti_bancari_unici(registro["movimenti"])
+    per_id_movimento: Dict[str, Dict[str, Any]] = {}
+    for m in movimenti:
+        per_id_movimento[_mid(m)] = m
+        for copia in m.get("_copie_tecniche") or []:
+            per_id_movimento[str(copia.get("movimento_id"))] = m
     riscontrati: List[Dict[str, Any]] = []
     da_verificare: List[Dict[str, Any]] = []
     senza_quietanza: List[Dict[str, Any]] = []
@@ -1671,7 +1854,7 @@ def riscontri_modelli_banca(
     non_riscontrabili_id = {v["f24_id"] for v in non_riscontrabili}
     senza_quietanza = [f for f in senza_quietanza if str(f.get("id")) not in non_riscontrabili_id]
 
-    liberi = [m for m in registro["movimenti"]
+    liberi = [m for m in movimenti
               if _movimento_libero(m) and e_addebito_delega(m) and data_movimento(m)
               and _mid(m) not in reclamati]
     unita = [{"chiave": str(f.get("id")), "data": data_versamento_modello(f),
@@ -1767,15 +1950,28 @@ def tributi_versati_due_volte(
             + (f", addebitata il {v['addebito']['data_it']}" if v.get("addebito") else ", addebito non trovato")
             for v in viste
         )
+        addebiti = [v.get("addebito") for v in viste]
+        ids_addebito = [str(a.get("movimento_id")) for a in addebiti if a and a.get("movimento_id")]
+        doppio_versamento_confermato = (
+            len(ids_addebito) == len(viste) and len(set(ids_addebito)) == len(viste)
+        )
         esito.append({
             "chiave": "||".join(chiavi),
             "data": coinvolti[0]["data"],
             "data_it": data_italiana(coinvolti[0]["data"]),
             "righe": descr,
             "pagamenti": viste,
+            "doppio_versamento_confermato": doppio_versamento_confermato,
+            "stato_duplicazione": (
+                "DOPPIO_VERSAMENTO_CONFERMATO" if doppio_versamento_confermato
+                else "POSSIBILE_DUPLICAZIONE_DELEGA"
+            ),
             "motivazione": (
-                f"stesse righe ({descr}) in {len(viste)} deleghe versate il "
-                f"{data_italiana(coinvolti[0]['data'])} ({invii}): da verificare col commercialista"
+                (f"doppio versamento riscontrato: stesse righe ({descr}) in {len(viste)} deleghe, "
+                 f"ciascuna con un movimento bancario distinto ({invii})"
+                 if doppio_versamento_confermato else
+                 f"possibile duplicazione: stesse righe ({descr}) in {len(viste)} deleghe, ma non risultano "
+                 f"{len(viste)} addebiti bancari distinti ({invii}); non si puo' dichiarare un doppio versamento")
             ),
         })
     return esito
