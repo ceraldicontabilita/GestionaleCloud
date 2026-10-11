@@ -67,6 +67,9 @@ function Codici({ dati, isMobile }) {
   if (isMobile) {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }} data-testid="versamenti-card">
+        <div style={{ fontSize: 12, color: COLORS.textMuted }}>
+          Importi per mese di versamento; avvisi per mese di competenza del tributo.
+        </div>
         {codici.map(c => (
           <div key={c.chiave} style={{ ...riquadro, padding: '10px 12px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
