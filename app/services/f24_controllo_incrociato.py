@@ -34,7 +34,7 @@ from typing import Any, Awaitable, Callable, Dict, Iterable, List, Optional, Set
 
 from app.services.originale_documento import url_originale
 from app.db_collections import (
-    COLL_ESTRATTO_CONTO, COLL_F24, COLL_FISCAL_DOCUMENTS, COLL_QUIETANZE_F24,
+    COLL_ESTRATTO_CONTO, COLL_F24, COLL_FISCAL_DOCUMENTS, COLL_FISCAL_PAGES, COLL_QUIETANZE_F24,
 )
 from app.constants.canale_documento import CANALI, canali_documento
 from app.constants.codici_ravvedimento import CODICI_RAVVEDIMENTO
@@ -1135,7 +1135,7 @@ def pagamenti_da_quietanze(quietanze: Iterable[Dict[str, Any]]) -> List[Dict[str
     """
     gruppi: Dict[str, List[Dict[str, Any]]] = {}
     for q in quietanze:
-        if (str(q.get("status") or "").lower() in ("eliminato", "deleted", "quarantena", "pagamento_non_eseguito")
+        if (str(q.get("status") or "").lower() in ("eliminato", "deleted", "annullato", "stornato", "quarantena", "pagamento_non_eseguito")
                 or (q.get("validazione") or {}).get("saldo_quadrato") is False
                 or (q.get("validazione") or {}).get("sezioni_quadrate") is False):
             continue
@@ -1152,8 +1152,17 @@ def pagamenti_da_quietanze(quietanze: Iterable[Dict[str, Any]]) -> List[Dict[str
         inviato_il = data_invio_protocollo(prima.get("protocollo_originale"))
         ravvedimento_di = sorted({str(o) for q in copie for o in (q.get("ravvedimento_di") or [])})
         righe = prima.get("righe") or []
+        taxpayers = {str((q.get("documento") or {}).get("codice_fiscale") or
+                         ((q.get("documento") or {}).get("dati_generali") or {}).get("codice_fiscale") or "").strip().upper()
+                     for q in copie}
+        acts = {str(((q.get("documento") or {}).get("dati_generali") or {}).get("codice_atto") or "").strip()
+                for q in copie}
+        taxpayers.discard("")
+        acts.discard("")
         pagamenti.append({
             "chiave": chiave,
+            "codice_fiscale": next(iter(taxpayers)) if len(taxpayers) == 1 else None,
+            "codice_atto": next(iter(acts)) if len(acts) == 1 else None,
             "protocollo": prima.get("protocollo_originale"),
             "data": prima.get("data"),
             "importo_cents": prima.get("importo_cents"),
@@ -1175,6 +1184,126 @@ def pagamenti_da_quietanze(quietanze: Iterable[Dict[str, Any]]) -> List[Dict[str
             "_righe": righe,
         })
     return pagamenti
+
+
+async def carica_avvisi_fiscali(db, company_id=None):
+    """Avvisi e compliance dagli originali correnti, con riferimenti leggibili
+    anche per i documenti acquisiti prima del parser del codice atto."""
+    from app.services.dichiarazioni_quadri import riferimenti_comunicazione
+    query = {"document_type": {"$in": ["COMUNICAZIONE_IRREGOLARITA", "AVVISO_BONARIO", "LETTERA_COMPLIANCE"]}}
+    if company_id:
+        query["company_id"] = company_id
+    docs = await db[COLL_FISCAL_DOCUMENTS].find(query, {"_id": 0, "pdf_data": 0}).to_list(2000)
+    docs = [d for d in docs if d.get("entity_status") != "deleted"]
+    pages = await db[COLL_FISCAL_PAGES].find({"document_id": {"$in": [d["id"] for d in docs]}, "page_number": 1},
+                                        {"_id": 0, "layout_words": 0}).to_list(4000) if docs else []
+    refs = {}
+    for d in docs:
+        text = "\n".join(p.get("text") or "" for p in pages if p.get("document_id") == d["id"]
+                         and p.get("version_id") == d.get("current_version_id"))
+        refs[d["id"]] = riferimenti_comunicazione(text)
+    notices = []
+    for d in docs:
+        if d.get("document_type") == "LETTERA_COMPLIANCE":
+            continue
+        data = {**(d.get("comunicazione_54bis") or {}),
+                **{k: v for k, v in refs[d["id"]].items() if v}}
+        linked = []
+        for letter in docs:
+            r = refs[letter["id"]]
+            if (letter.get("document_type") == "LETTERA_COMPLIANCE" and data.get("codice_fiscale")
+                    and r.get("codice_fiscale") == data["codice_fiscale"]
+                    and data.get("protocollo_lipe") and r.get("protocollo_lipe") == data["protocollo_lipe"]
+                    and data.get("trimestre_lettera") and r.get("trimestre_lettera") == data["trimestre_lettera"]):
+                linked.append({"id": letter["id"], "filename": letter.get("filename"),
+                               "pdf_url": url_originale("documento_fiscale", letter["id"])})
+        notices.append({**d, "comunicazione_54bis": data, "compliance": linked})
+    return notices
+
+
+def riscontri_avvisi_iva(quietanze, avvisi):
+    """Proiezione 9001 → imposta del periodo, senza creare nuovi versamenti.
+
+    Solo CF, atto, anno e quadratura esatti. Rate parziali/ambigue non sono
+    ripartite: l'imposta del prospetto entra quando l'intero avviso è coperto.
+    Gli originali restano 9001; sanzioni e interessi non diventano IVA.
+    """
+    by_cf = {}
+    for q in quietanze:
+        raw = q.get("documento") or {}
+        cf = str(raw.get("codice_fiscale") or (raw.get("dati_generali") or {}).get("codice_fiscale") or "").strip().upper()
+        if cf:
+            by_cf.setdefault(cf, []).append(q)
+    payments = [p for qs in by_cf.values() for p in pagamenti_da_quietanze(qs)]
+    grouped = {}
+    for d in avvisi:
+        data = d.get("comunicazione_54bis") or {}
+        cf, act, year = data.get("codice_fiscale"), data.get("codice_atto"), data.get("anno_imposta")
+        if (d.get("entity_status") == "deleted" or data.get("tipo_modello") not in ("IVA", "LIPE")
+                or not cf or not re.fullmatch(r"\d{11}", str(act or "")) or not isinstance(year, int)):
+            continue
+        grouped.setdefault((cf, act, year), []).append(d)
+    checks, projected = [], []
+    for (cf, act, year), copies in sorted(grouped.items()):
+        d = copies[0]
+        data = d["comunicazione_54bis"]
+        periods = data.get("periodi") or []
+        total = centesimi(data.get("importo_totale"))
+        signatures = {repr((c["comunicazione_54bis"].get("periodi"), c["comunicazione_54bis"].get("importo_totale"))) for c in copies}
+        matches = []
+        for p in payments:
+            if (p.get("codice_fiscale") != cf or p.get("codice_atto") != act or not p.get("data")
+                    or (data.get("data_elaborazione") and p["data"] < data["data_elaborazione"])):
+                continue
+            amount = sum(r.get("importo_debito_cents", 0) for r in p["_righe"]
+                         if r.get("sezione") == "sezione_erario" and r.get("codice") == "9001"
+                         and r.get("anno") == year and not r.get("importo_credito_cents"))
+            if amount > 0:
+                matches.append({**p, "importo_avviso_cents": amount})
+        paid = sum(p["importo_avviso_cents"] for p in matches)
+        rows, penalty, interest = [], 0, 0
+        valid = bool(total and periods and len(signatures) == 1 and (data.get("quadratura") or {}).get("ok") is True)
+        for period in periods:
+            principal = centesimi(period.get("imposta_da_versare")) or 0
+            s = centesimi(period.get("sanzioni")) or 0
+            i = centesimi(period.get("interessi")) or 0
+            month, quarter = period.get("mese"), period.get("trimestre")
+            code = (f"60{month:02d}" if isinstance(month, int) and 1 <= month <= 12 else
+                    str(6030 + quarter) if isinstance(quarter, int) and 1 <= quarter <= 4 else None)
+            valid = valid and bool(code and period.get("anno") == year
+                                   and all(period.get(k) not in (None, "") for k in
+                                           ("imposta_da_versare", "sanzioni", "interessi"))
+                                   and principal >= 0 and s >= 0 and i >= 0
+                                   and principal + s + i == centesimi(period.get("totale")))
+            rows.append({"sezione": "sezione_erario", "codice": code, "anno": year, "mese": month,
+                         "periodo_riferimento": f"{month:02d}/{year}" if isinstance(month, int) else str(year),
+                         "importo_debito_cents": principal, "importo_credito_cents": 0,
+                         "codice_originale": "9001"})
+            penalty += s
+            interest += i
+        principal = sum(r["importo_debito_cents"] for r in rows)
+        valid = valid and principal + penalty + interest == total
+        state = ("PAGATA" if paid == total else "PARZIALE" if 0 < paid < total else
+                 "NON_PAGATA" if paid == 0 else "DA_VERIFICARE") if valid else "DA_VERIFICARE"
+        check = {"document_ids": [c["id"] for c in copies], "codice_atto": act, "codice_fiscale": cf,
+                 "anno": year, "stato": state, "totale_cents": total, "versato_cents": paid,
+                 "imposta_cents": principal, "sanzioni_cents": penalty, "interessi_cents": interest,
+                 "avviso": {"id": d["id"], "filename": d.get("filename"),
+                            "pdf_url": url_originale("documento_fiscale", d["id"])},
+                 "compliance": d.get("compliance") or [],
+                 "quietanze": [q for p in matches for q in p["quietanze"]],
+                 "pagamenti": [{"chiave": p["chiave"], "data": p["data"], "importo_cents": p["importo_avviso_cents"]} for p in matches],
+                 "motivo": "CF, codice atto, anno e importi riscontrati" if state == "PAGATA" else
+                           "Avviso non interamente riscontrato: nessuna ripartizione presunta sui periodi"}
+        checks.append(check)
+        if state == "PAGATA":
+            projected.append({"chiave": f"avviso:{cf}:{act}:{year}", "codice_fiscale": cf,
+                              "importo_cents": total,
+                              "codice_atto": act, "data": max(p["data"] for p in matches),
+                              "protocollo": ", ".join(p["protocollo"] or "" for p in matches),
+                              "quietanze": check["quietanze"], "_righe": rows,
+                              "tipo_riscontro": "AVVISO_BONARIO", "riscontro_avviso": check})
+    return {"avvisi": checks, "pagamenti": projected}
 
 
 def modelli_coperti_da_tributi_pagati(modelli, quietanze) -> Set[str]:

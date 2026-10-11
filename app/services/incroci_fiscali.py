@@ -16,9 +16,9 @@ Le regole, nell'ordine in cui contano:
   sostituito da una ritrasmissione; a credito il dovuto è zero. Un periodo
   senza VP14 letto non è «zero», è «non determinabile»: nessun alert;
 * **un versamento si conta una volta**: le quietanze prima (una per
-  protocollo e saldo), i modelli del commercialista solo quando nessuna
-  quietanza con righe li copre (stesso protocollo, aggancio esplicito o
-  stessa data e saldo, com'è già in `prove_modello`). Fuori i modelli
+  protocollo e saldo), i modelli del commercialista solo con prova di
+  pagamento e quando nessuna quietanza con righe li copre. Un modello
+  predisposto o un addebito soltanto compatibile non è un pagamento. Fuori i modelli
   annullati, stornati o in quarantena e ogni documento il cui saldo non
   quadra (`validazione.saldo_quadrato` falso): finiscono in `guardia`;
 * **l'anno sta sulla riga** del tributo, mai sul documento: un F24 IVA di
@@ -230,6 +230,12 @@ def versamenti_dal_registro(registro: Dict[str, Any]) -> Dict[str, Any]:
             esclusi.append({"id": fid, "filename": nome, "fonte": "f24_unificato",
                             "motivo": f"coperto dalla quietanza {copre[0]}: le righe si contano da lei"})
             continue
+        quietanza_identificata = any(q.get("agganciata") or q.get("criterio") == "protocollo"
+                                    for q in prove["quietanze"])
+        if not prove["pagato_banca"] and not quietanza_identificata:
+            esclusi.append({"id": fid, "filename": nome, "fonte": "f24_unificato",
+                            "motivo": "modello predisposto senza prova di pagamento: non sommato ai versamenti"})
+            continue
         righe = reg.righe_modello(f24)
         versamenti.append({
             "fonte": "f24_unificato", "id": fid, "filename": nome,
@@ -264,6 +270,8 @@ def _vista_versamento(v: Dict[str, Any], r: Dict[str, Any]) -> Dict[str, Any]:
         "codice_tributo": r["codice"], "periodo": r["periodo_riferimento"],
         "importo": _euro(r["importo_debito_cents"]), "importo_credito": _euro(r["importo_credito_cents"]),
         "ravvedimento": v["ravvedimento"],
+        "riscontro_avviso": v.get("riscontro_avviso"),
+        "pdf_url": v.get("pdf_url"),
     }
 
 
@@ -700,6 +708,7 @@ def _alert_previsti(esito: Dict[str, Any]) -> List[Dict[str, Any]]:
 async def incroci(db, *, anni: Optional[Iterable[int]] = None, oggi: Optional[date] = None) -> Dict[str, Any]:
     """Il quadro completo degli incroci, in sola lettura. Con `anni` restringe
     LIPE e dichiarazioni agli anni chiesti; le fonti F24 si leggono una volta."""
+    from app.config import settings
     oggi = oggi or datetime.now(timezone.utc).date()
     anni_scelti: Optional[Set[int]] = {int(a) for a in anni} if anni else None
 
@@ -707,6 +716,19 @@ async def incroci(db, *, anni: Optional[Iterable[int]] = None, oggi: Optional[da
     registro = await reg.carica_registro(db)
     fonti = versamenti_dal_registro(registro)
     versamenti = fonti["versamenti"]
+    comunicazioni = await reg.carica_avvisi_fiscali(db)
+    avvisi = reg.riscontri_avvisi_iva(registro["quietanze"], comunicazioni)
+    for p in avvisi["pagamenti"]:
+        # lipe_periodi è il deposito della società configurata; un avviso
+        # personale presente nell'archivio non paga l'IVA della società.
+        if p["codice_fiscale"] != settings.FISCAL_COMPANY_ID:
+            continue
+        q = p["quietanze"][0]
+        versamenti.append({"fonte": q["fonte"], "id": q["id"], "filename": q["filename"],
+                           "protocollo": p["protocollo"], "data_versamento": p["data"],
+                           "saldo_cents": sum(r["importo_debito_cents"] for r in p["_righe"]),
+                           "righe": p["_righe"], "quietanza": True, "ravvedimento": False,
+                           "pdf_url": q["pdf_url"], "riscontro_avviso": p["riscontro_avviso"]})
     # Gli indizi guardano modelli e quietanze con righe insieme (i modelli da
     # soli: nel minisito i versamenti sono quasi tutti quietanze).
     registro_indizi = {
@@ -732,9 +754,6 @@ async def incroci(db, *, anni: Optional[Iterable[int]] = None, oggi: Optional[da
         for anno, doc in sorted(iva.items()) if not anni_scelti or anno in anni_scelti
     ]
 
-    comunicazioni = await db[COLL_FISCAL_DOCUMENTS].find(
-        {"document_type": {"$in": list(TIPI_54BIS)}}, {"_id": 0, "pdf_data": 0},
-    ).to_list(2000)
     comunicazioni_54bis: List[Dict[str, Any]] = []
     senza_righe: List[Dict[str, Any]] = []
     for doc in comunicazioni:
@@ -746,6 +765,15 @@ async def incroci(db, *, anni: Optional[Iterable[int]] = None, oggi: Optional[da
                                 "motivo": "nessuna riga strutturata (codici e importi della comunicazione non letti)"})
             continue
         voce = _comunicazione_54bis(doc, versamenti, oggi)
+        check = next((a for a in avvisi["avvisi"] if doc["id"] in a["document_ids"]), None)
+        if check and (check["quietanze"] or voce["stato"] != "PAGATA"):
+            voce.update({"stato": check["stato"], "pagata": check["stato"] == "PAGATA",
+                         "importo_versato": _euro(check["versato_cents"]),
+                         "mancante": _euro(max(0, (check["totale_cents"] or 0) - check["versato_cents"])),
+                         "riscontro_avviso": check, "nota": check["motivo"]})
+            if check["stato"] == "PAGATA":
+                voce["candidati_per_importo"] = []
+                voce["giorni_oltre_scadenza"] = None
         if anni_scelti and isinstance(voce["anno"], int) and voce["anno"] not in anni_scelti:
             continue
         comunicazioni_54bis.append(voce)
@@ -774,6 +802,7 @@ async def incroci(db, *, anni: Optional[Iterable[int]] = None, oggi: Optional[da
         "irap_riscontro": irap_riscontro,
         "iva_annuale_riscontro": iva_annuale,
         "comunicazioni_54bis": comunicazioni_54bis,
+        "avvisi_iva_riscontro": avvisi["avvisi"],
         "comunicazioni_senza_righe_strutturate": senza_righe,
         "note_rettifica_inps": note_rettifica,
         "guardia": {"lipe_escluse": lipe_escluse, "f24_esclusi": fonti["esclusi"]},
@@ -829,9 +858,18 @@ async def applica_alert(db, esito: Dict[str, Any], *, anni_completi: bool = True
             anno_alert = (a.get("extra") or {}).get("anno")
             if not anni_completi and anno_alert not in set(esito.get("anni") or []):
                 continue
+            notice = next((v["riscontro_avviso"] for r in esito.get("confronti_iva_mensile", [])
+                           if str(r.get("lipe_id")) == entita_id and r.get("stato") == STATO_OK
+                           for v in r.get("f24_versamenti", []) if v.get("riscontro_avviso")), None)
+            if codice == ALERT_54BIS:
+                notice = next((r.get("riscontro_avviso") for r in esito.get("comunicazioni_54bis", [])
+                               if str(r.get("document_id")) == entita_id and r.get("pagata")), None)
+            reason = (f"Pagato tramite avviso bonario, codice atto {notice['codice_atto']}; "
+                      "quietanza 9001 verificata per contribuente, anno e importi. Sanzioni e interessi separati."
+                      if notice else "incroci fiscali: al ricalcolo la condizione non vale piu' (versato entro la soglia, "
+                      "fonte sostituita o esclusa dalla guardia)")
             if await risolvi_alert_per_id(
-                a["id"], db, "incroci fiscali: al ricalcolo la condizione non vale piu' (versato entro la soglia, "
-                "fonte sostituita o esclusa dalla guardia)", resolved_by="incroci_fiscali",
+                a["id"], db, reason, resolved_by="incroci_fiscali",
             ):
                 chiusi += 1
     return {"creati": creati, "chiusi": chiusi, "invariati": invariati}

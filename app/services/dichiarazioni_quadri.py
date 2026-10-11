@@ -68,7 +68,7 @@ __all__ = [
 # comunicazioni 54-bis/36-bis. Il marcatore `quadri_controllati_v` sul
 # documento dice con quale versione e' stato letto: l'arretrato e' chi non
 # porta quella corrente.
-PARSER_VERSION = "dichiarazioni-quadri-v5"
+PARSER_VERSION = "dichiarazioni-quadri-v6"
 
 #: Tipo letto dal contenuto -> tipi d'archivio che quel contenuto corregge.
 #: Nessuna dichiarazione vera cambia tipo: solo i marcatori generici.
@@ -443,6 +443,19 @@ _RIGHE_COMUNICAZIONE = (
 )
 
 
+def riferimenti_comunicazione(testo: str) -> Dict[str, Any]:
+    """Identificativi stampati su compliance/avviso, non una prova di pagamento."""
+    testo = re.sub(r"\s+", " ", testo)
+    cf = re.search(r"(?:C\.F\.|Codice fiscale contribuente\s*:?)\s*([A-Z0-9]{11,16})\b", testo, re.I)
+    lipe = (re.search(r"identificativo n\.\s*(\d+)\s+del", testo, re.I)
+            or re.search(r"Protocollo della dichiarazione\s+(\d+)\s+del", testo, re.I))
+    trimestre = re.search(r"\b(I{1,3}|IV) trimestre (20\d{2})", testo, re.I)
+    return {"codice_fiscale": cf.group(1).upper() if cf else None,
+            "protocollo_lipe": lipe.group(1).lstrip("0") if lipe else None,
+            "trimestre_lettera": {"trimestre": _TRIMESTRI_IT[trimestre.group(1).upper()],
+                                  "anno": int(trimestre.group(2))} if trimestre else None}
+
+
 def comunicazione_54bis(pagine: Iterable[Dict[str, Any]]) -> Dict[str, Any]:
     """Legge dal testo una comunicazione di irregolarita' dell'Agenzia
     (54-bis sulla LIPE, 36-bis sulla dichiarazione IVA): numero, codice atto,
@@ -512,6 +525,7 @@ def comunicazione_54bis(pagine: Iterable[Dict[str, Any]]) -> Dict[str, Any]:
         quadratura = {"ok": somma == importo_totale, "somma_periodi": _euro_str(somma),
                       "importo_totale": _euro_str(importo_totale)}
     return {
+        **riferimenti_comunicazione(testo),
         "norma": norma, "numero_comunicazione": numero, "codice_atto": codice_atto,
         "data_elaborazione": data_elaborazione, "data_notifica": None,
         "tipo_modello": tipo_modello, "anno_modello": anno_modello, "anno_imposta": anno_imposta,

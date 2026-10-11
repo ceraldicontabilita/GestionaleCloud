@@ -151,8 +151,21 @@ def _coordinate_quietanza(doc) -> dict[str, Any]:
     parsed["data_pagamento"] = None
     parsed["protocollo_telematico"] = None
     parsed["numero_modello"] = None
+    acts = set()
 
     for page in doc:
+        # Il codice atto AE è stampato in undici caselle sotto la sua
+        # etichetta. Il layer testuale lo separa dal titolo: non cercare un
+        # generico numero a undici cifre (potrebbe essere il CF).
+        labels = page.search_for("CODICE ATTO")
+        for label in labels:
+            tokens = sorted((w[0], w[4].replace("\x00", "").strip())
+                            for w in page.get_text("words")
+                            if label.x0 - 2 <= w[0] < label.x0 + 170
+                            and label.y1 <= w[1] <= label.y1 + 18)
+            act = "".join(t for _, t in tokens)
+            if re.fullmatch(r"\d{11}", act):
+                acts.add(act)
         grouped: dict[int, list[tuple[float, str]]] = {}
         for word in page.get_text("words"):
             x0, y0, _x1, _y1, token, *_rest = word
@@ -237,6 +250,7 @@ def _coordinate_quietanza(doc) -> dict[str, Any]:
                     parsed["data_pagamento"] = datetime.strptime(candidate, "%d%m%Y").date().isoformat()
                 except ValueError:
                     pass
+    parsed["codice_atto"] = next(iter(acts)) if len(acts) == 1 else None
     return parsed
 
 
@@ -366,6 +380,8 @@ def parse_quietanza_f24(pdf_path: str = None, pdf_content: bytes = None) -> Dict
     # ============================================
     # DATI GENERALI
     # ============================================
+    if coordinate_data.get("codice_atto"):
+        result["dati_generali"]["codice_atto"] = coordinate_data["codice_atto"]
 
     # Codice Fiscale - dopo "Soggetto:" o "CODICE FISCALE"
     cf_patterns = [
@@ -615,7 +631,7 @@ def parse_quietanza_f24(pdf_path: str = None, pdf_content: bytes = None) -> Dict
         "saldo_quadrato": difference_cents == 0,
         "differenza_saldo": difference_cents / 100,
         "differenza_saldo_cents": difference_cents,
-        "parser_version": "quietanza-coordinate-v2",
+        "parser_version": "quietanza-coordinate-v3",
     }
 
     # Rimuovi raw_text prima di restituire

@@ -174,6 +174,7 @@ def esporta_json(righe: Sequence[Dict[str, Any]]) -> bytes:
 def esporta_xlsx(righe: Sequence[Dict[str, Any]]) -> bytes:
     from openpyxl import Workbook
     from openpyxl.styles import Font
+    from openpyxl.xml.functions import tostring
 
     wb = Workbook()
     ws = wb.active
@@ -191,6 +192,9 @@ def esporta_xlsx(righe: Sequence[Dict[str, Any]]) -> bytes:
     wb.properties.created = wb.properties.modified = datetime(2000, 1, 1)
     grezzo = io.BytesIO()
     wb.save(grezzo)
+    # save() sovrascrive modified con l'ora corrente anche se impostata prima.
+    wb.properties.modified = datetime(2000, 1, 1)
+    proprieta = tostring(wb.properties.to_tree())
     # openpyxl scrive la data corrente nelle voci dello ZIP: si riscrivono a data fissa
     fisso = io.BytesIO()
     with zipfile.ZipFile(grezzo) as sorgente, zipfile.ZipFile(fisso, "w", zipfile.ZIP_DEFLATED) as dest:
@@ -198,7 +202,7 @@ def esporta_xlsx(righe: Sequence[Dict[str, Any]]) -> bytes:
             voce = zipfile.ZipInfo(info.filename, date_time=(2000, 1, 1, 0, 0, 0))
             voce.compress_type = zipfile.ZIP_DEFLATED
             voce.external_attr = 0o600 << 16
-            dest.writestr(voce, sorgente.read(info.filename))
+            dest.writestr(voce, proprieta if info.filename == "docProps/core.xml" else sorgente.read(info.filename))
     return fisso.getvalue()
 
 

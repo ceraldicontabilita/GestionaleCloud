@@ -214,7 +214,7 @@ def group_annual_dossiers(documents, components, pages, versions):
     return result, unlinked
 
 
-def attach_receipts(dossiers, receipts):
+def attach_receipts(dossiers, receipts, notices=()):
     """Stesso CF + codice tributo pertinente + anno di riferimento, non data di invio."""
     by_cf = defaultdict(list)
     for q in receipts:
@@ -222,6 +222,7 @@ def attach_receipts(dossiers, receipts):
         cf = str(raw.get("codice_fiscale") or (raw.get("dati_generali") or {}).get("codice_fiscale") or "").strip().upper()
         if cf:
             by_cf[cf].append(q)
+    notice_checks = reg.riscontri_avvisi_iva(receipts, notices)
     for dossier in dossiers:
         cf, year = dossier["taxpayer_id"], dossier["tax_year"]
         if not cf or not year:
@@ -229,6 +230,8 @@ def attach_receipts(dossiers, receipts):
         # Filtrare prima per CF evita che lo stesso protocollo di invio di
         # contribuenti diversi venga confuso dal raggruppamento dei versamenti.
         payments = reg.pagamenti_da_quietanze(by_cf.get(cf, []))
+        if dossier["document_type"] == "DICHIARAZIONE_IVA":
+            payments += [p for p in notice_checks["pagamenti"] if p["codice_fiscale"] == cf]
         allowed_codes = set(dossier["tax_codes"]) | set(ACCESSORI_DICHIARAZIONI.get(dossier["document_type"], {}))
         for payment in payments:
             rows = [r for r in payment["_righe"] if r.get("codice") in allowed_codes and _year(r.get("anno")) == year]
@@ -238,6 +241,8 @@ def attach_receipts(dossiers, receipts):
                 })
         if dossier["document_type"] in ACCESSORI_DICHIARAZIONI:
             dossier["tax_check"] = reconcile_annual_taxes(dossier, payments)
+            dossier["tax_check"]["avvisi"] = [a for a in notice_checks["avvisi"] if a["codice_fiscale"] == cf
+                                               and a["anno"] == year] if dossier["document_type"] == "DICHIARAZIONE_IVA" else []
         if dossier["document_type"] == "MODELLO_770":
             dossier["withholding_check"] = reconcile_withholdings(dossier["originals"], payments)
             # Anche le quietanze dell'anno dei redditi precedente e quelle
@@ -310,6 +315,7 @@ def reconcile_annual_taxes(dossier, payments):
             link = {"id": stable_id("tax_receipt_row", payment["chiave"], i), "chiave": payment["chiave"],
                     "data": payment.get("data"), "protocollo": payment.get("protocollo"),
                     "quietanze": payment["quietanze"], "row": row, "codice": code,
+                    "riscontro_avviso": payment.get("riscontro_avviso"),
                     "compensazione_totale": payment.get("compensazione_totale", False)}
             if code in codes:
                 if row.get("importo_debito_cents", 0) > 0:
@@ -359,6 +365,25 @@ def reconcile_annual_taxes(dossier, payments):
             paid = sum(p["amount_cents"] for p in selected)
             declared = field["cents"]
             warnings = []
+            classification_review = False
+            if kind == "DICHIARAZIONE_IVA" and as_of_filing:
+                # VL30: la somma dei versamenti comprende col. 3, 4 e 5.
+                # Una colonna compilata non viene conteggiata due volte.
+                communication = _tax_field(originals, "vl30_versata_comunicazioni")
+                collection = _tax_field(originals, "vl30_versata_cartelle")
+                if declared is None and field["reason"] == "casella_vuota" and any(
+                        f["cents"] is not None for f in (communication, collection)):
+                    declared = 0
+                if declared is not None:
+                    declared += (communication["cents"] or 0) + (collection["cents"] or 0)
+                if any(f["reason"] == "ambiguo" for f in (communication, collection)):
+                    declared = None
+                via_notice = sum(p["amount_cents"] for p in selected if p.get("riscontro_avviso"))
+                declared_notice = communication["cents"] or 0
+                rounded_notice = int((Decimal(via_notice) / 100).quantize(Decimal("1"), rounding=ROUND_HALF_UP)) * 100
+                if via_notice != declared_notice and rounded_notice != declared_notice:
+                    classification_review = True
+                    warnings.append("Il totale comprende imposta pagata tramite avviso bonario; la ripartizione dichiarata in VL30 colonna 4 non coincide e resta da verificare sull'originale.")
             state, state_label = "DA_VERIFICARE", "Importo dichiarato da verificare"
             difference = None if declared is None else paid - declared
             if declared is not None:
@@ -391,6 +416,7 @@ def reconcile_annual_taxes(dossier, payments):
                                 "stato": state, "stato_label": state_label, "declared_cents": declared,
                                 "paid_cents": paid, "difference_cents": difference, "payments": selected,
                                 "excluded_payments": not_compared, "cutoff": cutoff if as_of_filing else None,
+                                "classification_review": classification_review,
                                 "warnings": warnings})
     return {"groups": groups, "comparisons": comparisons, "credits": credits, "accessories": accessories,
             "paid_cents": sum(p["amount_cents"] for p in debits), "excluded_originals": excluded,
@@ -573,13 +599,14 @@ async def list_annual_dossiers(db, *, company_id: str, year: int | None = None,
     documents = await db["fiscal_documents"].find(query, {"_id": 0, "pdf_data": 0}).to_list(10000)
     documents = [d for d in documents if d.get("entity_status") != "deleted"]
     ids = [d["id"] for d in documents]
-    versions, pages, components, receipts = await asyncio.gather(
+    versions, pages, components, receipts, notices = await asyncio.gather(
         db[COLL_FISCAL_DOCUMENT_VERSIONS].find({"company_id": company_id, "document_id": {"$in": ids}}, {"_id": 0}).to_list(10000),
         db[COLL_FISCAL_PAGES].find({"company_id": company_id, "document_id": {"$in": ids}, "page_number": {"$lte": 3}}, {"_id": 0, "layout_words": 0}).to_list(30000),
         db["documents_inbox"].find({"document_type": {"$in": ["componente_770", "componente_dichiarazione"]},
                                    "$or": [{"company_id": company_id}, {"company_id": {"$exists": False}}]},
                                   {"_id": 0, "pdf_data": 0}).to_list(10000),
         reg.carica_quietanze(db),
+        reg.carica_avvisi_fiscali(db, company_id),
     )
     dossiers, unlinked = group_annual_dossiers(documents, [d for d in components if d.get("entity_status") != "deleted"], pages, versions)
     # I vecchi documenti con classificazione/anno non provati restano apribili,
@@ -591,7 +618,7 @@ async def list_annual_dossiers(db, *, company_id: str, year: int | None = None,
     years = sorted({d["tax_year"] for d in dossiers if d["tax_year"]}, reverse=True)
     dossiers = [d for d in dossiers if (not year or d["tax_year"] == year)
                 and (not declaration_type or d["document_type"] == declaration_type)]
-    attach_receipts(dossiers, receipts)
+    attach_receipts(dossiers, receipts, notices)
     return {"items": dossiers, "total": len(dossiers), "years": years, "year": year,
             "declaration_type": declaration_type, "unlinked_components": unlinked,
             "sources": {"canonical": "fiscal_documents", "fiscal_documents": len(documents)},
