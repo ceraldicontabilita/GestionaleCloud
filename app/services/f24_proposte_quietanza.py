@@ -8,7 +8,7 @@ dalle **righe**: stesso codice tributo e stesso periodo di riferimento, importo 
 * niente si scrive da soli: il collegamento lo conferma il titolare (`conferma_collegamento_quietanza`),
   che sceglie **fra i candidati proposti** (un'altra quietanza e' 409) con un motivo a chip;
 * il collegamento non prova la banca: e' lo stesso `patch_quietanza_associata` di sempre
-  (`DA_VERIFICARE_BANCA`), l'addebito resta al motore F24 ↔ banca.
+  (`PAGATO_QUIETANZA` se completa), l'addebito resta al motore F24 ↔ banca.
 
 Mai per solo importo: senza almeno una riga con lo stesso codice e periodo non c'e' candidato.
 """
@@ -182,6 +182,10 @@ async def conferma_collegamento_quietanza(
         "righe": scelto["righe_corrispondenti"], "righe_non_trovate": scelto["righe_non_trovate"],
         "differenza_totale_cents": scelto["differenza_totale_cents"],
     }
+    from app.services.f24_payment_evidence import quietanza_copre_modello
+
+    if not quietanza_copre_modello(patch):
+        patch.update(status="da_pagare", stato_pagamento="QUIETANZA_PARZIALE", pagato=False)
     patch["updated_at"] = ora
     await db[COLL_F24].update_one({"id": f24_id}, {"$set": patch})
     # La quietanza conosce il suo modello: stessa indicizzazione che usa gia' il registro.

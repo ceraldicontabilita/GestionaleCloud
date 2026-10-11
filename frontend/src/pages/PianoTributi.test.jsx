@@ -49,6 +49,23 @@ describe('Piano tributi: card cliccabili', () => {
 });
 
 describe('Piano tributi: atteso dal prospetto paghe', () => {
+  it('apre la quietanza autonoma senza presentarla come modello F24', async () => {
+    api.get.mockResolvedValue({ data: {
+      ...dati, mancano: [],
+      voci: [{ ...dati.voci[0], caselle: [{
+        periodo: '03', etichetta_periodo: '03/2026', stato: 'pagato_quietanza',
+        etichetta_stato: 'Pagato (quietanza)', scadenza: '2026-04-16', importo: '100.00',
+        modelli: [{ f24_id: null, documento_id: 'q-mar', tipo_documento: 'quietanza',
+          data_versamento: '2026-04-16', protocollo: 'PROTO-MARZO', debito_cents: 10000,
+          credito_cents: 0, pdf_url: '/api/originale/quietanza/q-mar', movimenti: [], quietanze: ['q-mar'] }],
+      }] }],
+    } });
+    render(<MemoryRouter><PianoTributi /></MemoryRouter>);
+    fireEvent.click(await screen.findByRole('button', { name: /03\/2026: Pagato/ }));
+    expect(screen.getByText(/Quietanza del 16\/04\/2026/)).toHaveTextContent('protocollo PROTO-MARZO');
+    expect(screen.queryByText(/Nessun F24 in archivio/)).not.toBeInTheDocument();
+  });
+
   it('mostra l\'importo atteso dalle buste sulla casella e la differenza con l\'F24 nel dettaglio', async () => {
     api.get.mockResolvedValue({ data: {
       anno: 2026, oggi: '2026-09-26', conteggi: { pagato: 1 }, etichette: { pagato: 'Pagato (banca)' }, mancano: [], fuori_piano: [],

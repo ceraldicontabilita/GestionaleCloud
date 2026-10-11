@@ -136,18 +136,19 @@ function DettaglioCasella({ voce, casella }) {
       )}
       {voce.nota && <div style={{ marginTop: 6 }}>{voce.nota}{voce.rimando && <> <Link to={voce.rimando.to}>{voce.rimando.label}</Link></>}</div>}
       {!casella.modelli.length && casella.stato === 'manca_f24' && (
-        <div style={{ marginTop: 6 }}>Nessun F24 in archivio per questo periodo: la scadenza e' passata.</div>
+        <div style={{ marginTop: 6 }}>{voce.codici.join(', ')} · {casella.etichetta_periodo}: non risulta pagato. La scadenza è passata e non è presente una quietanza per questo periodo.</div>
       )}
       {!casella.modelli.length && casella.stato === 'nessun_f24' && (
         <div style={{ marginTop: 6 }}>Nessun F24 in archivio per questo periodo. Questa voce non e' obbligatoria ogni mese: si versa solo se c'e' qualcosa di dovuto.</div>
       )}
       {casella.modelli.map(m => (
-        <div key={m.f24_id} style={{ marginTop: 8, paddingTop: 8, borderTop: `1px solid ${COLORS.border}` }}>
+        <div key={m.documento_id || m.f24_id} style={{ marginTop: 8, paddingTop: 8, borderTop: `1px solid ${COLORS.border}` }}>
           <div>
-            F24 del {m.data_versamento ? dataIt(m.data_versamento) : 'data non letta'}
+            {m.tipo_documento === 'quietanza' ? 'Quietanza' : 'F24'} del {m.data_versamento ? dataIt(m.data_versamento) : 'data non letta'}
+            {m.protocollo && <> · protocollo {m.protocollo}</>}
             {' · '}{importo(m.debito_cents / 100)}
             {m.credito_cents > 0 && <> · credito {importo(m.credito_cents / 100)}</>}
-            {' · '}<ApriOriginale url={m.pdf_url} variante="ghost" titolo={`F24 del ${m.data_versamento ? dataIt(m.data_versamento) : 'periodo'}`}>apri il PDF</ApriOriginale>
+            {' · '}<ApriOriginale url={m.pdf_url} variante="ghost" titolo={`${m.tipo_documento === 'quietanza' ? 'Quietanza' : 'F24'} del ${m.data_versamento ? dataIt(m.data_versamento) : 'periodo'}`}>apri il PDF</ApriOriginale>
             {m.giorni_ritardo !== null && m.giorni_ritardo !== undefined && (
               <> · {m.giorni_ritardo === 0 ? 'versato nei termini' : `versato con ${giorni(m.giorni_ritardo)} di ritardo`}</>
             )}
@@ -161,6 +162,7 @@ function DettaglioCasella({ voce, casella }) {
           {m.quietanze.length > 0 && <div>Quietanza presente ({m.quietanze.length})</div>}
         </div>
       ))}
+      {casella.residuo_cents > 0 && <div>Resta da pagare: {importo(casella.residuo_cents / 100)}</div>}
     </div>
   );
 }

@@ -120,8 +120,9 @@ def test_modello_da_pagare_riceve_lo_stato_documentale():
 
     f24 = asyncio.run(scenario())
     assert f24["quietanza_id"] == "q-apr"
-    assert f24["stato_pagamento"] == "DA_VERIFICARE_BANCA"
-    assert f24["pagato"] is False
+    assert f24["stato_pagamento"] == "PAGATO_QUIETANZA"
+    assert f24["pagato"] is True
+    assert f24["pagamento_verificato_banca"] is False
 
 
 def test_il_modello_arrivato_dopo_trova_subito_la_quietanza(monkeypatch):

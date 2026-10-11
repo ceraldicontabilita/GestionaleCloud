@@ -3289,6 +3289,13 @@ Distinguere:
 
 La quietanza dimostra il versamento.
 
+La quietanza rende il tributo pagato anche senza modello F24 e senza abbinamento bancario.
+Si usa il periodo di riferimento delle righe, non il mese dell'addebito. Il modello arrivato dopo
+non crea un secondo pagamento; le copie della quietanza contano una volta e i versamenti parziali
+lasciano il residuo aperto. Il 1001 è atteso nei dodici mesi: dopo la scadenza effettiva, il mese
+senza quietanza va indicato come «non risulta pagato», anche se non è arrivato nessun F24 dell'anno.
+Il filtro della fonte (Drive, posta, caricamento) non modifica la copertura fiscale del periodo.
+
 Non sostituisce il riscontro bancario quando richiesto.
 
 ---

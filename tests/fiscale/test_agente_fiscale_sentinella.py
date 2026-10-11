@@ -171,7 +171,7 @@ def test_avviso_gia_pagato_segnala_probabile_ritardo_ade_non_urgente_di_pagare()
     assert segn[0]["tipo"] == "avviso"  # non "urgente": è già stato pagato
 
 
-def test_avviso_con_sola_quietanza_resta_da_pagare_finche_la_banca_non_conferma():
+def test_avviso_con_sola_quietanza_risulta_pagato_anche_senza_banca():
     db = _Db()
     db["f24_unificato"].docs.append({
         "id": "f24-sola-quietanza",
@@ -188,7 +188,7 @@ def test_avviso_con_sola_quietanza_resta_da_pagare_finche_la_banca_non_conferma(
     ))
     segn = db["agenti_segnalazioni"].docs
     assert len(segn) == 1
-    assert "DA PAGARE" in segn[0]["titolo"]
+    assert "già pagato" in segn[0]["titolo"]
 
 
 def test_avviso_da_pagare_urgente_se_scadenza_vicina():

@@ -126,7 +126,7 @@ describe('Tributi', () => {
     api.get.mockImplementation(url => Promise.resolve({ data: url.startsWith('/api/f24/tributi/versamenti') ? registro : risposta }));
     render(<MemoryRouter initialEntries={['/tributi?vista=versamenti']}><Tributi /></MemoryRouter>);
     expect(await screen.findByTestId('tabella-versamenti')).toBeInTheDocument();
-    expect(screen.getByTestId('mancanti-sezione_erario|1001')).toHaveTextContent('Non pervenuto: marzo, giugno');
+    expect(screen.getByTestId('mancanti-sezione_erario|1001')).toHaveTextContent('1001: non risulta pagato per marzo 2026, giugno 2026');
     fireEvent.click(screen.getByText('Crediti e compensazioni'));
     expect(await screen.findByTestId('credito-sezione_erario|6099|2025')).toHaveTextContent('Ha pagato: 9001 2023');
     fireEvent.click(screen.getByText('Deleghe F24'));

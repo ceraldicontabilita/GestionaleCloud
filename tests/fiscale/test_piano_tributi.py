@@ -51,6 +51,70 @@ def _mese(g, voce_id, mese):
 OGGI = date(2026, 9, 26)
 
 
+def _quietanza(id_, importo=10000, mese=3, anno=2026, data="2026-04-16", **kw):
+    return _f24(id_, data, erario=[("1001", mese, anno, importo, 0)], saldo=importo,
+                data_pagamento=data, protocollo_telematico=f"protocollo-{id_}",
+                totali={"saldo_netto": importo / 100}, **kw)
+
+
+def test_quietanza_senza_modello_chiude_il_periodo_e_il_modello_successivo_non_raddoppia():
+    db = _db()
+    run(db.quietanze_f24.insert_one(_quietanza("q-mar")))
+    prima = _mese(run(piano.griglia(db, 2026, oggi=OGGI)), "ritenute_1001", 3)
+    assert prima["stato"] == piano.PAGATO_QUIETANZA
+    assert prima["debito_cents"] == 10000 and prima["residuo_cents"] == 0
+    assert prima["modelli"][0]["f24_id"] is None
+    assert prima["modelli"][0]["tipo_documento"] == "quietanza"
+    assert run(db.f24_unificato.count_documents({})) == 0
+    run(db.f24_unificato.insert_one(_f24("f-mar", "2026-04-16",
+        erario=[("1001", 3, 2026, 10000, 0)], quietanza_id="q-mar")))
+    dopo = _mese(run(piano.griglia(db, 2026, oggi=OGGI)), "ritenute_1001", 3)
+    assert dopo["stato"] == piano.PAGATO_QUIETANZA
+    assert dopo["debito_cents"] == 10000 and dopo["residuo_cents"] == 0
+
+
+def test_due_versamenti_distinti_e_copie_della_stessa_quietanza():
+    db = _db(_f24("f-mar", "2026-04-16", erario=[("1001", 3, 2026, 20000, 0)]))
+    run(db.quietanze_f24.insert_many([_quietanza("q-1"), _quietanza("q-2")]))
+    copia = {**_quietanza("q-1"), "id": "copia-q-1"}
+    run(db.quietanze_f24.insert_one(copia))
+    marzo = _mese(run(piano.griglia(db, 2026, oggi=OGGI)), "ritenute_1001", 3)
+    assert marzo["stato"] == piano.PAGATO_QUIETANZA
+    assert marzo["debito_cents"] == 20000 and marzo["residuo_cents"] == 0
+
+
+def test_quietanza_parziale_lascia_il_residuo_del_tributo_aperto():
+    db = _db(_f24("f-mar", "2026-04-16", erario=[("1001", 3, 2026, 10000, 0)],
+                  quietanza_id="q-mar"))
+    run(db.quietanze_f24.insert_one(_quietanza("q-mar", importo=4000)))
+    marzo = _mese(run(piano.griglia(db, 2026, oggi=OGGI)), "ritenute_1001", 3)
+    assert marzo["stato"] == piano.SCADUTO_NON_PAGATO
+    assert marzo["debito_cents"] == 10000 and marzo["residuo_cents"] == 6000
+
+
+def test_quietanza_gennaio_chiude_dicembre_dell_anno_di_riferimento():
+    db = _db()
+    run(db.quietanze_f24.insert_one(_quietanza("q-dic", mese=12, anno=2025, data="2026-01-16")))
+    g = run(piano.griglia(db, 2025, oggi=OGGI))
+    assert _mese(g, "ritenute_1001", 12)["stato"] == piano.PAGATO_QUIETANZA
+
+
+def test_quietanza_parziale_non_riapre_un_modello_gia_pagato_in_banca():
+    db = _db(_f24("f-mar", "2026-04-16", erario=[("1001", 3, 2026, 10000, 0)],
+                  movimento_bancario_id="mov-1", data_pagamento_effettivo="2026-04-16"))
+    run(db.quietanze_f24.insert_one(_quietanza("q-mar", importo=4000)))
+    marzo = _mese(run(piano.griglia(db, 2026, oggi=OGGI)), "ritenute_1001", 3)
+    assert marzo["residuo_cents"] == 0
+    assert marzo["debito_cents"] == 10000
+
+
+def test_quietanza_con_saldo_non_quadrato_non_chiude_un_periodo_atteso():
+    db = _db()
+    run(db.quietanze_f24.insert_one(_quietanza("q-err", validazione={"saldo_quadrato": False})))
+    marzo = _mese(run(piano.griglia(db, 2026, oggi=OGGI)), "ritenute_1001", 3)
+    assert marzo["stato"] == piano.MANCA_F24
+
+
 def test_il_piano_crea_l_attesa_prima_della_prova():
     g = run(piano.griglia(_db(), 2026, oggi=OGGI))
     giugno = _mese(g, "ritenute_1001", 6)

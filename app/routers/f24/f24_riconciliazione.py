@@ -619,8 +619,8 @@ async def dashboard_riconciliazione(
             {"dati_generali.data_versamento": {"$regex": f"^{anno_str}"}},
         ]}
 
-    # Non ci fidiamo dei soli flag legacy: quietanza e dichiarazione manuale
-    # restano DA VERIFICARE finche' manca il movimento bancario.
+    # La quietanza salda il tributo; il riscontro in banca si conta separatamente.
+    # Una sola dichiarazione manuale non sostituisce queste prove.
     docs = await db[COLL_F24_COMMERCIALISTA].find(
         anno_q or {}, {"_id": 0}
     ).to_list(10000)
@@ -634,8 +634,9 @@ async def dashboard_riconciliazione(
         "pagato": len(pagati),
         "eliminato": len(eliminati),
         "quietanza_da_verificare_banca": sum(
-            1 for f in da_pagare
+            1 for f in attivi
             if stato_evidenza_pagamento(f)["quietanza_presente"]
+            and not stato_evidenza_pagamento(f)["verificato_banca"]
         ),
     }
 
@@ -652,7 +653,8 @@ async def dashboard_riconciliazione(
             return 0.0
 
     totale_da_pagare = sum(importo_f24(f) for f in da_pagare)
-    totale_pagato_banca = sum(importo_f24(f) for f in pagati)
+    totale_pagato_banca = sum(importo_f24(f) for f in pagati
+                             if stato_evidenza_pagamento(f)["verificato_banca"])
 
     # Quietanze
     quietanze_count = await db[COLL_QUIETANZE].count_documents({})
@@ -842,8 +844,8 @@ async def riconcilia_tutto() -> Dict[str, Any]:
     from app.document_repository import metadata_projection
     quietanze = await db[COLL_QUIETANZE].find({}, metadata_projection(COLL_QUIETANZE)).to_list(1000)
 
-    # Reset associazioni quietanze
-    await db[COLL_QUIETANZE].update_many({}, {"$set": {"f24_associati": []}})
+    # I modelli gia' quietanzati sono pagati e non entrano in questo giro:
+    # conservarne i collegamenti, anche quando si ripete la riconciliazione.
 
     risultati = {
         "f24_riconciliati": 0,
@@ -854,7 +856,7 @@ async def riconcilia_tutto() -> Dict[str, Any]:
         "warning": []
     }
 
-    quietanze_usate = set()
+    quietanze_usate = {q["id"] for q in quietanze if q.get("f24_associati")}
 
     def estrai_tributi_dettaglio(doc: dict) -> list:
         """

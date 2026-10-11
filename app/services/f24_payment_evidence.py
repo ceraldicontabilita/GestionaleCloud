@@ -72,6 +72,15 @@ def ha_quietanza(f24: Dict[str, Any]) -> bool:
     )
 
 
+def quietanza_copre_modello(f24: Dict[str, Any]) -> bool:
+    """Un collegamento dichiaratamente parziale non salda l'intera delega."""
+    collegamento = f24.get("collegamento_quietanza_titolare") or {}
+    return ha_quietanza(f24) and not (
+        collegamento.get("righe_non_trovate")
+        or any((r.get("differenza_cents") or 0) < 0 for r in collegamento.get("righe") or [])
+    )
+
+
 def data_pagamento_quietanza(f24: Dict[str, Any]) -> Optional[Any]:
     """Data risultante dalla quietanza, distinta dalla data bancaria."""
     for campo in (
@@ -97,7 +106,7 @@ def stato_evidenza_pagamento(f24: Dict[str, Any]) -> Dict[str, Any]:
         if isinstance(f24.get("importo_residuo_cents"), int)
         else to_cents(f24.get("importo_residuo"))
     )
-    if f24.get("allocazioni_banca") and residual_cents > 0:
+    if f24.get("allocazioni_banca") and residual_cents > 0 and not quietanza_copre_modello(f24):
         return {
             "stato": STATO_PARZIALMENTE_PAGATO_BANCA,
             "pagato": False,
@@ -113,7 +122,7 @@ def stato_evidenza_pagamento(f24: Dict[str, Any]) -> Dict[str, Any]:
                 r.get("codice") for r in (f24.get("saldo_tributi") or {}).get("righe_aperte", [])
             ],
         }
-    if ha_evidenza_bancaria(f24):
+    if ha_evidenza_bancaria(f24) and not (f24.get("allocazioni_banca") and residual_cents > 0):
         data_banca = data_pagamento_banca(f24)
         return {
             "stato": STATO_PAGATO_BANCA,
@@ -129,9 +138,9 @@ def stato_evidenza_pagamento(f24: Dict[str, Any]) -> Dict[str, Any]:
         data_quietanza = data_pagamento_quietanza(f24)
         return {
             "stato": STATO_QUIETANZA_DA_VERIFICARE,
-            "pagato": False,
+            "pagato": quietanza_copre_modello(f24),
             "verificato_banca": False,
-            "data_pagamento": None,
+            "data_pagamento": data_quietanza if quietanza_copre_modello(f24) else None,
             "movimento_bancario_id": None,
             "quietanza_presente": True,
             "versato_documentalmente": True,
@@ -165,9 +174,9 @@ def patch_quietanza_associata(
 ) -> Dict[str, Any]:
     """Campi da salvare quando il documento combacia, senza fingere la banca."""
     return {
-        "status": "da_pagare",
-        "stato_pagamento": "DA_VERIFICARE_BANCA",
-        "pagato": False,
+        "status": "pagato",
+        "stato_pagamento": "PAGATO_QUIETANZA",
+        "pagato": True,
         "quietanza_id": quietanza_id,
         "protocollo_quietanza": protocollo,
         "data_pagamento_quietanza": data_quietanza,
