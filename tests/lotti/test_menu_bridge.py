@@ -423,8 +423,13 @@ def test_catalogo_verificato_conserva_provenienza_hash_e_path_supabase_nella_ric
     assert run(database.foto_files.count_documents({})) == 0
 
 
-def test_upload_multipart_registra_catalogo_napoletano_verificato(ambiente):
+def test_upload_multipart_registra_catalogo_napoletano_verificato(ambiente, monkeypatch):
+    from app.lotti.auth import make_token
+    from app.services import group_session
+
     ricette, database, _ = ambiente
+    monkeypatch.setattr("app.database.Database.get_db", staticmethod(lambda: database))
+    group_session._azzera_cache()
     creata = run(ricette.create_ricetta(ricette.RicettaCreate(**_payload())))
     app = FastAPI()
     app.include_router(ricette.router, prefix="/api")
@@ -432,6 +437,10 @@ def test_upload_multipart_registra_catalogo_napoletano_verificato(ambiente):
 
     risposta = client.post(
         f"/api/ricette/{creata['id']}/upload-foto",
+        headers={"Authorization": "Bearer " + make_token(
+            "erp:fixture", "Titolare", "amministratore",
+            via="sessione_erp", sid="sid:fixture-upload",
+        )},
         data={"foto_source": "catalogo_napoletano_verificato"},
         files={"file": ("amaretti.png", b"\x89PNG-catalogo", "image/png")},
     )
@@ -439,6 +448,7 @@ def test_upload_multipart_registra_catalogo_napoletano_verificato(ambiente):
     salvata = run(database.ricette.find_one({"id": creata["id"]}))
     assert salvata["foto_source"] == "catalogo_napoletano_verificato"
     assert salvata["foto_filename"] == "amaretti.png"
+    group_session._azzera_cache()
 
 
 def test_sostituzione_salva_backup_ed_elimina_solo_foto_non_condivisa(ambiente):

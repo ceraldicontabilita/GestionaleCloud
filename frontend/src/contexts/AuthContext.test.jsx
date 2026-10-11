@@ -45,6 +45,7 @@ describe('Sessione frontend fail-closed', () => {
   });
 
   it('cancella il token solo dopo logout confermato', async () => {
+    sessionStorage.setItem('sess', JSON.stringify({ r: 'tit', p: 'b-b-finto' }));
     localStorage.setItem('admin_token', 'token-menu');
     localStorage.setItem('pt_token', 'token-hr');
     localStorage.setItem('lotti_token', 'token-lotti');
@@ -58,6 +59,24 @@ describe('Sessione frontend fail-closed', () => {
     expect(localStorage.getItem('admin_token')).toBeNull();
     expect(localStorage.getItem('pt_token')).toBeNull();
     expect(localStorage.getItem('lotti_token')).toBeNull();
+    expect(sessionStorage.getItem('sess')).toBeNull();
+  });
+
+  it('rientra dal B&B con il cookie centrale anche senza token locale', async () => {
+    localStorage.removeItem('auth_token');
+    api.get.mockResolvedValue({ data: { user: { role: 'admin' } } });
+    render(<AuthProvider><Probe /></AuthProvider>);
+    await waitFor(() => expect(screen.getByTestId('admin')).toHaveTextContent('true'));
+    expect(api.get).toHaveBeenCalledWith('/api/auth/verify', { __verificaSessione: true });
+  });
+
+  it('senza sessione valida non apre il Gestionale', async () => {
+    localStorage.removeItem('auth_token');
+    api.get.mockRejectedValue({ response: { status: 401 } });
+    render(<AuthProvider><Probe /></AuthProvider>);
+    await waitFor(() => expect(api.get).toHaveBeenCalledTimes(1));
+    expect(screen.getByTestId('admin')).toHaveTextContent('false');
+    expect(screen.getByTestId('write')).toHaveTextContent('false');
   });
 
   it('un ruolo sconosciuto non ottiene privilegi nel frontend', async () => {

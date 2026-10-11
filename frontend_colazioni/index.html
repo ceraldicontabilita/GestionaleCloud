@@ -160,7 +160,7 @@ a{color:var(--brand);font-weight:600}a:visited{color:var(--brand)}
 </head>
 <body>
 <div class="demo">VERSIONE DI PROVA</div>
-<header><h1 id="ttl">☕ Colazioni B&B</h1><span class="area-badge" id="area_badge">Ospite</span><button id="back" hidden onclick="go('#/')">← Home</button></header>
+<header><h1 id="ttl">☕ Colazioni B&B</h1><span class="area-badge" id="area_badge">Ospite</span><a id="gestionale" href="/" hidden>← Gestionale</a><button id="back" hidden onclick="go('#/')">← Home</button></header>
 <main id="app"></main>
 
 <script>
@@ -209,7 +209,20 @@ function scioperiHtml(E){
 let sess=JSON.parse(sessionStorage.getItem("sess")||"null");
 const setSess=x=>{sess=x;sessionStorage.setItem("sess",JSON.stringify(x))};
 const go=h=>{if(location.hash===h)render();else location.hash=h};
-const esci=()=>{const c=sess&&sess.c,r=sess&&sess.r,p=sess&&sess.p;if(r==="alb"&&p)rpc("bb_alb_logout",{p}).catch(()=>{});setSess(null);go(c?"#/hotel/"+c:r==="tit"?"#/titolare":"#/")};
+const esci=async()=>{
+ const c=sess&&sess.c,r=sess&&sess.r,p=sess&&sess.p;
+ try{
+  if(r==="tit"){
+   if(p)await rpc("bb_tit_logout",{p});
+   const res=await fetch("/api/auth/logout",{method:"POST",credentials:"same-origin"});
+   if(!res.ok)throw new Error("Uscita non completata. Riprova.");
+   setSess(null);localStorage.removeItem("auth_token");
+   location.assign("/login");return;
+  }
+  if(r==="alb"&&p)await rpc("bb_alb_logout",{p});
+  setSess(null);go(c?"#/hotel/"+c:"#/");
+ }catch(e){toast(e.message||"Uscita non completata. Riprova.")}
+};
 const loading=()=>{app.innerHTML=`<p class="mute" style="text-align:center;margin-top:40px">Caricamento…</p>`};
 addEventListener("hashchange",render);
 async function render(){
@@ -224,9 +237,9 @@ async function render(){
  if(p[1]==="recensioni")return recensioniOspite(p[2],p[3]||"link");
  if(p[1]==="recensione-invito")return recensioneInvito(p[2]);
  if(p[1]==="albergatore")return sess&&sess.r==="alb"?(sess.c&&history.replaceState(null,"","#/hotel/"+sess.c+"/"+(p[2]||"home")),alb(p[2]||"home")):(($("#ttl").textContent="☕ Colazioni B&B"),void(app.innerHTML=`<div class="card">Per entrare usa il <b>link personale</b> che ti ha inviato il bar.</div>`));
- if(p[1]==="titolare")return sess&&sess.r==="tit"?tit(p[2]||"cruscotto",p[3]):loginTit();
+ if(p[1]==="titolare")return titPronto&&sess&&sess.r==="tit"?tit(p[2]||"cruscotto",p[3]):loginTit();
  home()}
-function setArea(area){document.body.dataset.area=area;const b=$("#area_badge");if(b)b.textContent=area==="bar"?"Area Bar":area==="hotel"?"Area Hotel":"Ospite"}
+function setArea(area){document.body.dataset.area=area;const b=$("#area_badge");if(b)b.textContent=area==="bar"?"Area Bar":area==="hotel"?"Area Hotel":"Ospite";$("#gestionale").hidden=area!=="bar"}
 function qr(el,text,size=200){el.innerHTML="";if(window.QRCode)new QRCode(el,{text,width:size,height:size,correctLevel:QRCode.CorrectLevel.M});else el.textContent=text}
 const base=()=>location.href.split("#")[0];
 const linkOspite=id=>base()+"#/ospite/"+id;
@@ -855,34 +868,35 @@ function napoli(){return `
   <div class="nap-list" id="nap_list">${napCards("anm")}</div><div class="nap-note">Dati e collegamenti ufficiali verificati il 01/10/2026. Orari, tariffe e servizio possono cambiare: controlla sempre la fonte ufficiale prima di partire.</div></section>`}
 
 /* ============ TITOLARE ============ */
+let titPronto=false;
+let titAccessoInCorso=null;
 async function loginTit(){
  $("#ttl").textContent="🧁 Area titolare";loading();
- if(await titSessione())return go("#/titolare/cruscotto");
- app.innerHTML=`<div class="card"><h3>Accesso del titolare</h3><p class="mute">Si entra con lo stesso PIN del gestionale.</p>
-  <label>PIN</label><input id="tp" type="password" inputmode="numeric" autocomplete="current-password" onkeydown="if(event.key==='Enter')doTit()"><button class="btn" onclick="doTit()">Entra</button><div id="tmsg" class="mute" style="margin-top:10px"></div></div>`}
+ try{
+  // Verifica anche le sessioni B&B conservate: il browser può essere tornato
+  // qui dopo un logout o con un altro utente del Gestionale.
+  if(!titAccessoInCorso)titAccessoInCorso=titSessione().finally(()=>{titAccessoInCorso=null});
+  const ok=await titAccessoInCorso;
+  if(!location.hash.startsWith("#/titolare"))return;
+  if(ok){titPronto=true;return render()}
+  setSess(null);
+  const next="/convenzioni/"+(location.hash||"#/titolare/cruscotto");
+  location.replace("/login?next="+encodeURIComponent(next));
+ }catch(e){
+  if(location.hash.startsWith("#/titolare"))app.innerHTML=`<div class="card"><h3>Accesso del titolare</h3><p>${esc(e.message||"Accesso temporaneamente non disponibile")}</p><button class="btn" onclick="loginTit()">Riprova</button><a href="/">Torna al Gestionale</a></div>`;
+ }}
 /* La sessione del titolare la apre il gestionale: stesso PIN (e stesso secondo fattore) dell'ERP. */
 async function titSessione(){
- try{
-  const t=localStorage.getItem("auth_token");
-  const r=await fetch("/api/colazioni/accesso",{method:"POST",credentials:"same-origin",headers:t?{Authorization:"Bearer "+t}:{}});
-  if(!r.ok)return false;const j=await r.json();if(!j||!j.token)return false;
-  setSess({r:"tit",p:j.token});return true}catch(e){return false}}
+ const r=await fetch("/api/colazioni/accesso",{method:"POST",credentials:"same-origin"});
+ if(r.status===401)return false;
+ if(r.status===403)throw new Error("Questa sezione è riservata all'amministratore del Gestionale.");
+ if(!r.ok)throw new Error("Accesso temporaneamente non disponibile. Riprova.");
+ const j=await r.json();if(!j||!j.token)throw new Error("Sessione non disponibile. Riprova.");
+ setSess({r:"tit",p:j.token});return true}
 const ora=f=>{try{return new Date(String(f).replace(" ","T").replace(/\+00$/,"+00:00")).toLocaleTimeString("it-IT",{hour:"2-digit",minute:"2-digit",timeZone:"Europe/Rome"})}catch(e){return ""}};
-async function doTit(){
- const pin=($("#tp")?$("#tp").value:"").trim(),m=$("#tmsg");if(!pin)return;m.textContent="";
- try{
-  const r=await fetch("/api/auth/pin-login",{method:"POST",credentials:"same-origin",headers:{"Content-Type":"application/json"},body:JSON.stringify({pin})});
-  const j=await r.json().catch(()=>null);
-  if(!j){m.textContent="Apri l'area titolare da gestionalecloud.onrender.com/convenzioni/";return}
-  if(j.mfa_required){m.innerHTML="Il tuo accesso ha il secondo fattore: entra prima nel <a href=\"/\">gestionale</a>, poi torna qui.";return}
-  if(!r.ok){m.textContent=(typeof j.detail==="string"&&j.detail)||"PIN non valido";return}
-  if(j.access_token)try{localStorage.setItem("auth_token",j.access_token)}catch(e){}
-  if(await titSessione())return go("#/titolare/cruscotto");
-  m.textContent="Non riesco ad aprire la sessione: riprova tra poco."}
- catch(e){m.textContent="Connessione non riuscita"}}
 const pinStrict=()=>sess.p;
 let TIT=null;
-async function ordiniHotelTitolare(){try{const t=localStorage.getItem("auth_token"),r=await fetch("/api/colazioni/ordini-prodotti",{credentials:"same-origin",headers:t?{Authorization:"Bearer "+t}:{}});if(!r.ok)return[];const j=await r.json();return j.ordini||[]}catch(e){return[]}}
+async function ordiniHotelTitolare(){try{const r=await fetch("/api/colazioni/ordini-prodotti",{credentials:"same-origin"});if(!r.ok)return[];const j=await r.json();return j.ordini||[]}catch(e){return[]}}
 const TABS=[["cruscotto","Cruscotto"],["produzione","Produzione"],["scan","Scanner"],["ordini","Ordini colazioni"],["forniture","Ordini prodotti"],["strutture","Strutture"],["prodotti","Prodotti ordinabili dall’hotel"],["fatture","Fatture"],["menu","Menù"],["impostazioni","Impostazioni"]];
 const supTxt=()=>eur(+String((TIT.config||{}).supplemento_tavolo||"1.5").replace(",","."));
 const fasceMenu=()=>Object.keys(TIT.menu).map(Number).sort((a,b)=>a-b);
@@ -1024,7 +1038,7 @@ function pForniture(){
  const l=TIT.ordini_hotel||[],aperti=l.filter(o=>!["consegnato","annullato"].includes(o.stato)),due=l.filter(o=>o.pagamento!=="incassato"&&o.stato!=="annullato").reduce((a,o)=>a+Number(o.totale||0),0);
  return `<div class="kpis"><div class="card"><div class="mute">Da lavorare</div><div class="k">${aperti.length}</div></div><div class="card"><div class="mute">Da incassare</div><div class="k">${eur(due)}</div></div></div><p class="hint">Gli ordini sono registrati anche in Lotti. I prodotti interni attendono il lotto di produzione; i prodotti Vandemoortele attendono l’associazione al lotto fornitore reale.</p>`+
  (l.map(o=>`<div class="card"><div class="row" style="align-items:flex-start"><div><b>${esc(o.struttura_nome)} · ${esc(o.id)}</b><div class="mute">Consegna ${dmy(o.data_consegna)}${o.ora_ritiro?" ore "+esc(o.ora_ritiro):""} · ${esc(String(o.stato).replaceAll("_"," "))} · ${o.pagamento_metodo==="borsellino"?"borsellino":"in loco"}</div></div><span class="price" style="font-size:21px">${eur(o.totale)}</span></div>${(o.righe||[]).map(r=>`<div class="order-line"><b>${r.quantita}× ${esc(r.nome)}</b> · ${eur(r.totale)}${(r.allergeni||[]).length?`<div class="mute"><b>Allergeni:</b> ${r.allergeni.map(esc).join(", ")}</div>`:""}<div class="mute">${r.ricetta_id?`Ricetta ${esc(r.ricetta_id)} · `:""}${esc(String(r.tracciabilita_stato||"da verificare").replaceAll("_"," "))}${(r.lotti_associati||[]).length?` · lotto ${r.lotti_associati.map(x=>esc(x.numero_lotto||x.id)).join(", ")}`:""}</div></div>`).join("")}${o.nota?`<p class="alert">📝 ${esc(o.nota)}</p>`:""}<div class="row" style="justify-content:flex-start;flex-wrap:wrap"><select onchange="ohAgg('${o.id}',this.value,null)" style="width:auto;margin:0"><option value="ricevuto" ${o.stato==="ricevuto"?"selected":""}>Ricevuto</option><option value="confermato" ${o.stato==="confermato"?"selected":""}>Confermato</option><option value="in_preparazione" ${o.stato==="in_preparazione"?"selected":""}>In preparazione</option><option value="pronto" ${o.stato==="pronto"?"selected":""}>Pronto</option><option value="consegnato" ${o.stato==="consegnato"?"selected":""}>Consegnato</option><option value="annullato" ${o.stato==="annullato"?"selected":""}>Annullato</option></select><button class="btn sm ${o.pagamento==="incassato"?"sec":""}" onclick="ohAgg('${o.id}',null,'${o.pagamento==="incassato"?"da_incassare":"incassato"}')">${o.pagamento==="incassato"?"✓ Incassato":"Segna incassato"}</button><a class="btn sm sec" style="text-decoration:none" href="/lotti/#ordini_hotel" target="_blank">Apri in Lotti</a></div></div>`).join("")||`<div class="card"><p class="mute">Nessun ordine prodotti ricevuto.</p></div>`)}
-async function ohAgg(id,stato,pagamento){const t=localStorage.getItem("auth_token"),r=await fetch("/api/colazioni/ordini-prodotti/"+encodeURIComponent(id),{method:"PATCH",headers:{"Content-Type":"application/json",...(t?{Authorization:"Bearer "+t}:{})},body:JSON.stringify({stato,pagamento})}),j=await r.json().catch(()=>({}));if(!r.ok)return toast(j.detail||"Aggiornamento non riuscito");toast("Ordine aggiornato");tit("forniture")}
+async function ohAgg(id,stato,pagamento){const r=await fetch("/api/colazioni/ordini-prodotti/"+encodeURIComponent(id),{method:"PATCH",credentials:"same-origin",headers:{"Content-Type":"application/json"},body:JSON.stringify({stato,pagamento})}),j=await r.json().catch(()=>({}));if(!r.ok)return toast(j.detail||"Aggiornamento non riuscito");toast("Ordine aggiornato");tit("forniture")}
 function pOrdini(){return `<div class="card"><div class="filters">
  <select id="f_s" onchange="ordTab()"><option value="">Tutte le strutture</option>${TIT.strutture.map(s=>`<option value="${s.id}">${esc(s.nome)}</option>`).join("")}</select>
  <select id="f_t" onchange="ordTab()"><option value="">Tutti gli stati</option><option>Da ritirare</option><option>Programmata</option><option>Ritirata</option><option>Scaduta</option><option>Annullata</option></select>
@@ -1187,7 +1201,7 @@ async function cpAvvia(id){
  if(scelta)await cpCarica(scelta);
 }
 let CPACQ=null;
-const authAdmin=()=>{const t=localStorage.getItem("auth_token");return t?{Authorization:"Bearer "+t}:{}};
+const authAdmin=()=>({}); // cookie centrale HttpOnly, anche senza token locale
 async function cpAcquaviva(){if(CPACQ)return CPACQ;try{const r=await fetch("/api/colazioni/prodotti-acquaviva",{headers:authAdmin()}),j=await r.json().catch(()=>({}));CPACQ=new Set(r.ok?(j.prodotti||[]).map(String):[])}catch(e){CPACQ=new Set()}return CPACQ}
 async function cpAcq(i){const p=CP.lista[i],attivo=!(CPACQ&&CPACQ.has(String(p.prodotto_id)));
  try{const r=await fetch("/api/colazioni/prodotti-acquaviva",{method:"PUT",headers:{"Content-Type":"application/json",...authAdmin()},body:JSON.stringify({prodotto_id:+p.prodotto_id,attivo})}),j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.detail||"Non salvato");

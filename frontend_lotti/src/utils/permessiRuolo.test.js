@@ -15,10 +15,13 @@ test("un operatore senza profilo non ha permessi", () => {
   expect(puo("haccp_registri", undefined, p)).toBe(false);
 });
 
-test("il caporeparto modifica solo le ricette del suo reparto", () => {
+test("il caporeparto consulta le ricette anche con vecchi permessi in cache", () => {
   const p = profiloCorrente(sessione({ ruolo: "caporeparto", reparti: ["pasticceria"], permessi: ["produzione", "ricette", "smaltimento"] }), false);
-  expect(puo("ricette", "pasticceria", p)).toBe(true);
-  expect(puo("ricette", "Pasticceria", p)).toBe(true);
+  expect(puo("ricette", "pasticceria", p)).toBe(false);
+  expect(puo("ricette", "Pasticceria", p)).toBe(false);
+  expect(puo("ricette", undefined, p)).toBe(false);
+  expect(puo("produzione", "pasticceria", p)).toBe(true);
+  expect(puo("produzione", "rosticceria", p)).toBe(false);
   expect(puo("ricette", "rosticceria", p)).toBe(false);
   expect(puo("ricette", "", p)).toBe(false);
   expect(puo("smaltimento", undefined, p)).toBe(true);

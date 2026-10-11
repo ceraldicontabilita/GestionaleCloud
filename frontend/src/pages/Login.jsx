@@ -8,7 +8,12 @@ import PinModal from '../components/PinModal';
 // interni delle app del gruppo, mai un indirizzo esterno.
 export function destinazioneDopoLogin(search = window.location.search) {
   const next = new URLSearchParams(search).get('next') || '';
-  return /^\/(hr|lotti|menu)(\/|$)/.test(next) && !next.startsWith('//') ? next : '';
+  // URL normalizzata: evita anche /menu/../../... e backslash che il browser
+  // reinterpretarebbe dopo aver passato il controllo sul prefisso.
+  if (!/^\/(hr|lotti|menu|convenzioni)(\/|$)/.test(next) || /[\\\r\n]/.test(next)) return '';
+  const url = new URL(next, window.location.origin);
+  return url.origin === window.location.origin && /^\/(hr|lotti|menu|convenzioni)(\/|$)/.test(url.pathname)
+    ? url.pathname + url.search + url.hash : '';
 }
 
 function vaiDopoLogin(navigate) {
@@ -36,7 +41,8 @@ export default function Login() {
         setMfaChallenge(result.challenge_token);
         return;
       }
-      vaiDopoLogin(navigate);
+      // AuthProvider aggiorna isAuthenticated: il solo effetto sopra si
+      // occupa del ritorno, evitando due navigazioni concorrenti tra app.
     } catch (err) {
       const status = err.response?.status;
       throw new Error(!err.response ? 'Connessione assente — riprova'
@@ -52,7 +58,6 @@ export default function Login() {
     setError('');
     try {
       await verifyMfaLogin(mfaChallenge, mfaCode.trim());
-      vaiDopoLogin(navigate);
     } catch (err) {
       setError(err.response?.data?.detail || 'Codice MFA non valido');
       setMfaCode('');

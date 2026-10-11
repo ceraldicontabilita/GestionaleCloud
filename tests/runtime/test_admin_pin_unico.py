@@ -44,12 +44,12 @@ def test_formati_non_validi(pin):
     assert verify_admin_pin(pin) is False
 
 
-def test_lotti_il_pin_centrale_non_apre_nulla_e_il_personale_conserva_ruolo_hr(monkeypatch):
+def test_lotti_admin_entra_solo_dalla_sessione_centrale(monkeypatch):
     """Il PIN amministratore centrale si digita solo nel Gestionale. In Lotti
     non apre pagine (niente `/verifica-admin`), non e' una firma, e il login
     del tablet non conferma nemmeno che fosse giusto. Il PIN personale del
-    titolare lo fa entrare come se stesso e conserva il ruolo amministratore
-    della scheda HR."""
+    titolare non crea una seconda sessione amministrativa: rimanda al
+    Gestionale, come il portale HR."""
     from mongomock_motor import AsyncMongoMockClient
     from app.lotti.routers import tablet_operatori as module
     from app.hr.database import Database as DatabaseHR
@@ -69,12 +69,10 @@ def test_lotti_il_pin_centrale_non_apre_nulla_e_il_personale_conserva_ruolo_hr(m
         with pytest.raises(HTTPException) as exc:
             await module.login_pin(module.PinLogin(pin=PIN))
         assert exc.value.status_code == 401 and exc.value.detail == "PIN non riconosciuto"
-        result = await module.login_pin(module.PinLogin(pin=OLD_PIN))
-        assert result["operatore"]["nome"] == "Ceraldi Vincenzo" and result["operatore"]["ruolo"] == "amministratore"
-        assert result["operatore"]["dipendente_id"] == "hr-v" and result["token"]
-        from app.lotti.auth import verify_token
-        dati = verify_token(result["token"])
-        assert dati["sub"] == "hr-v" and dati["ruolo"] == "amministratore" and dati["via"] == "pin"
+        with pytest.raises(HTTPException) as exc:
+            await module.login_pin(module.PinLogin(pin=OLD_PIN))
+        assert exc.value.status_code == 403
+        assert "Entra dal Gestionale" in exc.value.detail
     asyncio.run(scenario())
 
 
@@ -109,8 +107,7 @@ def test_hr_admin_non_entra_dal_login_dipendente(monkeypatch, admin_pin):
         await db[module.Collections.EMPLOYEES].insert_one({"id": "admin", "nome_completo": "Admin test", "ruolo_app": "admin", "pin_hash": module.hash_pin(OLD_PIN)})
         # Il portale HR resta separato: dal suo login dipendente un
         # amministratore non entra, ne' col PIN centrale ne' col proprio PIN
-        # personale. Quest'ultimo viene invece usato nel tablet Lotti per la
-        # firma HACCP e conserva il ruolo HR.
+        # personale. Lo stesso vincolo vale per l'accesso al tablet Lotti.
         assert await module.login_dipendente("admin", OLD_PIN) is None
         assert await module.login_dipendente("admin", admin_pin) is None
         assert await module.login_dipendente_per_nome("Admin test", admin_pin) is None

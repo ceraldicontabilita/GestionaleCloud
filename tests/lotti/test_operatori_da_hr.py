@@ -184,7 +184,12 @@ def _sessione_titolare_personale(basi):
     run(hr.dipendenti.insert_many(_persone_hr()))
     run(auth_dipendenti.imposta_pin("hr-vince", PIN_A))
     run(t.sincronizza_operatori_da_hr())
-    return run(t.login_pin(t.PinLogin(pin=PIN_A)))["token"]
+    from app.lotti.auth import make_token
+    dip = run(hr.dipendenti.find_one({"id": "hr-vince"}))
+    # Sessione del vecchio login personale: non deve sopravvivere alla
+    # centralizzazione dell'accesso amministratore.
+    return make_token("hr-vince", "Ceraldi Vincenzo", "amministratore",
+                      via="pin", pin_version=auth_dipendenti.versione_pin(dip))
 
 
 def _richiesta_lotti(token, path="/lotti/api/colazione-acquaviva/preset", method="GET"):
@@ -194,22 +199,21 @@ def _richiesta_lotti(token, path="/lotti/api/colazione-acquaviva/preset", method
                     "headers": [(b"authorization", f"Bearer {token}".encode())]})
 
 
-def test_pin_personale_titolare_resta_valido_dopo_login_e_cambio_pagina(basi):
+def test_titolare_usa_il_login_centrale_anche_da_lotti(basi):
     from app.lotti import auth
-    from app.services.group_session import token_di_gruppo_ammesso
+    t, _db, _hr = basi
     token = _sessione_titolare_personale(basi)
-    # Il confine amministrativo delle altre app resta chiuso al PIN tablet.
-    assert run(token_di_gruppo_ammesso(auth.verify_token(token))) is False
-    for path in ("/lotti/api/tablet/pasticceria", "/lotti/api/ricette",
-                 "/lotti/api/colazione-acquaviva/preset"):
-        request = _richiesta_lotti(token, path)
-        run(auth.auth_dependency(request))
-        assert request.state.user["sub"] == "hr-vince"
-        run(auth.require_admin(request))
-        assert run(auth.require_permesso("ricette")(request))["ruolo"] == "amministratore"
-    refreshed = run(auth.refresh_token(_richiesta_lotti(token)))["token"]
-    assert auth.verify_token(refreshed)["pin_version"] == auth.verify_token(token)["pin_version"]
-    run(auth.auth_dependency(_richiesta_lotti(refreshed)))
+    with pytest.raises(HTTPException) as exc:
+        run(t.login_pin(t.PinLogin(pin=PIN_A)))
+    assert exc.value.status_code == 403
+    assert "Entra dal Gestionale" in exc.value.detail
+    for path in ("/lotti/api/tablet/pasticceria", "/lotti/api/ricette"):
+        with pytest.raises(HTTPException) as exc:
+            run(auth.auth_dependency(_richiesta_lotti(token, path)))
+        assert exc.value.status_code == 401
+    with pytest.raises(HTTPException) as exc:
+        run(auth.refresh_token(_richiesta_lotti(token)))
+    assert exc.value.status_code == 401
 
 
 @pytest.mark.parametrize("revoca", ["ruolo", "cessazione", "lotti", "pin", "rimozione_pin"])
@@ -254,7 +258,7 @@ def test_sessione_titolare_non_apre_durante_guasto_hr(basi, monkeypatch):
     monkeypatch.setattr(DatabaseHR, "get_db", classmethod(lambda cls: DatabaseNonConfigurato()))
     with pytest.raises(HTTPException) as exc:
         run(auth.auth_dependency(_richiesta_lotti(token)))
-    assert exc.value.status_code == 503
+    assert exc.value.status_code == 401
 
 
 @pytest.mark.parametrize("difetto", ["scaduto", "manomesso"])

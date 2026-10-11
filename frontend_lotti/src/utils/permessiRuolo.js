@@ -1,8 +1,7 @@
 // Cosa può fare chi è davanti al tablet. La regola vive nel backend
 // (app/lotti/servizi/ruoli.py), che la ricontrolla a ogni operazione: qui
 // arriva al login (`operatore.profilo`) e serve solo a non mostrare comandi
-// che risponderebbero 403. Il titolare, entrato dal Gestionale o col proprio
-// PIN personale HR, può tutto.
+// che risponderebbero 403. Il titolare entrato dal Gestionale può tutto.
 import { isAdmin } from "../auth";
 import { getTabletSession } from "./tabletSession";
 
@@ -21,9 +20,11 @@ export function profiloCorrente(sessione = getTabletSession(), admin = isAdmin()
   };
 }
 
-// reparto: solo per ricette e produzione, che il caporeparto ha sui propri.
+// Il caporeparto gestisce la produzione del proprio reparto; le ricette
+// restano in consultazione anche con un vecchio profilo salvato nel browser.
 export function puo(permesso, reparto, profilo = profiloCorrente()) {
   if (profilo.ruolo === RUOLO_TITOLARE) return true;
+  if (permesso === "ricette") return false;
   if (!profilo.permessi.includes(permesso)) return false;
   if (reparto === undefined) return true;
   return !!reparto && profilo.reparti.includes(String(reparto).toLowerCase());
@@ -35,6 +36,6 @@ export const MOTIVO_NON_PERMESSO = {
   haccp_conformita: "Solo il responsabile HACCP o il titolare",
   frigoriferi: "Solo il responsabile HACCP o il titolare",
   smaltimento: "Solo il caporeparto, il responsabile HACCP o il titolare",
-  ricette: "Solo il caporeparto del reparto o il titolare",
+  ricette: "Solo l'amministratore può modificare le ricette",
   produzione: "Solo il caporeparto del reparto o il titolare",
 };

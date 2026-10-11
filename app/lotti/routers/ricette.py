@@ -2784,7 +2784,7 @@ async def aggiorna_reparto(ricetta_id: str, reparto: str = Query(...), _ruolo=De
 
 
 @router.put("/ricette/{ricetta_id}/foto")
-async def aggiorna_foto(ricetta_id: str, foto_url: str = Query(...)):
+async def aggiorna_foto(ricetta_id: str, foto_url: str = Query(...), _admin=Depends(require_admin)):
     r = await db.ricette.update_one({"id": ricetta_id}, {
         "$set": {"foto_url": foto_url, "foto_source": "url_manuale"},
         "$unset": {"foto_id": "", "foto_filename": "", "foto_content_type": "", "foto_sha256": ""},
@@ -2984,6 +2984,7 @@ async def upload_foto(
     file: UploadFile = File(...),
     foto_source: str = Form("upload_manuale"),
     cestina_precedente: bool = Form(False),
+    _admin=Depends(require_admin),
 ):
     esistente = await db.ricette.find_one(
         {"id": ricetta_id},

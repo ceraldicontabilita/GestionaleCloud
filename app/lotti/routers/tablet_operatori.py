@@ -324,11 +324,11 @@ class AggiornaDipendente(BaseModel):
 def _op_response(doc):
     if not doc.get("dipendente_id"):
         raise HTTPException(401, "Identita' dipendente HR non disponibile")
-    # Il ruolo viene dalla scheda HR sincronizzata, non dal nome né dal PIN.
-    # Il titolare deve restare amministratore anche quando entra nel reparto
-    # col proprio PIN personale: così firma come se stesso e conserva tutti i
-    # permessi. Il PIN amministratore centrale continua a non passare da qui.
+    # Il PIN personale identifica l'operatore; non apre una seconda sessione
+    # amministrativa distinta da quella centrale del Gestionale.
     ruolo = doc.get("ruolo") or "operatore"
+    if ruolo == "amministratore":
+        raise HTTPException(403, "Per l'amministratore usa Entra dal Gestionale: il PIN è unico per tutte le sezioni")
     op = {"dipendente_id": doc["dipendente_id"], "nome": doc.get("nome", "Operatore"), "ruolo": ruolo}
     token = make_token(sub=op["dipendente_id"], nome=op["nome"], ruolo=op["ruolo"], via="pin",
                        pin_version=doc.get("pin_version"))

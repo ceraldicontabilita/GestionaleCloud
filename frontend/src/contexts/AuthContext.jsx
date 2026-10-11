@@ -36,7 +36,10 @@ export function AuthProvider({ children }) {
   // All'avvio ogni errore chiude la sessione (come prima); nel giro
   // periodico solo un rifiuto del backend, non un 502 durante un deploy.
   const verifica = useCallback((avvio = false) => (
-    api.get(CHIAVE_VERIFY)
+    // La sessione può esistere nel cookie HttpOnly anche tornando da un'altra
+    // app senza la copia del token in localStorage. Il rifiuto viene gestito
+    // qui, senza il redirect globale che perderebbe la destinazione di login.
+    api.get(CHIAVE_VERIFY, { __verificaSessione: true })
       .then(res => {
         scriviCacheGuscio(CHIAVE_VERIFY, res.data.user);
         setUser(res.data.user);
@@ -53,12 +56,7 @@ export function AuthProvider({ children }) {
   // Verifica token all'avvio: una sola chiamata, o nessuna se la stessa
   // sessione l'ha verificata meno di 120 s fa (ricaricamento della pagina).
   useEffect(() => {
-    const token = getAuthToken();
-    if (!token) {
-      setLoading(false);
-      return;
-    }
-    const copia = leggiCacheGuscio(CHIAVE_VERIFY);
+    const copia = getAuthToken() ? leggiCacheGuscio(CHIAVE_VERIFY) : null;
     if (copia) {
       setUser(copia.dati);
       setLoading(false);
@@ -74,7 +72,6 @@ export function AuthProvider({ children }) {
     let timer;
     let chiuso = false;
     const giro = async () => {
-      if (!getAuthToken()) return;
       await verifica();
       if (!chiuso) timer = setTimeout(giro, INTERVALLO_GUSCIO_MS);
     };

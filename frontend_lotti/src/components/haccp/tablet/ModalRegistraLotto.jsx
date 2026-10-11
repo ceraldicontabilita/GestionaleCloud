@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { API } from "../../../utils/constants";
 import { stampaDoc } from "../../../utils/stampa";
 import { getTabletSession } from "../../../utils/tabletSession";
+import { puo } from "../../../utils/permessiRuolo";
 import SelettoreQuantita from "./registraLotto/SelettoreQuantita";
 import SelettorePosizione from "./registraLotto/SelettorePosizione";
 import PannelloLievito from "../shared/PannelloLievito";
@@ -367,7 +368,7 @@ export function ModalRegistraLotto({ prodotto, reparto, onClose, onSuccess, onHo
       // la spunta è attiva, il sistema ricorda la durata per questo prodotto.
       if (scadenza) {
         params.data_scadenza = scadenza;
-        if (scadenzaProposta && scadenza !== scadenzaProposta && ricordaDurata) {
+        if (puo("ricette") && scadenzaProposta && scadenza !== scadenzaProposta && ricordaDurata) {
           params.memorizza_durata = true;
         }
       }
@@ -657,7 +658,7 @@ export function ModalRegistraLotto({ prodotto, reparto, onClose, onSuccess, onHo
                     </span>
                   )}
                 </div>
-                {scadenza !== scadenzaProposta && (
+                {puo("ricette") && scadenza !== scadenzaProposta && (
                   <div onClick={() => setRicordaDurata(v => !v)}
                     style={{ display: "flex", alignItems: "center", gap: 7, marginTop: 7, cursor: "pointer" }}>
                     <div style={{ width: 16, height: 16, borderRadius: 4, flexShrink: 0,

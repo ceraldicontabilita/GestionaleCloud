@@ -91,7 +91,7 @@ describe("card riservate al titolare e cambio reparto", () => {
     expect(getTabletSession()).toMatchObject({ dipendente_id: "hr-titolare", ruolo: "amministratore", reparto: "ordini" });
   });
 
-  test("col PIN personale il titolare conserva l'accesso alle card amministrative", async () => {
+  test("il titolare già entrato dal Gestionale conserva l'accesso alle card amministrative", async () => {
     saveTabletSession({ dipendente_id: "hr-v", nome: "Ceraldi Vincenzo", ruolo: "amministratore" }, "pasticceria");
     saveRuolo("amministratore");
     const entra = jest.spyOn(authLotti, "entraDalGestionale");
