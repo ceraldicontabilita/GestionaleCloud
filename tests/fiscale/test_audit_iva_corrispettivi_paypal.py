@@ -71,7 +71,12 @@ def test_iva_annuale_non_somma_mesi_futuri(monkeypatch):
 
 
 def _patch_confronto(monkeypatch, fake_month):
-    monkeypatch.setattr(verifica_coerenza_router.Database, "get_db", lambda: object())
+    # La cache del riepilogo è legata all'identità del database: oggetti
+    # temporanei possono riutilizzare lo stesso id tra scenari diversi.
+    from app.middleware import performance
+    _run(performance.cache.clear_all())
+    db = ClientArchivioMemoria().db
+    monkeypatch.setattr(verifica_coerenza_router.Database, "get_db", lambda: db)
     from app.services import lipe_verifica
     monkeypatch.setattr(
         lipe_verifica, "list_lipe_monthly_evidence",
