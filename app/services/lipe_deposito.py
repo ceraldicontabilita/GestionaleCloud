@@ -13,6 +13,7 @@ comunicazione si puo' correggere e ritrasmettere: vince quella con il
 protocollo piu' alto, e la precedente resta nello storico della riga.
 """
 import logging
+import hashlib
 import re
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
@@ -69,6 +70,7 @@ def _nome_documento(doc: Dict[str, Any]) -> str:
 async def deposita_lipe(
     db, pdf_bytes: bytes, *, nome_file: str, origine: str,
     drive_file_id: Optional[str] = None, dry_run: bool = False,
+    source_document_id: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Legge una LIPE e deposita i suoi periodi. Idempotente per periodo."""
     letto = parse_lipe(pdf_bytes)
@@ -109,6 +111,9 @@ async def deposita_lipe(
             "protocollo": protocollo,
             "nome_file": nome_file,
             "drive_file_id": drive_file_id,
+            "source_sha256": hashlib.sha256(pdf_bytes).hexdigest(),
+            "source_document_id": source_document_id,
+            "source_page": periodo_letto.get("pagina"),
             "origine": origine,
             "canale": canale_obbligatorio(origine, drive_file_id=drive_file_id),
             "stato": STATO_LIPE_CANONICA,

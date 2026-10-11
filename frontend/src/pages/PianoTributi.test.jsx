@@ -50,6 +50,28 @@ describe('Piano tributi: card cliccabili', () => {
   });
 });
 
+describe('Piano IVA: credito e LIPE', () => {
+  it('mostra il credito riportato, spiega il mancato versamento e apre la LIPE', async () => {
+    api.get.mockResolvedValue({ data: {
+      ...dati, mancano: [], conteggi: { iva_a_credito: 1 },
+      voci: [{ voce: { id: 'iva_mensile', etichetta: 'IVA mensile (6001-6012)', gruppo: 'Erario', codici: ['6001', '6002'], periodo: 'mese', obbligatorio: false },
+        caselle: [{ periodo: '01', etichetta_periodo: '01/2026', stato: 'iva_a_credito', etichetta_stato: 'Nessun versamento dovuto · a credito', modelli: [], credito: '40',
+          iva: { fonte: 'LIPE', verificato: true, credito_iniziale_cents: 10000, credito_mese_precedente_cents: 0,
+            credito_anno_precedente_cents: 10000, riporto_annuale_indicato: true, iva_vendite_cents: 6000, iva_acquisti_cents: 0,
+            debito_mese_cents: 6000, credito_mese_cents: 0, altre_rettifiche_cents: 0, credito_residuo_cents: 4000, da_versare_cents: 0,
+            documento: { nome: 'LIPE di gennaio.pdf', pdf_url: '/api/originale/documento/lipe-test' } },
+        }] }],
+    } });
+    render(<MemoryRouter><PianoTributi /></MemoryRouter>);
+    fireEvent.click(await screen.findByRole('button', { name: /IVA mensile.*01\/2026/ }));
+    expect(screen.getByTestId('piano-iva-riporto')).toHaveTextContent('Credito residuo da riportare');
+    expect(screen.getByTestId('piano-iva-riporto')).toHaveTextContent('40,00');
+    expect(screen.getByText(/Nessun pagamento richiesto/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Apri LIPE' }));
+    expect(screen.getByRole('dialog')).toHaveAttribute('data-url', '/api/originale/documento/lipe-test');
+  });
+});
+
 describe('Piano tributi: atteso dal prospetto paghe', () => {
   it('apre la quietanza autonoma senza presentarla come modello F24', async () => {
     api.get.mockResolvedValue({ data: {

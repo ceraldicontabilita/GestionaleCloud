@@ -3434,6 +3434,7 @@ async def upload_documento_automatico(
                     result["lipe"] = await lipe_deposito.deposita_lipe(
                         db, content, nome_file=filename, origine="documenti_upload_auto",
                         drive_file_id=source_context.get("drive_file_id"), dry_run=False,
+                        source_document_id=registered.get("document_id"),
                     )
                 except Exception as exc:  # noqa: BLE001 — l'archiviazione resta valida
                     logger.error("LIPE %s archiviata ma periodi non depositati: %s: %s",

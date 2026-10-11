@@ -22,6 +22,8 @@ const VARIANTE = {
   futuro: 'neutral',
   credito_usato: 'info',
   credito_assente: 'neutral',
+  iva_a_credito: 'info',
+  iva_da_verificare: 'warning',
 };
 
 const FONDO = {
@@ -115,7 +117,7 @@ function DettaglioCasella({ voce, casella }) {
       </div>
       <div style={{ marginTop: 6, color: COLORS.textMuted }}>
         Scadenza: {casella.scadenza ? dataIt(casella.scadenza) : 'da impostare'}
-        {' · '}Codici: {(voce.codici || []).join(', ') || 'nessuno (fuori F24)'}
+        {' · '}Codici: {(voce.id === 'iva_mensile' ? [`60${String(casella.periodo).padStart(2, '0')}`] : voce.codici || []).join(', ') || 'nessuno (fuori F24)'}
       </div>
       {casella.atteso_da_buste && (
         <div style={{ marginTop: 6 }} data-testid="atteso-da-buste-dettaglio">
@@ -135,6 +137,32 @@ function DettaglioCasella({ voce, casella }) {
         </div>
       )}
       {voce.nota && <div style={{ marginTop: 6 }}>{voce.nota}{voce.rimando && <> <Link to={voce.rimando.to}>{voce.rimando.label}</Link></>}</div>}
+      {casella.iva && <div data-testid="piano-iva-riporto" style={{ marginTop: 12 }}>
+        <strong>Liquidazione IVA · {casella.iva.fonte}</strong>
+        {casella.iva.credito_residuo_cents != null ? <>
+          <div>Credito iniziale: <strong>{importo((casella.iva.credito_iniziale_cents || 0) / 100)}</strong></div>
+          {casella.iva.fonte === 'LIPE' && <div>
+            dal mese precedente {importo(casella.iva.credito_mese_precedente_cents / 100)}
+            {' · '}dall'anno precedente {importo(casella.iva.credito_anno_precedente_cents / 100)}
+            {!casella.iva.riporto_annuale_indicato && ' (credito annuale non indicato nel modulo)'}
+          </div>}
+          <div>IVA vendite: {importo(casella.iva.iva_vendite_cents / 100)} · IVA acquisti: {importo(casella.iva.iva_acquisti_cents / 100)}</div>
+          {casella.iva.debito_mese_cents != null && <div>
+            Debito del mese: {importo(casella.iva.debito_mese_cents / 100)} · Credito del mese: {importo(casella.iva.credito_mese_cents / 100)}
+            {casella.iva.altre_rettifiche_cents !== 0 && <> · Altre rettifiche LIPE: {importo(casella.iva.altre_rettifiche_cents / 100)}</>}
+          </div>}
+          <div>Credito residuo da riportare: <strong>{importo(casella.iva.credito_residuo_cents / 100)}</strong></div>
+          <div>Da versare: <strong>{importo(casella.iva.da_versare_cents / 100)}</strong></div>
+          {casella.iva.da_versare_cents === 0 && <div>{casella.iva.verificato ? 'Nessun pagamento richiesto: il periodo è a credito o il credito disponibile copre il debito.' : 'Il calcolo provvisorio indica un credito: la liquidazione resta da verificare.'}</div>}
+        </> : <div>Credito residuo e IVA da versare non ancora verificabili: occorrono la LIPE o una liquidazione completa. Nessun saldo zero viene presunto.</div>}
+        {!casella.iva.verificato && casella.iva.fonte !== 'periodo_non_concluso' && <div>Calcolo del gestionale da verificare. LIPE attesa.</div>}
+        {casella.iva.riporto_coerente === false && <div style={{ color: COLORS.warning }}>Il credito iniziale della LIPE differisce dal credito residuo del mese precedente: verificare il riporto con il commercialista.</div>}
+        {casella.iva.versamento_da_verificare && <div style={{ color: COLORS.warning }}>Esiste anche un F24 o una quietanza: verificare perché il periodo risulta a credito.</div>}
+        {casella.iva.documento && <div style={{ marginTop: 8 }}>
+          LIPE: {casella.iva.documento.nome || 'modulo del periodo'}
+          {casella.iva.documento.pdf_url ? <> · <ApriOriginale url={casella.iva.documento.pdf_url} variante="ghost" titolo={`LIPE ${casella.etichetta_periodo}`}>Apri LIPE</ApriOriginale></> : ' · originale da collegare'}
+        </div>}
+      </div>}
       {!casella.modelli.length && casella.stato === 'manca_f24' && (
         <div style={{ marginTop: 6 }}>{voce.codici.join(', ')} · {casella.etichetta_periodo}: non risulta pagato. La scadenza è passata e non è presente una quietanza per questo periodo.</div>
       )}
@@ -290,7 +318,7 @@ function GrigliaAnno({ g, aperta, setAperta, filtroStati = null }) {
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'baseline', marginBottom: 8 }}>
                 <strong>{voce.etichetta}</strong>
                 <span style={{ fontSize: 12, color: COLORS.textMuted }}>{(voce.codici || []).join(' · ')}</span>
-                {!voce.obbligatorio && <Badge variant="neutral">Non obbligatorio</Badge>}
+                {!voce.obbligatorio && <Badge variant="neutral">{voce.id === 'iva_mensile' ? 'Secondo liquidazione e credito disponibile' : 'Non obbligatorio'}</Badge>}
               </div>
               {!caselle.length && (
                 <div style={{ fontSize: 13, color: COLORS.textMuted }}>{voce.nota || 'Nessuna scadenza impostata.'}</div>

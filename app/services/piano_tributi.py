@@ -666,7 +666,8 @@ async def griglia(db, anno: int, oggi: Optional[date] = None, *, scrivi: bool = 
     oggi = oggi or datetime.now(timezone.utc).date()
     voci = [v for v in await voci_piano(db, scrivi=scrivi) if v.get("attivo", True)]
     registro = await registro_f24.carica_registro(db)
-    return _griglia_anno(voci, registro, _modelli_con_righe(registro), anno, oggi, await attesi_dai_prospetti(db))
+    from app.services.piano_iva import arricchisci_piano_iva
+    return await arricchisci_piano_iva(db, _griglia_anno(voci, registro, _modelli_con_righe(registro), anno, oggi, await attesi_dai_prospetti(db)), oggi)
 
 
 ANNO_PRIMO_PIANO = 2019
@@ -708,9 +709,10 @@ async def griglia_anni(db, testo: Optional[str], oggi: Optional[date] = None) ->
     modelli = _modelli_con_righe(registro)
     anni = anni_richiesti(testo, modelli, oggi)
     attesi = await attesi_dai_prospetti(db)
+    from app.services.piano_iva import arricchisci_piano_iva
     if len(anni) == 1:
-        return _griglia_anno(voci, registro, modelli, anni[0], oggi, attesi)
-    per_anno = [_griglia_anno(voci, registro, modelli, a, oggi, attesi) for a in anni]
+        return await arricchisci_piano_iva(db, _griglia_anno(voci, registro, modelli, anni[0], oggi, attesi), oggi)
+    per_anno = [await arricchisci_piano_iva(db, _griglia_anno(voci, registro, modelli, a, oggi, attesi), oggi) for a in anni]
     conteggi: Dict[str, int] = {}
     for g in per_anno:
         for stato, n in g["conteggi"].items():
