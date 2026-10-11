@@ -168,6 +168,9 @@ services:
         value: "combined"
       - key: ENABLE_SCHEDULER
         value: "false"
+      # Le 71 procedure ritirate sono bloccate nel codice (scheduler_policy.py),
+      # anche con ENABLE_SCHEDULER=true o SCHEDULER_JOB_ALLOWLIST vuota.
+      # La allowlist live mantiene solo i due import Drive e il giro Banco BPM.
       # Nessuna migrazione, semina o riparazione dati implicita al riavvio:
       # il database operativo resta vergine finche' il titolare non importa.
       - key: RUN_STARTUP_DATA_REPAIRS

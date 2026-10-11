@@ -88,6 +88,9 @@ async def verifica_scadenze(db, giorni_contratto: int = 30, giorni_prova: int = 
 def start_scheduler():
     """Avvia il job giornaliero (best-effort). No-op se APScheduler manca."""
     global _scheduler
+    from app.scheduler_policy import scheduler_job_enabled
+    if not scheduler_job_enabled("scadenze"):
+        return None
     if _scheduler:
         return _scheduler
     try:
