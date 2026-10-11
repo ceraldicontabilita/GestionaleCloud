@@ -11,6 +11,7 @@ conservato e da verificare.
 from __future__ import annotations
 
 import re
+import asyncio
 from typing import Any, Dict, Optional
 
 from app.db_collections import COLL_FISCAL_DOCUMENTS
@@ -67,14 +68,14 @@ async def dichiarazione_di(db, ident: Optional[str]) -> Optional[Dict[str, Any]]
     return trovati[0] if len(trovati) == 1 else None
 
 
-async def metadati(db, *, filename: str, testo: str) -> Dict[str, Any]:
+async def metadati(db, *, filename: str, testo: str, content: bytes | None = None) -> Dict[str, Any]:
     from app.services.declaration_dossiers import document_identity
 
     ident = identificativo(testo)
     dichiarazione = await dichiarazione_di(db, ident)
     modulo = _NOME_QUADRO.search(filename or "")
     identity = document_identity({"filename": filename, "document_type": "MODELLO_770"}, testo)
-    return {
+    metadata = {
         "declaration_type": "MODELLO_770",
         "codice_fiscale": identity["taxpayer_id"],
         "anno_imposta": identity["tax_year"],
@@ -88,3 +89,10 @@ async def metadati(db, *, filename: str, testo: str) -> Dict[str, Any]:
         "obligation_status": "NON_APPLICABILE",
         "relation_keys": {"identificativo_dichiarazione": ident},
     }
+    if content and metadata["quadro"] in {"ST", "SV"}:
+        from app.services.fiscal_document_ingestion import extract_pdf_pages
+        from app.services.dichiarazioni_quadri import estrai_quadri_pagine
+
+        pages = await asyncio.to_thread(extract_pdf_pages, content)
+        metadata["quadri"] = estrai_quadri_pagine(pages, "MODELLO_770")
+    return metadata

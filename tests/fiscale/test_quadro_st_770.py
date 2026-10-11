@@ -93,6 +93,26 @@ def test_pagina_st_senza_coordinate_si_conta_solo_se_ha_importi():
     assert dq.riconosci_tipo([{"text": "MODELLO 770/2025\nQUADRO ST"}]) == "MODELLO_770"
 
 
+def test_sv_and_printed_module_keep_distinct_cells_from_st_and_other_modules():
+    st = _pagina_st([_rigo_st(2,189,'01','2024','100,00','100,00')])
+    st['layout_words'] += [_w(431,113,'N.'),_w(460,105,'1',6)]
+    sv = _pagina_st([_rigo_st(2,189,'01','2024','73,95','74,15',interessi='0,20',
+                            codice='3848',ravvedimento=True)],numero=16)
+    sv['text']=sv['text'].replace('ST','SV')
+    for w in sv['layout_words']:
+        if w['text']=='ST2':w['text']='SV2'
+    sv['layout_words'] += [_w(412,113,'N.'),_w(433,105,'2',6)]
+    more = {**sv,'page_number':17,'text':sv['text'].replace('QUADRO SV','Prosecuzione SV2'),
+            'layout_words':[w for w in sv['layout_words'] if w['y0']>150]}
+    parsed=dq.estrai_quadri_pagine([st,sv,more])
+    assert len(parsed['st_righe'])==1 and parsed['st_righe'][0]['modulo']==1
+    assert len(parsed['sv_righe'])==2 and {r['modulo'] for r in parsed['sv_righe']}=={2}
+    assert parsed['sv_righe'][0]['importo_versato_cents']==7415
+    assert parsed['sv_righe'][0]['interessi_cents']==20 and parsed['sv_righe'][0]['ravvedimento']
+    assert parsed['sv_righe'][0]['sezione']=='SV'
+    assert dq.pagina_con_quadro(sv['text'])
+
+
 def test_il_redditi_che_cita_il_quadro_st_del_770_non_e_un_770():
     # Quadro RU dei Redditi SC 2021 (caso reale 760_T2109…): la nota «(quadro ST
     # del modello 770)» non fa del documento un 770; il quadro RN lo dice Redditi.

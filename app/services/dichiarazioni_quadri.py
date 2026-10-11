@@ -68,7 +68,7 @@ __all__ = [
 # comunicazioni 54-bis/36-bis. Il marcatore `quadri_controllati_v` sul
 # documento dice con quale versione e' stato letto: l'arretrato e' chi non
 # porta quella corrente.
-PARSER_VERSION = "dichiarazioni-quadri-v3"
+PARSER_VERSION = "dichiarazioni-quadri-v4"
 
 #: Tipo letto dal contenuto -> tipi d'archivio che quel contenuto corregge.
 #: Nessuna dichiarazione vera cambia tipo: solo i marcatori generici.
@@ -132,7 +132,7 @@ _RE_ANNO_IMPOSTA = re.compile(r"PERIODO\s+D[’'`]\s*IMPOSTA\s+((?:19|20)\d{2})"
 # modello come «MODELLO 770/2025»: il modello dell'anno N dichiara l'anno N-1.
 _RE_ANNO_770 = re.compile(r"\bAnno\s+((?:19|20)\d{2})\b")
 _RE_MODELLO_770 = re.compile(r"MODELLO\s*770\s*/\s*((?:19|20)\d{2})", re.I)
-_RE_RIGO_ST = re.compile(r"^ST(\d{1,2})$")
+_RE_RIGO_ST = re.compile(r"^S[TV](\d{1,2})$")
 _RE_COMUNICAZIONE = re.compile(
     r"Comunicazione\s+54-bis|Prospetto\s+delle\s+somme\s+(?:periodiche\s+)?che\s+risultano\s+dovute"
     r"|art\.\s*36-bis\s+del\s+d\.?P\.?R", re.I)
@@ -142,7 +142,7 @@ _MESI_IT = {m: i + 1 for i, m in enumerate(
 _TRIMESTRI_IT = {"I": 1, "II": 2, "III": 3, "IV": 4, "PRIMO": 1, "SECONDO": 2, "TERZO": 3, "QUARTO": 4}
 # Una pagina del quadro ST: l'intestazione o le etichette dei righi (le
 # sezioni II-IV non ripetono «QUADRO ST»).
-_RE_PAGINA_ST = re.compile(r"QUADRO\s*ST\b|\bST(?:[2-9]|[1-4]\d)\b")
+_RE_PAGINA_ST = re.compile(r"QUADRO\s*S[TV]\b|\bS[TV](?:[2-9]|[1-4]\d)\b")
 _RE_IMPORTO_ST = re.compile(r"^\d{1,3}(?:\.\d{3})*,\d{2}$")
 _RE_MODELLO_REDDITI = re.compile(r"REDDITI\s*SC\s*((?:19|20)\d{2})", re.I)
 _RE_PROTOCOLLO = re.compile(r"Protocollo\s*\n?\s*(\d{20,26})")
@@ -198,8 +198,8 @@ def riconosci_tipo(pagine: Iterable[Dict[str, Any]]) -> Optional[str]:
     # (ST1…): il quadro RU dei Redditi SC cita «(quadro ST del modello 770)»
     # in una nota e un Redditi 2021 era entrato come 770 (07/10/2026).
     if _RE_MODELLO_770.search(testo) or (
-            re.search(r"QUADRO\s*ST(?![A-Z0-9])", testo, re.I)
-            and re.search(r"\bST\d{1,2}\b", testo)
+            re.search(r"QUADRO\s*S[TV](?![A-Z0-9])", testo, re.I)
+            and re.search(r"\bS[TV]\d{1,2}\b", testo)
             and re.search(r"RITENUTE\s+OPERATE|IMPORTO\s+VERSATO", testo, re.I)):
         return "MODELLO_770"
     # L'OCR salda le parole («QUADROVX», «MODELLOIVA2024»): spazio facoltativo.
@@ -572,7 +572,8 @@ def _riga_st(etichetta: Dict[str, Any], parole: List[Dict[str, Any]], pagina: in
     numero_rigo = int(_RE_RIGO_ST.match(_testo(etichetta)).group(1))
     codice = primo("codice_tributo")
     return {
-        "rigo": _testo(etichetta), "sezione": _sezione_st(numero_rigo), "pagina": pagina,
+        "rigo": _testo(etichetta), "sezione": "SV" if _testo(etichetta).startswith("SV") else _sezione_st(numero_rigo), "pagina": pagina,
+        "quadro": _testo(etichetta)[:2],
         "mese": mese, "anno": anno, "periodo": f"{mese:02d}/{anno}",
         "ritenute_operate_cents": _cents_st(primo("ritenute_operate")),
         "crediti_scomputo_cents": _cents_st(primo("crediti_scomputo")),
@@ -590,7 +591,20 @@ def _riga_st(etichetta: Dict[str, Any], parole: List[Dict[str, Any]], pagina: in
     }
 
 
-def quadro_st(pagine: Iterable[Dict[str, Any]]) -> Dict[str, Any]:
+def _modulo_770(parole):
+    """Numero nella casella accanto a Mod. N.; non il numero di pagina."""
+    for label in parole:
+        if _testo(label) != "N." or _f(label, "y0") > 150:
+            continue
+        values = [int(_testo(w)) for w in parole if re.fullmatch(r"\d{1,3}", _testo(w))
+                  and 0 <= _f(w, "x0") - _f(label, "x1") <= 65
+                  and -12 <= _f(w, "y0") - _f(label, "y0") <= 5]
+        if len(values) == 1:
+            return values[0]
+    return None
+
+
+def quadro_st(pagine: Iterable[Dict[str, Any]], *, quadro: str = "ST") -> Dict[str, Any]:
     """Le righe del quadro ST (sezioni I-IV) di un 770, per posizione.
 
     Ritorna ``{"righe": [...], "pagine_senza_coordinate": [...], "righe_incomplete": n}``.
@@ -600,9 +614,10 @@ def quadro_st(pagine: Iterable[Dict[str, Any]]) -> Dict[str, Any]:
     righe: List[Dict[str, Any]] = []
     senza_coordinate: List[int] = []
     incomplete = 0
+    modulo = None
     for p in sorted((dict(x) for x in pagine), key=lambda x: int(x.get("page_number") or 0)):
         testo = str(p.get("text") or "")
-        if not _RE_PAGINA_ST.search(testo):
+        if not re.search(rf"QUADRO\s*{quadro}\b|\b{quadro}(?:[2-9]|[1-4]\d)\b", testo):
             continue
         parole = p.get("layout_words") or []
         numero = int(p.get("page_number") or 0)
@@ -612,7 +627,9 @@ def quadro_st(pagine: Iterable[Dict[str, Any]]) -> Dict[str, Any]:
             if _RE_IMPORTO_ST.search(testo) or re.search(r"\d{1,3}(?:\.\d{3})*,\d{2}", testo):
                 senza_coordinate.append(numero)
             continue
-        etichette = [w for w in parole if _RE_RIGO_ST.match(_testo(w)) and _f(w, "x0") <= _X_MAX_ETICHETTA]
+        modulo = _modulo_770(parole) or modulo
+        etichette = [w for w in parole if _RE_RIGO_ST.match(_testo(w)) and _testo(w).startswith(quadro)
+                     and _f(w, "x0") <= _X_MAX_ETICHETTA]
         for et in sorted(etichette, key=lambda w: _f(w, "y0")):
             riga = _riga_st(et, parole, numero)
             if riga is None:
@@ -621,7 +638,7 @@ def quadro_st(pagine: Iterable[Dict[str, Any]]) -> Dict[str, Any]:
                 continue
             if not riga["codice_tributo"] or not riga["data_versamento"]:
                 incomplete += 1
-            righe.append(riga)
+            righe.append({**riga, "modulo": modulo})
     return {"righe": righe, "pagine_senza_coordinate": senza_coordinate, "righe_incomplete": incomplete}
 
 
@@ -737,9 +754,13 @@ def estrai_quadri_pagine(pagine: Iterable[Dict[str, Any]], document_type: Option
         return esito
     if tipo == "MODELLO_770":
         st = quadro_st(elenco)
+        sv = quadro_st(elenco, quadro="SV")
         esito["st"] = {"righe_lette": len(st["righe"]), "righe_incomplete": st["righe_incomplete"],
                        "pagine_senza_coordinate": st["pagine_senza_coordinate"]}
         esito["st_righe"] = st["righe"]
+        esito["sv"] = {"righe_lette": len(sv["righe"]), "righe_incomplete": sv["righe_incomplete"],
+                       "pagine_senza_coordinate": sv["pagine_senza_coordinate"]}
+        esito["sv_righe"] = sv["righe"]
         m = _RE_MODELLO_770.search(testo)
         if m:
             esito["anno_modello"] = int(m.group(1))
@@ -753,6 +774,7 @@ def estrai_quadri_pagine(pagine: Iterable[Dict[str, Any]], document_type: Option
                 esito["anno_imposta_fonte"] = "modello_770_anno_meno_uno"
         esito["campi"] = {
             "st_righe_lette": {"valore": str(len(st["righe"])), "motivo": None, "pagina": None},
+            "sv_righe_lette": {"valore": str(len(sv["righe"])), "motivo": None, "pagina": None},
         }
         return esito
     if tipo == "ISA_ESITO":

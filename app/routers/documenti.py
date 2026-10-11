@@ -3489,7 +3489,7 @@ async def upload_documento_automatico(
             from app.services.componenti_770 import metadati as metadati_770
 
             metadata = await metadati_770(
-                db, filename=filename,
+                db, filename=filename, content=content,
                 testo=await asyncio.to_thread(_pdf_text_for_detection, content),
             )
             # Se lo stesso file e' gia' in coda come «da classificare» si
