@@ -554,88 +554,67 @@ async def scan_fatture_per_verbali() -> Dict[str, Any]:
             ]
         }).to_list(5000)
 
-        verbali_trovati = 0
-        associazioni_create = 0
-
+        # Raccoglie tutti i riferimenti prima di collegarli: una fattura
+        # concorrente non sovrascrive il collegamento canonico.
+        matches = {}
         for fattura in fatture:
-            # Costruisci testo completo della fattura cercando in tutti i campi.
-            # Mai il numero della fattura: ha la forma di un verbale
-            # (A25111540620) e diventava un «verbale» a se'.
-            campi_testo = [
-                fattura.get("descrizione", "") or "",
-                fattura.get("body", "") or "",
-                fattura.get("note", "") or "",
-                fattura.get("notes", "") or "",
-                fattura.get("oggetto", "") or "",
-                fattura.get("subject", "") or "",
-            ]
-            # Aggiungi le righe fattura reali salvate dal parser (chiave "linee",
-            # non "items" — "items" non esiste mai sui documenti invoices, quindi
-            # questo blocco non contribuiva mai nulla). Include anche
-            # AltriDatiGestionali: alcuni fornitori (es. Leasys) mettono la
-            # causale/il riferimento verbale reale solo lì, non in Descrizione.
-            for linea in fattura.get("linee", []):
-                campi_testo.append(linea.get("descrizione", "") or "")
-                for adg in linea.get("altri_dati_gestionali") or []:
-                    campi_testo.append(adg.get("riferimento_testo", "") or "")
-
-            testo_completo = " ".join(campi_testo)
-
-            # Cerca numero verbale nel testo completo
-            numero_verbale = extract_verbale_from_description(testo_completo)
-
-            if numero_verbale:
-                verbali_trovati += 1
-                fattura_id = fattura.get("id") or str(fattura.get("_id"))
-                fattura_numero = fattura.get("invoice_number") or fattura.get("numero_fattura")
-
-                # Verifica se esiste già l'associazione
-                existing = await db["verbali_noleggio"].find_one({
-                    "numero_verbale": numero_verbale,
-                    "$or": [
-                        {"fattura_id": fattura_id},
-                        {"fattura_associata_id": fattura_id},
-                    ],
-                })
-
-                if not existing:
-                    # Crea o aggiorna verbale
-                    verbale_doc = await db["verbali_noleggio"].find_one({"numero_verbale": numero_verbale})
-
-                    update_data = {
-                        **campi_da_fattura(fattura, regola="numero_in_riga_fattura"),
-                        "fornitore": fattura.get("supplier_name") or fattura.get("fornitore"),
-                        "targa": fattura.get("targa"),
-                        "updated_at": datetime.now(timezone.utc)
-                    }
-
-                    if verbale_doc:
-                        # Aggiorna esistente
-                        nuovo_stato = "riconciliato" if (
-                            verbale_doc.get("pagamento_id")
-                            or verbale_doc.get("paypal_transaction_id")
-                            or verbale_doc.get("ricevuta_pagopa_id")
-                            or verbale_doc.get("movimento_banca_id")
-                        ) else "fattura_ricevuta"
-                        update_data["stato"] = nuovo_stato
-                        await db["verbali_noleggio"].update_one(
-                            {"numero_verbale": numero_verbale},
-                            {"$set": update_data}
-                        )
-                    else:
-                        # Crea nuovo
-                        update_data["numero_verbale"] = numero_verbale
-                        update_data["stato"] = "fattura_ricevuta"
-                        update_data["created_at"] = datetime.now(timezone.utc)
-                        await db["verbali_noleggio"].insert_one(update_data)
-
-                    associazioni_create += 1
+            contexts = [str(fattura.get(key) or "") for key in
+                        ("descrizione", "body", "note", "notes", "oggetto", "subject")]
+            for line in fattura.get("linee", []):
+                contexts.append(str(line.get("descrizione") or ""))
+                contexts.extend(str(a.get("riferimento_testo") or "") for a in line.get("altri_dati_gestionali") or [])
+            numbers = set()
+            for text in contexts:
+                first = extract_verbale_from_description(text)
+                if first:
+                    numbers.add(first)
+                for match in re.finditer(r"\b([A-Z]{1,3}\d{8,12})\b", text, re.I):
+                    if _vicino_a_parola_verbale(text, match.start(), match.end()):
+                        numbers.add(match.group(1).upper())
+            for number in numbers:
+                invoice_id = fattura.get("id") or str(fattura.get("_id") or "")
+                if invoice_id:
+                    matches.setdefault(number, {})[invoice_id] = fattura
+        verbali_trovati, associazioni_create, ambigue = len(matches), 0, 0
+        from app.services.verbali_collegamento_fattura import fattura_id_del_verbale
+        from hashlib import sha256
+        for number, candidates in matches.items():
+            rows = await db["verbali_noleggio"].find({"numero_verbale": number}).to_list(20)
+            if any(row.get("stato") == "quarantena" for row in rows) or len(rows) > 1:
+                continue
+            row = rows[0] if rows else None
+            if len(candidates) != 1:
+                ambigue += 1
+                continue
+            invoice_id, invoice = next(iter(candidates.items()))
+            previous_id = fattura_id_del_verbale(row or {})
+            if previous_id:
+                ambigue += int(previous_id != invoice_id)
+                continue
+            values = {**campi_da_fattura(invoice, regola="numero_in_riga_fattura"),
+                      "updated_at": datetime.now(timezone.utc).isoformat()}
+            if row:
+                # La fattura del noleggiatore documenta le sue spese, non
+                # il versamento della sanzione: non modifica lo stato pagamento.
+                if not row.get("fornitore"):
+                    values["fornitore"] = invoice.get("supplier_name") or invoice.get("fornitore")
+                if not row.get("targa") and invoice.get("targa"):
+                    values["targa"] = invoice["targa"]
+                await db["verbali_noleggio"].update_one({"id": row["id"]} if row.get("id") else {"numero_verbale": number}, {"$set": values})
+            else:
+                values.update(id="verbale_fattura_" + sha256(number.encode()).hexdigest()[:32],
+                    numero_verbale=number, stato="fattura_ricevuta", source="scan_fatture",
+                    origine="FATTURA_SPESA_NOLEGGIO", verbale_originale_acquisito=False,
+                    stato_pratica="DA_ACQUISIRE_VERBALE", created_at=datetime.now(timezone.utc).isoformat())
+                await db["verbali_noleggio"].update_one({"numero_verbale": number}, {"$setOnInsert": values}, upsert=True)
+            associazioni_create += 1
 
         return {
             "success": True,
             "fatture_analizzate": len(fatture),
             "verbali_trovati": verbali_trovati,
-            "associazioni_create": associazioni_create
+            "associazioni_create": associazioni_create,
+            "associazioni_ambigue": ambigue,
         }
     except Exception as e:
         logger.error(f"Errore scan fatture verbali: {e}")

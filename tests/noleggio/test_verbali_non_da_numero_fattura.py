@@ -116,3 +116,31 @@ def test_cruscotto_noleggio_usa_vocabolario_unico_e_fatture_attive(monkeypatch):
     aperti = [v["numero_verbale"] for v in risultato["verbali_aperti"]["items"]]
     assert aperti == ["V-APERTO"]
     assert risultato["pagamenti_non_riconciliati"]["count"] == 1
+
+
+def test_fattura_non_prova_pagamento_e_conserva_targa(monkeypatch):
+    db=ArchivioDocumenti();monkeypatch.setattr(Database,'get_db',staticmethod(lambda:db))
+    async def run():
+        await db['invoices'].insert_one({'id':'f1','supplier_name':'ARVAL','status':'imported',
+            'linee':[{'descrizione':'Spese notifica verbale B99999999991'}, {'descrizione':'Spese notifica verbale B99999999992'}]})
+        await db['verbali_noleggio'].insert_one({'id':'v1','numero_verbale':'B99999999991','stato':'attesa_quietanza',
+            'targa':'GG782PN','movimento_banca_id':'bank1','pagato_documentalmente':False})
+        await verbali_riconciliazione.scan_fatture_per_verbali()
+        row=await db['verbali_noleggio'].find_one({'id':'v1'})
+        assert row['stato']=='attesa_quietanza' and row['targa']=='GG782PN' and not row['pagato_documentalmente']
+        assert row['fattura_id']=='f1'
+        new=await db['verbali_noleggio'].find_one({'numero_verbale':'B99999999992'})
+        assert new['id'] and new['verbale_originale_acquisito'] is False and not new.get('importo')
+    asyncio.run(run())
+
+
+def test_due_fatture_candidate_non_creano_collegamenti_concorrenti(monkeypatch):
+    db=ArchivioDocumenti();monkeypatch.setattr(Database,'get_db',staticmethod(lambda:db))
+    async def run():
+        for id in ('f1','f2'):
+            await db['invoices'].insert_one({'id':id,'supplier_name':'ARVAL','status':'imported',
+                'linee':[{'descrizione':'Spese notifica verbale B99999999991'}]})
+        result=await verbali_riconciliazione.scan_fatture_per_verbali()
+        assert result['associazioni_ambigue']==1
+        assert await db['verbali_noleggio'].count_documents({})==0
+    asyncio.run(run())
