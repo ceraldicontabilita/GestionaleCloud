@@ -115,3 +115,11 @@ def test_rilettura_non_sovrascrive_importo_verificato(monkeypatch):
         row=await db.verbali_noleggio.find_one({"id":"v1"})
         assert row["importo"]==121.00 and row["importo_centesimi"]==12100
     asyncio.run(run())
+
+
+def test_modalita_pagamento_vincono_su_spese_e_totale_tardivo():
+    text = ("entro 5 giorni dall'avvenuta notifica. Entro tale termine è ammesso il pagamento di Euro 121,00 "
+            "di cui Euro 115,50 quale sanzione ed Euro 5,50 per spese. "
+            "Decorsi i termini per un totale di 335,50. € 5,07")
+    assert writer._extract_amount(text) == 121.00
+    assert writer._extract_verbale_details(text)["importo_ridotto"] == 121.00

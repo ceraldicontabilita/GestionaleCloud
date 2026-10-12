@@ -123,6 +123,10 @@ def _float_or_none(value: Any) -> Optional[float]:
 
 
 def _extract_amount(text: str) -> Optional[float]:
+    compact = re.sub(r"\s+", " ", text or "")
+    terms = re.search(r"entro\s+5\s+giorni.{0,180}?pagamento\s+di\s+Euro\s+([\d.]+,\d{2})", compact, re.I)
+    if terms:
+        return _float_or_none(terms.group(1))
     patterns = (
         r"(?:totale|importo\s+pagato|da\s+pagare)\s*[:€]*\s*([\d.]+,\d{2})",
         r"€\s*([\d.]+,\d{2})",
@@ -288,7 +292,8 @@ def _extract_verbale_details(text: str) -> Dict[str, Any]:
         obligor = re.search(r"Obbligato in solido in qualit[aà] di locatario:\s*(.+?)(?=,\s*residente)", compact, re.I)
     if not lessor:
         lessor = re.search(r"Societ[aà] di locazione:\s*(.+?)(?=,\s*residente)", compact, re.I)
-    reduced = _extract_labeled_amount(r"(?:riduzione\s+del\s+30%|entro\s+5\s+giorni)", compact)
+    explicit_reduced = re.search(r"entro\s+5\s+giorni.{0,180}?pagamento\s+di\s+Euro\s+([\d.]+,\d{2})", compact, re.I)
+    reduced = _float_or_none(explicit_reduced.group(1)) if explicit_reduced else _extract_labeled_amount(r"(?:riduzione\s+del\s+30%|entro\s+5\s+giorni)", compact)
     ordinary = _extract_labeled_amount(r"(?:dal\s+sesto\s+al\s+sessantesimo\s+giorno|entro\s+60\s+giorni)", compact)
     issue_date = _extract_iso_date(r"(?:emesso|redatto|verbale).*?(\d{2}[/-]\d{2}[/-]\d{4})", compact)
     return {
