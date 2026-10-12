@@ -3,6 +3,7 @@ Suppliers base CRUD operations.
 List, get, update, delete suppliers.
 """
 from fastapi import APIRouter, HTTPException, Query, Body, Depends
+from fastapi.responses import JSONResponse
 from typing import Dict, Any, List, Optional
 from datetime import datetime, timedelta, timezone
 import uuid
@@ -741,6 +742,33 @@ async def auto_merge_fornitori_duplicati(
     return await auto_merge_tutti(dry_run=dry_run)
 
 
+@router.get("/profili-fiscali/memoria")
+async def get_memoria_profili_fiscali(
+    _admin: Dict[str, Any] = Depends(get_current_admin_user),
+) -> JSONResponse:
+    """Catalogo versionato delle fonti e delle regole per le schede fornitore."""
+    from app.services.fiscalita_fornitore import carica_memoria
+    return JSONResponse(
+        content=carica_memoria(),
+        headers={
+            "Content-Disposition": 'attachment; filename="profili_fiscali_fornitori.json"',
+        },
+    )
+
+
+@router.post("/profili-fiscali/importa")
+async def importa_profili_fiscali(
+    dry_run: bool = Query(True, description="True = anteprima senza modifiche"),
+    _admin: Dict[str, Any] = Depends(get_current_admin_user),
+) -> Dict[str, Any]:
+    """Popola il profilo canonico del fornitore, senza modificare fatture o IVA."""
+    from app.services.fiscalita_fornitore import importa_memoria
+    result = await importa_memoria(Database.get_db(), dry_run=dry_run)
+    if not dry_run:
+        await cache.clear_pattern(SUPPLIERS_CACHE_KEY)
+    return result
+
+
 @router.get("/{supplier_id}")
 async def get_supplier(supplier_id: str) -> Dict[str, Any]:
     """Dettaglio singolo fornitore."""
@@ -840,6 +868,12 @@ async def update_supplier(supplier_id: str, data: Dict[str, Any] = Body(...)) ->
     data.pop("id", None)
     data.pop("partita_iva", None)
     data.pop("created_at", None)
+
+    # Fonti, identità e regola fiscale si scrivono soltanto dall'importatore
+    # canonico validato, non dal modulo generico o da campi annidati del client.
+    for campo in list(data):
+        if campo == "profilo_fiscale" or campo.startswith(("profilo_fiscale.", "profilo_fiscale_")):
+            data.pop(campo, None)
 
     # Nel magazzino / fuori: mai scritto dal PUT generico. Se cambia davvero
     # passa dall'unico servizio (storico, proiezione su Lotti, fatture da prendere).

@@ -8,10 +8,26 @@ leggendo la DESCRIZIONE delle linee fattura per assegnare il centro di costo cor
 
 from typing import Dict, Any, List, Tuple, Optional
 import logging
+import re
 
 from app.services.piano_conti_ufficiale import SOGLIA_CESPITE_TUIR
 
 logger = logging.getLogger(__name__)
+
+
+def _keyword_presente(keyword: str, testo: str) -> bool:
+    """Le parole brevi devono essere intere: TRE non e' EXTREME.
+
+    Mantiene il matching dei termini merceologici lunghi (anche radici e
+    plurali storici), impedendo che sigle/nomi brevi cambino categoria IVA
+    soltanto perche' compaiono dentro una descrizione diversa.
+    """
+    parola = keyword.lower().strip()
+    if not parola:
+        return False
+    if len(parola) <= 4:
+        return re.search(r"(?<!\w)" + re.escape(parola) + r"(?!\w)", testo.lower()) is not None
+    return parola in testo.lower()
 
 # ============================================================================
 # CENTRI DI COSTO - BAR/PASTICCERIA ATECO 56.10.30
@@ -786,7 +802,7 @@ def classifica_fattura_per_centro_costo(
         score = 0
         for keyword in config.get("keywords", []):
             k = keyword.lower()
-            if k in contenuto_lower:
+            if _keyword_presente(k, contenuto_lower):
                 score += len(keyword) * PESO_CONTENUTO
 
         if score > 0:
@@ -826,7 +842,7 @@ def classifica_fattura_per_centro_costo(
     for cdc_id, config in CENTRI_COSTO.items():
         if ammessi and cdc_id not in ammessi:
             continue
-        score = sum(len(k) for k in config.get("keywords", []) if k.lower() in supplier_lower)
+        score = sum(len(k) for k in config.get("keywords", []) if _keyword_presente(k, supplier_lower))
         if score:
             scores_nome[cdc_id] = score
     if scores_nome:
@@ -915,7 +931,7 @@ def punteggi_contenuto(
             continue
         score = 0
         for keyword in config.get("keywords", []):
-            if keyword.lower() in testo_lower:
+            if _keyword_presente(keyword, testo_lower):
                 score += len(keyword)
         if score > 0:
             scores[cdc_id] = score

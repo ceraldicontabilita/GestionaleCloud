@@ -58,6 +58,16 @@ def motivo_detraibilita_in_dubbio(inv: Dict[str, Any]) -> Optional[str]:
     dalla testata. In produzione il 07/10/2026 il dubbio analitico teneva
     fuori dalla liquidazione 201 fatture su 265.
     """
+    valutazione = inv.get("valutazione_fiscale_iva") or {}
+    if isinstance(valutazione, dict):
+        if valutazione.get("stato") == "da_verificare":
+            return valutazione.get("motivo") or "condizioni fiscali dell'acquisto da verificare"
+        if (valutazione.get("stato") == "valutata"
+                and inv.get("percentuale_detraibilita_iva") is not None
+                and inv.get("iva_detraibile") is not None):
+            # La decisione documentata considera il master e l'uso del bene:
+            # la vecchia percentuale statica del CDC non puo' sostituirla.
+            return None
     if str(inv.get("stato_classificazione") or "").lower() != "da_verificare":
         return None
     cdc = inv.get("centro_costo_id")

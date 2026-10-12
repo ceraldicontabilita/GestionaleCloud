@@ -3174,6 +3174,115 @@ async def update_fattura(invoice_id: str, data: Dict[str, Any] = Body(...)) -> D
     return await _update_fattura_ricevute(invoice_id, data)
 
 
+def _valida_contesto_fiscale_iva(data: Dict[str, Any], fattura: Dict[str, Any]) -> Dict[str, Any]:
+    """Solo condizioni dichiarate dall'utente; percentuali canoniche 0..1."""
+    from datetime import date
+    import math
+
+    ammessi = {"inerente", "uso_veicolo", "tipo_veicolo", "percentuale_utilizzo_aziendale",
+               "pro_rata_applicabile", "pro_rata", "fonte_documento", "validita_fiscale"}
+    if set(data) - ammessi:
+        raise HTTPException(status_code=422, detail="Campi del contesto fiscale non ammessi")
+    if type(data.get("inerente")) is not bool:
+        raise HTTPException(status_code=422, detail="Confermare se l'acquisto è inerente all'attività")
+    fonte = data.get("fonte_documento")
+    if not isinstance(fonte, str) or not fonte.strip() or len(fonte) > 500:
+        raise HTTPException(status_code=422, detail="Indicare il documento che prova l'uso dell'acquisto")
+    validita = data.get("validita_fiscale")
+    if not isinstance(validita, dict) or set(validita) != {"dal", "al"}:
+        raise HTTPException(status_code=422, detail="Indicare le date di inizio e fine validità fiscale")
+    try:
+        if any(not isinstance(validita[k], str) or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", validita[k])
+               for k in ("dal", "al")):
+            raise ValueError
+        dal, al = date.fromisoformat(validita["dal"]), date.fromisoformat(validita["al"])
+        data_doc = date.fromisoformat(str(fattura.get("invoice_date") or fattura.get("data_documento") or "")[:10])
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=422, detail="Date fiscali o data della fattura non valide")
+    if not dal <= data_doc <= al:
+        raise HTTPException(status_code=422, detail="La validità fiscale deve comprendere la data della fattura")
+    contesto = {"inerente": data["inerente"], "fonte_documento": fonte.strip(),
+                "validita_fiscale": {"dal": dal.isoformat(), "al": al.isoformat()}}
+    for campo in ("percentuale_utilizzo_aziendale", "pro_rata"):
+        if campo in data:
+            valore = data[campo]
+            if type(valore) not in (int, float) or not math.isfinite(valore) or not 0 <= valore <= 1:
+                raise HTTPException(status_code=422, detail=f"{campo}: indicare una frazione numerica tra 0 e 1")
+            contesto[campo] = float(valore)
+    if "pro_rata_applicabile" in data:
+        if type(data["pro_rata_applicabile"]) is not bool:
+            raise HTTPException(status_code=422, detail="Applicabilità del pro rata non valida")
+        contesto["pro_rata_applicabile"] = data["pro_rata_applicabile"]
+    if data.get("pro_rata_applicabile") is True and "pro_rata" not in contesto:
+        raise HTTPException(status_code=422, detail="Indicare la percentuale di pro rata applicabile")
+    if "pro_rata" in contesto and data.get("pro_rata_applicabile") is not True:
+        raise HTTPException(status_code=422, detail="Una percentuale di pro rata richiede applicabilità confermata")
+    if fattura.get("pro_rata_applicabile") is True and data.get("pro_rata_applicabile") is not True:
+        raise HTTPException(status_code=422, detail="La fattura segnala pro rata: confermarne l'applicabilità")
+    if fattura.get("pro_rata") is not None and fattura["pro_rata"] != contesto.get("pro_rata"):
+        raise HTTPException(status_code=422, detail="Il pro rata deve corrispondere al dato presente sulla fattura")
+    if "tipo_veicolo" in data or "uso_veicolo" in data:
+        if data.get("tipo_veicolo") != "autovettura" or data.get("uso_veicolo") not in {"promiscuo", "esclusivo"}:
+            raise HTTPException(status_code=422, detail="Per l'autovettura indicare uso promiscuo o esclusivo documentato")
+        contesto.update(tipo_veicolo="autovettura", uso_veicolo=data["uso_veicolo"])
+    return contesto
+
+
+@router.put("/{invoice_id}/contesto-fiscale-iva")
+async def conferma_contesto_fiscale_iva(
+    invoice_id: str, data: Dict[str, Any] = Body(...),
+    admin: Dict[str, Any] = Depends(get_current_admin_user),
+) -> Dict[str, Any]:
+    """Conferma uso/inerenza e rivaluta l'IVA, senza pagamenti o scritture."""
+    from copy import deepcopy
+    from app.services.fiscalita_fornitore import motivo_fattura_protetta, risolvi_profilo, valuta_iva_fattura
+    from app.services.learning_machine_cdc import risolvi_centro_costo
+    from app.services.iva_detraibilita import ricalcola_iva_fattura
+    from app.engines.iva_fatture import campi_iva_da_fattura
+
+    db = Database.get_db()
+    fattura = await db[Collections.INVOICES].find_one(filtro_id(invoice_id))
+    if not fattura or fattura.get("entity_status") == "deleted" or fattura.get("status") == "deleted":
+        raise HTTPException(status_code=404, detail="Fattura non trovata")
+    # Una conferma esplicita può aggiornare un contesto manuale, mai IVA
+    # utilizzata o un periodo chiuso: non lasciare che la guardia manuale
+    # nasconda una liquidazione chiusa.
+    controllabile = {**fattura, "classificazione_manuale": False, "classificato_da": None}
+    protezione = await motivo_fattura_protetta(db, controllabile)
+    if protezione:
+        raise HTTPException(status_code=409, detail=protezione)
+    contesto = _valida_contesto_fiscale_iva(data, fattura)
+    attore = admin.get("user_id")
+    if not attore:
+        raise HTTPException(status_code=403, detail="Identità dell'amministratore non disponibile")
+    contesto.update(confermato_da=str(attore), confermato_il=datetime.now(timezone.utc).isoformat())
+    cdc_id, cdc_config = risolvi_centro_costo(fattura.get("centro_costo_id") or "")
+    candidata = {**fattura, "contesto_fiscale_iva": contesto}
+    decisione = valuta_iva_fattura(candidata, await risolvi_profilo(db, candidata), cdc_id, cdc_config,
+                                 fattura.get("classificazioni_righe"))
+    aggiornamento = {"contesto_fiscale_iva": contesto,
+                     **{k: decisione[k] for k in ("iva_detraibile", "iva_indetraibile",
+                          "percentuale_detraibilita_iva", "valutazione_fiscale_iva")}}
+    aggiornamento.update(campi_iva_da_fattura({**candidata, **aggiornamento}))
+    # Salva la decisione precedente nello stesso documento canonico.
+    audit = {"modificato_il": contesto["confermato_il"], "modificato_da": str(attore),
+             "precedente": {k: deepcopy(fattura.get(k)) for k in (
+                 "contesto_fiscale_iva", "valutazione_fiscale_iva", "iva_detraibile",
+                 "iva_indetraibile", "percentuale_detraibilita_iva", "stato_detrazione_iva")}}
+    filtro = {"_id": fattura["_id"]} if fattura.get("_id") is not None else {"id": fattura["id"]}
+    for campo in ("iva_utilizzata", "stato_detrazione_iva", "classificazione_manuale", "classificato_da",
+                  "contesto_fiscale_iva", "liquidazione_id", "periodo_iva_utilizzato", "centro_costo_id"):
+        filtro[campo] = fattura.get(campo)
+    result = await db[Collections.INVOICES].update_one(
+        filtro, {"$set": aggiornamento, "$push": {"storico_contesto_fiscale_iva": audit}})
+    if getattr(result, "matched_count", 0) != 1:
+        raise HTTPException(status_code=409, detail="La fattura è cambiata durante la conferma: ricaricarla")
+    await ricalcola_iva_fattura(db, invoice_id)
+    salvata = await db[Collections.INVOICES].find_one(filtro_id(invoice_id), {"_id": 0})
+    return {"success": True, "fattura": salvata, "motivo": decisione["motivo"],
+            "iva_da_verificare": decisione["percentuale_detraibilita_iva"] is None}
+
+
 @router.put("/{invoice_id}/classifica")
 @handle_errors
 async def classifica_fattura_manuale(invoice_id: str, data: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
@@ -3181,6 +3290,14 @@ async def classifica_fattura_manuale(invoice_id: str, data: Dict[str, Any] = Bod
     Classifica manualmente una fattura assegnandola a un centro di costo.
     """
     db = Database.get_db()
+
+    from app.services.fiscalita_fornitore import motivo_fattura_protetta
+    prima = await db[Collections.INVOICES].find_one(filtro_id(invoice_id), {"_id": 0})
+    if not prima:
+        raise HTTPException(status_code=404, detail="Fattura non trovata")
+    motivo_protezione = await motivo_fattura_protetta(db, prima)
+    if motivo_protezione and motivo_protezione != "Classificazione confermata manualmente":
+        raise HTTPException(status_code=409, detail=motivo_protezione)
 
     centro_costo_id = data.get("centro_costo_id")
     if not centro_costo_id:
@@ -3250,9 +3367,16 @@ async def classifica_fattura_manuale(invoice_id: str, data: Dict[str, Any] = Bod
             importi = calcola_importi_fiscali(
                 imponibile, iva, cdc_config, imponibile_gia_dedotto_anno=gia_dedotto_anno,
             )
+            from app.services.fiscalita_fornitore import risolvi_profilo, valuta_iva_fattura
+            decisione_iva = valuta_iva_fattura(
+                fattura_db, await risolvi_profilo(db, fattura_db), centro_costo_id,
+                cdc_config, fattura_db.get("classificazioni_righe"),
+            )
             aggiornamento = {
-                "iva_detraibile": importi.get("iva_detraibile", 0),
-                "iva_indetraibile": importi.get("iva_indetraibile", 0),
+                "iva_detraibile": decisione_iva["iva_detraibile"],
+                "iva_indetraibile": decisione_iva["iva_indetraibile"],
+                "percentuale_detraibilita_iva": decisione_iva["percentuale_detraibilita_iva"],
+                "valutazione_fiscale_iva": decisione_iva["valutazione_fiscale_iva"],
                 "imponibile_deducibile_ires": importi.get("imponibile_deducibile_ires", 0),
                 "imponibile_indeducibile_ires": importi.get("imponibile_indeducibile_ires", 0),
                 "classificato_da": "manuale",
@@ -3262,6 +3386,8 @@ async def classifica_fattura_manuale(invoice_id: str, data: Dict[str, Any] = Bod
                 aggiornamento["numero_contratto_noleggio"] = numero_contratto_noleggio
                 aggiornamento["imponibile_limitato_periodo"] = importi.get("imponibile_limitato_periodo")
             await db[Collections.INVOICES].update_one(filtro_id(invoice_id), {"$set": aggiornamento})
+            from app.services.iva_detraibilita import ricalcola_iva_fattura
+            await ricalcola_iva_fattura(db, invoice_id)
             fattura_db = await db[Collections.INVOICES].find_one(filtro_id(invoice_id), {"_id": 0})
             registrazione = await registra_documento_import(db, "fattura", fattura_db)
         elif fattura_db is not None:

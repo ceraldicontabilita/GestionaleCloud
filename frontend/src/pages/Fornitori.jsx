@@ -149,6 +149,7 @@ const annoUltimaFattura = s => {
 // Il salvataggio generico non porta lo stato «nel magazzino / fuori»: si cambia solo dal
 // controllo dedicato (anteprima, motivo, storico).
 const datiScheda = ({
+  profilo_fiscale,
   esclude_magazzino,
   magazzino_origine,
   magazzino_motivo,
@@ -158,6 +159,104 @@ const datiScheda = ({
   storico_magazzino,
   ...resto
 }) => resto;
+
+const REGOLE_IVA_FORNITORE = {
+  merci_attivita: 'Merci per l’attività — controllo delle righe acquistate',
+  noleggio_veicoli: 'Noleggio veicoli — uso e contratto da verificare',
+  beni_servizi_misti: 'Beni e servizi misti — classificazione delle singole righe',
+  telefonia: 'Telefonia — uso aziendale da verificare',
+  cespiti: 'Beni strumentali — IVA e ammortamento distinti',
+  ordinaria: 'Regola ordinaria — inerenza e documento da verificare',
+  da_verificare: 'Regola da verificare',
+};
+
+const fonteUrl = url => {
+  try {
+    const parsed = new URL(url);
+    return ['https:', 'http:'].includes(parsed.protocol) ? parsed.href : null;
+  } catch {
+    return null;
+  }
+};
+
+export function FiscalitaFornitore({ profilo }) {
+  return (
+    <section aria-label="Fiscalità del fornitore" style={{
+      display: 'grid', gap: 9, padding: '14px 16px', border: `1px solid ${COLORS.border}`,
+      borderRadius: BORDER_RADIUS.lg, background: COLORS.bgAlt, fontSize: 13,
+    }}>
+      <h3 style={{ margin: 0, fontSize: 15, color: COLORS.primary }}>Fiscalità</h3>
+      {profilo ? (
+        <>
+          <div><strong>Attività:</strong> {profilo.attivita || 'Da verificare'}</div>
+          <div><strong>Partita IVA della scheda:</strong> {profilo.partita_iva || 'Non documentata'}</div>
+          <div><strong>Identità e attività:</strong> {profilo.stato === 'verificato'
+            ? 'Verificate nelle fonti' : 'Da verificare'}</div>
+          <div><strong>ATECO:</strong> {profilo.ateco?.codice || 'Non verificato'}
+            {profilo.ateco?.versione ? ` · versione ${profilo.ateco.versione}` : ''}
+            {profilo.ateco?.codice && ` · ${profilo.ateco.stato === 'verificato' ? 'verificato' : 'da verificare'}`}
+          </div>
+          <div><strong>Regola IVA:</strong> {REGOLE_IVA_FORNITORE[profilo.regola_iva] || 'Regola da verificare'}</div>
+          {profilo.validita_fiscale?.dal && <div><strong>Validità fiscale:</strong> dal {formatDateIT(profilo.validita_fiscale.dal)}
+            {profilo.validita_fiscale.al && ` al ${formatDateIT(profilo.validita_fiscale.al)}`}</div>}
+          <div>
+            <strong>Fonti:</strong>
+            {Array.isArray(profilo.fonti) && profilo.fonti.length ? (
+              <ul style={{ margin: '6px 0 0', paddingLeft: 18, display: 'grid', gap: 5 }}>
+                {profilo.fonti.map((fonte, index) => {
+                  const url = fonteUrl(fonte.url);
+                  return <li key={`${fonte.url || 'fonte'}-${index}`} style={{ overflowWrap: 'anywhere' }}>
+                    {url ? <a href={url} target="_blank" rel="noopener noreferrer" style={{ color: COLORS.primary }}>
+                      {fonte.titolo || 'Apri fonte'}
+                    </a> : <span>{fonte.titolo || 'Fonte senza collegamento verificabile'}</span>}
+                    {fonte.verificata_il && <span style={{ color: COLORS.textMuted }}> · verificata il {formatDateIT(fonte.verificata_il)}</span>}
+                    {fonte.evidenza && <div style={{ marginTop: 2, color: COLORS.textMuted }}>{fonte.evidenza}</div>}
+                  </li>;
+                })}
+              </ul>
+            ) : <div style={{ marginTop: 4 }}>Fonti da acquisire</div>}
+          </div>
+        </>
+      ) : <div>Profilo fiscale da acquisire. Usa «Aggiorna schede fiscali» nell’elenco fornitori.</div>}
+      <p style={{ margin: 0, color: COLORS.textMuted, fontSize: 12, lineHeight: 1.5 }}>
+        L’ATECO descrive l’attività del fornitore e non prova la detraibilità dell’IVA.
+        Il calcolo considera le righe della fattura, l’uso aziendale e le limitazioni applicabili.
+      </p>
+    </section>
+  );
+}
+
+export function EsitoSchedeFiscali({ report, applicando, onApply, onClose }) {
+  if (!report) return null;
+  return (
+    <section aria-label="Esito schede fiscali" style={{
+      padding: 16, marginBottom: 14, background: COLORS.card, border: `1px solid ${COLORS.border}`,
+      borderRadius: BORDER_RADIUS.lg, display: 'grid', gap: 10, fontSize: 13,
+    }}>
+      <strong>{report.dry_run ? 'Anteprima schede fiscali' : 'Schede fiscali aggiornate'}</strong>
+      <div>
+        {report.dry_run ? `Da aggiornare: ${report.da_aggiornare}` : `Aggiornate: ${report.aggiornate}`}
+        {` · Già allineate: ${report.invariate} · Protette: ${report.protette}`}
+        {` · Senza corrispondenza: ${report.non_trovate} · Conflitti: ${report.conflitti}`}
+      </div>
+      <p style={{ margin: 0, color: COLORS.textMuted }}>
+        Le fonti e le regole vengono memorizzate nell’anagrafica. I profili protetti e i conflitti richiedono verifica.
+        {report.dry_run && ' Questa anteprima non ha modificato dati.'}
+      </p>
+      {!!report.dettagli?.length && <ul style={{ margin: 0, paddingLeft: 18, maxHeight: 180, overflow: 'auto' }}>
+        {report.dettagli.map((dettaglio, index) => <li key={`${dettaglio.partita_iva}-${index}`} style={{ marginBottom: 5 }}>
+          <strong>{dettaglio.nome || dettaglio.partita_iva}</strong>: {dettaglio.motivo || dettaglio.esito}
+        </li>)}
+      </ul>}
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+        {report.dry_run && report.da_aggiornare > 0 && <Button variant="primary" disabled={applicando} onClick={onApply}>
+          {applicando ? 'Aggiornamento...' : `Applica a ${report.da_aggiornare} schede`}
+        </Button>}
+        <Button variant="secondary" disabled={applicando} onClick={onClose}>Chiudi</Button>
+      </div>
+    </section>
+  );
+}
 
 const emptySupplier = {
   ragione_sociale: '',
@@ -284,7 +383,7 @@ export function SupplierModal({ isOpen, onClose, supplier, onSave, saving }) {
       toast.warning('Inserisci la ragione sociale');
       return;
     }
-    onSave(form);
+    onSave(datiScheda(form));
   };
 
   if (!isOpen) return null;
@@ -866,6 +965,8 @@ export function SupplierModal({ isOpen, onClose, supplier, onSave, saving }) {
 
               {/* Nel magazzino / fuori dal magazzino non si cambia da questo modulo: il
                 controllo a un tocco sta sulla card (anteprima, motivo, storico). */}
+
+              <FiscalitaFornitore profilo={supplier?.profilo_fiscale} />
 
               <div
                 style={{
@@ -1523,6 +1624,8 @@ export default function Fornitori() {
   const [currentSupplier, setCurrentSupplier] = useState(null);
   const [saving, setSaving] = useState(false);
   const [popolandoTutti, setPopolandoTutti] = useState(false);
+  const [aggiornandoFiscalita, setAggiornandoFiscalita] = useState(false);
+  const [esitoFiscalita, setEsitoFiscalita] = useState(null);
 
   // Debounce search per evitare troppe chiamate API
   const debouncedSearch = useDebounce(search, 500);
@@ -1607,6 +1710,38 @@ export default function Fornitori() {
       setLoading(false);
     }
   }, [debouncedSearch, filterAnzianita, giorniNuovo, debouncedProdotto]);
+
+  const handleSchedeFiscali = async (dryRun = true) => {
+    setAggiornandoFiscalita(true);
+    try {
+      const res = await api.post(`/api/suppliers/profili-fiscali/importa?dry_run=${dryRun}`);
+      setEsitoFiscalita(res.data);
+      if (!dryRun) {
+        await reloadData();
+        toast.success(`Schede fiscali aggiornate: ${res.data.aggiornate}`);
+      }
+    } catch (error) {
+      toast.error('Errore schede fiscali: ' + (error.response?.data?.detail || error.message));
+    } finally {
+      setAggiornandoFiscalita(false);
+    }
+  };
+
+  const handleScaricaMemoriaFiscale = async () => {
+    try {
+      const res = await api.get('/api/suppliers/profili-fiscali/memoria');
+      const url = URL.createObjectURL(new Blob([JSON.stringify(res.data, null, 2)], { type: 'application/json' }));
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = 'profili_fiscali_fornitori.json';
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      toast.error('Errore nel download delle schede fiscali: ' + (error.response?.data?.detail || error.message));
+    }
+  };
 
   const cessatiCount = suppliers.filter(s => s.cessato).length;
 
@@ -2036,6 +2171,15 @@ export default function Fornitori() {
                     Icon: FileText, onClick: handlePopolaTuttiXml, disabled: popolandoTutti,
                     title: 'Rilegge le fatture XML dei fornitori con dati mancanti e completa email, telefono, comune, indirizzo — non tocca i campi già valorizzati',
                   },
+                  {
+                    id: 'btn-aggiorna-schede-fiscali', label: aggiornandoFiscalita ? 'Verifica schede fiscali...' : 'Aggiorna schede fiscali',
+                    Icon: RefreshCw, onClick: () => handleSchedeFiscali(true), disabled: aggiornandoFiscalita,
+                    title: 'Mostra l’anteprima delle fonti e regole da memorizzare nell’anagrafica fornitori',
+                  },
+                  {
+                    id: 'btn-scarica-memoria-fiscale', label: 'Scarica memoria fiscale',
+                    Icon: FileText, onClick: handleScaricaMemoriaFiscale,
+                  },
                 ]}
               />
               <Button
@@ -2063,6 +2207,9 @@ export default function Fornitori() {
           ]}
           style={{ marginBottom: 14 }}
         />
+
+        <EsitoSchedeFiscali report={esitoFiscalita} applicando={aggiornandoFiscalita}
+          onApply={() => handleSchedeFiscali(false)} onClose={() => setEsitoFiscalita(null)} />
 
         <DoppioniFornitori onMerged={reloadData} />
 
