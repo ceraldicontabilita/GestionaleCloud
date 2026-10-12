@@ -1956,6 +1956,7 @@ const STILI_STATO_F24 = {
   pagato_nei_termini: { label: 'Pagato nei termini', bg: '#e2f0e7', color: '#166534' },
   pagato_in_ritardo: { label: 'PAGATO IN RITARDO', bg: '#f8e5e2', color: '#991b1b' },
   non_pagato: { label: 'Non pagato', bg: '#ffedd5', color: '#9a3412' },
+  importi_discordanti: { label: 'Importi discordanti · verifica versione', bg: '#ffedd5', color: '#9a3412' },
   in_scadenza: { label: 'In scadenza', bg: '#f7ebe4', color: '#4c4a44' },
   periodo_ignoto: { label: 'Periodo ignoto', bg: '#f2f0e9', color: '#7a776e' },
   // F24 del commercialista pagato con un ravvedimento (f24_ravvedimento.py).

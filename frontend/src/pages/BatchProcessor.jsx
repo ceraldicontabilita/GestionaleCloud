@@ -2,10 +2,10 @@
  * BatchProcessor.jsx - Riprocessamento Automatico Documenti
  *
  * MIGLIORAMENTI:
- * - Processo AUTOMATICO all'apertura della pagina
+ * - Elaborazione avviata dai comandi della pagina
  * - Design uniforme con il resto dell'app (STYLES, COLORS)
  * - Progress tracking in tempo reale
- * - Nessun click manuale richiesto
+ * - La sola apertura non avvia importazioni o riconciliazioni
  *
  * @author Ceraldi ERP
  * @version 2.0.0
@@ -267,7 +267,7 @@ const AUTO_TASKS = [
 export default function BatchProcessor() {
   // Stati
   const [isRunning, setIsRunning] = useState(false);
-  const [autoMode, setAutoMode] = useState(true);
+  const [autoMode, setAutoMode] = useState(false);
   const [currentTask, setCurrentTask] = useState(null);
   const [taskResults, setTaskResults] = useState({});
   const [logs, setLogs] = useState([]);
@@ -306,6 +306,9 @@ export default function BatchProcessor() {
           task.method === 'POST' ? await api.post(task.endpoint) : await api.get(task.endpoint);
 
         const result = response.data;
+        if (result?.success === false) {
+          throw new Error(typeof result.error === 'string' ? result.error : result.message || 'Elaborazione non riuscita');
+        }
 
         setTaskResults(prev => ({
           ...prev,

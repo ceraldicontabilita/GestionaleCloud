@@ -24,6 +24,7 @@ const VARIANTE = {
   credito_assente: 'neutral',
   iva_a_credito: 'info',
   iva_da_verificare: 'warning',
+  iva_compensazione_comunicata: 'info',
 };
 
 const FONDO = {
@@ -139,6 +140,14 @@ function DettaglioCasella({ voce, casella }) {
       {voce.nota && <div style={{ marginTop: 6 }}>{voce.nota}{voce.rimando && <> <Link to={voce.rimando.to}>{voce.rimando.label}</Link></>}</div>}
       {casella.iva && <div data-testid="piano-iva-riporto" style={{ marginTop: 12 }}>
         <strong>Liquidazione IVA · {casella.iva.fonte}</strong>
+        {casella.iva.comunicazione && <div data-testid="iva-comunicazione">
+          <strong>Compensazione comunicata dal commercialista.</strong>
+          {casella.iva.comunicazione.debito_mese_cents != null && <div>
+            Debito del mese comunicato: {importo(casella.iva.comunicazione.debito_mese_cents / 100)}
+          </div>}
+          <div>La comunicazione non e' una quietanza. Il credito residuo richiede gli importi della liquidazione o della LIPE.</div>
+          {casella.iva.comunicazione.source_url && <a href={casella.iva.comunicazione.source_url} target="_blank" rel="noopener noreferrer">Apri email del commercialista</a>}
+        </div>}
         {casella.iva.credito_residuo_cents != null ? <>
           <div>Credito iniziale: <strong>{importo((casella.iva.credito_iniziale_cents || 0) / 100)}</strong></div>
           {casella.iva.fonte === 'LIPE' && <div>

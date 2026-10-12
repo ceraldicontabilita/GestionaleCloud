@@ -201,6 +201,11 @@ async def tabella_analisi(anno: Optional[int] = Query(None, ge=2000, le=2100)) -
         # pagato»: resta com'e', col legame al modello e alla quietanza.
         ravv = d.get("ravvedimento") or {}
         stato_pagamento = a["stato"]
+        verifica_importi = d.get("verifica_importi_originale")
+        if verifica_importi and not a.get("data_pagamento"):
+            stato_pagamento = "importi_discordanti"
+            motivi = [m for m in motivi if not m.startswith("scadenza naturale superata")]
+            motivi.append(str(verifica_importi.get("motivo") or "Importi diversi dal modello quietanzato: verificare le versioni"))
         if ravv.get("stato") == "RAVVEDUTO":
             stato_pagamento = "ravveduto"
             motivi = [m for m in motivi if not m.startswith("scadenza naturale superata")]
@@ -213,6 +218,7 @@ async def tabella_analisi(anno: Optional[int] = Query(None, ge=2000, le=2100)) -
             motivi.append("collegato a regolarizzazione dello stesso debito (non sommare due volte)")
 
         righe.append({
+            "verifica_importi_originale": verifica_importi,
             "f24_id": d.get("id"),
             "file": d.get("file_name") or d.get("filename"),
             "collezione": d.get("_collezione"),

@@ -80,6 +80,16 @@ def _xml(*bodies):
     </p:FatturaElettronica>"""
 
 
+def test_validazione_totali_usa_la_tolleranza_del_giornale():
+    for totale, coerente in [(100.01, True), (100.02, False), (100.03, False)]:
+        body = _body("rounding", 100).replace(
+            '<ImportoTotaleDocumento>100</ImportoTotaleDocumento>',
+            f'<ImportoTotaleDocumento>{totale}</ImportoTotaleDocumento>',
+        )
+        parsed = parse_fattura_xml(_xml(body))
+        assert parsed['totali_coerenti'] is coerente
+
+
 def test_singolo_body_comportamento_invariato():
     xml = _xml(_body("20", "1000.00"))
     parsed = parse_fattura_xml(xml)

@@ -937,6 +937,7 @@ export default function ArchivioFatture() {
                       }}
                     >
                       {formatCurrency(f.total_amount ?? f.importo_totale)}
+                      {f.totali_coerenti === false && <div style={{ fontSize: 11, color: COLORS.danger }}>Totali XML incoerenti · contabilità da verificare</div>}
                     </div>
                   </div>
                   <div
@@ -1076,6 +1077,7 @@ export default function ArchivioFatture() {
                       </Td>
                       <Td align="right" mono style={{ fontWeight: 700, color: COLORS.primary, whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>
                         {formatCurrency(f.total_amount ?? f.importo_totale)}
+                        {f.totali_coerenti === false && <div style={{ fontSize: 11, color: COLORS.danger }}>Totali XML incoerenti · contabilità da verificare</div>}
                       </Td>
                       <Td style={{ whiteSpace: 'nowrap' }}>
                         <span style={{ display: 'inline-flex', whiteSpace: 'nowrap' }}>

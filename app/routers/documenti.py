@@ -2622,7 +2622,7 @@ async def _archive_non_payment_document(
     }:
         from app.services.administrative_document_parser import extract_administrative_metadata
 
-        metadata = extract_administrative_metadata(
+        metadata = await asyncio.to_thread(extract_administrative_metadata,
             content=content, filename=filename, document_type=document_type,
         )
     association_candidates: list[dict[str, Any]] = []

@@ -508,8 +508,11 @@ def _parse_body(body, fornitore, cliente, find_element, find_all_elements, get_t
 
     # Verifica coerenza totali
     totale_calcolato = round(imponibile_totale + iva_totale, 2)
-    differenza_totali = abs(total_amount - totale_calcolato)
-    totali_coerenti = differenza_totali < 0.05  # Tolleranza 5 centesimi
+    scarto_totali = abs(Decimal(str(total_amount)) - Decimal(str(totale_calcolato)))
+    differenza_totali = float(scarto_totali)
+    # Stessa tolleranza del motore contabile: oltre un centesimo la fonte
+    # non e' validata, anche quando la differenza e' soltanto di 2-4 centesimi.
+    totali_coerenti = scarto_totali <= Decimal("0.01")
 
     # Estrai allegati (PDF in base64)
     allegati = []

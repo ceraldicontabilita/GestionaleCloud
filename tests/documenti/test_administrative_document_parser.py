@@ -1,6 +1,7 @@
 import asyncio
 import io
 import zipfile
+import threading
 
 import fitz
 from fastapi import FastAPI
@@ -12,6 +13,40 @@ from tests.document_preview_helpers import confirmed_preview_headers
 from app.services.administrative_document_parser import (
     parse_ader, parse_dimissioni, parse_tari,
 )
+
+
+def test_ocr_amministrativo_lascia_rispondere_il_loop(monkeypatch):
+    from app.services import administrative_document_parser as parser
+    started, release = threading.Event(), threading.Event()
+    def slow_parser(**kwargs):
+        started.set()
+        assert release.wait(timeout=2), "Il loop e' rimasto bloccato dall'OCR"
+        return {"requires_review": True}
+    monkeypatch.setattr(parser, "extract_administrative_metadata", slow_parser)
+    async def scenario():
+        db = ClientArchivioMemoria()["ocr-non-bloccante"]
+        task = asyncio.create_task(documenti._archive_non_payment_document(
+            db, filename="visura.pdf", content=b"fixture", document_type="visura_camerale",
+        ))
+        for _ in range(100):
+            if started.is_set():
+                break
+            await asyncio.sleep(.01)
+        assert started.is_set()
+        release.set()
+        return await task
+    asyncio.run(scenario())
+
+
+def test_ocr_senza_memoria_rimane_rinviabile(monkeypatch):
+    from app.services import administrative_document_parser as parser, pagopa_receipts
+    from app.services.ocr_locale import MemoriaInsufficiente
+    import pytest
+    def insufficient(_content):
+        raise MemoriaInsufficiente(1900, 2048)
+    monkeypatch.setattr(pagopa_receipts, "_extract_receipt_text", insufficient)
+    with pytest.raises(MemoriaInsufficiente):
+        parser._pdf_text(b"pdf-scansione-fixture")
 
 
 def _pdf(text: str) -> bytes:

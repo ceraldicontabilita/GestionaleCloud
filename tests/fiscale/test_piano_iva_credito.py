@@ -104,3 +104,24 @@ def test_senza_lipe_e_dati_completi_il_credito_non_diventa_zero(monkeypatch):
         assert c["stato"] == "iva_da_verificare"
 
     asyncio.run(scenario())
+
+
+def test_email_commercialista_non_inventa_credito_o_pagamento(monkeypatch):
+    async def missing(*args, **kw):
+        return {"stato_calcolo": "DATI_MANCANTI", "attendibile": False}
+    monkeypatch.setattr("app.services.piano_iva.get_iva_period_snapshot", missing)
+    async def scenario():
+        db = AsyncMongoMockClient()["iva_mail"]
+        await db.iva_comunicazioni.insert_one({
+            "periodo": "2026-02", "verificato": True,
+            "compensazione_comunicata": True, "source_message_id": "mail-fixture",
+            "source_sha256": "a" * 64, "debito_mese_cents": 360000,
+        })
+        result = await arricchisci_piano_iva(db, grid(), date(2026, 10, 12))
+        c = result["voci"][0]["caselle"][1]
+        assert c["stato"] == "iva_compensazione_comunicata"
+        assert c["iva"]["comunicazione"]["debito_mese_cents"] == 360000
+        assert c["iva"]["credito_residuo_cents"] is None
+        assert c["iva"]["verificato"] is False
+        assert c["stato"] != "pagato"
+    asyncio.run(scenario())

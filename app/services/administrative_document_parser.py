@@ -26,7 +26,9 @@ def _pdf_text(content: bytes) -> tuple[str, bool]:
 
         ocr_text, ocr_used = _extract_receipt_text(content)
         return ocr_text or text, ocr_used
-    except Exception:
+    except Exception as exc:
+        if getattr(exc, "rinviabile", False):
+            raise
         return text, False
 
 

@@ -53,6 +53,13 @@ async def arricchisci_piano_iva(db, griglia, oggi):
     if not righe:
         return griglia
     anno = griglia["anno"]
+    comunicazioni = await db["iva_comunicazioni"].find(
+        {"periodo": {"$regex": f"^{anno}-"}, "verificato": True}, {"_id": 0}
+    ).to_list(100)
+    by_comunicazione = {d["periodo"]: d for d in comunicazioni
+                       if d.get("compensazione_comunicata")
+                       and d.get("source_message_id")
+                       and len(d.get("source_sha256") or "") == 64}
     docs = (
         await db["lipe_periodi"]
         .find({"periodo": {"$regex": f"^{anno}-"}}, {"_id": 0})
@@ -139,13 +146,22 @@ async def arricchisci_piano_iva(db, griglia, oggi):
                 }
                 continue
             c["iva"] = q
+            comunicazione = by_comunicazione.get(periodo)
+            if comunicazione:
+                q["comunicazione"] = {
+                    k: comunicazione.get(k) for k in (
+                        "oggetto", "data_email", "source_url", "debito_mese_cents",
+                        "source_message_id",
+                    )
+                }
             amount = q.get("da_versare_cents")
             # Senza LIPE o liquidazione confermata non certificare il riporto.
             if not q.get("verificato"):
                 if not c["modelli"]:
                     c.update(
-                        stato="iva_da_verificare",
-                        etichetta_stato="IVA da verificare · LIPE attesa",
+                        stato="iva_compensazione_comunicata" if comunicazione else "iva_da_verificare",
+                        etichetta_stato=("Debito compensato secondo il commercialista · LIPE attesa"
+                                         if comunicazione else "IVA da verificare · LIPE attesa"),
                         giorni_scaduto=None,
                     )
                 continue
