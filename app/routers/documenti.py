@@ -2133,7 +2133,7 @@ def detect_document_type(filename: str, file_content: bytes) -> str:
     # Un avviso commerciale contiene anche il modulo postale da compilare e la
     # promessa di una futura fattura quietanzata: non prova un versamento F24.
     if ("AVVISO DI PAGAMENTO" in compact_pdf_text
-        and "NON COSTITUISCE FATTURA" in compact_pdf_text
+        and "FATTURA QUIETANZATA" in compact_pdf_text
         and "AL RICEVIMENTO DEL PAGAMENTO" in compact_pdf_text):
         return "auto"
 

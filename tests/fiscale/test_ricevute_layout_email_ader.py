@@ -32,13 +32,14 @@ def test_email_senza_commissioni_nel_verbale(monkeypatch, colon):
     assert r['beneficiario'] == 'Comune di Prova'
 
 
-def test_avviso_commerciale_con_modulo_postale_non_e_quietanza_f24():
+@pytest.mark.parametrize('interleaved', ['', 'SPETT.LE '])
+def test_avviso_commerciale_con_modulo_postale_non_e_quietanza_f24(interleaved):
     import fitz
     from app.routers.documenti import detect_document_type
     with fitz.open() as pdf:
         page = pdf.new_page()
-        page.insert_text((50, 50), '''Avviso di Pagamento
-Il presente avviso non costituisce fattura.
+        page.insert_text((50, 50), f'''Avviso di Pagamento
+Il presente avviso non {interleaved}costituisce fattura.
 La fattura quietanzata sara emessa al ricevimento del pagamento.
 CONTI CORRENTI POSTALI - Ricevuta di Versamento
 Totale da pagare 184,30
