@@ -23,12 +23,15 @@ it('Pulisci F24 conserva entrambi i modelli finche il titolare conferma', async 
   fireEvent.click(screen.getByText('Pulisci F24 · versioni discordanti da controllare'));
   expect(screen.getByTestId('pulisci-f24')).toHaveTextContent('10.066,22');
   expect(screen.getByTestId('pulisci-f24')).toHaveTextContent(/8\.?139,63/);
-  fireEvent.click(screen.getByRole('button', { name: 'Questo modello è superato' }));
+  fireEvent.click(screen.getByRole('button', { name: /Escludi il modello da 10\.066,22/ }));
   expect(api.post).not.toHaveBeenCalled();
+  expect(screen.getByRole('dialog')).toHaveTextContent(/10\.066,22/);
+  expect(screen.getByRole('dialog')).toHaveTextContent(/8\.139,63/);
+  expect(screen.getByRole('dialog')).toHaveTextContent('pagato con quietanza');
   fireEvent.click(screen.getByRole('button', { name: 'Annulla' }));
   expect(api.post).not.toHaveBeenCalled();
-  fireEvent.click(screen.getByRole('button', { name: 'Questo modello è superato' }));
-  fireEvent.click(screen.getByRole('button', { name: 'Conferma modello superato' }));
+  fireEvent.click(screen.getByRole('button', { name: /Escludi il modello da 10\.066,22/ }));
+  fireEvent.click(screen.getByRole('button', { name: /Conferma esclusione di 10\.066,22/ }));
   await waitFor(() => expect(api.post).toHaveBeenCalledOnce());
   expect(api.post.mock.calls[0][0]).toBe('/api/f24-riconciliazione/commercialista/old/escludi-versione');
   expect(api.post.mock.calls[0][1]).toMatchObject({ conferma: true, vigente_id: 'paid' });
