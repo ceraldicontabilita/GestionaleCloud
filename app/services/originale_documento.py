@@ -315,14 +315,29 @@ async def _documento_fiscale(db, ident: str, indice: int) -> Originale:
     documento = await db["fiscal_documents"].find_one({"company_id": azienda, "id": ident}, {"_id": 0})
     if not documento:
         raise DocumentoNonTrovato("Documento fiscale non trovato", {"id": ident})
-    inbox_id = (documento.get("metadata") or {}).get("documents_inbox_id")
-    filtro = ({"id": inbox_id, "company_id": azienda} if inbox_id
-              else {"company_id": azienda, "fiscal_document_id": documento.get("id")})
-    sorgente = await db["documents_inbox"].find_one(filtro, {"_id": 0})
     versione = (await db[COLL_FISCAL_DOCUMENT_VERSIONS].find_one(
         {"company_id": azienda, "id": documento["current_version_id"], "document_id": ident}, {"_id": 0})
         if documento.get("current_version_id") else None)
     impronta = (versione or {}).get("sha256")
+    errore_impronta = None
+    # L'occorrenza verificata della versione corrente evita tentativi su
+    # vecchi collegamenti non piu' disponibili e letture di altri registri.
+    for occ in documento.get("source_occurrences") or []:
+        if not impronta or not occ.get("drive_file_id") or occ.get("sha256") != impronta:
+            continue
+        try:
+            return await _da_record(
+                {"drive_file_id": occ["drive_file_id"], "nome_file": documento.get("filename")},
+                predefinito="documento.pdf", tipo="documento_fiscale", ident=ident, impronta=impronta,
+            )
+        except OriginaleNonDisponibile:
+            continue
+        except OriginaleNonCorrispondente as exc:
+            errore_impronta = exc
+    inbox_id = (documento.get("metadata") or {}).get("documents_inbox_id")
+    filtro = ({"id": inbox_id, "company_id": azienda} if inbox_id
+              else {"company_id": azienda, "fiscal_document_id": documento.get("id")})
+    sorgente = await db["documents_inbox"].find_one(filtro, {"_id": 0})
     # Un originale puo' servire piu' registrazioni/copie dello stesso PDF.
     # Il riferimento al solo fiscal_document_id non basta: recuperiamo la
     # versione esatta tramite impronta, sempre nello stesso archivio aziendale.
@@ -338,13 +353,7 @@ async def _documento_fiscale(db, ident: str, indice: int) -> Originale:
             {"$and": [{"$or": [{"pdf_hash": impronta}, {"source_sha256": impronta}]},
                       {"$or": [{"company_id": azienda}, {"company_id": None}, {"company_id": ""}]}]}, {"_id": 0}
         ).to_list(20)
-    errore_impronta = None
-    occorrenze_drive = [
-        {"drive_file_id": occ["drive_file_id"], "nome_file": documento.get("filename")}
-        for occ in documento.get("source_occurrences") or []
-        if impronta and occ.get("drive_file_id") and occ.get("sha256") == impronta
-    ]
-    for candidato in (sorgente, per_impronta, *quietanze_per_impronta, documento, *occorrenze_drive):
+    for candidato in (sorgente, per_impronta, *quietanze_per_impronta, documento):
         if candidato:
             try:
                 return await _da_record(candidato, predefinito="documento.pdf", tipo="documento_fiscale", ident=ident,

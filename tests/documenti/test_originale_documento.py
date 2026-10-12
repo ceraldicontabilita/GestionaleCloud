@@ -96,7 +96,12 @@ def test_originale_dichiarazione_da_occorrenza_verificata(ambiente,monkeypatch,c
     inserisci('fiscal_documents',{'id':'decl','company_id':settings.FISCAL_COMPANY_ID,'current_version_id':'v1',
         'source_occurrences':[{'drive_file_id':'drive','sha256':sha}]})
     inserisci('fiscal_document_versions',{'id':'v1','document_id':'decl','company_id':settings.FISCAL_COMPANY_ID,'sha256':sha})
+    inserisci('documents_inbox',{'id':'vecchio','company_id':settings.FISCAL_COMPANY_ID,
+        'fiscal_document_id':'decl','drive_file_id':'collegamento-superato'})
     async def download(fid,**kwargs):
+        if fid=='collegamento-superato':
+            assert status==409, 'Una fonte verificata evita il vecchio collegamento'
+            return b''
         assert fid=='drive'
         return content
     monkeypatch.setattr(drive_download,'scarica_originale',download)
