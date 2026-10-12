@@ -78,7 +78,8 @@ async def collect_verbale_pdfs(
             projection["pdf_data"] = 1
         documents = await db["documents_inbox"].find(
             {"$and": [{"$or": clauses}, {"pdf_data": {"$exists": True, "$ne": ""}},
-                       {"tipo_documento": {"$ne": "comunicazione_conducente"}}]},
+                       {"tipo_documento": {"$ne": "comunicazione_conducente"}},
+                       {"mime_type": {"$ne": "message/rfc822"}}]},
             projection,
         ).sort("created_at", 1).limit(50).to_list(50)
         next_index = max((item["indice"] for item in results), default=-1) + 1

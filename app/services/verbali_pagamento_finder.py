@@ -355,6 +355,7 @@ def _genera_pdf_da_testo(testo, path, titolo="Ricevuta"):
     from reportlab.lib.pagesizes import A4
     from reportlab.pdfgen import canvas
     from reportlab.lib.units import cm
+    import textwrap
     c = canvas.Canvas(path, pagesize=A4)
     _, h = A4
     c.setFont("Helvetica-Bold", 14)
@@ -362,11 +363,13 @@ def _genera_pdf_da_testo(testo, path, titolo="Ricevuta"):
     c.setFont("Helvetica", 9)
     y = h - 3*cm
     for line in testo.split("\n"):
-        if y < 2*cm:
-            c.showPage()
-            y = h - 2*cm
-        c.drawString(2*cm, y, line[:100])
-        y -= 0.4*cm
+        for segment in textwrap.wrap(line, width=95, break_long_words=True) or [""]:
+            if y < 2*cm:
+                c.showPage()
+                c.setFont("Helvetica", 9)
+                y = h - 2*cm
+            c.drawString(2*cm, y, segment)
+            y -= 0.4*cm
     c.save()
 
 
@@ -452,7 +455,7 @@ async def applica_pagamento_a_verbale(db, verbale_id, match):
         {"$or": [{"id": verbale_id}, {"numero_verbale": verbale_id}]},
         {"_id": 0},
     )
-    if not verbale:
+    if not verbale or str(verbale.get("stato") or "").lower() == "quarantena":
         return False
 
     verbale_amount = (
