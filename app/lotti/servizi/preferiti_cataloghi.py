@@ -26,8 +26,8 @@ def piva(f):
 ALIASES = {
     "mepa": ["ME.PA. ALIMENTARI S.R.L.", "MEPA Alimentari"],
     "saima": ["SAIMA S.p.A."],
-    "acquaviva": ["Dolciaria Acquaviva S.p.A.", "Vandemoortele Italia"],
-    "vandemoortele": ["Vandemoortele Italia"],
+    "acquaviva": ["Dolciaria Acquaviva S.p.A.", "Vandemoortele Italia", "Vandemoortele Europe NV (Sede Secondaria Italia)"],
+    "vandemoortele": ["Vandemoortele Italia", "Vandemoortele Europe NV (Sede Secondaria Italia)"],
     "alpha": ["PROGETTO ALPHA S.R.L.S"],
     "alfa": ["PROGETTO ALPHA S.R.L.S"],
     "tremarie": ["Tre Marie", "Sammontana Italia", "Sammontana"],
