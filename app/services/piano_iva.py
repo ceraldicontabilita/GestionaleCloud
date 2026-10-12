@@ -1,6 +1,7 @@
 """Credito IVA nel piano: LIPE canonica, calcolo distinto, mai un pagamento."""
 
 from datetime import date
+from app.services.scadenze_lipe import attesa_lipe
 from urllib.parse import quote
 from app.services.iva_liquidation_query import money_cents, get_iva_period_snapshot
 from app.services.expectation_policy import ExpectationStatus
@@ -56,6 +57,11 @@ async def arricchisci_piano_iva(db, griglia, oggi):
     comunicazioni = await db["iva_comunicazioni"].find(
         {"periodo": {"$regex": f"^{anno}-"}, "verificato": True}, {"_id": 0}
     ).to_list(100)
+    from email.utils import parsedate_to_datetime
+    def data_comunicazione(d):
+        try: return parsedate_to_datetime(d.get("data_email") or "").timestamp()
+        except (TypeError, ValueError, IndexError): return 0
+    comunicazioni.sort(key=data_comunicazione)
     by_comunicazione = {d["periodo"]: d for d in comunicazioni
                        if d.get("compensazione_comunicata")
                        and d.get("source_message_id")
@@ -84,6 +90,7 @@ async def arricchisci_piano_iva(db, griglia, oggi):
             periodo = f"{anno}-{mese:02d}"
             d = by_period.get(periodo)
             q = quadro_lipe(d) if d else None
+            calendario_lipe = attesa_lipe(anno, mese, oggi, presente=bool(q))
             if q:
                 # Gli originali si cercano per impronta/id, mai per solo nome.
                 digest = d.get("source_sha256")
@@ -108,7 +115,7 @@ async def arricchisci_piano_iva(db, griglia, oggi):
                 pq = quadro_lipe(prev) if prev else None
                 q["riporto_coerente"] = (
                     None
-                    if not pq
+                    if not pq or not calendario_lipe["confronto_abilitato"]
                     else q["credito_mese_precedente_cents"]
                     == pq["credito_residuo_cents"]
                 )
@@ -135,7 +142,7 @@ async def arricchisci_piano_iva(db, griglia, oggi):
                         else None
                     ),
                     "motivi": snap.get("motivi") or [],
-                    "lipe_attesa": True,
+                    "lipe_attesa": calendario_lipe["stato"] == "in_attesa_scadenza",
                 }
             if not q:
                 c["iva"] = {
@@ -143,8 +150,18 @@ async def arricchisci_piano_iva(db, griglia, oggi):
                     "documento": None,
                     "credito_residuo_cents": None,
                     "da_versare_cents": None,
+                    "presentazione_lipe": calendario_lipe,
                 }
                 continue
+            q["presentazione_lipe"] = calendario_lipe
+            if q.get("fonte") == "LIPE" and calendario_lipe["confronto_abilitato"]:
+                from app.services.confronto_iva_commercialista import confronta_periodo
+                snap = await get_iva_period_snapshot(db, anno=anno, mese=mese, today=oggi)
+                nostro = {"stato_calcolo": snap.get("stato_calcolo") if snap.get("attendibile") else "DATI_MANCANTI",
+                          "iva_vendite": (snap.get("iva_vendite_cents") or 0) / 100 if snap.get("iva_vendite_cents") is not None else None,
+                          "iva_acquisti": (snap.get("iva_acquisti_cents") or 0) / 100 if snap.get("iva_acquisti_cents") is not None else None}
+                confronto = confronta_periodo(periodo, nostro, d, None)
+                q["confronto_gestionale"] = {k: confronto.get(k) for k in ("esito", "gestionale", "commercialista_lipe", "scarti")}
             c["iva"] = q
             comunicazione = by_comunicazione.get(periodo)
             if comunicazione:
@@ -160,8 +177,8 @@ async def arricchisci_piano_iva(db, griglia, oggi):
                 if not c["modelli"]:
                     c.update(
                         stato="iva_compensazione_comunicata" if comunicazione else "iva_da_verificare",
-                        etichetta_stato=("Debito compensato secondo il commercialista · LIPE attesa"
-                                         if comunicazione else "IVA da verificare · LIPE attesa"),
+                        etichetta_stato=("Debito compensato secondo il commercialista"
+                                         if comunicazione else "Liquidazione IVA da verificare"),
                         giorni_scaduto=None,
                     )
                 continue

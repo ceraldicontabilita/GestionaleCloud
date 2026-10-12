@@ -478,6 +478,7 @@ class EmailFullDownloader:
                                var_utente, var_password, ultimo_errore)
                 continue
             self.connection = connessione
+            self._email_account = utente
             ricorda_coppia_riuscita(var_utente, var_password)
             logger.info("Connesso a %s come %s (variabili %s + %s)",
                         IMAP_SERVER, utente, var_utente, var_password)
@@ -693,15 +694,31 @@ class EmailFullDownloader:
             for part in msg.walk():
                 if part.get_content_type() == "text/plain":
                     try:
-                        body = part.get_payload(decode=True).decode('utf-8', errors='replace')
+                        body = part.get_payload(decode=True).decode(part.get_content_charset() or 'utf-8', errors='replace')
                         break
                     except Exception:
                         pass
         else:
             try:
-                body = msg.get_payload(decode=True).decode('utf-8', errors='replace')
+                body = msg.get_payload(decode=True).decode(msg.get_content_charset() or 'utf-8', errors='replace')
             except Exception:
                 pass
+
+        if not body:
+            from html import unescape
+            for part in msg.walk():
+                if part.get_content_type() == 'text/html':
+                    raw = part.get_payload(decode=True) or b''
+                    body = unescape(re.sub(r'<[^>]+>', ' ', raw.decode(part.get_content_charset() or 'utf-8', errors='replace')))
+                    break
+
+        # Anche una email senza allegati puo' comunicare una compensazione IVA.
+        # L'associazione usa il mese nel contenuto, non la data di arrivo.
+        from app.services.iva_comunicazioni import registra_comunicazione
+        account = getattr(self, "_email_account", None) or (self._saved_credentials or get_email_credentials())[0]
+        if self.allowed_categories is None or set(self.allowed_categories).intersection({'f24', 'iva', 'commercialista'}):
+            await registra_comunicazione(self.db, subject=subject, body=body, sender=from_addr,
+                                        date_str=date_str, message_id=msg.get("Message-ID"), account=account or "")
 
         # ============================================================
         # FILTRO PAROLE CHIAVE AMMINISTRATIVE DA DATABASE
@@ -1972,14 +1989,22 @@ async def scarica_posta_con_cursori(
 
     async def elabora(cartella: str, uid: int) -> None:
         esito["controllati"] += 1
-        typ, dati = await asyncio.to_thread(conn.uid, "FETCH", str(uid), "(BODYSTRUCTURE)")
+        typ, dati = await asyncio.to_thread(conn.uid, "FETCH", str(uid), "(BODYSTRUCTURE BODY.PEEK[HEADER.FIELDS (FROM SUBJECT)])")
         cartella_inviata = bool(comunicazioni_inviate and re.search(r"(?:sent|inviat)", cartella, re.I))
         if typ != "OK" or not dati:
             raise RuntimeError(f"BODYSTRUCTURE non letto: {cartella} UID {uid}")
-        if not cartella_inviata and not _ha_allegati(
-            b" ".join(p if isinstance(p, bytes) else b" ".join(p) for p in dati if p)
-        ):
-            return
+        metadata = b" ".join(p if isinstance(p, bytes) else b" ".join(p) for p in dati if p)
+        if not cartella_inviata and not _ha_allegati(metadata):
+            # I messaggi del commercialista senza PDF (es. IVA luglio) non
+            # devono essere scartati dal filtro degli allegati.
+            from email.utils import parseaddr
+            headers = b"\n".join(p[1] for p in dati if isinstance(p, tuple))
+            sender = parseaddr(email.message_from_bytes(headers).get("From", ""))[1].lower()
+            allowed = await downloader._load_mittenti_per_tipo("f24")
+            allowed |= await downloader._load_mittenti_per_tipo("commercialista")
+            allowed |= await downloader._load_mittenti_per_tipo("iva")
+            if sender not in allowed:
+                return
         # BODY.PEEK e cartella in sola lettura: il messaggio non diventa «letto».
         typ, dati = await asyncio.to_thread(conn.uid, "FETCH", str(uid), "(BODY.PEEK[])")
         if typ != "OK" or not dati or not isinstance(dati[0], tuple):

@@ -110,3 +110,18 @@ describe('Piano tributi: atteso dal prospetto paghe', () => {
     expect(await screen.findByTestId('atteso-da-buste-dettaglio')).toHaveTextContent('uguale, al centesimo');
   });
 });
+
+it('la LIPE del terzo trimestre resta in attesa della scadenza, senza invito prematuro', async () => {
+  api.get.mockResolvedValue({ data: { ...dati, mancano: [],
+    voci: [{ voce: { id: 'iva_mensile', etichetta: 'IVA mensile', gruppo: 'Erario', codici: ['6008'], periodo: 'mese' },
+      caselle: [{ periodo: '08', etichetta_periodo: '08/2026', stato: 'iva_compensazione_comunicata', etichetta_stato: 'Compensazione comunicata', modelli: [],
+        iva: { fonte: 'Gestione IVA', verificato: false, credito_residuo_cents: null,
+          presentazione_lipe: { anno: 2026, trimestre: 3, scadenza: '2026-11-30', puoi_scaricare: false,
+            messaggio: 'LIPE trimestrale: attesa fino alla scadenza di presentazione', fonte_url: 'https://www1.agenziaentrate.gov.it/servizi/scadenzario/main.php' } },
+      }] }],
+  } });
+  render(<MemoryRouter><PianoTributi /></MemoryRouter>);
+  fireEvent.click(await screen.findByRole('button', { name: /08\/2026: Compensazione/ }));
+  expect(screen.getByTestId('lipe-scadenza-trimestrale')).toHaveTextContent('30/11/2026');
+  expect(screen.queryByText('Apri Gestione IVA per acquisire e confrontare la LIPE')).not.toBeInTheDocument();
+});

@@ -140,3 +140,42 @@ def test_reimport_non_cancella_pagamento():
         assert result["status"] == "pagato" and result["quietanza_id"] == "q"
 
     asyncio.run(scenario())
+
+
+def test_versioni_con_importi_diversi_richiedono_scelta_esplicita_e_conservano_prove():
+    async def scenario():
+        db=ClientArchivioMemoria()['f24-scelta']
+        old=_f24('old','modello precedente.pdf',righe=(("1001","05/2026",20000,0),))
+        good=_f24('good','modello corretto.pdf',righe=(("1001","05/2026",15000,0),),quietanza_id='q')
+        await db['f24_unificato'].insert_many([old,good])
+        await db['partite_aperte'].insert_one({'id':'pa','tipo':'f24','documento_id':'old','stato':'aperta'})
+        with pytest.raises(ValueError):
+            await sostituisci_versione(db,'old','good',actor='test')
+        with pytest.raises(ValueError):
+            await sostituisci_versione(db,'old','good',actor='test',conferma_importi_discordanti=True)
+        assert (await db['f24_unificato'].find_one({'id':'old'})).get('sostituito') is not True
+        await sostituisci_versione(db,'old','good',actor='titolare',conferma_importi_discordanti=True,motivo='Originali confrontati, vecchia versione errata')
+        removed=await db['f24_unificato'].find_one({'id':'old'})
+        assert removed['sostituito_da_f24_id']=='good'
+        assert removed['decisione_versione']['actor']=='titolare'
+        assert (await db['f24_unificato'].find_one({'id':'good'}))['quietanza_id']=='q'
+        assert (await db['partite_aperte'].find_one({'id':'pa'}))['stato']=='annullata'
+        assert await db['f24_unificato'].count_documents({})==2
+        assert await salva_f24(db,copy.deepcopy(old))=='good'
+        assert (await sostituisci_versione(db,'old','good',actor='titolare',conferma_importi_discordanti=True,motivo='Conferma'))['gia_sostituito']
+    asyncio.run(scenario())
+
+
+def test_non_si_esclude_un_pagato_o_un_obbligo_diverso_neppure_con_conferma():
+    async def scenario():
+        db=ClientArchivioMemoria()['f24-guard']
+        old=_f24('old','prima.pdf',pagato=True)
+        good=_f24('good','dopo.pdf')
+        await db['f24_unificato'].insert_many([old,good])
+        with pytest.raises(ValueError):
+            await sostituisci_versione(db,'old','good',actor='test',conferma_importi_discordanti=True,motivo='test')
+        await db['f24_unificato'].update_one({'id':'old'},{'$set':{'pagato':False,'codice_fiscale':'DIFFERENTE'}})
+        with pytest.raises(ValueError):
+            await sostituisci_versione(db,'old','good',actor='test',conferma_importi_discordanti=True,motivo='test')
+        assert await db['partite_aperte'].count_documents({})==0
+    asyncio.run(scenario())

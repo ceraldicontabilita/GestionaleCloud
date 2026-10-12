@@ -938,6 +938,8 @@ export default function ArchivioFatture() {
                     >
                       {formatCurrency(f.total_amount ?? f.importo_totale)}
                       {f.totali_coerenti === false && <div style={{ fontSize: 11, color: COLORS.danger }}>Totali XML incoerenti · contabilità da verificare</div>}
+                      {f.totali_coerenti === true && f.controllo_totali?.criterio === 'sconto_merce_iva_a_carico' && <div style={{ fontSize: 11, color: COLORS.primary, whiteSpace: 'normal' }}>Sconto merce {formatImportoOVuoto(f.sconto_merce)} · IVA a nostro carico</div>}
+                      {f.totali_coerenti === true && f.controllo_totali?.criterio === 'arrotondamento_xml' && <div style={{ fontSize: 11, color: COLORS.primary, whiteSpace: 'normal' }}>Arrotondamento documentato nell’XML</div>}
                     </div>
                   </div>
                   <div
@@ -1078,6 +1080,8 @@ export default function ArchivioFatture() {
                       <Td align="right" mono style={{ fontWeight: 700, color: COLORS.primary, whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>
                         {formatCurrency(f.total_amount ?? f.importo_totale)}
                         {f.totali_coerenti === false && <div style={{ fontSize: 11, color: COLORS.danger }}>Totali XML incoerenti · contabilità da verificare</div>}
+                      {f.totali_coerenti === true && f.controllo_totali?.criterio === 'sconto_merce_iva_a_carico' && <div style={{ fontSize: 11, color: COLORS.primary, whiteSpace: 'normal' }}>Sconto merce {formatImportoOVuoto(f.sconto_merce)} · IVA a nostro carico</div>}
+                      {f.totali_coerenti === true && f.controllo_totali?.criterio === 'arrotondamento_xml' && <div style={{ fontSize: 11, color: COLORS.primary, whiteSpace: 'normal' }}>Arrotondamento documentato nell’XML</div>}
                       </Td>
                       <Td style={{ whiteSpace: 'nowrap' }}>
                         <span style={{ display: 'inline-flex', whiteSpace: 'nowrap' }}>

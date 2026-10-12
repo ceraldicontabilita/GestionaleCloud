@@ -164,7 +164,17 @@ function DettaglioCasella({ voce, casella }) {
           <div>Da versare: <strong>{importo(casella.iva.da_versare_cents / 100)}</strong></div>
           {casella.iva.da_versare_cents === 0 && <div>{casella.iva.verificato ? 'Nessun pagamento richiesto: il periodo è a credito o il credito disponibile copre il debito.' : 'Il calcolo provvisorio indica un credito: la liquidazione resta da verificare.'}</div>}
         </> : <div>Credito residuo e IVA da versare non ancora verificabili: occorrono la LIPE o una liquidazione completa. Nessun saldo zero viene presunto.</div>}
-        {!casella.iva.verificato && casella.iva.fonte !== 'periodo_non_concluso' && <div>Calcolo del gestionale da verificare. LIPE attesa.</div>}
+        {!casella.iva.verificato && casella.iva.fonte !== 'periodo_non_concluso' && <div>Calcolo del gestionale da verificare.</div>}
+        {casella.iva.presentazione_lipe && <div data-testid="lipe-scadenza-trimestrale" style={{ marginTop: 8 }}>
+          <strong>LIPE · trimestre {casella.iva.presentazione_lipe.trimestre}/{casella.iva.presentazione_lipe.anno}</strong>
+          <div>Termine di presentazione: {dataIt(casella.iva.presentazione_lipe.scadenza)} · {casella.iva.presentazione_lipe.messaggio}</div>
+          {casella.iva.presentazione_lipe.puoi_scaricare && <Link to="/iva">Apri Gestione IVA per acquisire e confrontare la LIPE</Link>}
+          {casella.iva.presentazione_lipe.alternativa_quadro_vp && <div>Per il quarto trimestre verificare anche il quadro VP della dichiarazione IVA annuale presentata entro il termine.</div>}
+          <div><a href={casella.iva.presentazione_lipe.fonte_url} target="_blank" rel="noopener noreferrer">Scadenzario fiscale dell’Agenzia delle Entrate</a></div>
+        </div>}
+        {casella.iva.confronto_gestionale && <div data-testid="lipe-confronto-gestionale">
+          Confronto con il gestionale: {({ allineato: 'IVA vendite e acquisti coerenti con la LIPE', scostamento: 'Differenze da verificare con la LIPE', gestionale_non_calcolabile: 'Dati del gestionale insufficienti per certificare la coerenza' })[casella.iva.confronto_gestionale.esito] || 'Da verificare'}.
+        </div>}
         {casella.iva.riporto_coerente === false && <div style={{ color: COLORS.warning }}>Il credito iniziale della LIPE differisce dal credito residuo del mese precedente: verificare il riporto con il commercialista.</div>}
         {casella.iva.versamento_da_verificare && <div style={{ color: COLORS.warning }}>Esiste anche un F24 o una quietanza: verificare perché il periodo risulta a credito.</div>}
         {casella.iva.documento && <div style={{ marginTop: 8 }}>

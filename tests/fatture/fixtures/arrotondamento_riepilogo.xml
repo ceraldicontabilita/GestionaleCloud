@@ -1,0 +1,50 @@
+<?xml version='1.0' encoding='utf-8'?>
+<FatturaElettronica versione="FPR12"><FatturaElettronicaHeader><CedentePrestatore><DatiAnagrafici><IdFiscaleIVA><IdPaese>IT</IdPaese><IdCodice>01234567890</IdCodice></IdFiscaleIVA><Anagrafica><Denominazione>Fornitore Test</Denominazione></Anagrafica></DatiAnagrafici></CedentePrestatore><CessionarioCommittente><DatiAnagrafici><IdFiscaleIVA><IdPaese>IT</IdPaese><IdCodice>09876543210</IdCodice></IdFiscaleIVA></DatiAnagrafici></CessionarioCommittente></FatturaElettronicaHeader><FatturaElettronicaBody>
+<DatiGenerali>
+<DatiGeneraliDocumento>
+<TipoDocumento>TD01</TipoDocumento>
+<Divisa>EUR</Divisa>
+<Data>2026-06-04</Data>
+<Numero>IT61W22OABEI</Numero>
+<ImportoTotaleDocumento>62.80</ImportoTotaleDocumento>
+<Arrotondamento>0.00</Arrotondamento>
+</DatiGeneraliDocumento>
+</DatiGenerali>
+<DatiBeniServizi>
+<DettaglioLinee>
+<NumeroLinea>1</NumeroLinea>
+<Descrizione>Prodotto di collaudo</Descrizione>
+<Quantita>1.00</Quantita>
+<DataInizioPeriodo>2026-06-04</DataInizioPeriodo>
+<DataFinePeriodo>2026-06-04</DataFinePeriodo>
+<PrezzoUnitario>2.46</PrezzoUnitario>
+<PrezzoTotale>2.46</PrezzoTotale>
+<AliquotaIVA>22.00</AliquotaIVA>
+</DettaglioLinee>
+<DettaglioLinee>
+<NumeroLinea>2</NumeroLinea>
+<Descrizione>Prodotto di collaudo</Descrizione>
+<Quantita>1.00</Quantita>
+<DataInizioPeriodo>2026-06-04</DataInizioPeriodo>
+<DataFinePeriodo>2026-06-04</DataFinePeriodo>
+<PrezzoUnitario>49.02</PrezzoUnitario>
+<PrezzoTotale>49.02</PrezzoTotale>
+<AliquotaIVA>22.00</AliquotaIVA>
+</DettaglioLinee>
+<DatiRiepilogo>
+<AliquotaIVA>22.00</AliquotaIVA>
+<Arrotondamento>-0.03</Arrotondamento>
+<ImponibileImporto>51.45</ImponibileImporto>
+<Imposta>11.32</Imposta>
+</DatiRiepilogo>
+</DatiBeniServizi>
+<DatiPagamento>
+<CondizioniPagamento>TP02</CondizioniPagamento>
+<DettaglioPagamento>
+<ModalitaPagamento>MP19</ModalitaPagamento>
+<DataRiferimentoTerminiPagamento>2026-06-04</DataRiferimentoTerminiPagamento>
+<ImportoPagamento>62.80</ImportoPagamento>
+</DettaglioPagamento>
+</DatiPagamento>
+</FatturaElettronicaBody>
+</FatturaElettronica>

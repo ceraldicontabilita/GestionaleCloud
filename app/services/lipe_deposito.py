@@ -12,6 +12,7 @@ viene contata fra gli scarti invece di diventare una fonte fiscale.
 comunicazione si puo' correggere e ritrasmettere: vince quella con il
 protocollo piu' alto, e la precedente resta nello storico della riga.
 """
+import asyncio
 import logging
 import hashlib
 import re
@@ -73,7 +74,7 @@ async def deposita_lipe(
     source_document_id: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Legge una LIPE e deposita i suoi periodi. Idempotente per periodo."""
-    letto = parse_lipe(pdf_bytes)
+    letto = await asyncio.to_thread(parse_lipe, pdf_bytes)
     protocollo = protocollo_da_nome(nome_file)
     ora = datetime.now(timezone.utc).isoformat()
 
@@ -198,7 +199,7 @@ async def importa_lipe_archiviate(db, *, dry_run: bool = True) -> Dict[str, Any]
 
     errori: List[Dict[str, str]] = []
     try:
-        for f in _lipe_nella_cartella_unica():
+        for f in await asyncio.to_thread(_lipe_nella_cartella_unica):
             candidati.setdefault(f["id"], f["nome"])
     except Exception as exc:  # noqa: BLE001 — si riporta, non si nasconde
         logger.error("LIPE: cartella unica non leggibile: %s: %s", type(exc).__name__, exc)
@@ -213,7 +214,7 @@ async def importa_lipe_archiviate(db, *, dry_run: bool = True) -> Dict[str, Any]
         try:
             if service is None:
                 service = _servizio_drive()
-            contenuto = scarica_bytes(service, file_id)
+            contenuto = await asyncio.to_thread(scarica_bytes, service, file_id)
             esiti.append(await deposita_lipe(
                 db, contenuto, nome_file=nome, origine="drive",
                 drive_file_id=file_id, dry_run=dry_run,
