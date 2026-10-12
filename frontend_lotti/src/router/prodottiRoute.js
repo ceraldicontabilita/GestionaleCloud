@@ -7,6 +7,8 @@ export const CATALOGHI_PRODOTTI_FISSI = [
   "saima",
   "saima_ricettari",
   "mepa",
+  "irca",
+  "irca_spunti",
   "pasticcere",
   "tremarie",
   "alfa",

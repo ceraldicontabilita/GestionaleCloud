@@ -160,6 +160,7 @@ const datiTecnici = (prodotto, dettaglio) => {
 const ModalDettaglioProdotto = ({ prodotto, fornitore, onClose, onImporta, onRimuovi, giaNelDizionario, onCarrello, inCart, onPrezzoSalvato }) => {
   const colore = fornitore === "saima" ? "saima" : fornitore === "acquaviva" ? "acquaviva" : "mepa";
   const [dettaglio, setDettaglio] = useState(null);
+  const [dettaglioIrca, setDettaglioIrca] = useState(null);
   const [loadingDet, setLoadingDet] = useState(false);
   const [imgErr, setImgErr] = useState(false);
   const [importando, setImportando] = useState(false);
@@ -185,7 +186,13 @@ const ModalDettaglioProdotto = ({ prodotto, fornitore, onClose, onImporta, onRim
         }
         if (res?.data) setDettaglio(res.data);
       } catch { /* silenzioso, mostra dati base */ }
-      finally { setLoadingDet(false); }
+      if (fornitore === "mepa" && prodotto.irca_slug) {
+        try {
+          const irca = await axios.get(`${API}/irca/prodotti/${encodeURIComponent(prodotto.irca_slug)}`, { timeout: 5000 });
+          if (irca?.data) setDettaglioIrca(irca.data);
+        } catch { /* il dettaglio IRCA non blocca quello MePA */ }
+      }
+      setLoadingDet(false);
     };
     if (!prodotto.da_fattura_senza_catalogo) caricaDettaglio();
   }, [prodotto, fornitore]);
@@ -299,6 +306,18 @@ const ModalDettaglioProdotto = ({ prodotto, fornitore, onClose, onImporta, onRim
             )}
             {Object.keys(tecnici.specifiche).length > 0 && (
               <div className="rounded-xl border border-gray-100 p-3"><span className={`mb-2 block text-xs font-bold uppercase ${COLORI[colore].text}`}>Dati dalla scheda online</span><dl className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs">{Object.entries(tecnici.specifiche).map(([k, v]) => <div key={k} className="contents"><dt className="font-semibold text-gray-500">{k}</dt><dd className="text-right text-gray-800">{String(v || "—")}</dd></div>)}</dl></div>
+            )}
+            {dettaglioIrca && (
+              <div className="rounded-xl border border-emerald-200 bg-emerald-50/60 p-3 space-y-2">
+                <span className="block text-xs font-black uppercase tracking-wide text-emerald-800">Maggiori dettagli IRCA</span>
+                {(dettaglioIrca.descrizione || dettaglioIrca.descrizione_breve) && <p className="m-0 text-sm leading-relaxed text-gray-700">{dettaglioIrca.descrizione || dettaglioIrca.descrizione_breve}</p>}
+                {dettaglioIrca.dettagli_irca?.denominazione && <p className="m-0 text-xs text-gray-600"><strong>Denominazione:</strong> {dettaglioIrca.dettagli_irca.denominazione}</p>}
+                {dettaglioIrca.dettagli_irca?.modalita_d_uso && <p className="m-0 text-xs leading-relaxed text-gray-600"><strong>Modalità d'uso:</strong> {dettaglioIrca.dettagli_irca.modalita_d_uso}</p>}
+                {!!dettaglioIrca.allergeni?.length && <p className="m-0 text-xs text-gray-600"><strong>Allergeni:</strong> {dettaglioIrca.allergeni.join(", ")}</p>}
+                {!!dettaglioIrca.cross_contaminazioni?.length && <p className="m-0 text-xs text-gray-600"><strong>Possibili contaminazioni:</strong> {dettaglioIrca.cross_contaminazioni.join(", ")}</p>}
+                {!!dettaglioIrca.ricette?.length && <div><strong className="text-xs text-gray-700">Ricette IRCA collegate</strong><ul className="mt-1 space-y-1 text-xs text-gray-600">{dettaglioIrca.ricette.slice(0, 12).map(r => <li key={r.slug}><a className="font-semibold text-emerald-800 underline" href={r.url} target="_blank" rel="noreferrer">{r.nome}</a></li>)}</ul></div>}
+                <a href={dettaglioIrca.link_prodotto} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-xs font-bold text-emerald-800"><ExternalLink size={13}/> Scheda ufficiale IRCA</a>
+              </div>
             )}
           </div>
 

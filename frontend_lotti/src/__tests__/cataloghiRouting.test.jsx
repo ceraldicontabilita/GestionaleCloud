@@ -47,7 +47,7 @@ describe("navigazione reale dei cataloghi fornitori", () => {
     container.remove();
   });
 
-  test.each(["acquaviva", "cartelli_bar", "saima", "mepa"])(
+  test.each(["acquaviva", "cartelli_bar", "saima", "mepa", "irca", "irca_spunti"])(
     "#prodotti/%s monta davvero la vista cataloghi",
     async (fornitore) => {
       window.history.replaceState(null, "", `#prodotti/${fornitore}`);

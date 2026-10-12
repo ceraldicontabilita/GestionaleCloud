@@ -59,10 +59,11 @@ describe("card unica dei cataloghi", () => {
     fireEvent.click(screen.getByText("Acquista"));
     fireEvent.click(screen.getByText("Al ricettario"));
     fireEvent.click(Array.from(cont.querySelectorAll("button")).find(b => b.textContent.trim() === "Preferito"));
+    fireEvent.click(screen.getByText("Maggiori dettagli"));
     expect(onCarrello).toHaveBeenCalledTimes(1);
     expect(onRicetta).toHaveBeenCalledTimes(1);
     expect(onPreferito).toHaveBeenCalledTimes(1);
-    expect(onApri).not.toHaveBeenCalled(); // i bottoni non aprono il dettaglio
+    expect(onApri).toHaveBeenCalledTimes(1);
     expect(screen.queryByText(/Dettagli tecnici/)).toBeNull();
     expect(screen.queryByText(/IVA/)).toBeNull();
   });
