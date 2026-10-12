@@ -40,19 +40,28 @@ describe("card unica dei cataloghi", () => {
     expect(prezzoDaMostrare({}).prezzo).toBe("");
   });
 
-  it("mostra solo nome, prezzo, confronto e i due gesti", () => {
+  it("mostra dati utili reali, confronto e i gesti rapidi", () => {
     const onCarrello = jest.fn();
     const onRicetta = jest.fn();
     const onApri = jest.fn();
-    render(<CardCatalogo nome="Amando cono" prezzo="€ 1,90" confronto={{ tipo: "altrove", testo: "Meglio da Alfa · € 0,910" }}
-      onCarrello={onCarrello} onRicetta={onRicetta} onApri={onApri} />);
+    const onPreferito = jest.fn();
+    render(<CardCatalogo nome="Amando cono" prezzo="€ 1,90" codice="A12" categoria="Semilavorati"
+      descrizione="Cono croccante per gelateria" confezione="12 pezzi" preferito
+      confronto={{ tipo: "altrove", testo: "Meglio da Alfa · € 0,910" }}
+      onCarrello={onCarrello} onRicetta={onRicetta} onPreferito={onPreferito} onApri={onApri} />);
     expect(screen.getByText("Amando cono")).toBeTruthy();
     expect(screen.getByText("€ 1,90")).toBeTruthy();
     expect(screen.getByTestId("riga-confronto").textContent).toContain("Meglio da Alfa");
+    expect(cont.textContent).toContain("Semilavorati");
+    expect(cont.textContent).toContain("Cod. A12 · 12 pezzi");
+    expect(cont.textContent).toContain("Cono croccante per gelateria");
+    expect(cont.textContent).toContain("Preferito");
     fireEvent.click(screen.getByText("Acquista"));
     fireEvent.click(screen.getByText("Al ricettario"));
+    fireEvent.click(Array.from(cont.querySelectorAll("button")).find(b => b.textContent.trim() === "Preferito"));
     expect(onCarrello).toHaveBeenCalledTimes(1);
     expect(onRicetta).toHaveBeenCalledTimes(1);
+    expect(onPreferito).toHaveBeenCalledTimes(1);
     expect(onApri).not.toHaveBeenCalled(); // i bottoni non aprono il dettaglio
     expect(screen.queryByText(/Dettagli tecnici/)).toBeNull();
     expect(screen.queryByText(/IVA/)).toBeNull();
@@ -68,5 +77,7 @@ describe("card unica dei cataloghi", () => {
   it("una colonna sul telefono, piu' colonne sui monitor", () => {
     expect(GRIGLIA_CARD).toContain("grid-cols-1");
     expect(GRIGLIA_CARD).toContain("sm:grid-cols-2");
+    expect(GRIGLIA_CARD).toContain("xl:grid-cols-4");
+    expect(GRIGLIA_CARD).toContain("2xl:grid-cols-5");
   });
 });

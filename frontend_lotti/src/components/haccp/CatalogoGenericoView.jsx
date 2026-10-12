@@ -24,7 +24,7 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import axios from "axios";
 import { toast } from "sonner";
-import { Search, Package, ShoppingCart, Tag, RefreshCw, Check, Plus, Info, ExternalLink, X, TrendingDown } from "lucide-react";
+import { Package, RefreshCw, Check, Plus, ExternalLink, X } from "lucide-react";
 import { API, fotoSrc } from "../../utils/constants";
 import { dataIt, euro, euroPezzo } from "../../utils/confrontoFornitori";
 import { aggiornaPrezzoNelCarrello, useCart } from "./CatalogoFornitoreView";
@@ -54,6 +54,19 @@ export function prezzoDaMostrare(p) {
   return { prezzo: "", nota: "" };
 }
 
+export function categoriaCatalogo(p) {
+  return String(p?.categoria || p?.sottocategoria || "").split(" > ")[0].trim();
+}
+
+export function ordinaProdottiCatalogo(lista, ordine) {
+  const valore = p => Number(p.prezzoListino || (p.giaAcquistato && p.prezzoFattura) || p.prezzoFornitore || p.prezzo || 0) || 0;
+  const out = [...lista];
+  if (ordine === "nome") return out.sort((a, b) => String(a.nome || "").localeCompare(String(b.nome || ""), "it"));
+  if (ordine === "prezzo_min") return out.sort((a, b) => (valore(a) || Number.MAX_SAFE_INTEGER) - (valore(b) || Number.MAX_SAFE_INTEGER));
+  if (ordine === "prezzo_max") return out.sort((a, b) => valore(b) - valore(a));
+  return out;
+}
+
 export default function CatalogoGenericoView({
   titolo, sourceKey, fetchUrl, mapItem, emojiVuoto = "📦",
   messaggioVuoto = "Nessun prodotto ancora caricato.", coloreAccento = "sage",
@@ -61,17 +74,25 @@ export default function CatalogoGenericoView({
   confrontoPrezzi = false,
 }) {
   // quanti articoli si disegnano: un listino ha migliaia di righe, si cresce con «Mostra altri»
-  const PASSO = 120;
+  const PASSO = 60;
   const [visibili, setVisibili] = useState(PASSO);
   // confronto con gli altri fornitori (fatture XML e listini): codice → sintesi
   const [confronto, setConfronto] = useState({});
   const [filtroPrezzo, setFiltroPrezzo] = useState("tutti"); // tutti | qui | altrove
+  const [categoriaFiltro, setCategoriaFiltro] = useState("tutte");
+  const [ordine, setOrdine] = useState("originale");
   const colore = COLORI[coloreAccento] || COLORI.sage;
   const [prodotti, setProdotti] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useStatoCatalogo(sourceKey, "ricerca", "");
   const [soloPreferiti, setSoloPreferiti] = useStatoCatalogo(sourceKey, "preferiti", true);
   const preferitiAcquisti = usePreferitiAcquisti(sourceKey);
+  const togglePreferito = async (prodotto) => {
+    try {
+      const aggiunto = await preferitiAcquisti.toggle(prodotto);
+      toast.success(aggiunto ? "Aggiunto ad Acquistati e preferiti" : "Rimosso dai preferiti");
+    } catch { toast.error("Non riesco ad aggiornare i preferiti"); }
+  };
   const [importando, setImportando] = useState(false);
   const [selezionato, setSelezionato] = useState(null);
   const { aggiungi: aggiungiCarrello, isInCart } = useCart(titolo);
@@ -103,7 +124,8 @@ export default function CatalogoGenericoView({
       .catch(() => setConfronto({}));
   }, [confrontoPrezzi, sourceKey]);
 
-  useEffect(() => { setVisibili(PASSO); }, [search, filtroPrezzo, soloPreferiti]);
+  useEffect(() => { setVisibili(PASSO); }, [search, filtroPrezzo, categoriaFiltro, ordine, soloPreferiti]);
+  useEffect(() => { setCategoriaFiltro("tutte"); }, [soloPreferiti]);
 
   const importaPrecaricato = async () => {
     setImportando(true);
@@ -135,6 +157,7 @@ export default function CatalogoGenericoView({
 
   const filtrati = useMemo(() => {
     let lista = soloPreferiti ? preferitiAcquisti.prodotti.map(mapItem) : prodotti;
+    if (categoriaFiltro !== "tutte") lista = lista.filter(p => categoriaCatalogo(p) === categoriaFiltro);
     if (filtroPrezzo !== "tutti") {
       lista = lista.filter(p => {
         const c = confronto[p.codice];
@@ -142,13 +165,17 @@ export default function CatalogoGenericoView({
         return filtroPrezzo === "qui" ? c.questo_migliore : !c.questo_migliore;
       });
     }
-    if (!search) return lista;
+    if (!search) return ordinaProdottiCatalogo(lista, ordine);
     const parole = search.toLowerCase().split(/\s+/).filter(Boolean);
-    return lista.filter(p => {
+    return ordinaProdottiCatalogo(lista.filter(p => {
       const testo = `${p.nome || ""} ${p.nomeFornitore || ""} ${p.codice || ""} ${p.descrizione || ""} ${p.ean || ""} ${p.categoria || ""} ${p.sottocategoria || ""}`.toLowerCase();
       return parole.every(w => testo.includes(w));
-    });
-  }, [prodotti, search, filtroPrezzo, confronto, soloPreferiti, preferitiAcquisti.prodotti, mapItem]);
+    }), ordine);
+  }, [prodotti, search, filtroPrezzo, categoriaFiltro, ordine, confronto, soloPreferiti, preferitiAcquisti.prodotti, mapItem]);
+  const categorieDisponibili = useMemo(() => {
+    const lista = soloPreferiti ? preferitiAcquisti.prodotti.map(mapItem) : prodotti;
+    return [...new Set(lista.map(categoriaCatalogo).filter(Boolean))].sort((a, b) => a.localeCompare(b, "it"));
+  }, [prodotti, soloPreferiti, preferitiAcquisti.prodotti, mapItem]);
   const conConfronto = useMemo(() => Object.values(confronto).filter(c => c.migliore), [confronto]);
 
   return (
@@ -165,7 +192,21 @@ export default function CatalogoGenericoView({
         )}
       </div>
       <FiltroPreferitiAcquisti attivo={soloPreferiti} onChange={setSoloPreferiti} dati={preferitiAcquisti} />
-      <div className="my-4"><RicercaCatalogo value={search} onChange={setSearch} placeholder={`Cerca in ${titolo}...`} /></div>
+      <div className="my-4 flex flex-wrap items-center gap-2">
+        <div className="min-w-[240px] flex-1"><RicercaCatalogo value={search} onChange={setSearch} placeholder={`Cerca nome, codice o descrizione in ${titolo}...`} /></div>
+        <label className="sr-only" htmlFor={`categoria-${sourceKey}`}>Categoria</label>
+        <select id={`categoria-${sourceKey}`} aria-label="Filtra per categoria" value={categoriaFiltro} onChange={e => setCategoriaFiltro(e.target.value)}
+          className="min-h-[44px] max-w-full rounded-xl border border-[#e6e0d4] bg-[#fffefb] px-3 text-sm font-bold text-[#3f5a4e]">
+          <option value="tutte">Tutte le categorie</option>
+          {categorieDisponibili.map(c => <option key={c} value={c}>{c}</option>)}
+        </select>
+        <label className="sr-only" htmlFor={`ordine-${sourceKey}`}>Ordina prodotti</label>
+        <select id={`ordine-${sourceKey}`} aria-label="Ordina prodotti" value={ordine} onChange={e => setOrdine(e.target.value)}
+          className="min-h-[44px] rounded-xl border border-[#e6e0d4] bg-[#fffefb] px-3 text-sm font-bold text-[#3f5a4e]">
+          <option value="originale">Ordine catalogo</option><option value="nome">Nome A–Z</option>
+          <option value="prezzo_min">Prezzo più basso</option><option value="prezzo_max">Prezzo più alto</option>
+        </select>
+      </div>
       {confrontoPrezzi && conConfronto.length > 0 && (
         <div className="mb-4 flex flex-wrap items-center gap-2">
           {[
@@ -199,6 +240,13 @@ export default function CatalogoGenericoView({
                 testId={`card-${p.id}`}
                 nome={p.nome}
                 foto={p.foto_url ? fotoSrc(p.foto_url) : ""}
+                codice={p.codice}
+                categoria={categoriaCatalogo(p)}
+                descrizione={p.descrizione || p.nomeFornitore || ""}
+                confezione={p.unitaVendita || [p.grammi, p.pezziCartone && `${p.pezziCartone} pz/cartone`].filter(Boolean).join(" · ")}
+                giaAcquistato={!!(p.giaAcquistato || p.gia_acquistato)}
+                preferito={preferitiAcquisti.isPreferito(p)}
+                preferitoInSalvataggio={preferitiAcquisti.isSalvando(p)}
                 prezzo={prezzo}
                 notaPrezzo={nota}
                 confronto={rigaConfronto(confronto[p.codice], euroPezzo)}
@@ -209,6 +257,7 @@ export default function CatalogoGenericoView({
                 onApri={() => setSelezionato(p)}
                 onCarrello={() => aggiungiCarrello(p)}
                 onRicetta={p.raw?.da_fattura_senza_catalogo ? undefined : () => toggleRicette(p)}
+                onPreferito={(p.giaAcquistato || p.gia_acquistato) ? undefined : () => togglePreferito(p)}
               />
             );
           })}
