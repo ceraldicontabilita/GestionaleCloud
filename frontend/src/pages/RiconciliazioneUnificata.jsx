@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useRef, lazy, Suspense } from 
 import { tabUnificataDaPath } from './hub/segmentiHub';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import api from '../api';
+import './RiconciliazioneUnificata.css';
 import {
   formatEuro,
   formatDateIT,
@@ -1985,7 +1986,6 @@ export function TabellaAnalisiF24({ anno }) {
   const [errore, setErrore] = useState(null);
   const [soloAnno, setSoloAnno] = useState(true);
   const [limite, setLimite] = useState(200);
-  const isMobile = useIsMobile();
   const [ricercaTributo, setRicercaTributo] = useState('');
   const [ordineAnalisi, setOrdineAnalisi] = useState('periodo');
   const [decisioneF24, setDecisioneF24] = useState(null);
@@ -2040,15 +2040,15 @@ export function TabellaAnalisiF24({ anno }) {
 
   const cellaTh = {
     padding: '8px 8px', textAlign: 'left', fontWeight: 600, fontSize: 11,
-    color: '#7a776e', textTransform: 'uppercase', whiteSpace: 'nowrap',
+    color: '#7a776e', textTransform: 'uppercase', whiteSpace: 'normal',
   };
-  const cella = { padding: '6px 8px', fontSize: 12, verticalAlign: 'top', ...(isMobile ? { display: 'block' } : {}) };
-  const etichettaM = testo => (isMobile ? (
+  const cella = { padding: '6px 8px', fontSize: 12, verticalAlign: 'top', display: 'block', minWidth: 0 };
+  const etichettaM = testo => (
     <span style={{ display: 'block', fontSize: 10.5, fontWeight: 700, color: '#7a776e', textTransform: 'uppercase' }}>{testo}</span>
-  ) : null);
+  );
 
   return (
-    <div style={{ padding: 16, borderBottom: '1px solid #e6e3d9', background: 'white' }}>
+    <div className="f24-analysis" style={{ padding: 16, borderBottom: '1px solid #e6e3d9', background: 'white' }}>
       {!!(righe || []).filter(r => r.verifica_importi_originale?.confronto_f24_id).length && <details data-testid="pulisci-f24" style={{ marginBottom: 16, padding: 12, border: '1px solid #c15f3c', borderRadius: 8 }}>
         <summary style={{ cursor: 'pointer', fontWeight: 700 }}>Pulisci F24 · versioni discordanti da controllare</summary>
         <p>Un importo minore o un’email più recente suggeriscono una revisione. La quietanza prova la versione pagata. Prima di escludere un modello confronta i documenti.</p>
@@ -2097,7 +2097,7 @@ export function TabellaAnalisiF24({ anno }) {
           value={ricercaTributo}
           onChange={e => setRicercaTributo(e.target.value)}
           placeholder="Cerca codice tributo, periodo o file"
-          style={{ minWidth: 260, minHeight: 38, padding: '7px 10px', border: '1px solid #d0ccbe', borderRadius: 6 }}
+          style={{ minWidth: 0, width: 260, maxWidth: '100%', minHeight: 38, padding: '7px 10px', border: '1px solid #d0ccbe', borderRadius: 6 }}
         />
         <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5, color: '#4c4a44' }}>
           Ordina per
@@ -2133,9 +2133,9 @@ export function TabellaAnalisiF24({ anno }) {
       )}
 
       {righe && righe.length > 0 && (
-        <div style={{ overflowX: 'auto', marginTop: 12 }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: isMobile ? 0 : 980, display: isMobile ? 'block' : 'table' }}>
-            <thead style={isMobile ? { display: 'none' } : undefined}>
+        <div style={{ marginTop: 12, minWidth: 0 }}>
+          <table className="f24-analysis-list" style={{ width: '100%', borderCollapse: 'collapse', display: 'block' }}>
+            <thead style={{ display: 'none' }}>
               <tr style={{ background: '#f6f4ee', borderBottom: '2px solid #e6e3d9' }}>
                 <th style={cellaTh}>Periodo competenza</th>
                 <th style={cellaTh}>Scadenza naturale</th>
@@ -2149,7 +2149,7 @@ export function TabellaAnalisiF24({ anno }) {
                 <th style={cellaTh}>Motivazione</th>
               </tr>
             </thead>
-            <tbody style={isMobile ? { display: 'block' } : undefined}>
+            <tbody style={{ display: 'block' }}>
               {righeFiltrate.slice(0, limite).map((r, idx) => {
                 const stato = STILI_STATO_F24[r.stato_pagamento] || STILI_STATO_F24.periodo_ignoto;
                 const dup = STILI_DUP_F24[r.possibile_duplicazione] || STILI_DUP_F24.no;
@@ -2161,12 +2161,12 @@ export function TabellaAnalisiF24({ anno }) {
                     style={{
                       borderBottom: '1px solid #f2f0e9',
                       background: inRitardo ? '#fff7f7' : idx % 2 ? '#f6f4ee' : 'white',
-                      ...(isMobile ? { display: 'block', border: '1px solid #e6e3d9', borderRadius: 8, marginBottom: 10, padding: 6 } : {}),
+                      display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 180px), 1fr))', gap: 4, border: '1px solid #e6e3d9', borderRadius: 8, marginBottom: 10, padding: 6,
                     }}
                   >
-                    <td style={{ ...cella, fontWeight: 700, whiteSpace: 'nowrap' }}>{etichettaM('Periodo competenza')}
+                    <td style={{ ...cella, fontWeight: 700, whiteSpace: 'normal' }}>{etichettaM('Periodo competenza')}
                       {r._rigaTributo ? (
-                        <div data-testid={`codice-tributo-${r._rigaTributo.codice}`} style={{ whiteSpace: 'normal', minWidth: 190 }}>
+                        <div data-testid={`codice-tributo-${r._rigaTributo.codice}`} style={{ whiteSpace: 'normal', minWidth: 0 }}>
                           <div style={{ fontSize: 14, color: '#141413' }}>Codice {r._rigaTributo.codice}</div>
                           <div style={{ fontSize: 11, color: '#5f5c55', fontWeight: 500 }}>{r._rigaTributo.descrizione}</div>
                           <div style={{ fontSize: 11, color: '#7a776e' }}>
@@ -2183,29 +2183,29 @@ export function TabellaAnalisiF24({ anno }) {
                         </div>
                       )}
                       {r.file && (
-                        <div style={{ fontSize: 10.5, color: '#a19d92', fontWeight: 400, maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        <div style={{ fontSize: 10.5, color: '#a19d92', fontWeight: 400, whiteSpace: 'normal' }}>
                           {r.file}
                         </div>
                       )}
                     </td>
-                    <td style={{ ...cella, whiteSpace: 'nowrap', fontFamily: 'monospace' }}>{etichettaM('Scadenza naturale')}
+                    <td style={{ ...cella, whiteSpace: 'normal', fontFamily: 'monospace' }}>{etichettaM('Scadenza naturale')}
                       {r.scadenza_naturale ? formatDateIT(r.scadenza_naturale) : '—'}
                     </td>
-                    <td style={{ ...cella, whiteSpace: 'nowrap', fontFamily: 'monospace', fontWeight: inRitardo ? 700 : 400, color: inRitardo ? '#991b1b' : '#141413' }}>{etichettaM('Pagamento effettivo')}
+                    <td style={{ ...cella, whiteSpace: 'normal', fontFamily: 'monospace', fontWeight: inRitardo ? 700 : 400, color: inRitardo ? '#991b1b' : '#141413' }}>{etichettaM('Pagamento effettivo')}
                       {r.data_pagamento ? formatDateIT(r.data_pagamento) : '—'}
                     </td>
                     <td style={{ ...cella, textAlign: 'center', fontWeight: 700, color: r.giorni_ritardo > 0 ? '#dc2626' : '#16a34a' }}>{etichettaM('Giorni ritardo')}
                       {r.giorni_ritardo ?? '—'}
                     </td>
                     <td style={cella}>{etichettaM('Stato pagamento')}
-                      <span style={{ padding: '3px 8px', borderRadius: 6, fontSize: 11, fontWeight: 700, background: stato.bg, color: stato.color, whiteSpace: 'nowrap' }}>
+                      <span style={{ padding: '3px 8px', borderRadius: 6, fontSize: 11, fontWeight: 700, background: stato.bg, color: stato.color, whiteSpace: 'normal' }}>
                         {stato.label}
                       </span>
                       <div data-testid="ambito-stato-f24" style={{ marginTop: 4, maxWidth: 150, fontSize: 10.5, lineHeight: 1.3, color: '#7a776e' }}>
                         Stato dell'intero modello F24{r._rigaTributo ? ` che contiene il codice ${r._rigaTributo.codice}` : ', non di un singolo codice'}.
                       </div>
                     </td>
-                    <td style={{ ...cella, whiteSpace: 'nowrap' }}>{etichettaM('Tipo versamento')}
+                    <td style={{ ...cella, whiteSpace: 'normal' }}>{etichettaM('Tipo versamento')}
                       {r.tipo_versamento === 'ordinario' ? 'Ordinario'
                         : r.tipo_versamento === 'regolarizzazione' ? 'Regolarizzazione'
                           : 'Ravvedimento'}
@@ -2257,10 +2257,10 @@ export function TabellaAnalisiF24({ anno }) {
                         </div>
                       )}
                     </td>
-                    <td style={{ ...cella, fontFamily: 'monospace', whiteSpace: 'nowrap' }}>{etichettaM('Causale INPS')}
+                    <td style={{ ...cella, fontFamily: 'monospace', whiteSpace: 'normal' }}>{etichettaM('Causale INPS')}
                       {(r.causali_inps || []).join(', ') || '—'}
                     </td>
-                    <td style={{ ...cella, whiteSpace: 'nowrap' }}>{etichettaM('Documento collegato')}
+                    <td style={{ ...cella, whiteSpace: 'normal' }}>{etichettaM('Documento collegato')}
                       {/* I file veri: il modello F24 e la sua quietanza, aperti
                           nel lettore PDF. Niente rimando all'estratto conto:
                           li' bisognava cercare l'operazione a mano. */}
@@ -2306,11 +2306,11 @@ export function TabellaAnalisiF24({ anno }) {
                       </span>
                     </td>
                     <td style={cella}>{etichettaM('Possibile duplicazione')}
-                      <span style={{ padding: '3px 8px', borderRadius: 6, fontSize: 11, fontWeight: 700, background: dup.bg, color: dup.color, whiteSpace: 'nowrap' }}>
+                      <span style={{ padding: '3px 8px', borderRadius: 6, fontSize: 11, fontWeight: 700, background: dup.bg, color: dup.color, whiteSpace: 'normal' }}>
                         {dup.label}
                       </span>
                     </td>
-                    <td style={{ ...cella, minWidth: 220, color: '#5f5c55' }}>{etichettaM('Motivazione')}{r.motivazione}</td>
+                    <td style={{ ...cella, minWidth: 0, color: '#5f5c55' }}>{etichettaM('Motivazione')}{r.motivazione}</td>
                   </tr>
                 );
               })}

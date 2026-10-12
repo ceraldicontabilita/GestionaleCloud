@@ -1,0 +1,6 @@
+/* Fiscal evidence must remain readable without scrolling a wide table. */
+.f24-analysis { min-width: 0; overflow-wrap: anywhere; }
+.f24-analysis-list td { min-width: 0; }
+.f24-analysis-list td:last-child { grid-column: 1 / -1; }
+.f24-analysis button { max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
+.f24-analysis-list td > span { line-height: 1.5; }
