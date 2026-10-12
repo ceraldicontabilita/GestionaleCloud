@@ -27,7 +27,9 @@ from app.db_collections import COLL_QUIETANZE_F24
 logger = logging.getLogger(__name__)
 
 TIPO = "dilazione_inps"
+TIPO_ISTANZA = "istanza_dilazione_inps"
 COLL_DILAZIONI_INPS = "dilazioni_inps"
+COLL_ISTANZE_DILAZIONI_INPS = "istanze_dilazioni_inps"
 ALERT_RATA_NON_PAGATA = "DILAZIONE_INPS_RATA_NON_PAGATA"
 MITTENTE_PEC = "inpscomunica@postacert.inps.gov.it"
 
@@ -40,7 +42,7 @@ RATA_IMPORTO_DIVERSO = "VERSATA_IMPORTO_DIVERSO"
 
 _IMPORTO = r"\d{1,3}(?:\.\d{3})*,\d{2}"
 _RE_RIF = re.compile(r"INPS\.(\d{4})\.(\d{2}/\d{2}/\d{4})\.(\d+)")
-_RE_MATRICOLA = re.compile(r"MATRICOLA\s+(\d{10})\b")
+_RE_MATRICOLA = re.compile(r"MATRICOLA\s*:?\s*(\d{10})\b")
 _RE_CF = re.compile(r"CODICE\s+FISCALE\s+(\d{11}|[A-Z0-9]{16})\b")
 _RE_DATA_DOMANDA = re.compile(r"DATA\s+DELLA\s+(\d{2}/\d{2}/\d{4})")
 _RE_DELIBERA = re.compile(r"DATA\s+DELIBERA\s+DI\s+ACCOGLIMENTO\s+(\d{2}/\d{2}/\d{4})")
@@ -54,6 +56,10 @@ _RE_RATA = re.compile(
 _RE_COORDINATE = re.compile(
     rf"(\d{{2}}/\d{{4}})\s+(\d{{4}})\s+([A-Z][A-Z0-9]{{1,3}})\s+(\d{{10}})\s+({_IMPORTO})\s+(\d{{2}}/\d{{4}})"
 )
+_RE_PROTOCOLLO_DOMANDA = re.compile(r"PROTOCOLLO\s+DOMANDA\s*:\s*(INPS\.\d{4}\.\d{2}/\d{2}/\d{4}\.\d+)")
+_RE_RATE_DA_A = re.compile(r"RATE\s+DA\s+(\d{1,3})\s+A\s+(\d{1,3})")
+_RE_TOTALE_ISTANZA = re.compile(rf"TOTALE\s+DA\s+DILAZIONARE\s+EURO\s+({_IMPORTO})")
+_RE_PERIODO_ISTANZA = re.compile(rf"(\d{{2}}/\d{{4}})\s+({_IMPORTO})\s+({_IMPORTO})")
 
 _ZIP_MAX_VOCI = 20
 _ZIP_MAX_BYTE = 10 * 1024 * 1024
@@ -67,6 +73,15 @@ def riconosci(testo: str) -> bool:
     """La lettera di accoglimento con piano: tutte e tre le prove nel testo."""
     t = _testo(testo)
     return all(m in t for m in ("ACCOGLIMENTO RICHIESTA RATEAZIONE", "PIANO DI AMMORTAMENTO", "MATRICOLA"))
+
+
+def riconosci_istanza(testo: str) -> bool:
+    """Riconosce la domanda, che non prova ne' accoglimento ne' pagamento."""
+    t = _testo(testo)
+    return all(m in t for m in (
+        "ISTANZA E ATTO DI IMPEGNO PER IL PAGAMENTO DILAZIONATO",
+        "PROTOCOLLO DOMANDA", "DI VOLERE CHIEDERE LA RATEAZIONE",
+    )) and not riconosci(t)
 
 
 def _cents(valore: str) -> int:
@@ -83,6 +98,56 @@ def _iso(data_it: Optional[str]) -> Optional[str]:
 def _chiave_periodo(periodo: str) -> Tuple[int, int]:
     m, a = periodo.split("/")
     return int(a), int(m)
+
+
+def leggi_istanza(testo: str) -> Dict[str, Any]:
+    """Estrae i periodi chiesti, senza trasformare la domanda in accoglimento.
+
+    Le righe sono obblighi dichiarati nell'istanza. Le rate e le loro scadenze
+    nascono esclusivamente dalla successiva lettera INPS di accoglimento con
+    piano di ammortamento.
+    """
+    t = _testo(testo)
+    protocollo = _RE_PROTOCOLLO_DOMANDA.search(t)
+    matricola = _RE_MATRICOLA.search(t)
+    rate = _RE_RATE_DA_A.search(t)
+    totale = _RE_TOTALE_ISTANZA.search(t)
+    inizio = t.find("DI VOLERE CHIEDERE LA RATEAZIONE PER I SEGUENTI PERIODI")
+    fine = t.find("TOTALE DA DILAZIONARE", inizio if inizio >= 0 else 0)
+    sezione = t[inizio:fine] if inizio >= 0 and fine > inizio else ""
+    periodi = []
+    for match in _RE_PERIODO_ISTANZA.finditer(sezione):
+        periodi.append({
+            "periodo": match.group(1),
+            "contributi_cents": _cents(match.group(2)),
+            "sanzioni_cents": _cents(match.group(3)),
+            "totale_cents": _cents(match.group(2)) + _cents(match.group(3)),
+        })
+    periodi.sort(key=lambda row: _chiave_periodo(row["periodo"]))
+    data_domanda = None
+    if protocollo:
+        data_match = re.search(r"\.(\d{2}/\d{2}/\d{4})\.", protocollo.group(1))
+        data_domanda = _iso(data_match.group(1)) if data_match else None
+    somma = sum(row["totale_cents"] for row in periodi)
+    totale_cents = _cents(totale.group(1)) if totale else None
+    istanza = {
+        "rif": protocollo.group(1) if protocollo else None,
+        "matricola": matricola.group(1) if matricola else None,
+        "data_domanda": data_domanda,
+        "rate_min": int(rate.group(1)) if rate else None,
+        "rate_max": int(rate.group(2)) if rate else None,
+        "totale_richiesto_cents": totale_cents,
+        "somma_periodi_cents": somma,
+        "periodi": periodi,
+        "periodo_da": periodi[0]["periodo"] if periodi else None,
+        "periodo_a": periodi[-1]["periodo"] if periodi else None,
+    }
+    istanza["quadra"] = bool(periodi and totale_cents == somma)
+    istanza["mancanti"] = [
+        key for key in ("rif", "matricola", "data_domanda", "periodo_da", "periodo_a", "totale_richiesto_cents")
+        if istanza.get(key) is None
+    ]
+    return istanza
 
 
 def leggi_piano(testo: str) -> Dict[str, Any]:
@@ -253,6 +318,46 @@ def id_dilazione(piano: Dict[str, Any]) -> str:
     return f"dilazione_inps:{piano['rif']}"
 
 
+def id_istanza(istanza: Dict[str, Any]) -> str:
+    return f"istanza_dilazione_inps:{istanza['rif']}"
+
+
+async def collega_istanze(db) -> Dict[str, int]:
+    """Collega una domanda al piano solo con coordinate documentali esatte.
+
+    Stessa matricola e stesso intervallo di periodi non bastano se piu' piani
+    sono compatibili: il caso resta da verificare. La domanda non genera mai
+    rate e non chiude mai un periodo come pagato.
+    """
+    istanze = await db[COLL_ISTANZE_DILAZIONI_INPS].find({}, {"_id": 0}).to_list(2000)
+    piani = await db[COLL_DILAZIONI_INPS].find({}, {"_id": 0}).to_list(2000)
+    aggiornate = 0
+    for istanza in istanze:
+        candidati = [p for p in piani if (
+            str(p.get("matricola") or "") == str(istanza.get("matricola") or "")
+            and p.get("periodo_da") == istanza.get("periodo_da")
+            and p.get("periodo_a") == istanza.get("periodo_a")
+            and (not istanza.get("data_domanda") or not p.get("data_domanda")
+                 or p["data_domanda"] == istanza["data_domanda"])
+            and (not istanza.get("data_domanda") or not p.get("data_delibera")
+                 or p["data_delibera"] >= istanza["data_domanda"])
+        )]
+        nuovo = {
+            "stato_richiesta": "ACCOLTA" if len(candidati) == 1 else "PRESENTATA_DA_VERIFICARE",
+            "dilazione_id": candidati[0]["id"] if len(candidati) == 1 else None,
+            "candidati_accoglimento": [p["id"] for p in candidati] if len(candidati) > 1 else [],
+        }
+        if any(istanza.get(k) != v for k, v in nuovo.items()):
+            await db[COLL_ISTANZE_DILAZIONI_INPS].update_one({"id": istanza["id"]}, {"$set": nuovo})
+            aggiornate += 1
+        if len(candidati) == 1 and istanza.get("documento_id"):
+            await db["documents_inbox"].update_one(
+                {"id": istanza["documento_id"]},
+                {"$set": {"status": "archiviato", "dilazione_id": candidati[0]["id"]}},
+            )
+    return {"istanze": len(istanze), "aggiornate": aggiornate}
+
+
 async def deposita_piano(db, piano: Dict[str, Any], *, documento_id: Optional[str], filename: str,
                          sha256: Optional[str]) -> Optional[str]:
     """Il piano entra (o si aggiorna) in ``dilazioni_inps``; stesso rif, stessa riga."""
@@ -268,7 +373,27 @@ async def deposita_piano(db, piano: Dict[str, Any], *, documento_id: Optional[st
          "$setOnInsert": {"id": did, "creato_il": now}},
         upsert=True,
     )
+    await collega_istanze(db)
     return did
+
+
+async def deposita_istanza(db, istanza: Dict[str, Any], *, documento_id: Optional[str], filename: str,
+                           sha256: Optional[str]) -> Optional[str]:
+    """Deposita la domanda; senza accoglimento resta esplicitamente sospesa."""
+    if not istanza.get("rif") or not istanza.get("quadra") or istanza.get("mancanti"):
+        return None
+    iid = id_istanza(istanza)
+    now = datetime.now(timezone.utc).isoformat()
+    await db[COLL_ISTANZE_DILAZIONI_INPS].update_one(
+        {"id": iid},
+        {"$set": {**{k: v for k, v in istanza.items() if k != "mancanti"},
+                  "documento_id": documento_id, "filename": filename, "sha256": sha256,
+                  "aggiornato_il": now},
+         "$setOnInsert": {"id": iid, "stato_richiesta": "PRESENTATA_DA_VERIFICARE", "creato_il": now}},
+        upsert=True,
+    )
+    await collega_istanze(db)
+    return iid
 
 
 def _etichetta(dil: Dict[str, Any], rata: Dict[str, Any]) -> Dict[str, Any]:
@@ -389,6 +514,57 @@ async def archivia_dilazione(db, *, filename: str, content: bytes, testo: str,
             f"mancano: {', '.join(piano['mancanti']) or '-'})"
         ),
         "abbinamento": {k: v for k, v in (esito or {}).items() if k != "esiti"} or None,
+    })
+    return archiviato
+
+
+async def archivia_istanza(db, *, filename: str, content: bytes, testo: str,
+                           source_context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """Conserva la domanda e i periodi, senza dichiararla accolta o pagata."""
+    import hashlib
+
+    from app.routers.documenti import _archive_non_payment_document
+
+    istanza = leggi_istanza(testo)
+    metadata = {
+        "rif": istanza["rif"], "matricola": istanza["matricola"],
+        "periodo_da": istanza["periodo_da"], "periodo_a": istanza["periodo_a"],
+        "periodi": istanza["periodi"], "totale_richiesto_cents": istanza["totale_richiesto_cents"],
+        "quadra": istanza["quadra"], "mancanti": istanza["mancanti"],
+        "obligation_status": "ISTANZA_PRESENTATA_ACCETTAZIONE_DA_VERIFICARE",
+        "relation_keys": {"rif_istanza": istanza["rif"], "matricola_inps": istanza["matricola"]},
+    }
+    archiviato = await _archive_non_payment_document(
+        db, filename=filename, content=content, document_type=TIPO_ISTANZA,
+        metadata=metadata, source_context=source_context,
+    )
+    documento_id = archiviato.get("doc_id")
+    iid = await deposita_istanza(
+        db, istanza, documento_id=documento_id, filename=filename,
+        sha256=hashlib.sha256(content).hexdigest(),
+    )
+    salvata = await db[COLL_ISTANZE_DILAZIONI_INPS].find_one({"id": iid}, {"_id": 0}) if iid else None
+    if iid and documento_id:
+        accolta = bool(salvata and salvata.get("stato_richiesta") == "ACCOLTA")
+        await db["documents_inbox"].update_one(
+            {"id": documento_id},
+            {"$set": {
+                "status": "archiviato" if accolta else "da_verificare",
+                "istanza_dilazione_id": iid,
+                **({"dilazione_id": salvata.get("dilazione_id")} if accolta else {}),
+            }},
+        )
+    archiviato.update({
+        "workflow": "ISTANZA_DILAZIONE_INPS", "istanza_dilazione_id": iid, "istanza": istanza,
+        "message": (
+            f"Istanza INPS {istanza['rif']}: {len(istanza['periodi'])} periodi, "
+            f"{istanza['totale_richiesto_cents'] / 100:.2f} EUR; "
+            + ("accoglimento collegato" if salvata and salvata.get("stato_richiesta") == "ACCOLTA"
+               else "accoglimento e piano rateale da verificare")
+            if iid else
+            f"Istanza INPS conservata ma non letta per intero (quadra={istanza['quadra']}, "
+            f"mancano: {', '.join(istanza['mancanti']) or '-'})"
+        ),
     })
     return archiviato
 

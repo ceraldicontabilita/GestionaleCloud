@@ -319,9 +319,11 @@ class EmailFullDownloader:
 
     async def _archivia_dilazione_inps(self, msg, email_uid, subject: str, from_addr: str,
                                        source_folder: str) -> int:
-        """PDF del piano (sciolti o in ZIP) riconosciuti dal testo, mai dal nome."""
+        """PDF di domanda o piano (sciolti/ZIP), riconosciuti dal testo."""
         from app.routers.documenti import _pdf_text_for_detection
-        from app.services.dilazioni_inps import archivia_dilazione, pdf_da_zip, riconosci
+        from app.services.dilazioni_inps import (
+            archivia_dilazione, archivia_istanza, pdf_da_zip, riconosci, riconosci_istanza,
+        )
 
         allegati: List[Tuple[str, bytes]] = []
         for part in msg.walk():
@@ -339,9 +341,12 @@ class EmailFullDownloader:
         salvati = 0
         for nome, contenuto in allegati:
             testo = _pdf_text_for_detection(contenuto)
-            if not riconosci(testo):
+            e_piano = riconosci(testo)
+            e_istanza = riconosci_istanza(testo)
+            if not e_piano and not e_istanza:
                 continue
-            esito = await archivia_dilazione(
+            archivia = archivia_dilazione if e_piano else archivia_istanza
+            esito = await archivia(
                 self.db, filename=nome, content=contenuto, testo=testo,
                 source_context={"source": "email", "email_uid": email_uid.decode() if isinstance(email_uid, bytes)
                                 else str(email_uid), "email_subject": subject, "email_from": from_addr,

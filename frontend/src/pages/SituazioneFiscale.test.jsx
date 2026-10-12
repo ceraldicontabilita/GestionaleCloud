@@ -42,6 +42,7 @@ describe('Situazione fiscale dal registro F24', () => {
     expect(screen.getByRole('tab', { name: 'Piano tributi' })).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: 'Tributi' })).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: 'Ritenute' })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'Dilazioni INPS' })).toBeInTheDocument();
   });
 
   it('aprendo Situazione fiscale senza scheda si arriva sul Piano tributi', async () => {
