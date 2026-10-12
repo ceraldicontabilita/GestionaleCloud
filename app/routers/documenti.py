@@ -2130,6 +2130,13 @@ def detect_document_type(filename: str, file_content: bytes) -> str:
     ):
         return "avviso_pagopa"
 
+    # Un avviso commerciale contiene anche il modulo postale da compilare e la
+    # promessa di una futura fattura quietanzata: non prova un versamento F24.
+    if ("AVVISO DI PAGAMENTO" in compact_pdf_text
+        and "NON COSTITUISCE FATTURA" in compact_pdf_text
+        and "AL RICEVIMENTO DEL PAGAMENTO" in compact_pdf_text):
+        return "auto"
+
     # Stampa PDF di una fattura elettronica: dice «Bonifico» e IBAN nelle condizioni
     # di pagamento, ma e' la fattura, non una prova di pagamento. Letta come bonifico
     # prendeva l'imponibile (parcella Marotta 1.612,00 invece di 1.966,64 - ritenuta).

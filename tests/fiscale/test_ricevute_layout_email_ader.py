@@ -31,6 +31,21 @@ def test_email_senza_commissioni_nel_verbale(monkeypatch, colon):
     assert r['data_pagamento'] == '2025-06-19'
     assert r['beneficiario'] == 'Comune di Prova'
 
+
+def test_avviso_commerciale_con_modulo_postale_non_e_quietanza_f24():
+    import fitz
+    from app.routers.documenti import detect_document_type
+    with fitz.open() as pdf:
+        page = pdf.new_page()
+        page.insert_text((50, 50), '''Avviso di Pagamento
+Il presente avviso non costituisce fattura.
+La fattura quietanzata sara emessa al ricevimento del pagamento.
+CONTI CORRENTI POSTALI - Ricevuta di Versamento
+Totale da pagare 184,30
+BOLLO DELL'UFFICIO POSTALE''')
+        content = pdf.tobytes()
+    assert detect_document_type('AvvisoDiPagamentoEMAIL.pdf', content) == 'auto'
+
 @pytest.mark.parametrize('change', ['bad_sum', 'negative'])
 def test_non_accetta_email_non_quadrata_o_esito_negativo(monkeypatch, change):
     text = EMAIL.replace('58,55', '68,55') if change == 'bad_sum' else EMAIL+'\nESITO: Pagamento non eseguito'
