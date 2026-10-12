@@ -67,3 +67,43 @@ def test_data_emissione_del_pdf_salvata_come_data_verbale(monkeypatch):
         verbale = await db.verbali_noleggio.find_one({"id": result["verbale_id"]})
         assert verbale["data_verbale"] == "2026-07-27"
     asyncio.run(run())
+
+
+def test_pec_in_inbox_importa_un_verbale_e_aggancia_entrambi_originali(monkeypatch):
+    from app.services import verbali_document_import as writer, pagopa_receipts
+    db = AsyncMongoMockClient().db
+    monkeypatch.setattr(writer, "_extract_text", lambda b: b.decode())
+    monkeypatch.setattr(pagopa_receipts, "parse_receipt_pdf", lambda *a, **kw: {})
+    copy_text = ("Verbale n. A26111311018 - cronologico Registro n. 20260355546 "
+                 "data verbale 27/07/2026 targato HB411GV entro 5 giorni euro 52,40 "
+                 "dal sesto al sessantesimo giorno euro 65,00")
+    async def run():
+        for id_, text in (("copy", copy_text), ("relata", "Relazione di notificazione")):
+            await db.documents_inbox.insert_one({
+                "id": id_, "filename": id_ + ".pdf", "category": "verbale", "processed": False,
+                "pdf_data": base64.b64encode(text.encode()).decode(), "file_hash": id_ + "-hash",
+                "email_subject": "Atto 20260355546 del 27/07/2026 [upec9470772]",
+                "email_date": "2026-10-09T10:45:37+02:00", "email_message_id": "pec-originale",
+                "email_from": "Per conto di: notifica.pl.napoli@pec.it",
+                "periodo_anno": 1992, "periodo_mese": 4,
+            })
+        first = await processa_verbali_da_email(db)
+        second = await processa_verbali_da_email(db)
+        assert first["processati"] == 1
+        assert second["processati"] == 0
+        assert second["notifiche_pec"]["gia_agganciate"] == 1
+        assert await db.verbali_noleggio.count_documents({}) == 1
+        assert await db.verbali_email_attachments.count_documents({}) == 0
+        v = await db.verbali_noleggio.find_one({})
+        assert v["importo"] == 52.40
+        assert v["data_verbale"] == "2026-07-27"
+        assert v["data_notifica"] == "2026-10-09"
+        assert v["stato"] == "aperto"
+        assert v.get("data_pagamento") is None
+        notification = v["notifiche_pec"][0]
+        assert notification["email_message_id"] == "pec-originale"
+        assert {a["hash"] for a in notification["allegati"]} == {"copy-hash", "relata-hash"}
+        copy = await db.documents_inbox.find_one({"id": "copy"})
+        assert (copy["periodo_anno"], copy["periodo_mese"]) == (2026, 7)
+        assert (await db.documents_inbox.find_one({"id": "relata"}))["processed"] is True
+    asyncio.run(run())

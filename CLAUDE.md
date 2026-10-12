@@ -5466,3 +5466,5 @@ Le righe codificate vengono conservate con codice, descrizione, valori ordinati,
 ### Posta attendibile — richiesta del 12/10/2026
 
 Riattivati soltanto `gmail_full_scan` e `mittenti_email_sync`, ogni 15 minuti con primo giro dopo il riavvio. Restano ritirati gli altri 69 job. La pipeline Verbali usa `process_verbale_document`; la relata non crea un secondo verbale e i due PDF si agganciano attraverso `aggancia_notifiche_pec`. La registrazione dello scheduler non certifica importazione o pagamento: verificare gli esiti e i dati live.
+
+La posta attendibile puo' depositare i PDF in `documents_inbox`: la stessa pipeline Verbali legge sia questa coda sia `verbali_email_attachments`, senza copiare gli originali tra collezioni. La relata non crea una pratica distinta; l'aggancio PEC conserva i riferimenti dei due originali e il Message-ID. Il periodo documentale della copia conforme deriva dalla data dell'atto, mai dall'anno della legge citata.
