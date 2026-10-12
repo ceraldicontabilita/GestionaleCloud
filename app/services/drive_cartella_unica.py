@@ -1241,14 +1241,14 @@ async def originale(db, drive_file_id: Optional[str] = None,
     """Il documento da aprire, solo se e' un originale della cartella unica.
 
     Si cerca per id Drive oppure per SHA-256 del contenuto (l'impronta che i
-    motori conservano come ``source_sha256``): mai per nome. Per id si apre
-    anche un file fermo in ERRORI/ARRETRATO (e' registrato, non un id
-    qualunque): il titolare deve poterlo guardare per decidere una proposta.
+    motori conservano come ``source_sha256``): mai per nome. Entrambe le
+    ricerche consentono gli originali registrati in ERRORI/ARRETRATO e
+    DA VERIFICARE: consultarli non ne certifica i dati contabili.
     """
     if drive_file_id:
         filtro = {"id": drive_file_id, "cartella": {"$in": [ARCHIVIO, DA_VERIFICARE, ERRORI, ARRETRATO]}}
     elif sha256:
-        filtro = {"sha256": sha256.strip().lower(), "cartella": ARCHIVIO}
+        filtro = {"sha256": sha256.strip().lower(), "cartella": {"$in": [ARCHIVIO, DA_VERIFICARE, ERRORI, ARRETRATO]}}
     else:
         return None
     riga = await db[REGISTRO].find_one(filtro, {"_id": 0})

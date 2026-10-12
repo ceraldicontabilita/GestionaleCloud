@@ -609,7 +609,7 @@ async def apri_per_impronta(db, sha256: str) -> Originale:
     if trovato and trovato.get("contenuto") and hashlib.sha256(trovato["contenuto"]).hexdigest() == impronta:
         nome = _nome_pulito(trovato.get("nome"), impronta[:12])
         return Originale(trovato["contenuto"], nome, mime_dai_byte(trovato["contenuto"], nome, trovato.get("mime")), "drive")
-    provato.append("cartella_unica:ELABORATE")
+    provato.append("cartella_unica:originali_registrati")
     for collezione, campi, tipo in _PER_IMPRONTA:
         try:
             doc = await db[collezione].find_one({"$or": [{c: impronta} for c in campi]}, {"_id": 0, "id": 1})

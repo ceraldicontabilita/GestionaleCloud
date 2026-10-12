@@ -1,6 +1,6 @@
 """Cartella unica Drive: smistatore di Documenti > Import, nessun doppione fra
 gli originali (Cestino, mai eliminazione), errori col motivo, «vedi documento»
-solo da ELABORATE."""
+anche dagli stati da verificare, senza promuoverne i dati."""
 import asyncio
 import hashlib
 import re
@@ -131,6 +131,29 @@ def ambiente(monkeypatch):
     return drive, smistati, esiti
 
 
+@pytest.mark.parametrize("cartella", [cu.ARCHIVIO, cu.ERRORI, cu.ARRETRATO, cu.DA_VERIFICARE])
+def test_originale_per_hash_non_dipende_dalla_posizione_registrata(ambiente, cartella):
+    drive, _, _ = ambiente
+    db = AsyncMongoMockClient()["t"]
+    contenuto = b"%PDF originale spostato"
+    impronta = hashlib.sha256(contenuto).hexdigest()
+    drive.aggiungi("spostato", "originale.pdf", contenuto, "nuova-cartella")
+    run(db[cu.REGISTRO].insert_one({"id": "spostato", "sha256": impronta, "cartella": cartella}))
+    assert run(cu.originale(db, sha256=impronta))["contenuto"] == contenuto
+    assert run(db[cu.REGISTRO].find_one({"id": "spostato"}))["cartella"] == cartella
+
+
+@pytest.mark.parametrize("cartella", [cu.INBOX, cu.DOPPIONI, "RIMOSSO", "CESTINO"])
+def test_originale_per_hash_non_promuove_file_esclusi(ambiente, cartella):
+    drive, _, _ = ambiente
+    db = AsyncMongoMockClient()["t"]
+    contenuto = b"%PDF escluso"
+    impronta = hashlib.sha256(contenuto).hexdigest()
+    drive.aggiungi("escluso", "escluso.pdf", contenuto, "inbox")
+    run(db[cu.REGISTRO].insert_one({"id": "escluso", "sha256": impronta, "cartella": cartella}))
+    assert run(cu.originale(db, sha256=impronta)) is None
+
+
 def test_spenta_senza_cartella(monkeypatch):
     monkeypatch.delenv("GOOGLE_DRIVE_DATI_FOLDER_ID", raising=False)
     assert cu.attivo() is False
@@ -203,7 +226,7 @@ def test_eccezione_manda_in_errori_col_motivo(ambiente, monkeypatch):
     assert stato["last_result"]["errori"] == 1
 
 
-def test_originale_solo_da_elaborate(ambiente):
+def test_originale_registrato_leggibile_anche_in_errori(ambiente):
     drive, _, esiti = ambiente
     db = AsyncMongoMockClient()["t"]
     drive.aggiungi("ok", "buono.pdf", b"%PDF buono", "inbox")
@@ -215,10 +238,10 @@ def test_originale_solo_da_elaborate(ambiente):
     assert aperto["contenuto"] == b"%PDF buono" and aperto["nome"] == "buono.pdf"
     per_impronta = run(cu.originale(db, sha256=hashlib.sha256(b"%PDF buono").hexdigest().upper()))
     assert per_impronta["contenuto"] == b"%PDF buono"
-    # in ERRORI: per id si apre (il titolare lo vede per decidere), per impronta no
+    # Anche per impronta il titolare puo' vedere il documento da verificare.
     fermo = run(cu.originale(db, drive_file_id="ko"))
     assert fermo["contenuto"] == b"%PDF cattivo" and fermo["nome"] == "cattivo.pdf"
-    assert run(cu.originale(db, sha256=hashlib.sha256(b"%PDF cattivo").hexdigest().upper())) is None
+    assert run(cu.originale(db, sha256=hashlib.sha256(b"%PDF cattivo").hexdigest().upper()))["contenuto"] == b"%PDF cattivo"
     assert run(cu.originale(db, drive_file_id="sconosciuto")) is None
     assert run(cu.originale(db)) is None
 
