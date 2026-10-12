@@ -31,7 +31,7 @@ logger = logging.getLogger(__name__)
 # 1. PIPELINE F24
 # ============================================================
 
-async def processa_f24_da_email(db: ArchivioDocumenti) -> Dict[str, Any]:
+async def processa_f24_da_email(db: ArchivioDocumenti, *, defer_controparti: bool = False) -> Dict[str, Any]:
     """
     Processa tutti gli F24 PDF scaricati da Gmail.
     Ogni allegato passa da ``importa_modello_bytes``, l'ingresso unico dei
@@ -69,6 +69,7 @@ async def processa_f24_da_email(db: ArchivioDocumenti) -> Dict[str, Any]:
                     "email_date": doc.get("email_date", ""),
                     "attachment_id": doc.get("id"),
                 },
+                **({"defer_controparti": True} if defer_controparti else {}),
             )
             if esito.get("success"):
                 stats["gia_processati" if esito.get("duplicate") else "nuovi"] += 1

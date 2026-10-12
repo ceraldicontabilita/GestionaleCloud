@@ -2173,7 +2173,7 @@ async def _lotto_recupero_storico_con_lease(db) -> Dict[str, Any]:
                 processa_f24_da_email, processa_verbali_da_email, processa_quietanze_da_email,
             )
             pipeline = {
-                "f24": await processa_f24_da_email(db),
+                "f24": await processa_f24_da_email(db, defer_controparti=True),
                 "verbali": await processa_verbali_da_email(db),
                 "quietanze": await processa_quietanze_da_email(db),
             }
@@ -2184,6 +2184,11 @@ async def _lotto_recupero_storico_con_lease(db) -> Dict[str, Any]:
             # Un lotto finale scarica anche eventuali code degli importatori (500/200).
             backlog = pipeline["f24"].get("processati", 0) >= 500 or pipeline["quietanze"].get("processati", 0) >= 200
             complete = bool(scan.get("storico_completo")) and not failure and not backlog
+            if complete:
+                # Una riconciliazione canonica finale, non 436 quietanze ripassate
+                # per ogni PDF del recupero. I nuovi originali restano subito salvati.
+                from app.services.quietanze_import import ricollega_quietanze_orfane
+                pipeline["quietanze_f24_finali"] = await ricollega_quietanze_orfane(db)
             pipeline_totals = dict(state.get("pipeline_totali") or {})
             for domain, counters in pipeline.items():
                 cumulative = dict(pipeline_totals.get(domain) or {})
