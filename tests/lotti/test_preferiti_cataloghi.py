@@ -88,3 +88,20 @@ def test_listino_reale_non_viene_azzerato_ne_sostituito_da_fattura():
     for prezzi in ({}, {"caffe": {"prezzo": 10}}):
         p = applica_prezzo_da_fatture([{"nome": "Caffe", "prezzo_listino": 12, "fonte_catalogo": "listino"}], prezzi)[0]
         assert p["prezzo_listino"] == 12
+
+
+def test_righe_informative_xml_non_diventano_prodotti_ma_omaggi_si():
+    righe = [
+        {"descrizione": "Riga ausiliaria contenente informazioni tecniche e aggiuntive del documento",
+         "quantita": "1", "prezzo_unitario": "0.00", "prezzo_totale": "0.00"},
+        {"descrizione": "Dati documento", "quantita": "1", "prezzo_unitario": "0.00",
+         "altri_dati_gestionali": [{"tipo_dato": "AswTRiga", "riferimento_testo": "Informazioni documento #ID#"}]},
+        {"descrizione": "Cioccolato omaggio", "codice_articolo": "OM01", "quantita": "1",
+         "prezzo_unitario": "0.00", "prezzo_totale": "0.00",
+         "altri_dati_gestionali": [{"tipo_dato": "AswTRiga", "riferimento_testo": "Merce #ME#"}]},
+    ]
+    prodotti = collega_preferiti(articoli_acquistati([fattura(linee=righe)]), [], "mepa")
+    assert len(prodotti) == 1
+    assert prodotti[0]["codice_articolo"] == "OM01"
+    assert prodotti[0]["prezzo_fattura"] == 0
+    assert len(righe) == 3  # L'originale della fattura non viene modificato.
