@@ -107,3 +107,23 @@ def test_versioni_resta_raggiungibile_e_il_pdf_non_ha_piu_un_indirizzo_proprio(m
         # `/versioni` e' un indirizzo fisso, non un id di busta
         rapporto = client.get("/api/cedolini/versioni")
         assert rapporto.status_code == 200 and "gruppi" in rapporto.json()
+
+
+def test_scheda_hr_same_exact_id_without_copying_to_erp(monkeypatch):
+    import asyncio
+    from app.hr.database import Database as HRDatabase
+    from app.services import cedolino_scheda
+    async def scenario():
+        erp = ClientArchivioMemoria()["erp-readonly"]
+        hr = ClientArchivioMemoria()["hr-owner"]
+        monkeypatch.setattr(HRDatabase, "get_db", classmethod(lambda cls: hr))
+        await hr["cedolini"].insert_one({"id": "hr-original", "nome_dipendente": "Prova",
+                                      "anno": 2026, "mese": 6, "netto": 1200,
+                                      "drive_file_id": "drive-original", "pdf_disponibile": True})
+        result = await cedolino_scheda.scheda(erp, "hr-original")
+        assert result["id"] == "hr-original" and result["netto"] == 1200
+        assert result["fonte_archivio"] == "HR"
+        assert result["pdf_url"] == "/api/originale/cedolino/hr-original"
+        assert await erp["cedolini"].count_documents({}) == 0
+        assert await cedolino_scheda.scheda(erp, "another-id") is None
+    asyncio.run(scenario())

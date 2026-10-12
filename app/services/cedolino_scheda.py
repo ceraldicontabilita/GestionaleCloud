@@ -1,6 +1,6 @@
 """Scheda di una busta paga per la vista ``/personale/cedolini/:id`` (MINI-08).
 
-Sola lettura sul registro ``cedolini``. Un dato assente resta ``None``: la
+Sola lettura sul registro ``cedolini`` ERP o HR, per lo stesso ID esatto. Un dato assente resta ``None``: la
 pagina scrive «Dato non disponibile», mai zero. Il PDF non viaggia nella
 scheda: si apre a parte dall'endpoint unico degli originali
 (``/api/originale/cedolino/{id}``, DRV-04).
@@ -48,8 +48,19 @@ def _versione_gruppo(riga: Dict[str, Any], corrente_id: Optional[str]) -> Dict[s
 
 async def scheda(db, cedolino_id: str) -> Optional[Dict[str, Any]]:
     doc = await db[versioni.COLL].find_one({"id": cedolino_id}, _ESCLUSI)
+    fonte_archivio = "ERP"
     if not doc:
-        return None
+        from app.hr.database import Database as HRDatabase, DatabaseNonConfigurato
+        try:
+            db = HRDatabase.get_db()
+            if isinstance(db, DatabaseNonConfigurato):
+                return None
+        except RuntimeError:
+            return None
+        doc = await db[versioni.COLL].find_one({"id": cedolino_id}, _ESCLUSI)
+        if not doc:
+            return None
+        fonte_archivio = "HR"
     gruppo: List[Dict[str, Any]] = await versioni.righe_della_busta(db, doc)
     decisione = versioni.decidi(gruppo) if len(gruppo) > 1 else None
     chiave = versioni.chiave_busta(doc)
@@ -62,6 +73,7 @@ async def scheda(db, cedolino_id: str) -> Optional[Dict[str, Any]]:
         disponibile = bool((pieno or {}).get("pdf_data"))
     return {
         "id": doc.get("id"),
+        "fonte_archivio": fonte_archivio,
         "dipendente": doc.get("nome_dipendente") or doc.get("dipendente"),
         "anno": versioni._intero(doc.get("anno")),
         "mese": versioni._intero(doc.get("mese")),
