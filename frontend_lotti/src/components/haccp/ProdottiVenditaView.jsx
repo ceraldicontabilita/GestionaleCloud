@@ -186,10 +186,35 @@ export default function ProdottiVenditaView({ defaultTab = "acquaviva" }) {
   const syncFatture = async () => {
     try {
       setLoading(true);
-      const r = await axios.post(`${API}/prodotti-vendita/sync-acquaviva`);
-      toast.success(`Sync completato: ${r.data.creati} nuovi, ${r.data.aggiornati} aggiornati`);
-      await load();
+      if (paginaTab === "miei") {
+        const r = await axios.post(`${API}/prodotti-vendita/sync-acquaviva`);
+        toast.success(`Prodotti Acquaviva: ${r.data.creati} nuovi, ${r.data.aggiornati} aggiornati`);
+        await load();
+        return;
+      }
+
+      // I cataloghi non richiedono una copia delle fatture: il backend legge
+      // direttamente le righe XML canoniche. Il vecchio pulsante chiamava
+      // sempre il sync Acquaviva, anche dalla scheda MEPA, e mostrava quindi
+      // un fuorviante "0 nuovi, 0 aggiornati" senza rileggere il catalogo.
+      const fonte = paginaTab === "alfa"
+        ? "alpha"
+        : paginaTab === "saima_ricettari" ? "saima" : paginaTab;
+      const r = await axios.get(`${API}/cataloghi/preferiti/${encodeURIComponent(fonte)}`);
+      const dati = r.data || {};
+      const acquistati = (dati.prodotti || []).filter(p => p.gia_acquistato);
+      const conPrezzo = acquistati.filter(p => Number(p.prezzo_fattura) > 0).length;
+      const senzaPrezzo = acquistati.length - conPrezzo;
+
+      window.dispatchEvent(new CustomEvent("cataloghi-preferiti-sincronizzati", {
+        detail: { fonte, prodotti: dati.prodotti || [] },
+      }));
+      toast.success(
+        `Fatture lette: ${dati.fatture || 0} · ${acquistati.length} prodotti · ${conPrezzo} ${conPrezzo === 1 ? "prezzo" : "prezzi"}` +
+        (senzaPrezzo ? ` · ${senzaPrezzo} senza prezzo in fattura` : "")
+      );
     } catch { toast.error("Errore sincronizzazione"); }
+    finally { setLoading(false); }
   };
 
   const syncCosti = async () => {
