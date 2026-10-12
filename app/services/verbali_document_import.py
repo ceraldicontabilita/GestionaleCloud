@@ -31,7 +31,7 @@ _VERBALE_PATTERNS = (
 )
 _RICEVUTA_MARKERS = (
     "ricevuta di pagamento", "pagamento eseguito", "pagamento effettuato",
-    "importo totale pagato", "attestazione di pagamento",
+    "importo totale pagato", "attestazione di pagamento", "pagamento è andato a buon fine",
 )
 _NEGATIVE_PAYMENT_MARKERS = (
     "pagamento non eseguito", "pagamento rifiutato", "pagamento annullato",
@@ -123,6 +123,10 @@ def _float_or_none(value: Any) -> Optional[float]:
 
 
 def _extract_amount(text: str) -> Optional[float]:
+    compact = re.sub(r"\s+", " ", text or "")
+    terms = re.search(r"entro\s+5\s+giorni.{0,180}?pagamento\s+di\s+Euro\s+([\d.]+,\d{2})", compact, re.I)
+    if terms:
+        return _float_or_none(terms.group(1))
     patterns = (
         r"(?:totale|importo\s+pagato|da\s+pagare)\s*[:€]*\s*([\d.]+,\d{2})",
         r"€\s*([\d.]+,\d{2})",
@@ -288,7 +292,8 @@ def _extract_verbale_details(text: str) -> Dict[str, Any]:
         obligor = re.search(r"Obbligato in solido in qualit[aà] di locatario:\s*(.+?)(?=,\s*residente)", compact, re.I)
     if not lessor:
         lessor = re.search(r"Societ[aà] di locazione:\s*(.+?)(?=,\s*residente)", compact, re.I)
-    reduced = _extract_labeled_amount(r"(?:riduzione\s+del\s+30%|entro\s+5\s+giorni)", compact)
+    explicit_reduced = re.search(r"entro\s+5\s+giorni.{0,180}?pagamento\s+di\s+Euro\s+([\d.]+,\d{2})", compact, re.I)
+    reduced = _float_or_none(explicit_reduced.group(1)) if explicit_reduced else _extract_labeled_amount(r"(?:riduzione\s+del\s+30%|entro\s+5\s+giorni)", compact)
     ordinary = _extract_labeled_amount(r"(?:dal\s+sesto\s+al\s+sessantesimo\s+giorno|entro\s+60\s+giorni)", compact)
     issue_date = _extract_iso_date(r"(?:emesso|redatto|verbale).*?(\d{2}[/-]\d{2}[/-]\d{4})", compact)
     return {
@@ -472,15 +477,16 @@ async def leggi_documento_verbale(
     )
     importo, importo_fonte, importo_conflitto = _select_document_amount(ai_data, pagopa_data, text)
     data_pagamento = _extract_payment_date(text) or pagopa_data.get("data_pagamento")
+    payment_text = re.sub(r"\s+", " ", combined).casefold()
     negative_payment = (
         pagopa_data.get("document_kind") == "ESITO_PAGOPA_NEGATIVO"
-        or any(marker in combined.casefold() for marker in _NEGATIVE_PAYMENT_MARKERS)
+        or any(marker in payment_text for marker in _NEGATIVE_PAYMENT_MARKERS)
     )
     is_receipt = not negative_payment and (
         pagopa_data.get("is_payment_receipt") is True
         or
         ai_data.get("tipo_documento") == "ricevuta_pagopa"
-        or any(marker in combined.casefold() for marker in _RICEVUTA_MARKERS)
+        or any(marker in payment_text for marker in _RICEVUTA_MARKERS)
     )
     # Importi con termine esplicito nel verbale prevalgono sui numeri
     # dei bollettini prestampati (che non sono ricevute di pagamento).
@@ -627,8 +633,15 @@ async def process_verbale_document(
             ).limit(20).to_list(20)
             candidates = [
                 item for item in riferiti
-                if amounts_equal_to_cent(item.get("importo"), importo)
+                if item.get("stato") != "quarantena" and amounts_equal_to_cent(item.get("importo"), importo)
             ]
+        # Una email di ricevuta non e' il verbale originale, anche nei record legacy.
+        same_source = await db["verbali_noleggio"].find({"source_document_id": document_id}, {"_id": 0, "pdf_data": 0}).to_list(20)
+        for legacy in same_source:
+            if legacy.get("source_document_id") == document_id and legacy.get("stato") != "quarantena":
+                await db["verbali_noleggio"].update_one({"id": legacy["id"]}, {"$set": {
+                    "verbale_originale_acquisito": False, "origine": "RICEVUTA_PAGOPA",
+                }})
         linked_verbale = None
         if len(candidates) == 1:
             from app.services.verbali_pagamento_finder import applica_pagamento_a_verbale
@@ -782,9 +795,14 @@ async def process_verbale_document(
             if value not in (None, "") and (existing.get(key) in (None, "") or key in {
                 "source_document_id", "source_sha256", "updated_at",
                 *(("numero_verbale",) if same_original else ()),
+                *(("origine", "verbale_originale_acquisito") if not is_notice else ()),
                 *(('importo', 'importo_fonte', 'importo_conflitto_risolto') if importo_conflitto else ()),
             })
         }
+    if existing and existing.get("importo_verificato"):
+        # Una nuova estrazione non annulla la verifica documentale dell'operatore.
+        for key in ("importo", "importo_centesimi", "importo_fonte", "importo_conflitto_risolto"):
+            values.pop(key, None)
     verbale_query = (
         {"id": existing.get("id")}
         if existing and existing.get("id")
@@ -846,54 +864,74 @@ def riferimenti_comunicazione_conducente(text: str) -> list[str]:
     return sorted(values)
 
 
-async def conserva_comunicazione_inviata(db, msg, raw: bytes, folder: str, *, email_user: str) -> bool:
-    """Originale della posta inviata: prova d'invio dalla casella, non di consegna PEC."""
-    from email.header import make_header, decode_header
-    from email.utils import parseaddr, parsedate_to_datetime
+def testo_email(msg) -> str:
     import html
-    if not re.search(r"sent|inviat", folder, re.I):
-        return False
+    plain, rich = [], []
+    for part in msg.walk():
+        if part.get_content_disposition() == "attachment":
+            continue
+        if part.get_content_type() not in {"text/plain", "text/html"}:
+            continue
+        raw = part.get_payload(decode=True) or b""
+        value = raw.decode(part.get_content_charset() or "utf-8", errors="replace")
+        (plain if part.get_content_type() == "text/plain" else rich).append(value)
+    return "\n".join(plain) if plain else html.unescape(re.sub(r"<[^>]+>", " ", "\n".join(rich)))
+
+
+async def conserva_comunicazione_inviata(db, msg, raw: bytes, folder: str, *, email_user: str) -> bool:
+    """Conserva inviata, accettazione o consegna; ciascun originale resta distinto."""
+    from email.header import make_header, decode_header
+    from email.utils import parseaddr, parsedate_to_datetime, getaddresses
     sender = parseaddr(str(msg.get("From") or ""))[1].lower()
     permitted = {email_user.strip().lower()}
     if email_user.lower() == "ceraldigroupsrl@gmail.com":
         permitted.add("ceraldigroupsrl@legalmail.it")
-    if sender not in permitted:
-        return False
     subject = str(make_header(decode_header(str(msg.get("Subject") or ""))))
-    parts = []
-    for part in msg.walk():
-        if part.get_content_type() in {"text/plain", "text/html"} and part.get_content_disposition() != "attachment":
-            content = part.get_payload(decode=True) or b""
-            parts.append(content.decode(part.get_content_charset() or "utf-8", errors="replace"))
-    text = html.unescape(re.sub(r"<[^>]+>", " ", "\n".join(parts)))
-    combined = re.sub(r"\s+", " ", subject + " " + text)
-    if not re.search(r"(?:dati.{0,40}conducente|comunicazione.{0,80}conducente|126\s*[- ]?bis)", combined, re.I):
+    body = testo_email(msg)
+    combined = re.sub(r"\s+", " ", subject + " " + body)
+    if not re.search(r"(?:dati.{0,40}(?:conducente|patente|patetnte)|comunicazione.{0,80}conducente|126\s*[- ]?bis)", combined, re.I):
+        return False
+    sent = bool(re.search(r"sent|inviat", folder, re.I) and sender in permitted)
+    providers = {"posta-certificata@legalmail.it", "posta-certificata@pec.aruba.it",
+                 "posta-certificata@pec.actalis.it", "posta-certificata@cert.interno.it"}
+    recipients = {addr.lower() for _, addr in getaddresses([str(msg.get("To") or "")])}
+    own_original = any(parseaddr(str(part.get("From") or ""))[1].lower() in permitted for part in msg.walk() if part is not msg)
+    own_statement = any(re.search(r"proveniente\s+da\s*[^\w]*" + re.escape(addr), combined, re.I) for addr in permitted)
+    envelope = sender in providers and bool(recipients & permitted) and (own_original or own_statement)
+    delivered = bool(envelope and subject.upper().startswith("CONSEGNA:") and re.search(r"stato\s+consegnato\s+nella\s+casella", combined, re.I))
+    accepted = bool(envelope and subject.upper().startswith("ACCETTAZIONE:") and "ricevuta di accettazione" in combined.lower())
+    if not (sent or delivered or accepted):
         return False
     numbers = riferimenti_comunicazione_conducente(combined)
-    if not numbers:
+    for match in re.finditer(r"verbale\s+(SCV)\s+(\d{6,20})", combined, re.I):
+        numbers.append((match.group(1) + match.group(2)).upper())
+    numbers = sorted(set(numbers))
+    if sent and not numbers:
         return False
     message_id = str(msg.get("Message-ID") or "").strip()
     digest = hashlib.sha256(raw).hexdigest()
-    identity = message_id or digest
-    doc_id = "comunicazione_" + hashlib.sha256(identity.encode()).hexdigest()[:32]
+    doc_id = "comunicazione_" + hashlib.sha256((message_id or digest).encode()).hexdigest()[:32]
     if await db["documents_inbox"].find_one({"id": doc_id}, {"id": 1}):
         return False
     try:
         sent_at = parsedate_to_datetime(str(msg.get("Date") or "")).isoformat()
     except (TypeError, ValueError):
         sent_at = None
+    proof_state = "consegna_pec_documentata" if delivered else "accettazione_pec_documentata" if accepted else "inviata_da_casella"
     document = {
         "id": doc_id, "filename": doc_id + ".eml", "mime_type": "message/rfc822",
         "pdf_data": base64.b64encode(raw).decode("ascii"), "file_hash": digest,
         "tipo_documento": "comunicazione_conducente", "category": "comunicazione_conducente",
         "email_message_id": message_id or None, "email_from": sender,
         "email_to": str(msg.get("To") or ""), "email_subject": subject,
-        "email_date": sent_at, "cartella_email": folder,
-        "numeri_verbale_citati": numbers,
-        "comunicazione_stato": "inviata_da_casella" if sent_at and message_id else "invio_da_verificare",
-        "prova_consegna_pec": False,
+        "email_date": sent_at, "cartella_email": folder, "numeri_verbale_citati": numbers,
+        "comunicazione_stato": proof_state if sent_at and message_id else "invio_da_verificare",
+        "prova_consegna_pec": bool(delivered and sent_at and message_id),
+        "comunicazione_original_message_id": str(msg.get("X-Riferimento-Message-ID") or "").strip() or None,
+        "firma_pec_verificata_crittograficamente": False,
         "status": "da_verificare", "processed": False,
-        "source": "gmail_posta_inviata", "created_at": datetime.now(timezone.utc).isoformat(),
+        "source": "gmail_ricevuta_pec" if delivered or accepted else "gmail_posta_inviata",
+        "created_at": datetime.now(timezone.utc).isoformat(),
     }
     await db["documents_inbox"].update_one({"id": doc_id}, {"$setOnInsert": document}, upsert=True)
     return True
@@ -954,3 +992,54 @@ async def rivedi_verbali_archiviati(db) -> dict:
         except Exception:
             result["errori"] += 1
     return result
+
+
+async def conserva_ricevuta_email_pagopa(db, msg, raw: bytes, folder: str, *, mittenti_ammessi: set) -> bool:
+    """Copia PDF leggibile dell'email di ricevuta, con l'EML originale conservato."""
+    from email.utils import parseaddr
+    from tempfile import TemporaryDirectory
+    from pathlib import Path
+    from app.services.verbali_pagamento_finder import _genera_pdf_da_testo
+    sender = parseaddr(str(msg.get("From") or ""))[1].lower()
+    if sender not in mittenti_ammessi:
+        return False
+    if any(part.get_filename() and part.get_filename().lower().endswith(".pdf") for part in msg.walk()):
+        return False
+    body = testo_email(msg)
+    compact = re.sub(r"\s+", " ", body)
+    if not re.search(r"pagamento\s+[èe]\s+andato\s+a\s+buon\s+fine|pagamento\s+eseguito", compact, re.I):
+        return False
+    # Solo ricevute aziendali con riferimento leggibile, non utenze o pagamenti personali.
+    if "04523831214" not in body or not riferimenti_comunicazione_conducente(body) or not _extract_payment_date(body):
+        return False
+    message_id = str(msg.get("Message-ID") or "").strip()
+    key = hashlib.sha256((message_id or hashlib.sha256(raw).hexdigest()).encode()).hexdigest()[:32]
+    document_id, original_id = "ricevuta_email_" + key, "originale_email_" + key
+    existing = await db["documents_inbox"].find_one({"id": document_id}, {"id": 1})
+    if existing:
+        return False
+    meta = {"email_message_id": message_id or None, "email_from": sender,
+            "email_subject": str(msg.get("Subject") or ""), "email_date": str(msg.get("Date") or ""),
+            "cartella_email": folder, "email_raw_sha256": hashlib.sha256(raw).hexdigest(),
+            "created_at": datetime.now(timezone.utc).isoformat(), "source": "gmail_ricevuta_email"}
+    await db["documents_inbox"].update_one({"id": original_id}, {"$setOnInsert": {
+        **meta, "id": original_id, "filename": original_id + ".eml", "mime_type": "message/rfc822",
+        "tipo_documento": "originale_email_pagopa", "pdf_data": base64.b64encode(raw).decode("ascii"),
+        "processed": True, "status": "archiviato",
+    }}, upsert=True)
+    header = "Copia leggibile della ricevuta email. Originale EML conservato.\n" + "\n".join(
+        f"{name}: {msg.get(name) or ''}" for name in ("From", "To", "Date", "Subject", "Message-ID"))
+    with TemporaryDirectory() as temporary:
+        path = Path(temporary) / "ricevuta.pdf"
+        await asyncio.to_thread(_genera_pdf_da_testo, header + "\n\n" + body, str(path), "Ricevuta email PagoPA")
+        content = path.read_bytes()
+    await db["documents_inbox"].update_one({"id": document_id}, {"$setOnInsert": {
+        **meta, "id": document_id, "filename": document_id + ".pdf", "mime_type": "application/pdf",
+        "tipo_documento": "ricevuta_pagopa", "category": "ricevuta_pagopa",
+        "pdf_data": base64.b64encode(content).decode("ascii"), "file_hash": hashlib.sha256(content).hexdigest(),
+        "originale_email_id": original_id, "copia_email": True, "quietanza_ufficiale_pdf_allegata": False,
+        "processed": False, "status": "da_elaborare",
+    }}, upsert=True)
+    await process_verbale_document(db, document_id=document_id, content=content,
+                                  filename=document_id + ".pdf", source="email_ricevuta_pagopa")
+    return True

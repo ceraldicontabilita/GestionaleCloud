@@ -713,7 +713,7 @@ def parse_receipt_pdf(content: bytes, filename: str | None = None) -> dict[str, 
     ))
     is_receipt = any(marker in marker_text for marker in (
         "ATTESTAZIONEDIPAGAMENTO", "PAGAMENTOESEGUITO",
-        "IMPORTOTOTALEPAGATO", "RICEVUTATELEMATICA",
+        "IMPORTOTOTALEPAGATO", "RICEVUTATELEMATICA", "PAGAMENTOEANDATOABUONFINE", "PAGAMENTOANDATOABUONFINE",
     ))
     is_negative_outcome = any(marker in marker_text for marker in (
         "PAGAMENTONONESEGUITO", "PAGAMENTORIFIUTATO",
@@ -741,6 +741,18 @@ def parse_receipt_pdf(content: bytes, filename: str | None = None) -> dict[str, 
     )
     if amount_match and amount is None:
         amount = float(amount_match.group(1).replace(".", "").replace(",", "."))
+    # Nel riepilogo email il Totale include la commissione, l'Importo e' la sanzione.
+    if any(m in marker_text for m in ("PAGAMENTOEANDATOABUONFINE", "PAGAMENTOANDATOABUONFINE")) and not is_negative_outcome:
+        principal = re.search(r"\bImporto\s*:\s*([\d.]+,\d{2})|\bImporto\s+([\d.]+,\d{2})\s*€", compact, re.I)
+        commission = re.search(r"Commissione.{0,100}?([\d.]+,\d{2})\s*€", compact, re.I)
+        total = re.search(r"\bTotale\s*:?\s*([\d.]+,\d{2})\s*€", compact, re.I)
+        if principal and commission and total:
+            values = [Decimal(v.replace(".", "").replace(",", ".")) for v in
+                      (principal.group(1) or principal.group(2), commission.group(1), total.group(1))]
+            if values[0] + values[1] == values[2]:
+                amount = float(values[0])
+                bpm_payment.update(operation_amount=amount, bank_debit_total=float(values[2]),
+                                   commission_amount=float(values[1]), quadratura_valida=True)
     if amount is None and is_notice:
         notice_amount = re.search(
             r"(?:importo\s+(?:totale\s+)?da\s+pagare|rata\s+unica)\s*[:€EUR ]*([\d.]+,\d{2})",

@@ -1983,6 +1983,13 @@ async def scarica_posta_con_cursori(
         for cur in cartelle_stato.values():
             cur["completo"] = False
         stato["data_inizio"] = data_inizio
+    if data_inizio and stato.get("versione_lettore_storico") != 2:
+        # Il lettore precedente saltava ricevute senza PDF: ripassa gli UID gia'
+        # visitati, con la stessa dedup per contenuto/Message-ID.
+        for cur in cartelle_stato.values():
+            cur["basso"] = int(cur.get("alto", 0)) + 1
+            cur["completo"] = False
+        stato["versione_lettore_storico"] = 2
     conn = downloader.connection
 
     def tetto() -> bool:
@@ -1996,6 +2003,11 @@ async def scarica_posta_con_cursori(
         if typ != "OK" or not dati:
             raise RuntimeError(f"BODYSTRUCTURE non letto: {cartella} UID {uid}")
         metadata = b" ".join(p if isinstance(p, bytes) else b" ".join(p) for p in dati if p)
+        from email.utils import parseaddr
+        headers = b"\n".join(p[1] for p in dati if isinstance(p, tuple))
+        sender = parseaddr(email.message_from_bytes(headers).get("From", ""))[1].lower()
+        allowed_psp = await downloader._load_mittenti_per_tipo("pagopa")
+        allowed_psp |= await downloader._load_mittenti_per_tipo("ricevuta_pagopa")
         if not cartella_inviata and not _ha_allegati(metadata):
             # I messaggi del commercialista senza PDF (es. IVA luglio) non
             # devono essere scartati dal filtro degli allegati.
@@ -2005,7 +2017,7 @@ async def scarica_posta_con_cursori(
             allowed = await downloader._load_mittenti_per_tipo("f24")
             allowed |= await downloader._load_mittenti_per_tipo("commercialista")
             allowed |= await downloader._load_mittenti_per_tipo("iva")
-            if sender not in allowed:
+            if sender not in allowed | allowed_psp:
                 return
         # BODY.PEEK e cartella in sola lettura: il messaggio non diventa «letto».
         typ, dati = await asyncio.to_thread(conn.uid, "FETCH", str(uid), "(BODY.PEEK[])")
@@ -2013,13 +2025,17 @@ async def scarica_posta_con_cursori(
             raise RuntimeError(f"Messaggio non letto: {cartella} UID {uid}")
         esito["scaricati"] += 1
         msg = email.message_from_bytes(dati[0][1])
-        if cartella_inviata:
+        if comunicazioni_inviate:
             from app.services.verbali_document_import import conserva_comunicazione_inviata
             saved = await conserva_comunicazione_inviata(
                 db, msg, dati[0][1], cartella,
                 email_user=(downloader._saved_credentials or (get_email_credentials()[0],))[0],
             )
             esito["comunicazioni_salvate"] = esito.get("comunicazioni_salvate", 0) + int(saved)
+        from app.services.verbali_document_import import conserva_ricevuta_email_pagopa
+        receipt_saved = await conserva_ricevuta_email_pagopa(db, msg, dati[0][1], cartella, mittenti_ammessi=allowed_psp)
+        esito["ricevute_email_salvate"] = esito.get("ricevute_email_salvate", 0) + int(receipt_saved)
+        esito["pdf_salvati"] += int(receipt_saved)
         esito["pdf_salvati"] += await downloader.process_email(
             str(uid).encode(), msg, source_folder=cartella,
         )
@@ -2186,11 +2202,12 @@ async def _lotto_recupero_storico_con_lease(db) -> Dict[str, Any]:
         try:
             from app.services.verbali_pagamento_finder import normalizza_attese_quietanza
             await normalizza_attese_quietanza(db)
-            if not state.get("revisione_archivio"):
+            if state.get("revisione_archivio_versione") != 2:
                 from app.services.verbali_document_import import rivedi_verbali_archiviati
                 review = await rivedi_verbali_archiviati(db)
-                await db["sistema_stato"].update_one({"chiave": CHIAVE_RECUPERO_STORICO}, {"$set": {"revisione_archivio": review}})
+                await db["sistema_stato"].update_one({"chiave": CHIAVE_RECUPERO_STORICO}, {"$set": {"revisione_archivio": review, "revisione_archivio_versione": 2}})
                 state["revisione_archivio"] = review
+                state["revisione_archivio_versione"] = 2
             scan = await scarica_posta_con_cursori(
                 db, data_inizio=state["richiesto_dal"], stato_chiave=CHIAVE_RECUPERO_STORICO,
                 solo_storico=True, tipi_ammessi=TIPI_RECUPERO_STORICO,
@@ -2205,7 +2222,7 @@ async def _lotto_recupero_storico_con_lease(db) -> Dict[str, Any]:
                 "quietanze": await processa_quietanze_da_email(db),
             }
             totals = dict(state.get("totali") or {})
-            for key in ("controllati", "scaricati", "pdf_salvati", "comunicazioni_salvate", "errori"):
+            for key in ("controllati", "scaricati", "pdf_salvati", "comunicazioni_salvate", "ricevute_email_salvate", "errori"):
                 totals[key] = totals.get(key, 0) + scan.get(key, 0)
             failure = scan.get("success") is False or scan.get("errori", 0) > 0
             # Un lotto finale scarica anche eventuali code degli importatori (500/200).
