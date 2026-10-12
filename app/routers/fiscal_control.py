@@ -294,6 +294,21 @@ async def source_certainty(
     accountant_documents = group_model_rows(model_rows)
     result = reconcile_f24_sources(receipt_rows, accountant_documents)
     declarations = await list_declaration_dossiers(db, company_id=_company(), year=year)
+    lipe_periods = await db['lipe_periodi'].find({}, {'_id': 0}).to_list(None)
+    lipe_primary = {}
+    lipe_registered = set()
+    lipe_registered_shas = set()
+    for period in lipe_periods:
+        for source in [period, *(period.get('fonti_alternative') or [])]:
+            if source.get('source_sha256'):
+                lipe_registered_shas.add(source['source_sha256'])
+            if source.get('source_document_id'):
+                lipe_registered.add(source['source_document_id'])
+        if period.get('source_document_id') and period.get('quadratura_ok') and not period.get('conflitto_fonti'):
+            lipe_primary.setdefault(period['source_document_id'], []).append(period['periodo'])
+    lipe_version_ids = [d.get('current_version_id') for d in declarations if d.get('document_type') == 'LIPE' and d.get('current_version_id')]
+    lipe_versions = await db['fiscal_document_versions'].find({'id': {'$in': lipe_version_ids}}, {'id': 1, 'sha256': 1}).to_list(None) if lipe_version_ids else []
+    lipe_sha_by_version = {v['id']: v.get('sha256') for v in lipe_versions}
     declaration_items = annotate_declaration_certainty([{
         "document_id": item.get("id"),
         "document_type": item.get("document_type"),
@@ -301,6 +316,8 @@ async def source_certainty(
         "tax_year": item.get("tax_year"),
         "filename": item.get("filename"),
         "protocol": item.get("protocol"),
+        "lipe_source_registered": item.get('id') in lipe_registered or lipe_sha_by_version.get(item.get('current_version_id')) in lipe_registered_shas,
+        "lipe_vigent_periods": lipe_primary.get(item.get('id'), []),
         # Registrata in fiscal_documents con una versione: il deposito e'
         # l'indice, e l'originale si legge per id, non per nome.
         "relation_state": "CONFERMATA_NOME_UNIVOCO_E_INDICE_VERIFICATO"

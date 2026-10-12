@@ -115,6 +115,10 @@ async def deposita_lipe(
                 alternatives = [source if a.get('source_sha256') == digest else a for a in alternatives]
             old_date = esistente.get('data_presentazione')
             if same and data_presentazione:
+                if not esistente.get('source_document_id') and source_document_id and esistente.get('source_sha256') != digest:
+                    previous_source = {k: v for k, v in esistente.items() if k not in {'fonti_alternative', '_id', 'id'}}
+                    if not any(a.get('source_sha256') == previous_source.get('source_sha256') for a in alternatives):
+                        alternatives.append(previous_source)
                 latest = max(data_presentazione, old_date or data_presentazione)
                 differing = [a for a in alternatives if any(a.get(field) != esistente.get(field) for field in fields)]
                 unresolved = any(not a.get('data_presentazione') or a['data_presentazione'] >= latest for a in differing)
@@ -126,6 +130,9 @@ async def deposita_lipe(
                         'data_presentazione_fonte': 'conferma_titolare',
                         'data_presentazione_source_sha256': digest, 'riferimento_cassetto': riferimento_cassetto,
                         'conflitto_fonti': unresolved,
+                        **({'source_document_id': source_document_id, 'source_sha256': digest,
+                            'drive_file_id': drive_file_id, 'source_page': periodo_letto.get('pagina'),
+                            'nome_file': nome_file} if not esistente.get('source_document_id') and source_document_id else {}),
                     }})
                 fonti_aggiunte.append(periodo)
                 if unresolved: conflitti.append(periodo)
