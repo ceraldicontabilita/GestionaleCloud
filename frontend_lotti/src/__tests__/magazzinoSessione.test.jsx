@@ -2,17 +2,19 @@ import React, { act } from "react";
 import { createRoot } from "react-dom/client";
 import axios from "axios";
 import MagazzinoBarView from "../components/haccp/MagazzinoBarView";
-import { saveToken } from "../auth";
-import { clearTabletSession, saveTabletSession } from "../utils/tabletSession";
+import { saveToken, saveRuolo } from "../auth";
+import { allineaSessioneTitolare, clearTabletSession, saveTabletSession } from "../utils/tabletSession";
 
 jest.mock("axios");
 global.IS_REACT_ACT_ENVIRONMENT = true;
 
-test("il prelievo usa il dipendente della sessione senza richiedere un secondo PIN", async () => {
+test.each(["operatore", "amministratore"])("il prelievo usa la sessione %s senza richiedere un secondo PIN", async (ruolo) => {
   localStorage.clear();
   clearTabletSession();
   saveToken("token-di-test");
-  saveTabletSession({ dipendente_id: "hr-1", nome: "Operatore Uno", ruolo: "operatore" }, "magazzino");
+  saveRuolo(ruolo);
+  if (ruolo === "amministratore") allineaSessioneTitolare({ actor_id: "erp:1", nome: "Titolare", ruolo, via: "sessione_erp" }, "magazzino");
+  else saveTabletSession({ dipendente_id: "hr-1", nome: "Operatore Uno", ruolo }, "magazzino");
   axios.get.mockImplementation((url) => {
     if (url.includes("prodotti-unificati")) {
       return Promise.resolve({ data: [{ id: "p-1", nome: "Farina", source: "bar", stock: 10, unita: "kg" }] });
@@ -29,7 +31,7 @@ test("il prelievo usa il dipendente della sessione senza richiedere un secondo P
     await act(async () => [...node.querySelectorAll("button")].find((b) => b.textContent.includes("Preleva")).click());
     await act(async () => [...node.querySelectorAll("button")].find((b) => b.textContent === "Scarica").click());
     expect(axios.post).toHaveBeenCalledWith(expect.stringContaining("/magazzino/scarico"),
-      expect.objectContaining({ prodotto_id: "p-1", operatore_nome: "Operatore Uno" }),
+      expect.objectContaining({ prodotto_id: "p-1", operatore_nome: ruolo === "amministratore" ? "Titolare" : "Operatore Uno" }),
       expect.any(Object));
     expect(node.textContent).not.toContain("Conferma il tuo PIN");
   } finally {

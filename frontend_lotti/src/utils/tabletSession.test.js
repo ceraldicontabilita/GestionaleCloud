@@ -3,8 +3,11 @@ import {
   getTabletSession,
   moveTabletSessionTo,
   saveTabletSession,
+  allineaSessioneTitolare,
+  ripristinaSessioneTitolare,
 } from "./tabletSession";
-import { getToken, saveToken } from "../auth";
+import { getToken, saveToken, saveRuolo, logout } from "../auth";
+import axios from "axios";
 
 describe("tabletSession", () => {
   beforeEach(() => {
@@ -12,6 +15,51 @@ describe("tabletSession", () => {
     sessionStorage.clear();
     clearTabletSession();
     saveToken("token-di-test");
+  });
+  afterEach(() => jest.restoreAllMocks());
+
+  const titolare = { actor_id: "erp:admin-1", dipendente_id: null, nome: "Titolare", ruolo: "amministratore", via: "sessione_erp" };
+
+  test("il titolare senza scheda HR resta identificato cambiando reparto", () => {
+    saveRuolo("amministratore");
+    allineaSessioneTitolare(titolare, "home");
+    moveTabletSessionTo("magazzino");
+    expect(getTabletSession()).toMatchObject({ ...titolare, reparto: "magazzino" });
+    moveTabletSessionTo("ordini");
+    expect(getTabletSession().reparto).toBe("ordini");
+  });
+
+  test("il titolare non eredita identità o limiti del precedente operatore", () => {
+    saveTabletSession({ dipendente_id: "hr-1", nome: "Mario", ruolo: "operatore", reparto_pin: "bar", reparti_ammessi: ["bar"] }, "bar");
+    saveRuolo("amministratore");
+    allineaSessioneTitolare(titolare, "magazzino");
+    expect(getTabletSession()).toMatchObject(titolare);
+    expect(getTabletSession()).not.toHaveProperty("reparto_pin");
+    expect(getTabletSession()).not.toHaveProperty("reparti_ammessi");
+  });
+
+  test("un dipendente non usa un'identità ERP senza scheda HR", () => {
+    saveRuolo("operatore");
+    expect(() => saveTabletSession(titolare, "magazzino")).toThrow();
+  });
+
+  test("recupera l'identità del token amministratore esistente dal server", async () => {
+    saveRuolo("amministratore");
+    jest.spyOn(axios, "get").mockResolvedValue({ data: { user: titolare } });
+    await ripristinaSessioneTitolare();
+    expect(getTabletSession()).toMatchObject(titolare);
+  });
+
+  test("una risposta in ritardo non annulla il logout", async () => {
+    saveRuolo("amministratore");
+    let rispondi;
+    jest.spyOn(axios, "get").mockReturnValue(new Promise(resolve => { rispondi = resolve; }));
+    const richiesta = ripristinaSessioneTitolare();
+    logout();
+    rispondi({ data: { user: titolare } });
+    await expect(richiesta).rejects.toThrow("Sessione cambiata");
+    expect(getTabletSession()).toBeNull();
+    expect(getToken()).toBe("");
   });
 
   test("mantiene la persona quando cambia reparto", () => {

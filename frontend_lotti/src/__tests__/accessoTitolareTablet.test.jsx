@@ -114,11 +114,14 @@ describe("card riservate al titolare e cambio reparto", () => {
 
   test("il titolare entrato dal Gestionale non eredita l'identità del dipendente", async () => {
     saveTabletSession({ dipendente_id: "hr-mario", nome: "Mario", ruolo: "operatore" }, "pasticceria");
-    jest.spyOn(authLotti, "entraDalGestionale").mockResolvedValue({ nome: "Titolare", ruolo: "amministratore", dipendente_id: null });
+    jest.spyOn(authLotti, "entraDalGestionale").mockImplementation(async () => {
+      saveRuolo("amministratore");
+      return { nome: "Titolare", ruolo: "amministratore", dipendente_id: null, actor_id: "erp:1", via: "sessione_erp" };
+    });
     await act(async () => root.render(<TabletHome />));
     await act(async () => card("Ordini").click());
     expect(window.location.hash).toBe("#tablet/ordini");
-    expect(getTabletSession()).toBeNull();
+    expect(getTabletSession()).toMatchObject({ nome: "Titolare", dipendente_id: null, actor_id: "erp:1" });
   });
 
   test("tornando dal login senza sessione non si rimanda di nuovo al login", async () => {

@@ -567,7 +567,8 @@ async def sessione_dal_gestionale(request: Request):
         sub, nome, dipendente_id = f"erp:{identita['user_id']}", identita["name"], None
     return {
         "token": make_token(sub, nome, "amministratore", via="sessione_erp", sid=identita["sid"]),
-        "operatore": {"nome": nome, "ruolo": "amministratore", "dipendente_id": dipendente_id},
+        "operatore": {"nome": nome, "ruolo": "amministratore", "dipendente_id": dipendente_id,
+                      "actor_id": sub, "via": "sessione_erp"},
     }
 
 
@@ -580,7 +581,8 @@ async def me(request: Request):
 
     profilo = await profilo_da_token(data)
     return {"ok": True,
-            "user": {"dipendente_id": data.get("sub"), "nome": data.get("nome"), "ruolo": data.get("ruolo"), "via": data.get("via")},
+            "user": {"dipendente_id": None if str(data.get("sub", "")).startswith("erp:") else data.get("sub"),
+                     "actor_id": data.get("sub"), "nome": data.get("nome"), "ruolo": data.get("ruolo"), "via": data.get("via")},
             "profilo": ruoli.profilo_ruolo(profilo["ruolo"], profilo["reparti"]) if profilo else None}
 
 

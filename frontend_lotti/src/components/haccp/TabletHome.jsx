@@ -312,7 +312,8 @@ export default function TabletHome({ onEntra, preselectReparto, hashRichiesto = 
     try {
       const risposta = await axios.get(`${API}/auth/me`);
       const utente = risposta.data?.user;
-      if (utente?.ruolo === "amministratore" && utente?.dipendente_id === corrente.dipendente_id) {
+      const identita = utente?.actor_id || utente?.dipendente_id;
+      if (utente?.ruolo === "amministratore" && identita && identita === (corrente.actor_id || corrente.dipendente_id)) {
         handleEsciAdmin();
       } else {
         authLotti.vaiAlLoginGestionale("/lotti/#dashboard");
