@@ -82,3 +82,38 @@ def test_sync_email_documents_enqueues_retry_on_transient_errors(monkeypatch):
     retry = _run(db["email_retry_queue"].find_one({"execution_id": result["execution_id"]}))
     assert retry is not None
     assert retry["retry_after_seconds"] > 0
+
+
+def test_download_rifiutato_non_diventa_un_successo_vuoto(monkeypatch):
+    db = _Db()
+    async def failed_download(**kwargs):
+        return {"success": False, "error": "IMAP login denied", "stats": {}}
+    monkeypatch.setattr(monitor, "_build_gmail_credentials", lambda *a, **k: ("user", "pass", "imap.gmail.com"))
+    monkeypatch.setattr(monitor, "_load_allowed_gmail_patterns", lambda *a, **k: ["@example.com"])
+    monkeypatch.setattr(monitor, "_download_email_batch", failed_download)
+    result = _run(monitor.sync_email_documents(db, giorni=1))
+    assert result["success"] is False
+    run = _run(db["email_monitor_runs"].find_one({"execution_id": result["execution_id"]}))
+    assert run["status"] == "failed"
+    assert "last_successful_run_at" not in run
+
+
+def test_scansione_completa_usa_password_salvata(monkeypatch):
+    from app.services import email_full_download as full
+    import app.services.gmail_credentials as credentials
+    db = _Db()
+    scanner = full.EmailFullDownloader(db)
+    async def saved(_db):
+        return ("mail@example.test", "password-fixture", "imap.gmail.com")
+    monkeypatch.setattr(monitor, "_build_gmail_credentials", saved)
+    monkeypatch.setattr(credentials, "candidate_gmail_credentials", lambda: [])
+    calls = []
+    class Connection:
+        def __init__(self, host, timeout):
+            calls.append((host, timeout))
+        def login(self, user, password):
+            calls.append((user, password))
+    monkeypatch.setattr(full.imaplib, "IMAP4_SSL", Connection)
+    _run(scanner.prepare_credentials())
+    assert scanner.connect()
+    assert calls == [("imap.gmail.com", 20), ("mail@example.test", "password-fixture")]

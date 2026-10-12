@@ -178,7 +178,7 @@ def test_login_prova_la_password_per_app_anche_se_imap_password_e_vecchia(monkey
     tentativi = []
 
     class FintoIMAP:
-        def __init__(self, host):
+        def __init__(self, host, timeout=20):
             pass
 
         def login(self, utente, password):

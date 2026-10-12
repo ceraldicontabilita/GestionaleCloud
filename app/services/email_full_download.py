@@ -220,6 +220,7 @@ class EmailFullDownloader:
     def __init__(self, db: ArchivioDocumenti):
         self.db = db
         self.connection = None
+        self._saved_credentials = None
         self.stats = {
             "emails_processed": 0,
             "pdfs_downloaded": 0,
@@ -442,6 +443,11 @@ class EmailFullDownloader:
         self._cached_trusted_senders = senders
         return senders
 
+    async def prepare_credentials(self):
+        """Usa anche la password cifrata salvata nella pagina Gmail."""
+        from app.services.email_monitor_service import _build_gmail_credentials
+        self._saved_credentials = await _build_gmail_credentials(self.db)
+
     def connect(self) -> bool:
         """Connette al server IMAP."""
         from app.services.gmail_credentials import (
@@ -449,6 +455,12 @@ class EmailFullDownloader:
         )
 
         coppie = candidate_gmail_credentials()
+        if self._saved_credentials:
+            user, password, host = self._saved_credentials
+            if user and password:
+                coppie = [(user, password, "settings.imap_user", "settings.gmail_app_password")] + [
+                    c for c in coppie if (c[0], c[1]) != (user, password)
+                ]
         if not coppie:
             logger.error("Errore connessione IMAP: credenziali email non configurate")
             self.stats["errors"].append("Connessione: credenziali email non configurate")
@@ -456,7 +468,8 @@ class EmailFullDownloader:
         ultimo_errore = ""
         for utente, password, var_utente, var_password in coppie:
             try:
-                connessione = imaplib.IMAP4_SSL(IMAP_SERVER)
+                host = self._saved_credentials[2] if self._saved_credentials and var_utente == "settings.imap_user" else IMAP_SERVER
+                connessione = imaplib.IMAP4_SSL(host, timeout=20)
                 connessione.login(utente, password)
             except Exception as e:
                 ultimo_errore = f"{type(e).__name__}: {e}"
@@ -929,7 +942,8 @@ class EmailFullDownloader:
           cartelle esattoriali, certificati medici
         - Filtra per parole chiave amministrative e mittenti attendibili
         """
-        if not self.connect():
+        await self.prepare_credentials()
+        if not await asyncio.to_thread(self.connect):
             return {"success": False, "error": "Connessione IMAP fallita", "stats": self.stats}
 
         # Aggiungi stats per cartelle
@@ -993,7 +1007,8 @@ class EmailFullDownloader:
         """
         Scarica email di un singolo giorno specifico da TUTTE le cartelle.
         """
-        if not self.connect():
+        await self.prepare_credentials()
+        if not await asyncio.to_thread(self.connect):
             return {"success": False, "error": "Connessione IMAP fallita"}
 
         try:
@@ -1902,6 +1917,7 @@ async def scarica_posta_con_cursori(
         "cartelle": 0, "controllati": 0, "scaricati": 0, "pdf_salvati": 0,
         "errori": 0, "storico_completo": False, "interrotto_per_tetto": False,
     }
+    await downloader.prepare_credentials()
     connesso = await asyncio.to_thread(downloader.connect)
     if not connesso:
         motivo = (downloader.stats.get("errors") or ["accesso rifiutato"])[-1]

@@ -353,6 +353,16 @@ async def sync_email_documents(db, giorni: int = 30, execution_id: Optional[str]
         await finalize_email_monitor_run(db, execution_id, status="failed", counters={"new_documents": 0, "xml_processed": 0}, error=str(exc))
         return {"success": False, "status": "transient_error", "execution_id": execution_id, "error": str(exc), "retry_after_seconds": 600}
 
+    if result.get("success") is False:
+        error = "Download Gmail fallito: verificare accesso IMAP e credenziali"
+        await finalize_email_monitor_run(
+            db, execution_id, status="failed",
+            counters={"new_documents": 0, "xml_processed": 0}, error=error,
+        )
+        logger.error("[Gmail] %s", error)
+        return {"success": False, "status": "download_failed",
+                "execution_id": execution_id, "error": error}
+
     stats = result.get("stats", {})
     new_docs = stats.get("new_documents", 0)
     xml_processed = 0

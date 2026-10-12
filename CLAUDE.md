@@ -19,6 +19,8 @@ Produzione:
 
 # 1. Scopo di questo file
 
+Verifica Gmail del 12/10/2026: la casella configurata in produzione è `ceraldigroupsrl@gmail.com`; è distinta dall'account OAuth Drive. Il test IMAP rifiuta la password attuale. La scansione completa legge anche la credenziale cifrata salvata in Impostazioni Gmail prima degli alias di ambiente; un download che restituisce `success=false` chiude il monitor come fallito e non come sincronizzazione vuota riuscita. Una Password per le app valida deve essere salvata per la casella corretta prima di certificare l'importazione email.
+
 Questo file è la **fonte normativa del repository**.
 
 Contiene:
