@@ -395,7 +395,15 @@ def valuta_iva_fattura(
         profilo = {}
     ammessi = profilo.get("centri_costo_ammessi") or []
     if ammessi and cdc_id not in ammessi and cdc_config.get("codice") not in ammessi:
-        return esito(None, "Contenuto della fattura non coerente con il profilo del fornitore")
+        if (contesto.get("inerente") is not True or not classificazioni_righe
+                or any(r.get("richiede_verifica") or not risolvi_centro_costo(
+                    r.get("centro_costo_id") or "")[1] for r in classificazioni_righe)):
+            return esito(None, "Contenuto della fattura non coerente con il profilo del fornitore")
+        # Il catalogo web puo' essere incompleto: una decisione documentata
+        # sull'acquisto reale prevale sulla gamma merceologica candidata.
+        # I vincoli di auto/telefonia/pro rata vengono comunque valutati sotto.
+        audit["gamma_fornitore_superata_da_documento"] = True
+        profilo = {**profilo, "regola_iva": "beni_servizi_misti"}
     pct_cdc = _frazione(cdc_config.get("detraibilita_iva"))
     righe = classificazioni_righe or []
     for riga in righe:
@@ -407,6 +415,10 @@ def valuta_iva_fattura(
             return esito(None, "Righe con trattamento IVA diverso: valutazione separata necessaria")
 
     regola = profilo.get("regola_iva") or "ordinaria_documento"
+    if regola == "merci_attivita" and not cdc_id.startswith("1."):
+        # Alcuni grossisti vendono anche detergenza o attrezzature. La stessa
+        # anagrafica non puo' rendere impossibile confermare quelle righe.
+        regola = "beni_servizi_misti"
     condizionale = (regola in {"telefonia", "noleggio_veicoli"}
                    or cdc_id in {"10.1_TELEFONIA", "6.1_NOLEGGIO_AUTO", "6.2_CARBURANTE", "6.4_MANUTENZIONE_AUTO"}
                    or contesto.get("pro_rata_applicabile") is True)

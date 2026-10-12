@@ -64,6 +64,24 @@ def contesto(**extra):
             "validita_fiscale": VALIDITA, "inerente": True, **extra}
 
 
+def test_grossista_alimentare_puo_vendere_detergenza_documentata():
+    cdc = "12.1_PULIZIA_LOCALE"
+    p = profilo(centri_costo_ammessi=[MERCI, cdc])
+    inv = invoice(linee=[{"descrizione": "Detersivo lavastoviglie"}],
+                  contesto_fiscale_iva=contesto())
+    assert valutazione(p, inv, cdc)["percentuale_detraibilita_iva"] == 1.0
+    assert valutazione(p, invoice(linee=inv["linee"]), cdc)["iva_detraibile"] is None
+
+
+def test_gamma_web_superata_da_prova_non_elimina_vincoli_telefonia():
+    inv = invoice(linee=[{"descrizione": "Canone telefonia"}],
+                  contesto_fiscale_iva=contesto(percentuale_utilizzo_aziendale=0.8))
+    esito = valutazione(profilo(), inv, "10.1_TELEFONIA")
+    assert esito["percentuale_detraibilita_iva"] == 0.8
+    assert esito["valutazione_fiscale_iva"]["gamma_fornitore_superata_da_documento"] is True
+    assert valutazione(profilo(), invoice(linee=inv["linee"]), "10.1_TELEFONIA")["iva_detraibile"] is None
+
+
 def test_importa_solo_master_exact_anteprima_idempotenza_e_profilo_manual_protetto(monkeypatch):
     db = db_profilo()
     run(db[Collections.SUPPLIERS].update_one({"id": "s-1"}, {"$unset": {"profilo_fiscale": ""}}))

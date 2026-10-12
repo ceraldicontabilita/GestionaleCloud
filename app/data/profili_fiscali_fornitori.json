@@ -1150,6 +1150,7 @@
       "identita_verificata": true,
       "regola_iva": "beni_servizi_misti",
       "centri_costo_ammessi": [
+        "15.1_ACQUISTO_BENI_STRUMENTALI",
         "5.3_PICCOLE_ATTREZZATURE"
       ],
       "ricerca": {
@@ -1715,6 +1716,7 @@
       "identita_verificata": true,
       "regola_iva": "beni_servizi_misti",
       "centri_costo_ammessi": [
+        "15.1_ACQUISTO_BENI_STRUMENTALI",
         "5.3_PICCOLE_ATTREZZATURE",
         "5.4_MANUTENZIONE_LOCALI"
       ],
@@ -2277,6 +2279,7 @@
       "identita_verificata": true,
       "regola_iva": "beni_servizi_misti",
       "centri_costo_ammessi": [
+        "15.1_ACQUISTO_BENI_STRUMENTALI",
         "5.3_PICCOLE_ATTREZZATURE",
         "5.4_MANUTENZIONE_LOCALI"
       ],
@@ -4087,6 +4090,7 @@
       "regola_iva": "beni_servizi_misti",
       "centri_costo_ammessi": [
         "13.1_IMBALLAGGI",
+        "15.1_ACQUISTO_BENI_STRUMENTALI",
         "5.3_PICCOLE_ATTREZZATURE"
       ],
       "note": "Distinguere piccoli utensili, monouso/imballaggi e attrezzature durevoli da iscrivere tra i cespiti. La detrazione IVA non segue l'aliquota d'ammortamento; verificare destinazione aziendale e righe.",
@@ -5664,6 +5668,7 @@
       "identita_verificata": true,
       "regola_iva": "beni_servizi_misti",
       "centri_costo_ammessi": [
+        "15.1_ACQUISTO_BENI_STRUMENTALI",
         "5.3_PICCOLE_ATTREZZATURE"
       ],
       "note": "Distinguere acquisto hardware durevole/cespite da materiali di consumo o abbonamento. L'ammortamento del costo non determina la percentuale IVA; detrazione dall'uso aziendale e dalle eventuali limitazioni reali.",
@@ -6587,6 +6592,7 @@
       "identita_verificata": true,
       "regola_iva": "beni_servizi_misti",
       "centri_costo_ammessi": [
+        "15.1_ACQUISTO_BENI_STRUMENTALI",
         "5.3_PICCOLE_ATTREZZATURE",
         "5.4_MANUTENZIONE_LOCALI"
       ],
@@ -6793,6 +6799,7 @@
       "identita_verificata": true,
       "regola_iva": "beni_servizi_misti",
       "centri_costo_ammessi": [
+        "15.1_ACQUISTO_BENI_STRUMENTALI",
         "5.3_PICCOLE_ATTREZZATURE",
         "5.4_MANUTENZIONE_LOCALI"
       ],
@@ -7291,6 +7298,7 @@
       "identita_verificata": true,
       "regola_iva": "beni_servizi_misti",
       "centri_costo_ammessi": [
+        "15.1_ACQUISTO_BENI_STRUMENTALI",
         "5.3_PICCOLE_ATTREZZATURE"
       ],
       "ricerca": {
@@ -7435,6 +7443,7 @@
       "identita_verificata": true,
       "regola_iva": "beni_servizi_misti",
       "centri_costo_ammessi": [
+        "15.1_ACQUISTO_BENI_STRUMENTALI",
         "5.3_PICCOLE_ATTREZZATURE"
       ],
       "ricerca": {
@@ -7923,6 +7932,7 @@
       "identita_verificata": true,
       "regola_iva": "beni_servizi_misti",
       "centri_costo_ammessi": [
+        "15.1_ACQUISTO_BENI_STRUMENTALI",
         "5.3_PICCOLE_ATTREZZATURE",
         "5.4_MANUTENZIONE_LOCALI"
       ],
@@ -9802,6 +9812,7 @@
       "identita_verificata": true,
       "regola_iva": "beni_servizi_misti",
       "centri_costo_ammessi": [
+        "15.1_ACQUISTO_BENI_STRUMENTALI",
         "5.3_PICCOLE_ATTREZZATURE",
         "5.4_MANUTENZIONE_LOCALI"
       ],
@@ -10622,6 +10633,7 @@
       "identita_verificata": true,
       "regola_iva": "beni_servizi_misti",
       "centri_costo_ammessi": [
+        "15.1_ACQUISTO_BENI_STRUMENTALI",
         "5.3_PICCOLE_ATTREZZATURE",
         "5.4_MANUTENZIONE_LOCALI"
       ],
@@ -10791,6 +10803,7 @@
       "identita_verificata": true,
       "regola_iva": "beni_servizi_misti",
       "centri_costo_ammessi": [
+        "15.1_ACQUISTO_BENI_STRUMENTALI",
         "5.3_PICCOLE_ATTREZZATURE"
       ],
       "ricerca": {
@@ -11297,6 +11310,7 @@
       "identita_verificata": true,
       "regola_iva": "beni_servizi_misti",
       "centri_costo_ammessi": [
+        "15.1_ACQUISTO_BENI_STRUMENTALI",
         "5.3_PICCOLE_ATTREZZATURE",
         "5.4_MANUTENZIONE_LOCALI"
       ],

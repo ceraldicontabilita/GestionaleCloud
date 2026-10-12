@@ -24,3 +24,25 @@ def test_sigle_corte_non_corrispondono_a_parti_di_parole():
 def test_telefonia_reale_restera_telefonia():
     centro, _, _ = lm.classifica_fattura_per_centro_costo("TIM S.p.A.", "Canone fibra internet")
     assert centro == "10.1_TELEFONIA"
+
+
+def test_acquisto_condizionatore_taxonomia_cespite_senza_deduzione_immediata():
+    righe = [{"descrizione": "Condizionatore split Daikin", "prezzo_totale": 1500}]
+    centro, config, confidence = lm.classifica_fattura_per_centro_costo("Fornitore Test Srl", "", righe)
+    assert centro == "15.1_ACQUISTO_BENI_STRUMENTALI"
+    assert config["detraibilita_iva"] == 1 and config["deducibilita_ires"] == 0
+    assert config["deduzione_per_ammortamento"] is True and confidence >= 0.6
+    assert lm.contenuto_decide_con_margine("", "", righe) is True
+
+
+def test_cespite_ordinario_non_confuso_con_manutenzione_noleggio_auto_o_righe_miste():
+    for testo in ("Manutenzione condizionatore split Daikin", "Canone noleggio condizionatore split Daikin",
+                  "Acquisto autovettura nuova", "Acquisto immobile strumentale",
+                  "Computer tablet smartphone iPhone"):
+        assert not lm._righe_beni_strumentali([{"descrizione": testo, "prezzo_totale": 1500}])
+    assert not lm._righe_beni_strumentali([
+        {"descrizione": "Condizionatore split Daikin", "prezzo_totale": 1500},
+        {"descrizione": "Articolo non identificato", "prezzo_totale": 1000},
+    ])
+    assert not lm._righe_beni_strumentali([{"descrizione": "Condizionatore split Daikin", "prezzo_totale": 500}])
+    assert not lm._righe_beni_strumentali([{"descrizione": "Condizionatore split Daikin", "prezzo_totale": float("inf")}])
