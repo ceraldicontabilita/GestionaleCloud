@@ -381,11 +381,32 @@ async def _atto(db, ident: str, indice: int) -> Originale:
 async def _cartella(db, ident: str, indice: int) -> Originale:
     from app.services.cartelle_pagamento import contenuto
 
+    documento = await db["cartelle_pagamento"].find_one({"id": ident}, {"_id": 0, "sha256": 1, "nome": 1})
+    impronta = str((documento or {}).get("sha256") or "").strip().lower()
     trovato = await contenuto(db, ident)
+    fonte = "blob"
+    provato = ["drive_file_id", "blob_key", "contenuto_b64"]
+    if not trovato and re.fullmatch(r"[0-9a-f]{64}", impronta):
+        # Una copia Drive eliminata come doppione puo' lasciare un vecchio id
+        # sulla cartella. Il registro conserva la copia viva dello stesso PDF.
+        # Non chiamare apri_per_impronta: include questo lettore e ricorrerebbe.
+        from app.services import drive_cartella_unica as cu
+
+        provato.append("cartella_unica:sha256")
+        try:
+            copia = await cu.originale(db, sha256=impronta)
+        except RuntimeError:
+            copia = None
+        if copia and copia.get("contenuto"):
+            trovato = (copia["contenuto"], (documento or {}).get("nome") or copia.get("nome"))
+            fonte = "drive"
     if not trovato:
-        raise OriginaleNonDisponibile("Originale non disponibile", {"tipo": "cartella", "id": ident, "provato": ["blob_key", "contenuto_b64"]})
+        raise OriginaleNonDisponibile("Originale non disponibile", {"tipo": "cartella", "id": ident, "provato": provato})
     dati, nome = trovato
-    return Originale(dati, _nome_pulito(nome, "cartella.pdf"), "application/pdf", "blob")
+    if impronta and hashlib.sha256(dati).hexdigest() != impronta:
+        raise OriginaleNonCorrispondente("Il file trovato non e' quello registrato (SHA-256 diverso): non si apre", {
+            "tipo": "cartella", "id": ident, "fonte": fonte})
+    return Originale(dati, _nome_pulito(nome, "cartella.pdf"), "application/pdf", fonte)
 
 
 async def _estratto(db, ident: str, indice: int) -> Originale:
