@@ -604,7 +604,18 @@ async def registra_fattura(db, fattura: Dict[str, Any], *, force: bool = False,
         return {"stato": "da_verificare",
                 "motivo": "fattura senza data documento: anno di registrazione ignoto"}
 
-    costo_contabile = imponibile + iva_indetraibile
+    # Ricalcola dalle righe, mai da un importo contabile fornito dal client.
+    from app.services.fattura_totali import verifica_totali
+    componenti_totali = verifica_totali({**fattura, "imponibile": str(imponibile),
+                                       "iva": str(iva), "total_amount": str(importo_totale)})
+    controllo = componenti_totali.get("controllo_totali") or {}
+    sconto_merce = zero
+    arrotondamento_xml = zero
+    if componenti_totali.get("totali_coerenti"):
+        sconto_merce = _decimale(componenti_totali.get("sconto_merce", 0))
+        arrotondamento_xml = _decimale(controllo.get("rettifica_arrotondamento_xml", 0))
+    imponibile_contabile = imponibile - sconto_merce
+    costo_contabile = imponibile_contabile + iva_indetraibile
     if is_nota_credito:
         # Audit 19/09/2026 (punto 4, guardia difensiva): una nota di credito
         # ricevuta non capitalizza mai un cespite, nemmeno se un record
@@ -667,6 +678,18 @@ async def registra_fattura(db, fattura: Dict[str, Any], *, force: bool = False,
             "riduzione debito v/fornitore" if is_nota_credito else "Debito v/fornitore"
         ),
     })
+    if sconto_merce and righe:
+        righe[0]["descrizione"] += f" (sconto merce SC {sconto_merce:.2f}; IVA a carico)"
+    if arrotondamento_xml:
+        conto_arrotondamento = (_C_ARROTONDAMENTI_PASSIVI if arrotondamento_xml > zero
+                               else _C_ARROTONDAMENTI_ATTIVI)
+        lato = lato_costo if arrotondamento_xml > zero else lato_debito
+        righe.append({"conto_codice": conto_arrotondamento[0], "conto_nome": conto_arrotondamento[1],
+                      "dare": _euro(abs(arrotondamento_xml)) if lato == "dare" else 0,
+                      "avere": _euro(abs(arrotondamento_xml)) if lato == "avere" else 0,
+                      "centro_costo": None, "arrotondamento": True,
+                      "fonte_arrotondamento": "xml_dichiarato",
+                      "descrizione": "Arrotondamento dichiarato nell'XML"})
     # Audit 27/09/2026 (punto 5): costo = imponibile, debito = totale del
     # documento. Se i due lati non tornano (bollo, arrotondamenti, righe
     # escluse dall'imponibile) la scrittura NON si salva: resta da verificare
@@ -682,7 +705,7 @@ async def registra_fattura(db, fattura: Dict[str, Any], *, force: bool = False,
         }
     now = _now()
     fornitore_nome = fattura.get("supplier_name") or fattura.get("cedente_denominazione") or ""
-    totale_lato_costo = _euro(costo_residuo + quota_cespiti + iva_detraibile)
+    totale_lato_costo = _euro(costo_residuo + quota_cespiti + iva_detraibile + arrotondamento_xml)
     movimento = {
         "id": str(uuid.uuid4()),
         # Assegnato da _scrivi_movimento dopo la guardia di quadratura.
@@ -699,6 +722,8 @@ async def registra_fattura(db, fattura: Dict[str, Any], *, force: bool = False,
         "anno": anno,
         # Serializzazione (numeri a 2 decimali): da qui niente aritmetica.
         "importo_totale": _euro(importo_totale), "imponibile": _euro(imponibile),
+        "imponibile_contabile": _euro(imponibile_contabile),
+        "sconto_merce": _euro(sconto_merce), "controllo_totali": controllo,
         "iva": _euro(iva),
         "iva_detraibile": _euro(iva_detraibile), "iva_indetraibile": _euro(iva_indetraibile),
         "righe": righe,

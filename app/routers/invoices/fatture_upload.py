@@ -25,7 +25,9 @@ from app.services.archivio_documenti_memoria import DuplicateRecordError
 
 from app.constants.tipi_documento import TIPI_NOTA_CREDITO
 from app.database import Database, Collections
+from app.services.fattura_totali import CAMPI_CONTROLLO
 from app.utils.id_fattura import filtro_id
+from app.utils.dependencies import get_current_admin_user
 from app.engines.prima_nota_engine import (
     normalizza_metodo_pagamento,
 )
@@ -1461,6 +1463,7 @@ async def process_fattura_to_db(db, parsed: Dict[str, Any], filename: str = "upl
             "cliente": parsed.get("cliente", {}),
             "linee": parsed.get("linee", []),
             "riepilogo_iva": parsed.get("riepilogo_iva", []),
+            **{k: parsed[k] for k in CAMPI_CONTROLLO if k in parsed},
             "pagamento": parsed.get("pagamento", {}),
             "pagamento_rate": parsed.get("pagamento_rate", []),
             "pagamento_rate_totale": parsed.get("pagamento_rate_totale"),
@@ -2542,6 +2545,7 @@ async def import_parsed_invoice(db, parsed: Dict[str, Any], filename: str, sourc
         "cliente": parsed.get("cliente", {}),
         "linee": parsed.get("linee", []),
         "riepilogo_iva": parsed.get("riepilogo_iva", []),
+            **{k: parsed[k] for k in CAMPI_CONTROLLO if k in parsed},
         "descrizione_righe_ai": parsed.get("descrizione_righe_ai") or [],
         "pagamento_rate": parsed.get("pagamento_rate", []),
         "pagamento_rate_totale": parsed.get("pagamento_rate_totale"),
@@ -3539,3 +3543,11 @@ async def recalculate_iva_all_invoices() -> Dict[str, Any]:
         "fatture_aggiornate": updated_count,
         "errors": errors[:20] if errors else []
     }
+
+
+@router.post("/{invoice_id}/rivalida-totali")
+async def rivalida_totali_originale(invoice_id: str, dry_run: bool = Query(True),
+                                   _admin=Depends(get_current_admin_user)):
+    """Rivalida componenti documentate senza reimportare o generare pagamenti."""
+    from app.services.fattura_totali import rivalida_originale
+    return await rivalida_originale(Database.get_db(), invoice_id, dry_run=dry_run)

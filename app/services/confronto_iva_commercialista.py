@@ -166,7 +166,7 @@ def confronta_periodo(
     }
 
 
-async def confronto_mensile(db, anno: int) -> Dict[str, Any]:
+async def confronto_mensile(db, anno: int, *, oggi=None) -> Dict[str, Any]:
     """Dodici righe di confronto per l'anno richiesto.
 
     LIPE e versamenti vengono dal motore degli incroci (una lettura sola del
@@ -174,6 +174,10 @@ async def confronto_mensile(db, anno: int) -> Dict[str, Any]:
     """
     from app.services.iva_liquidation_query import get_iva_period_snapshot
 
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+    from app.services.scadenze_lipe import attesa_lipe
+    oggi = oggi or datetime.now(ZoneInfo('Europe/Rome')).date()
     quadro = await incroci(db, anni=[anno])
     lipe_per_periodo: Dict[str, Dict[str, Any]] = {}
     async for doc in db[COLL_LIPE].find({"periodo": {"$regex": f"^{anno}"}}, {"_id": 0}):
@@ -200,9 +204,13 @@ async def confronto_mensile(db, anno: int) -> Dict[str, Any]:
             logger.warning("Confronto IVA %s: gestionale non leggibile: %s: %s",
                            periodo, type(exc).__name__, exc)
             nostro = None
-        righe.append(confronta_periodo(
-            periodo, nostro, lipe_per_periodo.get(periodo), f24_per_periodo.get(periodo),
-        ))
+        riga = confronta_periodo(periodo, nostro, lipe_per_periodo.get(periodo), f24_per_periodo.get(periodo))
+        calendario = attesa_lipe(anno, mese, oggi, presente=bool(lipe_per_periodo.get(periodo)))
+        riga['presentazione_lipe'] = calendario
+        if calendario['stato'] == 'in_attesa_scadenza':
+            riga['esito'] = 'lipe_in_attesa_scadenza'
+            riga['f24']['nota'] = 'lipe_in_attesa_scadenza'
+        righe.append(riga)
 
     conteggi: Dict[str, int] = {}
     for riga in righe:

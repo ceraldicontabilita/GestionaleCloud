@@ -329,8 +329,17 @@ async def _documento_fiscale(db, ident: str, indice: int) -> Originale:
     per_impronta = (await db["documents_inbox"].find_one(
         {"company_id": azienda, "$or": [{"sha256": impronta}, {"file_hash": impronta}]}, {"_id": 0})
         if impronta else None)
+    # Quietanze importate nel dominio fiscale conservano lo stesso PDF nel
+    # registro canonico F24, senza duplicarne il payload. Si risolve SOLO per
+    # SHA-256 della versione corrente, mai per nome, data o importo simile.
+    quietanze_per_impronta = []
+    if impronta and re.fullmatch(r"[0-9a-fA-F]{64}", str(impronta)):
+        quietanze_per_impronta = await db["quietanze_f24"].find(
+            {"$and": [{"$or": [{"pdf_hash": impronta}, {"source_sha256": impronta}]},
+                      {"$or": [{"company_id": azienda}, {"company_id": None}, {"company_id": ""}]}]}, {"_id": 0}
+        ).to_list(20)
     errore_impronta = None
-    for candidato in (sorgente, per_impronta, documento):
+    for candidato in (sorgente, per_impronta, *quietanze_per_impronta, documento):
         if candidato:
             try:
                 return await _da_record(candidato, predefinito="documento.pdf", tipo="documento_fiscale", ident=ident,

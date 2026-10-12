@@ -416,6 +416,7 @@ def _parse_body(body, fornitore, cliente, find_element, find_all_elements, get_t
 
         linea_data = {
             "numero_linea": get_text(linea, 'NumeroLinea'),
+            "tipo_cessione_prestazione": get_text(linea, 'TipoCessionePrestazione'),
             "descrizione": descrizione,
             "quantita": get_text(linea, 'Quantita', '1'),
             "unita_misura": get_text(linea, 'UnitaMisura'),
@@ -439,6 +440,7 @@ def _parse_body(body, fornitore, cliente, find_element, find_all_elements, get_t
             "natura": get_text(riepilogo, 'Natura'),
             "imponibile": get_text(riepilogo, 'ImponibileImporto', '0'),
             "imposta": get_text(riepilogo, 'Imposta', '0'),
+            "arrotondamento": get_text(riepilogo, 'Arrotondamento', '0'),
             "riferimento_normativo": get_text(riepilogo, 'RiferimentoNormativo'),
         }
         riepilogo_iva.append(riepilogo_data)
@@ -506,14 +508,6 @@ def _parse_body(body, fornitore, cliente, find_element, find_all_elements, get_t
         except ValueError:
             pass
 
-    # Verifica coerenza totali
-    totale_calcolato = round(imponibile_totale + iva_totale, 2)
-    scarto_totali = abs(Decimal(str(total_amount)) - Decimal(str(totale_calcolato)))
-    differenza_totali = float(scarto_totali)
-    # Stessa tolleranza del motore contabile: oltre un centesimo la fonte
-    # non e' validata, anche quando la differenza e' soltanto di 2-4 centesimi.
-    totali_coerenti = scarto_totali <= Decimal("0.01")
-
     # Estrai allegati (PDF in base64)
     allegati = []
     for allegato in find_all_elements(body, 'Allegati'):
@@ -571,12 +565,13 @@ def _parse_body(body, fornitore, cliente, find_element, find_all_elements, get_t
         "supplier_vat": fornitore.get("partita_iva", ""),
         "allegati": allegati,
         "has_pdf": len([a for a in allegati if a.get("formato", "").upper() == "PDF"]) > 0,
-        "totali_coerenti": totali_coerenti,
-        "differenza_totali": differenza_totali,
+        "arrotondamento_documento": get_text(dati_generali, 'Arrotondamento', '0'),
         "somma_righe": somma_righe,
         "raw_xml_parsed": True
     }
 
+    from app.services.fattura_totali import verifica_totali
+    result.update(verifica_totali(result))
     return result
 
 

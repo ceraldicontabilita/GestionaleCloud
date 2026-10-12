@@ -50,7 +50,7 @@ class FintaCasella:
                     uid = [massimo]  # come IMAP: n:* torna sempre l'ultimo
             return "OK", [" ".join(str(u) for u in uid).encode()]
         uid, parti = int(args[0]), args[1]
-        if parti == "(BODYSTRUCTURE)":
+        if parti in ("(BODYSTRUCTURE)", "(BODYSTRUCTURE BODY.PEEK[HEADER.FIELDS (FROM SUBJECT)])"):
             corpo = b'("APPLICATION" "PDF" ("NAME" "f24.pdf"))' if messaggi[uid] else b'("TEXT" "PLAIN")'
             return "OK", [corpo]
         self.fetch_completi.append((self.aperta, uid, parti))
@@ -194,3 +194,20 @@ def test_login_prova_la_password_per_app_anche_se_imap_password_e_vecchia(monkey
     tentativi.clear()
     assert efd.EmailFullDownloader(db=None).connect() is True
     assert tentativi == ["nuovanuovanuovan"]
+
+
+def test_mail_commercialista_senza_allegati_non_viene_saltata(db, monkeypatch):
+    class CasellaCommercialista(FintaCasella):
+        def uid(self, comando, *args):
+            if comando=='FETCH' and 'BODYSTRUCTURE' in args[1]:
+                return 'OK', [(b'1 BODYSTRUCTURE ("TEXT" "PLAIN")', b'From: studio@example.com\r\nSubject: IVA luglio 2026\r\n')]
+            return super().uid(comando,*args)
+    casella=CasellaCommercialista({'INBOX':{1:False}})
+    elaborati=[]
+    _collega(monkeypatch,casella,elaborati)
+    async def scenario():
+        await db['mittenti_email'].insert_one({'pattern':'studio@example.com','attivo':True,'tipo_documento':'f24'})
+        return await efd.scarica_posta_con_cursori(db,max_scaricati=10)
+    result=asyncio.run(scenario())
+    assert elaborati==[('INBOX',1)] and result['scaricati']==1
+    assert all(casella.sola_lettura)

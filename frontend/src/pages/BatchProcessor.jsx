@@ -542,8 +542,8 @@ export default function BatchProcessor() {
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
             <label>Dal <input aria-label="Data iniziale recupero posta" type="date" value={historicalFrom}
               onChange={e => setHistoricalFrom(e.target.value)} disabled={historical?.in_progress} /></label>
-            <Button onClick={startHistorical} disabled={historicalStarting || historical?.in_progress || !historicalFrom}>
-              {historical?.in_progress ? 'Recupero in corso' : 'Avvia recupero storico'}
+            <Button onClick={startHistorical} disabled={historicalStarting || !historicalFrom}>
+              {historicalStarting ? 'Avvio…' : historical?.in_progress ? 'Riprendi recupero storico' : 'Avvia recupero storico'}
             </Button>
           </div>
           {historical && <div role="status" style={{ marginTop: 12 }}>

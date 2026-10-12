@@ -126,9 +126,12 @@ async def tabella_analisi(anno: Optional[int] = Query(None, ge=2000, le=2100)) -
     possibile duplicazione e motivazione automatica."""
     db = Database.get_db()
 
+    from app.services.f24_doppioni import attivo
     docs: list = []
     for coll in _COLLEZIONI_F24:
         for d in await db[coll].find({}, {"_id": 0, "pdf_data": 0}).to_list(2000):
+            if not attivo(d):
+                continue
             d["_collezione"] = coll
             docs.append(d)
 
@@ -179,6 +182,39 @@ async def tabella_analisi(anno: Optional[int] = Query(None, ge=2000, le=2100)) -
             for q in trovate:
                 fonte_quietanza.setdefault(str(q.get("id")), coll)
 
+    # Revisioni candidate: contribuente, scadenza e posizioni identiche,
+    # importi diversi. Il mese, da solo, non genera una duplicazione.
+    from app.services.f24_versioni import firma_obblighi, ha_pagamento
+    from app.services.f24_doppioni import attivo
+    from app.services.f24_controllo_incrociato import righe_modello
+    gruppi_versioni = {}
+    saldi = {}
+    for i in indici:
+        d = docs[i]
+        rows = righe_modello(d)
+        saldi[i] = sum(r['importo_debito_cents'] - r['importo_credito_cents'] for r in rows)
+        if d['_collezione'] != 'f24_unificato' or not attivo(d):
+            continue
+        key = firma_obblighi(d)
+        if key[0] and key[1] and key[2]:
+            gruppi_versioni.setdefault(key, []).append(i)
+    proposte_versioni = {}
+    for gruppo in gruppi_versioni.values():
+        if len({saldi[i] for i in gruppo}) <= 1:
+            continue
+        provati = [i for i in gruppo if str(docs[i].get('quietanza_id') or '') in fonte_quietanza]
+        # Due modelli pagati/quietanzati non si escludono senza un'indagine.
+        if len(provati) > 1:
+            continue
+        target = provati[0] if provati else max(gruppo, key=lambda i: (-saldi[i], str(docs[i].get('email_date') or '')))
+        for i in gruppo:
+            if i == target or ha_pagamento(docs[i]):
+                continue
+            proposte_versioni[i] = {'confronto_f24_id': docs[target].get('id'),
+                'criterio_proposta': 'quietanza_collegata' if provati else 'importo_minore_indizio',
+                'motivo': ('Versione di confronto collegata a quietanza: confermare quale modello e’ superato.'
+                           if provati else 'Stesse posizioni fiscali con saldo diverso: importo minore come indizio, nessuna quietanza conclusiva. Confrontare gli originali e la data delle email.')}
+
     righe = []
     for i in indici:
         a = analisi[i]
@@ -201,7 +237,7 @@ async def tabella_analisi(anno: Optional[int] = Query(None, ge=2000, le=2100)) -
         # pagato»: resta com'e', col legame al modello e alla quietanza.
         ravv = d.get("ravvedimento") or {}
         stato_pagamento = a["stato"]
-        verifica_importi = d.get("verifica_importi_originale")
+        verifica_importi = d.get("verifica_importi_originale") or proposte_versioni.get(i)
         if verifica_importi and not a.get("data_pagamento"):
             stato_pagamento = "importi_discordanti"
             motivi = [m for m in motivi if not m.startswith("scadenza naturale superata")]
@@ -220,6 +256,7 @@ async def tabella_analisi(anno: Optional[int] = Query(None, ge=2000, le=2100)) -
         righe.append({
             "verifica_importi_originale": verifica_importi,
             "f24_id": d.get("id"),
+            "saldo_cents": saldi.get(i),
             "file": d.get("file_name") or d.get("filename"),
             "collezione": d.get("_collezione"),
             "periodo_competenza": a["periodo_prevalente"],

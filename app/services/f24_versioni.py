@@ -39,7 +39,28 @@ def stessi_debiti(a, b):
     return bool(fa[0] and fa[1] and fa[2] and fa == fb)
 
 
-async def sostituisci_versione(db, precedente_id, vigente_id, *, actor):
+def firma_obblighi(doc):
+    """Identita' delle posizioni fiscali senza importi: indizio, non prova."""
+    cf = str(doc.get("codice_fiscale") or (doc.get("dati_generali") or {}).get("codice_fiscale") or "").strip().upper()
+    righe = tuple(sorted((r["sezione"] or "", r["codice"], r["mese"] or "", r["anno"] or "",
+                          r["ente"], r["matricola"], r["rateazione"], r["acconto"], r["saldo"])
+                         for r in righe_modello(doc) if r["importo_debito_cents"] > 0))
+    return cf, data_versamento_modello(doc), righe
+
+
+def stessi_obblighi(a, b):
+    fa, fb = firma_obblighi(a), firma_obblighi(b)
+    return bool(fa[0] and fa[1] and fa[2] and fa == fb)
+
+
+def ha_pagamento(doc):
+    return bool(doc.get("movimento_bancario_id") or doc.get("allocazioni_banca") or
+                doc.get("quietanza_id") or doc.get("quietanza_ids") or doc.get("pagato") or
+                doc.get("data_pagamento_effettivo") or str(doc.get("stato_pagamento") or "").upper() == "PAGATO")
+
+
+async def sostituisci_versione(db, precedente_id, vigente_id, *, actor,
+                              conferma_importi_discordanti=False, motivo=None):
     if precedente_id == vigente_id:
         raise ValueError("La versione sostitutiva deve essere diversa")
     async with db.transaction():
@@ -49,15 +70,15 @@ async def sostituisci_versione(db, precedente_id, vigente_id, *, actor):
             raise ValueError("Versioni F24 non disponibili")
         if precedente.get("sostituito_da_f24_id") == vigente_id:
             return {"success": True, "gia_sostituito": True}
-        if not attivo(precedente) or not stessi_debiti(precedente, vigente):
+        if conferma_importi_discordanti and not (motivo and motivo.strip()):
+            raise ValueError("Indicare il motivo della scelta fra versioni discordanti")
+        stessa_delega = (stessi_obblighi(precedente, vigente) if conferma_importi_discordanti
+                         else stessi_debiti(precedente, vigente))
+        if not attivo(precedente) or not stessa_delega:
             raise ValueError(
                 "Contribuente, scadenza e righe a debito devono coincidere; non basta il mese"
             )
-        if (
-            precedente.get("movimento_bancario_id")
-            or precedente.get("allocazioni_banca")
-            or precedente.get("quietanza_id")
-        ):
+        if ha_pagamento(precedente):
             raise ValueError(
                 "La versione precedente ha evidenze di pagamento: occorre verificare i collegamenti"
             )
@@ -74,6 +95,11 @@ async def sostituisci_versione(db, precedente_id, vigente_id, *, actor):
                     "sostituito_da_f24_id": vigente_id,
                     "quarantena_il": now,
                     "confermato_da": actor,
+                    "decisione_versione": {
+                        "tipo": "scelta_utente_importi_discordanti" if conferma_importi_discordanti else "stessi_debiti",
+                        "motivo": motivo or "Stessi debiti, versione sostitutiva confermata",
+                        "actor": actor, "at": now, "vigente_id": vigente_id,
+                    },
                 }
             },
         )

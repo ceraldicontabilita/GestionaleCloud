@@ -1988,6 +1988,8 @@ export function TabellaAnalisiF24({ anno }) {
   const isMobile = useIsMobile();
   const [ricercaTributo, setRicercaTributo] = useState('');
   const [ordineAnalisi, setOrdineAnalisi] = useState('periodo');
+  const [decisioneF24, setDecisioneF24] = useState(null);
+  const [salvandoDecisione, setSalvandoDecisione] = useState(false);
   const [pdfViewer, setPdfViewer] = useState(null); // {title, fetchUrl}
 
   const carica = async filtraAnno => {
@@ -2007,6 +2009,19 @@ export function TabellaAnalisiF24({ anno }) {
   useEffect(() => {
     carica(true);
   }, [anno]);
+
+  const escludiVersione = async () => {
+    if (!decisioneF24) return;
+    setSalvandoDecisione(true); setErrore(null);
+    try {
+      await api.post(`/api/f24-riconciliazione/commercialista/${encodeURIComponent(decisioneF24.f24_id)}/escludi-versione`, {
+        conferma: true, vigente_id: decisioneF24.verifica_importi_originale.confronto_f24_id,
+        motivo: 'Il titolare ha confrontato gli originali in Pulisci F24 e conferma questa versione come superata',
+      });
+      setDecisioneF24(null); await carica(soloAnno);
+    } catch (e) { setErrore(e.response?.data?.detail || e.message); }
+    finally { setSalvandoDecisione(false); }
+  };
 
   const righeFiltrateBase = (righe || []).filter(r => {
     const cerca = ricercaTributo.trim().toLowerCase();
@@ -2034,6 +2049,29 @@ export function TabellaAnalisiF24({ anno }) {
 
   return (
     <div style={{ padding: 16, borderBottom: '1px solid #e6e3d9', background: 'white' }}>
+      {!!(righe || []).filter(r => r.verifica_importi_originale?.confronto_f24_id).length && <details data-testid="pulisci-f24" style={{ marginBottom: 16, padding: 12, border: '1px solid #c15f3c', borderRadius: 8 }}>
+        <summary style={{ cursor: 'pointer', fontWeight: 700 }}>Pulisci F24 · versioni discordanti da controllare</summary>
+        <p>Un importo minore o un’email più recente suggeriscono una revisione. La quietanza prova la versione pagata. Prima di escludere un modello confronta i documenti.</p>
+        {(righe || []).filter(r => r.verifica_importi_originale?.confronto_f24_id).map(r => {
+          const vigente = (righe || []).find(x => x.f24_id === r.verifica_importi_originale.confronto_f24_id);
+          return <div key={r.f24_id} style={{ padding: '12px 0', borderTop: '1px solid #ddd' }}>
+            <strong>{r.periodo_competenza} · {r.file}</strong>
+            <div>Saldo di questo modello: {r.saldo_cents != null ? (r.saldo_cents / 100).toLocaleString('it-IT', { style: 'currency', currency: 'EUR' }) : 'da verificare'} · Versione di confronto: {vigente?.saldo_cents != null ? (vigente.saldo_cents / 100).toLocaleString('it-IT', { style: 'currency', currency: 'EUR' }) : 'da verificare'}</div>
+            <p>{r.verifica_importi_originale.motivo || r.motivazione}</p>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <button style={bottoneFile} onClick={() => setPdfViewer({ title: r.file, fetchUrl: `/api/originale/f24/${encodeURIComponent(r.f24_id)}` })}>Apri questo F24</button>
+              <button style={bottoneFile} onClick={() => setPdfViewer({ title: vigente?.file || 'Versione da confrontare', fetchUrl: `/api/originale/f24/${encodeURIComponent(r.verifica_importi_originale.confronto_f24_id)}` })}>Apri versione di confronto</button>
+              {vigente?.documento_collegato?.quietanza_url && <button style={bottoneFile} onClick={() => setPdfViewer({ title: 'Quietanza della versione di confronto', fetchUrl: vigente.documento_collegato.quietanza_url })}>Apri quietanza</button>}
+              <button style={bottoneFile} onClick={() => setDecisioneF24(r)}>Questo modello è superato</button>
+            </div>
+          </div>;
+        })}
+        {decisioneF24 && <div role="dialog" aria-label="Conferma esclusione versione F24" style={{ padding: 12, background: '#fff7ed' }}>
+          <p>Confermi che <strong>{decisioneF24.file}</strong> è superato dalla versione di confronto? L’originale resta conservato; questo modello sarà escluso dai totali. La scelta non registra un pagamento.</p>
+          <button style={bottoneFile} disabled={salvandoDecisione} onClick={escludiVersione}>Conferma modello superato</button>{' '}
+          <button style={bottoneFile} disabled={salvandoDecisione} onClick={() => setDecisioneF24(null)}>Annulla</button>
+        </div>}
+      </details>}
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
         <h3 style={{ margin: 0, fontSize: 15, color: '#141413' }}>
           <ClipboardList size={14} aria-hidden="true" style={ICO} /> Analisi F24 — scadenze, ravvedimenti e duplicazioni

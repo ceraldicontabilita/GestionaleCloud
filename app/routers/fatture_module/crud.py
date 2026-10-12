@@ -182,7 +182,9 @@ def _normalizza_da_invoices(doc: dict) -> dict:
         created_at = created_at.isoformat()
 
     data_doc = _data_documento_fattura(doc)
+    from app.services.fattura_totali import CAMPI_CONTROLLO
     return {
+        **{k: doc[k] for k in CAMPI_CONTROLLO if k in doc},
         "id": doc.get("id", ""),
         "numero_documento": doc.get("invoice_number") or doc.get("numero_documento"),
         "tipo_documento": doc.get("tipo_documento") or doc.get("document_type") or "TD01",

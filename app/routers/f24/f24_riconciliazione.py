@@ -584,6 +584,23 @@ async def sostituisci_versione_f24(precedente_id: str, vigente_id: str,
     except ConcurrentDocumentChange as exc:
         raise HTTPException(status_code=409, detail='F24 modificato contemporaneamente: ricaricare') from exc
 
+@router.post('/commercialista/{precedente_id}/escludi-versione')
+async def escludi_versione_f24(precedente_id: str, payload: Dict[str, Any] = Body(...),
+    _admin: Dict[str, Any] = Depends(get_current_admin_user)) -> Dict[str, Any]:
+    """Scelta esplicita del titolare: conserva originali, mai un pagamento fittizio."""
+    if payload.get('conferma') is not True or not payload.get('vigente_id'):
+        raise HTTPException(422, 'Confermare la versione vigente e il motivo')
+    from app.services.f24_versioni import sostituisci_versione
+    from app.services.supabase_runtime_database import ConcurrentDocumentChange
+    try:
+        return await sostituisci_versione(Database.get_db(), precedente_id, payload['vigente_id'],
+            actor=_admin.get('email') or _admin.get('username') or 'admin',
+            conferma_importi_discordanti=True, motivo=payload.get('motivo'))
+    except ValueError as exc:
+        raise HTTPException(409, str(exc)) from exc
+    except ConcurrentDocumentChange as exc:
+        raise HTTPException(409, 'F24 modificato contemporaneamente: ricaricare') from exc
+
 @router.get("/verifica-codice/{codice_tributo}")
 @handle_errors
 async def verifica_codice_tributo(

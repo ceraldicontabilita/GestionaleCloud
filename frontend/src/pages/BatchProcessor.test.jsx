@@ -19,7 +19,17 @@ describe('Elaborazione batch', () => {
     view.unmount();
     vi.clearAllMocks();
   });
-  it('aprire la pagina non avvia job o scritture', async () => {
+  it('consente la ripresa esplicita con lo stesso cursore dopo un riavvio', async () => {
+    api.get.mockResolvedValue({ data: { historical: { in_progress: true, richiesto_dal: '2003-01-01' } } });
+    api.post.mockResolvedValue({ data: {} });
+    const view = render(<MemoryRouter><BatchProcessor /></MemoryRouter>);
+    await act(async () => {});
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Riprendi recupero storico' })); });
+    expect(api.post).toHaveBeenCalledWith('/api/email-download/start-full-download?data_inizio=2003-01-01');
+    view.unmount();
+    vi.clearAllMocks();
+  });
+  it('aprire la pagina non avvia job o scritture' , async () => {
     vi.useFakeTimers();
     const view = render(<MemoryRouter><BatchProcessor /></MemoryRouter>);
     await act(async () => { await vi.advanceTimersByTimeAsync(5000); });

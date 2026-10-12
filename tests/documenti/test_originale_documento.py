@@ -399,3 +399,38 @@ def test_originale_cedolino_hr_rintracciato_per_id_canonico(ambiente, monkeypatc
     assert response.status_code==200
     assert response.content==PDF
     assert _client(app).get('/api/originale/cedolino/hr-altro').status_code==404
+
+
+def test_quietanza_fiscale_risolve_il_pdf_canonico_per_sha256(ambiente):
+    from app.config import settings
+    app, inserisci, _ = ambiente
+    sha = hashlib.sha256(PDF).hexdigest()
+    inserisci('fiscal_documents', {'id':'fdoc-q','company_id':settings.FISCAL_COMPANY_ID,'current_version_id':'v-q'})
+    inserisci('fiscal_document_versions', {'id':'v-q','document_id':'fdoc-q','company_id':settings.FISCAL_COMPANY_ID,'sha256':sha})
+    inserisci('quietanze_f24', {'id':'q-original','filename':'quietanza.pdf','pdf_hash':sha,'pdf_data':_b64(PDF)})
+    with _client(app) as client:
+        result=client.get('/api/originale/documento_fiscale/fdoc-q')
+    assert result.status_code==200 and result.content==PDF
+
+
+def test_quietanza_con_hash_dichiarato_ma_byte_diversi_non_viene_servita(ambiente):
+    from app.config import settings
+    app, inserisci, _ = ambiente
+    sha = hashlib.sha256(PDF).hexdigest()
+    inserisci('fiscal_documents', {'id':'fdoc-q','company_id':settings.FISCAL_COMPANY_ID,'current_version_id':'v-q'})
+    inserisci('fiscal_document_versions', {'id':'v-q','document_id':'fdoc-q','company_id':settings.FISCAL_COMPANY_ID,'sha256':sha})
+    inserisci('quietanze_f24', {'id':'q-original','filename':'quietanza.pdf','pdf_hash':sha,'pdf_data':_b64(b'%PDF-differente')})
+    with _client(app) as client:
+        result=client.get('/api/originale/documento_fiscale/fdoc-q')
+    assert result.status_code==409 and result.json()['code']=='ORIGINALE_NON_CORRISPONDENTE'
+
+
+def test_quietanza_di_altra_azienda_non_e_fallback(ambiente):
+    from app.config import settings
+    app, inserisci, _ = ambiente
+    sha=hashlib.sha256(PDF).hexdigest()
+    inserisci('fiscal_documents', {'id':'fdoc-q','company_id':settings.FISCAL_COMPANY_ID,'current_version_id':'v-q'})
+    inserisci('fiscal_document_versions', {'id':'v-q','document_id':'fdoc-q','company_id':settings.FISCAL_COMPANY_ID,'sha256':sha})
+    inserisci('quietanze_f24', {'id':'q-foreign','company_id':'foreign','pdf_hash':sha,'pdf_data':_b64(PDF)})
+    with _client(app) as client:
+        assert client.get('/api/originale/documento_fiscale/fdoc-q').status_code==404
