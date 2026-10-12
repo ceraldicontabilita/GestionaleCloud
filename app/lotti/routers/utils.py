@@ -116,57 +116,16 @@ def normalizza_nome(nome) -> str:
 
 
 async def prezzi_fatture_per_fornitore(db_conn, fornitore_match: str) -> dict:
-    """Costruisce una mappa {descrizione_normalizzata: {prezzo, quantita, data}} dalle
-    righe delle fatture di un fornitore. Serve ad agganciare al catalogo (SAIMA/MEPA/
-    Acquaviva) il prezzo realmente pagato: se un prodotto del catalogo è già stato
-    comprato, mostriamo il suo prezzo dalla fattura. I nomi del catalogo ufficiale e
-    delle fatture coincidono quasi sempre, quindi il match per nome è affidabile.
-
-    fornitore_match: sottostringa (lowercase) per riconoscere il fornitore
-    (es. "saima", "mepa", "acquaviva").
-    """
+    """Ultimi prezzi e acquisti dalle righe XML dell'archivio centrale."""
+    from app.lotti.servizi.preferiti_cataloghi import fatture_catalogo, articoli_acquistati
     prezzi = {}
-    # supporta più alternative separate da "|" (es. "acquaviva|vandemoortele|alpha")
-    alternative = [a.strip() for a in (fornitore_match or "").lower().split("|") if a.strip()]
-    async for f in db_conn.fatture.find(
-        {}, {"_id": 0, "fornitore": 1, "data_fattura": 1, "prodotti": 1}
-    ):
-        forn = (f.get("fornitore") or "").lower()
-        if alternative and not any(a in forn for a in alternative):
-            continue
-        data = f.get("data_fattura", "")
-        # data_fattura è in formati misti (dd/mm/yyyy e ISO): "più recente" va
-        # deciso su date VERE, non sulle stringhe ("30/06/2026" > "05/07/2026"
-        # lessicograficamente — sceglieva il prezzo vecchio).
-        data_ord = parse_data_flessibile(data) or date.min
-        for p in f.get("prodotti", []):
-            desc = _norm(p.get("descrizione"))
-            try:
-                prezzo = float(p.get("prezzo") or 0)
-            except (ValueError, TypeError):
-                prezzo = 0
-            if not desc or prezzo <= 0:
-                continue
-            try:
-                qta = float(p.get("quantita") or 0)
-            except (ValueError, TypeError):
-                qta = 0
-            voce = {"prezzo": prezzo, "quantita": qta, "data": data, "_data_ord": data_ord}
-            # tieni il più recente per descrizione
-            prev = prezzi.get(desc)
-            if not prev or data_ord > prev["_data_ord"]:
-                prezzi[desc] = voce
-            # indicizza ANCHE per codice articolo del fornitore (riga XML
-            # CodiceArticolo/CodiceValore): stesso codice dei suoi cataloghi →
-            # match deterministico, senza dipendere da come è scritto il nome.
-            cod = _norm_codice_articolo(p.get("codice_articolo"))
-            if cod:
-                chiave_cod = f"codart::{cod}"
-                prev_c = prezzi.get(chiave_cod)
-                if not prev_c or data_ord > prev_c["_data_ord"]:
-                    prezzi[chiave_cod] = voce
-    for v in prezzi.values():  # chiave di servizio: non deve uscire dall'helper
-        v.pop("_data_ord", None)
+    articoli = articoli_acquistati(await fatture_catalogo(db_conn, fornitore_match))
+    for articolo in sorted(articoli, key=lambda a: a["_data"]):
+        voce = {k: articolo[k] for k in ("prezzo", "quantita", "data", "fattura_id")}
+        prezzi[_norm(articolo["nome"])] = voce
+        for codice in articolo["codici_alias"]:
+            if _norm_codice_articolo(codice):
+                prezzi[f"codart::{_norm_codice_articolo(codice)}"] = voce
     return prezzi
 
 
@@ -200,7 +159,8 @@ def applica_prezzo_da_fatture(prodotti: list, prezzi: dict) -> list:
     if not prezzi:
         # nessun acquisto per questo fornitore: nessun prodotto è "già acquistato"
         for prod in prodotti:
-            prod["prezzo_listino"] = 0
+            if prod.get("fonte_catalogo") != "listino":
+                prod["prezzo_listino"] = 0
             prod["prezzo_acquisto_confezione"] = 0
             prod["prezzo_singolo"] = 0
             prod["prezzo_fattura"] = 0
@@ -263,7 +223,8 @@ def applica_prezzo_da_fatture(prodotti: list, prezzi: dict) -> list:
         match = matches.get(pos)
         if match and match.get("prezzo", 0) > 0:
             prezzo = round(float(match["prezzo"]), 4)
-            prod["prezzo_listino"] = prezzo
+            if prod.get("fonte_catalogo") != "listino":
+                prod["prezzo_listino"] = prezzo
             prod["prezzo_acquisto_confezione"] = prezzo
             prod["prezzo_fattura"] = prezzo
             prod["prezzo_fattura_fonte"] = "fattura_xml"
@@ -274,7 +235,8 @@ def applica_prezzo_da_fatture(prodotti: list, prezzi: dict) -> list:
             prod["quantita_ultima_fattura"] = match.get("quantita", 0)
         else:
             # non comprato → nessun prezzo (sovrascrive eventuali vecchi prezzi-listino)
-            prod["prezzo_listino"] = 0
+            if prod.get("fonte_catalogo") != "listino":
+                prod["prezzo_listino"] = 0
             prod["prezzo_acquisto_confezione"] = 0
             prod["prezzo_singolo"] = 0
             prod["prezzo_fattura"] = 0

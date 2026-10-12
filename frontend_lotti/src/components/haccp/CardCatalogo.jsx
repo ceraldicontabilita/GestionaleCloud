@@ -24,7 +24,7 @@ export function rigaConfronto(c, formatta) {
 
 export default function CardCatalogo({
   nome, foto, prezzo, notaPrezzo, confronto, inCart, inRicette, preferito,
-  colore = "sage", onApri, onCarrello, onRicetta, onPreferito, testId,
+  colore = "sage", onApri, onCarrello, onRicetta, onPreferito, testId, ricettaDisponibile = true,
 }) {
   const stop = (fn) => (e) => { e.stopPropagation(); fn?.(); };
   return (
@@ -73,11 +73,11 @@ export default function CardCatalogo({
           {inCart ? <Check size={16} aria-hidden="true" /> : <ShoppingCart size={16} aria-hidden="true" />}
           {inCart ? "Nel carrello" : "Acquista"}
         </button>
-        <button type="button" onClick={stop(onRicetta)} aria-pressed={!!inRicette}
+        {ricettaDisponibile && <button type="button" onClick={stop(onRicetta)} aria-pressed={!!inRicette}
           className={`flex min-h-[44px] items-center justify-center gap-1.5 rounded-xl border text-[14px] font-bold ${inRicette ? "border-[#cfe3d8] bg-[#e2efe8] text-[#3d8168]" : "border-[#dce8e0] bg-[#f2f6f3] text-[#3f5a4e]"}`}>
           {inRicette ? <Check size={16} aria-hidden="true" /> : <Plus size={16} aria-hidden="true" />}
           {inRicette ? "Nel ricettario" : "Al ricettario"}
-        </button>
+        </button>}
       </div>
     </div>
   );

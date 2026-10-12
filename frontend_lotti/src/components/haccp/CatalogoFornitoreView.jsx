@@ -17,6 +17,9 @@ import axios from "axios";
 import { toast } from "sonner";
 import { Search, RefreshCw, Package, ChevronRight, Home, Download, Tag, LayoutGrid, List, ExternalLink, Check, Plus, Trash2, X, Info, ZoomIn, ShoppingCart } from "lucide-react";
 import { API } from "../../utils/constants";
+import usePreferitiAcquisti, { useStatoCatalogo } from "../../hooks/usePreferitiAcquisti";
+import RicercaCatalogo from "./shared/RicercaCatalogo";
+import FiltroPreferitiAcquisti from "./shared/FiltroPreferitiAcquisti";
 import PrezzoFornitoreEditor from "./PrezzoFornitoreEditor";
 import CardCatalogo, { GRIGLIA_CARD } from "./CardCatalogo";
 import { chiediMigliore, euro, messaggioMigliore, versoIlMigliore } from "../../utils/confrontoFornitori";
@@ -184,7 +187,7 @@ const ModalDettaglioProdotto = ({ prodotto, fornitore, onClose, onImporta, onRim
       } catch { /* silenzioso, mostra dati base */ }
       finally { setLoadingDet(false); }
     };
-    caricaDettaglio();
+    if (!prodotto.da_fattura_senza_catalogo) caricaDettaglio();
   }, [prodotto, fornitore]);
 
   // Immagine migliore disponibile: immagine specifica prodotto > immagine URL scraper > categoria
@@ -308,7 +311,7 @@ const ModalDettaglioProdotto = ({ prodotto, fornitore, onClose, onImporta, onRim
               : "Mai acquistato · puoi ordinarlo lo stesso (prodotto nuovo)"}
           </div>
 
-          <PrezzoFornitoreEditor prodotto={prodotto} fonte={fornitore} onSaved={onPrezzoSalvato} />
+          {!prodotto.da_fattura_senza_catalogo && <PrezzoFornitoreEditor prodotto={prodotto} fonte={fornitore} onSaved={onPrezzoSalvato} />}
 
           {/* Azione principale: aggiungi all'ordine (sempre disponibile, con o senza prezzo) */}
           <button
@@ -327,7 +330,7 @@ const ModalDettaglioProdotto = ({ prodotto, fornitore, onClose, onImporta, onRim
                 <ExternalLink size={13} /> Vedi sul sito
               </a>
             )}
-            {giaNelDizionario ? (
+            {!prodotto.da_fattura_senza_catalogo && (giaNelDizionario ? (
               <button onClick={handleRimuovi} disabled={rimuovendo}
                 className="flex-1 py-2 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 bg-red-50 text-red-600 hover:bg-red-100 transition-colors">
                 {rimuovendo ? <RefreshCw size={13} className="animate-spin" /> : <Trash2 size={13} />}
@@ -339,7 +342,7 @@ const ModalDettaglioProdotto = ({ prodotto, fornitore, onClose, onImporta, onRim
                 {importando ? <RefreshCw size={13} className="animate-spin" /> : <Plus size={13} />}
                 Usa in ricette
               </button>
-            )}
+            ))}
           </div>
         </div>
       </div>
@@ -383,11 +386,12 @@ const CardProdotto = ({ prodotto, colore, onDettaglio, giaNelDizionario, onCarre
       notaPrezzo={prezzo > 0 ? (prezzoFatturaProdotto(prodotto) > 0 ? "ultima fattura" : "netto fornitore") : ""}
       colore={colore}
       inCart={inCart}
+      ricettaDisponibile={!prodotto.da_fattura_senza_catalogo}
       inRicette={giaNelDizionario}
       preferito={preferitoColazione}
       onApri={() => onDettaglio(prodotto)}
       onCarrello={() => onCarrello(prodotto)}
-      onRicetta={() => onToggleRicette(prodotto, giaNelDizionario)}
+      onRicetta={prodotto.da_fattura_senza_catalogo ? undefined : () => onToggleRicette(prodotto, giaNelDizionario)}
       onPreferito={() => onTogglePreferito(prodotto)}
     />
   );
@@ -399,7 +403,7 @@ const RigaProdotto = ({ prodotto, colore, fornitore, onDettaglio, giaNelDizionar
   const imgUrl = prodotto.immagine_url || "";
 
   return (
-    <div className={`flex items-center gap-3 px-4 py-3 border-b hover:bg-gray-50 ${prodotto.gia_acquistato ? "border-emerald-200 bg-emerald-50/70" : giaNelDizionario ? "border-gray-50 bg-green-50/30" : "border-gray-50"}`}>
+    <div className={`flex flex-wrap items-center gap-3 px-4 py-3 border-b hover:bg-gray-50 ${prodotto.gia_acquistato ? "border-emerald-200 bg-emerald-50/70" : giaNelDizionario ? "border-gray-50 bg-green-50/30" : "border-gray-50"}`}>
       <div onClick={() => onDettaglio(prodotto)} className="cursor-pointer flex items-center gap-3 flex-1 min-w-0">
         <div className={`w-12 h-12 rounded-lg ${COLORI[colore].light} flex items-center justify-center overflow-hidden flex-shrink-0`}>
           {imgUrl && !imgErr ? (
@@ -415,7 +419,7 @@ const RigaProdotto = ({ prodotto, colore, fornitore, onDettaglio, giaNelDizionar
           {prodotto.descrizione && <p className="text-xs text-gray-500 truncate">{prodotto.descrizione}</p>}
         </div>
       </div>
-      <div className="w-44 flex-shrink-0">
+      {!prodotto.da_fattura_senza_catalogo && <div className="w-44 flex-shrink-0">
         <PrezzoFornitoreEditor
           prodotto={prodotto}
           fonte={fornitore}
@@ -424,9 +428,9 @@ const RigaProdotto = ({ prodotto, colore, fornitore, onDettaglio, giaNelDizionar
           compatto
           onSaved={onPrezzoSalvato}
         />
-      </div>
+      </div>}
       <div className="flex items-center gap-2 flex-shrink-0">
-        <button onClick={() => onToggleRicette(prodotto, giaNelDizionario)} className={`px-2 py-1 rounded-lg text-[10px] font-bold ${giaNelDizionario ? "bg-green-100 text-green-700" : "bg-[#edf4ef] text-[#4c6b5c]"}`}>{giaNelDizionario ? "✓ Ricette" : "+ Ricette"}</button>
+        {!prodotto.da_fattura_senza_catalogo && <button onClick={() => onToggleRicette(prodotto, giaNelDizionario)} className={`px-2 py-1 rounded-lg text-[10px] font-bold ${giaNelDizionario ? "bg-green-100 text-green-700" : "bg-[#edf4ef] text-[#4c6b5c]"}`}>{giaNelDizionario ? "✓ Ricette" : "+ Ricette"}</button>}
         {(prezzoProdotto(prodotto) > 0) && (
           <span className="text-xs font-bold text-gray-600">€{prezzoProdotto(prodotto).toFixed(2)}</span>
         )}
@@ -474,12 +478,15 @@ export const CatalogoFornitoreView = ({ fornitore, nome, logoUrl }) => {
   const [prodotti, setProdotti] = useState([]);
   // Inizializza categoria dall'URL se presente (slug → nome reale dopo caricamento categorie)
   const [categoriaAttiva, setCategoriaAttivaState] = useState(null);
-  const [pendingSlug, setPendingSlug] = useState(() => getCatFromHash());
+  const pendingSlug = useRef(getCatFromHash());
   const [loading, setLoading] = useState(false);
   const [loadingProd, setLoadingProd] = useState(false);
   const [statoScraping, setStatoScraping] = useState(null);
   const [scrapingInCorso, setScrapingInCorso] = useState(false);
-  const [search, setSearch] = useState("");
+  const [search, setSearch] = useStatoCatalogo(fornitore, "ricerca", "");
+  const [soloPreferiti, setSoloPreferiti] = useStatoCatalogo(fornitore, "preferiti", true);
+  const preferitiAcquisti = usePreferitiAcquisti(fornitore);
+  const richiestaProdotti = useRef(0);
   const [vistaGriglia, setVistaGriglia] = useState(true);
   const { aggiungi: aggiungiCarrello, isInCart } = useCart(nome);
   const [dizionarioIds, setDizionarioIds] = useState(new Set());
@@ -498,6 +505,7 @@ export const CatalogoFornitoreView = ({ fornitore, nome, logoUrl }) => {
 
   // Definita PRIMA di caricaCategorie per evitare temporal dead zone
   const caricaProdotti = useCallback(async (categoria = null, q = "") => {
+    const id = ++richiestaProdotti.current;
     setLoadingProd(true);
     try {
       const params = { limit: 200 };
@@ -505,14 +513,10 @@ export const CatalogoFornitoreView = ({ fornitore, nome, logoUrl }) => {
       if (q) params.q = q;
       const r = await axios.get(`${API}/${fornitore}/prodotti`, { params });
       const p = fornitore === "mepa" ? (r.data.prodotti || []) : (r.data || []);
-      setProdotti(p);
-    } catch { toast.error("Errore caricamento prodotti"); }
-    finally { setLoadingProd(false); }
+      if (id === richiestaProdotti.current) setProdotti(p);
+    } catch { if (id === richiestaProdotti.current) toast.error("Errore caricamento prodotti"); }
+    finally { if (id === richiestaProdotti.current) setLoadingProd(false); }
   }, [fornitore]);
-
-  // Ref stabile per usare caricaProdotti dentro listener/callback senza deps circolari
-  const caricaProdottiRef = useRef(caricaProdotti);
-  useEffect(() => { caricaProdottiRef.current = caricaProdotti; }, [caricaProdotti]);
 
   const caricaCategorie = useCallback(async () => {
     setLoading(true);
@@ -521,36 +525,27 @@ export const CatalogoFornitoreView = ({ fornitore, nome, logoUrl }) => {
       const cats = (r.data || []).map(cat => typeof cat === "string" ? { nome: cat, img: "" } : cat);
       setCategorie(cats);
       // Ripristina categoria da slug URL (es. #prodotti/saima/canditi)
-      const slug = pendingSlug || getCatFromHash();
+      const slug = pendingSlug.current;
       if (slug) {
         const nomeReale = fromSlug(slug, cats);
         if (nomeReale) {
           setCategoriaAttivaState(nomeReale);
-          caricaProdottiRef.current(nomeReale, "");
         }
-        setPendingSlug(null);
+        pendingSlug.current = null;
       }
     } catch { toast.error("Errore caricamento categorie"); }
     finally { setLoading(false); }
-  }, [fornitore, pendingSlug]); // eslint-disable-line
+  }, [fornitore]);
 
   // Listener hashchange: tasto indietro/avanti del browser
   useEffect(() => {
     const onHash = () => {
       const slug = getCatFromHash();
-      if (!slug) { setCategoriaAttivaState(null); setProdotti([]); return; }
-      setCategorie(prev => {
-        const nomeReale = fromSlug(slug, prev);
-        if (nomeReale) {
-          setCategoriaAttivaState(nomeReale);
-          caricaProdottiRef.current(nomeReale, "");
-        }
-        return prev;
-      });
+      setCategoriaAttivaState(fromSlug(slug, categorie));
     };
     window.addEventListener("hashchange", onHash);
     return () => window.removeEventListener("hashchange", onHash);
-  }, []);
+  }, [categorie]);
 
   const caricaStato = useCallback(async () => {
     try {
@@ -607,10 +602,10 @@ export const CatalogoFornitoreView = ({ fornitore, nome, logoUrl }) => {
     if (statoScraping?.stato !== "in_corso") return undefined;
     const timer = window.setInterval(async () => {
       await Promise.all([caricaStato(), caricaCategorie()]);
-      if (categoriaAttiva || search) caricaProdotti(categoriaAttiva, search);
+      // Lo stato dello scraping non sostituisce i risultati mentre si scrive.
     }, 7000);
     return () => window.clearInterval(timer);
-  }, [statoScraping?.stato, caricaStato, caricaCategorie, caricaProdotti, categoriaAttiva, search]);
+  }, [statoScraping?.stato, caricaStato, caricaCategorie]);
 
   const togglePreferitoColazione = async (prodotto) => {
     const eraPreferito = preferitiColazione.has(prodotto.id);
@@ -642,10 +637,14 @@ export const CatalogoFornitoreView = ({ fornitore, nome, logoUrl }) => {
   };
 
   useEffect(() => {
-    if (!search && !categoriaAttiva) { setProdotti([]); return; }
+    if (soloPreferiti || (!search && !categoriaAttiva)) {
+      richiestaProdotti.current++;
+      setLoadingProd(false);
+      return;
+    }
     const t = setTimeout(() => caricaProdotti(categoriaAttiva, search), 400);
-    return () => clearTimeout(t);
-  }, [search, categoriaAttiva, caricaProdotti]);
+    return () => { clearTimeout(t); richiestaProdotti.current++; };
+  }, [search, categoriaAttiva, caricaProdotti, soloPreferiti]);
 
   const prodSlug = (p) => {
     const nome = (p?.nome_display || p?.nome || p?.id || "").toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9\-]/g, "").slice(0, 60);
@@ -668,7 +667,7 @@ export const CatalogoFornitoreView = ({ fornitore, nome, logoUrl }) => {
   const handleSelectCategoria = (cat) => {
     setCategoriaAttiva(cat.nome);   // aggiorna stato + URL
     setSearch("");
-    caricaProdotti(cat.nome, "");
+
   };
 
   const handleAvviaScraping = async () => {
@@ -719,14 +718,15 @@ export const CatalogoFornitoreView = ({ fornitore, nome, logoUrl }) => {
   };
 
   const prodottiFiltrati = useMemo(() => {
-    if (!search) return prodotti;
+    const lista = soloPreferiti ? preferitiAcquisti.prodotti : prodotti;
+    if (!search) return lista;
     const q = search.toLowerCase();
-    return prodotti.filter(p =>
+    return lista.filter(p =>
       (p.nome || "").toLowerCase().includes(q) ||
       (p.codice_articolo || "").toLowerCase().includes(q) ||
       (p.descrizione || "").toLowerCase().includes(q)
     );
-  }, [prodotti, search]);
+  }, [prodotti, search, soloPreferiti, preferitiAcquisti.prodotti]);
 
   return (
     <div className="flex flex-col h-full space-y-4">
@@ -777,8 +777,9 @@ export const CatalogoFornitoreView = ({ fornitore, nome, logoUrl }) => {
       </div>
 
       {/* Breadcrumb + Ricerca */}
-      <div className="flex items-center gap-3">
-        {categoriaAttiva && (
+      <FiltroPreferitiAcquisti attivo={soloPreferiti} onChange={setSoloPreferiti} dati={preferitiAcquisti} />
+      <div className="flex flex-wrap items-center gap-3">
+        {!soloPreferiti && categoriaAttiva && (
           <button onClick={() => { setCategoriaAttiva(null); setProdotti([]); setSearch(""); }}
             className="flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700">
             <Home size={14} /> Categorie
@@ -786,12 +787,8 @@ export const CatalogoFornitoreView = ({ fornitore, nome, logoUrl }) => {
             <span className={`${COLORI[colore].text} font-semibold`}>{categoriaAttiva}</span>
           </button>
         )}
-        <div className="flex-1 relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={14} />
-          <input type="text" placeholder={`Cerca in ${categoriaAttiva || "tutto il catalogo"}...`}
-            value={search} onChange={e => setSearch(e.target.value)}
-            className="w-full pl-9 pr-4 py-2 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-offset-0 focus:outline-none bg-white" />
-        </div>
+        <RicercaCatalogo value={search} onChange={setSearch}
+          placeholder={`Cerca in ${soloPreferiti ? "preferiti" : categoriaAttiva || "tutto il catalogo"}...`} />
         <div className="flex gap-1 bg-gray-100 rounded-xl p-1">
           <button onClick={() => setVistaGriglia(true)} className={`p-1.5 rounded-lg ${vistaGriglia ? "bg-white shadow-sm" : "text-gray-400"}`}><LayoutGrid size={14} /></button>
           <button onClick={() => setVistaGriglia(false)} className={`p-1.5 rounded-lg ${!vistaGriglia ? "bg-white shadow-sm" : "text-gray-400"}`}><List size={14} /></button>
@@ -799,9 +796,9 @@ export const CatalogoFornitoreView = ({ fornitore, nome, logoUrl }) => {
       </div>
 
       {/* Contenuto */}
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 min-w-0">
         {/* Vista categorie */}
-        {!categoriaAttiva && !search && (
+        {!soloPreferiti && !categoriaAttiva && !search && (
           loading ? (
             <div className="flex items-center justify-center py-16 text-gray-400">
               <RefreshCw className="animate-spin mr-2" size={18} /> Caricamento categorie...
@@ -826,8 +823,8 @@ export const CatalogoFornitoreView = ({ fornitore, nome, logoUrl }) => {
         )}
 
         {/* Vista prodotti */}
-        {(categoriaAttiva || search) && (
-          loadingProd ? (
+        {(soloPreferiti || categoriaAttiva || search) && (
+          (soloPreferiti ? preferitiAcquisti.loading && !preferitiAcquisti.prodotti.length : loadingProd && !prodotti.length) ? (
             <div className="flex items-center justify-center py-16 text-gray-400">
               <RefreshCw className="animate-spin mr-2" size={18} /> Caricamento...
             </div>

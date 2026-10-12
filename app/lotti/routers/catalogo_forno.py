@@ -276,10 +276,10 @@ async def lista_prodotti(fornitore: Optional[str] = None, categoria: Optional[st
     # Aggancia prezzo e quantità realmente pagati dalle fatture XML (match per
     # nome) — stesso motore unico di Saima/MePA/Acquaviva: sfogliando il
     # catalogo, un prodotto col prezzo = già comprato davvero.
-    if fornitore in _FORNITORE_FATTURA_MATCH:
+    if fornitore:
         try:
             from app.lotti.routers.utils import prezzi_fatture_per_fornitore, applica_prezzo_da_fatture
-            prezzi = await prezzi_fatture_per_fornitore(db, _FORNITORE_FATTURA_MATCH[fornitore])
+            prezzi = await prezzi_fatture_per_fornitore(db, _FORNITORE_FATTURA_MATCH.get(fornitore, fornitore))
             prods = applica_prezzo_da_fatture(prods, prezzi)
         except Exception:
             logger.debug("[catalogo_forno] aggancio prezzi fatture fallito (non bloccante)")

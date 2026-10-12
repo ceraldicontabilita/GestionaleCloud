@@ -29,7 +29,7 @@ const API = process.env.REACT_APP_LOTTI_BACKEND_URL + "/api";
 function mapItemCatalogoForno(p) {
   const prezzoFattura = p.gia_acquistato ? Number(p.prezzo_fattura || p.prezzo_listino || 0) : 0;
   return {
-    id: `${p.fornitore}-${p.codice_articolo}`,
+    id: p.da_fattura_senza_catalogo ? p.id : `${p.fornitore}-${p.codice_articolo}`,
     // il nome standard dell'AI quando c'e'; quello del fornitore resta sotto
     nome: p.nome_standard || p.nome_completo || p.nome,
     nomeFornitore: p.nome_standard ? (p.nome_completo || p.nome) : "",
@@ -39,6 +39,7 @@ function mapItemCatalogoForno(p) {
     prezzoFattura,
     prezzo_fattura: prezzoFattura,
     prezzo_listino: prezzoFattura,
+    gia_acquistato: !!p.gia_acquistato,
     prezzoFornitore: p.prezzo_fornitore || 0,
     codice: p.codice_articolo,
     codice_articolo: p.codice_articolo,
@@ -51,7 +52,7 @@ function mapItemCatalogoForno(p) {
     inRicette: !!p.in_ricette,
     link_prodotto: p.link_prodotto || "",
     // listino del fornitore (es. Barone): prezzo dichiarato per l'unità di vendita
-    prezzoListino: Number(p.prezzo_listino || 0) || 0,
+    prezzoListino: p.fonte_catalogo === "listino" ? Number(p.prezzo_listino || 0) || 0 : 0,
     unitaVendita: p.unita_vendita || "",
     dataListino: p.prezzo_listino_data || "",
     offertaFino: p.offerta_fino || "",
@@ -73,9 +74,10 @@ function mapItemAlfa(p) {
     prezzoFattura,
     prezzo_fattura: prezzoFattura,
     prezzo_listino: prezzoFattura,
+    gia_acquistato: !!p.gia_acquistato,
     prezzoFornitore: p.prezzo_fornitore || 0,
-    codice: p.codice || null,
-    codice_articolo: p.codice || null,
+    codice: p.codice || p.codice_articolo || null,
+    codice_articolo: p.codice || p.codice_articolo || null,
     fornitore: "alfa",
     descrizione: p.descrizione || "",
     giaAcquistato: !!p.gia_acquistato,
@@ -179,7 +181,7 @@ export default function ProdottiVenditaView({ defaultTab = "acquaviva" }) {
     requestAnimationFrame(() => window.scrollTo(0, scrollPosRef.current));
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { if (paginaTab === "miei") load(); }, [load, paginaTab]);
 
   const syncFatture = async () => {
     try {
@@ -374,7 +376,7 @@ export default function ProdottiVenditaView({ defaultTab = "acquaviva" }) {
           importaPrecaricatoLabel="Importa dai cataloghi PDF 2022-2026" />
       )}
       {/* Cataloghi delle fonti web aggiunte da Enzo (Cataloghi Fornitori (web)) */}
-      {fontiEsterne.filter(f => f.fornitore_key === paginaTab).map(f => (
+      {fontiEsterne.filter(f => f.fornitore_key === paginaTab && !["saima", "mepa", "acquaviva", "alpha", "alfa", "bindi", "pasticcere", "tremarie", "sammontana"].includes(paginaTab)).map(f => (
         <CatalogoGenericoView key={f.fornitore_key} titolo={f.nome} sourceKey={f.fornitore_key}
           fetchUrl={`/catalogo-forno/prodotti?fornitore=${encodeURIComponent(f.fornitore_key)}`}
           mapItem={mapItemCatalogoForno}

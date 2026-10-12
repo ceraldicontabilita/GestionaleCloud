@@ -18,6 +18,22 @@ from app.lotti.db import database as db
 router = APIRouter(prefix="/cataloghi", tags=["cataloghi_prezzi"])
 
 
+@router.get("/preferiti/{fonte}")
+async def preferiti_acquisti(fonte: str):
+    from app.lotti.servizi.preferiti_cataloghi import fatture_catalogo, articoli_acquistati, collega_preferiti
+
+    if fonte in {"mepa", "saima"}:
+        catalogo = await db.dizionario_ingredienti.find({"fonte": fonte}, {"_id": 0}).to_list(None)
+    elif fonte in {"acquaviva", "alpha", "alfa"}:
+        fonti = ["acquaviva", "vandemoortele"] if fonte == "acquaviva" else ["alpha"]
+        catalogo = await db.acquaviva_prodotti.find({"fonte": {"$in": fonti}}, {"_id": 0}).to_list(None)
+    else:
+        catalogo = await db.catalogo_forno_prodotti.find({"fornitore": fonte}, {"_id": 0}).to_list(None)
+    fatture = await fatture_catalogo(db, fonte)
+    prodotti = collega_preferiti(articoli_acquistati(fatture), catalogo, fonte)
+    return {"prodotti": prodotti, "totale": len(prodotti), "fatture": len(fatture)}
+
+
 class PrezzoFornitoreUpdate(BaseModel):
     fonte: str
     prezzo: float = Field(ge=0, le=1_000_000)

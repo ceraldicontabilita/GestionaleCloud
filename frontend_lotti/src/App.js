@@ -50,11 +50,11 @@ function App() {
     // Auto-avvio al primo accesso (utile per nuove pasticcerie); poi non si ripropone.
     let visto = "1";
     try { visto = localStorage.getItem(TOUR_LS_KEY); } catch { /* no-op */ }
-    if (!visto) {
+    if (!visto && activeTab === "dashboard") {
       const t = setTimeout(() => setTourOpen(true), 800);
       return () => clearTimeout(t);
     }
-  }, []);
+  }, [activeTab]);
   const [filtroSoloScaduti, setFiltroSoloScaduti] = useState(false);
   const [ordiniPendenti, setOrdiniPendenti] = useState(0);
 
