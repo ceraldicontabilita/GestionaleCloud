@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import axios from "axios";
 import { BookOpen, ExternalLink, RefreshCw, Search, ShoppingCart } from "lucide-react";
 import { toast } from "sonner";
@@ -7,6 +7,7 @@ import { API } from "../../utils/constants";
 export default function IrcaSpuntiView() {
   const [sezione, setSezione] = useState("ricette");
   const [ricette, setRicette] = useState([]);
+  const [totaleRicette, setTotaleRicette] = useState(0);
   const [cataloghi, setCataloghi] = useState([]);
   const [selezionate, setSelezionate] = useState({});
   const [query, setQuery] = useState("");
@@ -23,20 +24,35 @@ export default function IrcaSpuntiView() {
     setLoading(true);
     try {
       const [r, c] = await Promise.all([
-        axios.get(`${API}/irca/ricette?limit=2000`),
+        axios.get(`${API}/irca/ricette?limit=200`),
         axios.get(`${API}/irca/cataloghi`),
       ]);
       setRicette(r.data?.ricette || []);
+      setTotaleRicette(r.data?.totale || 0);
       setCataloghi(c.data?.cataloghi || []);
     } catch { toast.error("Impossibile caricare l'archivio IRCA"); }
     setLoading(false);
   }, []);
   useEffect(() => { carica(); }, [carica]);
 
-  const filtrate = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    return ricette.filter(r => !q || `${r.nome} ${r.categoria}`.toLowerCase().includes(q));
-  }, [ricette, query]);
+  useEffect(() => {
+    const timer = setTimeout(async () => {
+      try {
+        const r = await axios.get(`${API}/irca/ricette?limit=500&q=${encodeURIComponent(query.trim())}`);
+        setRicette(r.data?.ricette || []);
+        setTotaleRicette(r.data?.totale || 0);
+      } catch { toast.error("Ricerca ricette IRCA non riuscita"); }
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [query]);
+
+  const caricaAltre = async () => {
+    try {
+      const r = await axios.get(`${API}/irca/ricette?limit=200&skip=${ricette.length}`);
+      setRicette(current => [...current, ...(r.data?.ricette || [])]);
+      setTotaleRicette(r.data?.totale || totaleRicette);
+    } catch { toast.error("Caricamento di altre ricette non riuscito"); }
+  };
 
   const payload = () => ({
     ricette: Object.entries(selezionate).map(([slug, moltiplicatore]) => ({ slug, moltiplicatore })),
@@ -94,7 +110,7 @@ export default function IrcaSpuntiView() {
     </div>
 
     <div className="g-tabs">
-      <button className={`g-tab${sezione === "ricette" ? " active" : ""}`} onClick={() => setSezione("ricette")}>Ricette ({ricette.length})</button>
+      <button className={`g-tab${sezione === "ricette" ? " active" : ""}`} onClick={() => setSezione("ricette")}>Ricette ({totaleRicette})</button>
       <button className={`g-tab${sezione === "cataloghi" ? " active" : ""}`} onClick={() => setSezione("cataloghi")}>Cataloghi e ricettari ({cataloghi.length})</button>
       <button className={`g-tab${sezione === "crea" ? " active" : ""}`} onClick={() => setSezione("crea")}>Crea il tuo dolce</button>
     </div>
@@ -155,7 +171,7 @@ export default function IrcaSpuntiView() {
         <button onClick={genera} className="g-btn g-btn-primary flex items-center gap-2"><BookOpen size={15} /> Genera distinta ({Object.keys(selezionate).length})</button>
       </div>
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-        {filtrate.map(r => {
+        {ricette.map(r => {
           const scelta = Object.prototype.hasOwnProperty.call(selezionate, r.slug);
           return <article key={r.slug} className={`bg-white border rounded-xl overflow-hidden ${scelta ? "border-[#5b7a6b] ring-1 ring-[#5b7a6b]" : "border-gray-100"}`}>
             <div className="flex gap-3 p-3">
@@ -177,6 +193,9 @@ export default function IrcaSpuntiView() {
           </article>;
         })}
       </div>
+      {!query.trim() && ricette.length < totaleRicette && <div className="text-center">
+        <button onClick={caricaAltre} className="g-btn g-btn-secondary">Mostra altre ricette ({ricette.length} di {totaleRicette})</button>
+      </div>}
     </>}
 
     {distinta && <section className="bg-white border rounded-xl p-4 space-y-3">
