@@ -1,7 +1,7 @@
 /**
  * CatalogoGenericoView — catalogo semplice riusabile (richiesta Enzo
  * 03/07/2026, "un'unica pagina" per tutti i fornitori): griglia con
- * ricerca, stella "preferito colazione" e "aggiungi al carrello ordini"
+ * ricerca, prodotti acquistati in evidenza e "aggiungi al carrello ordini"
  * (stesso carrello di CatalogoFornitoreView, condiviso con Ordini).
  *
  * A differenza di CatalogoFornitoreView (Saima/MePA: scraping live +
@@ -72,7 +72,6 @@ export default function CatalogoGenericoView({
   const [search, setSearch] = useStatoCatalogo(sourceKey, "ricerca", "");
   const [soloPreferiti, setSoloPreferiti] = useStatoCatalogo(sourceKey, "preferiti", true);
   const preferitiAcquisti = usePreferitiAcquisti(sourceKey);
-  const [preferiti, setPreferiti] = useState(new Set());
   const [importando, setImportando] = useState(false);
   const [selezionato, setSelezionato] = useState(null);
   const { aggiungi: aggiungiCarrello, isInCart } = useCart(titolo);
@@ -85,13 +84,9 @@ export default function CatalogoGenericoView({
   const carica = useCallback(async () => {
     setLoading(true);
     try {
-      const [resProd, resPref] = await Promise.all([
-        fetchUrl ? axios.get(`${API}${fetchUrl}`) : Promise.resolve({ data: [] }),
-        axios.get(`${API}/colazione-acquaviva/preferiti`).catch(() => ({ data: [] })),
-      ]);
+      const resProd = fetchUrl ? await axios.get(`${API}${fetchUrl}`) : { data: [] };
       const raw = Array.isArray(resProd.data) ? resProd.data : (resProd.data?.prodotti || []);
       setProdotti(raw.map(mapItem));
-      setPreferiti(new Set(resPref.data || []));
     } catch {
       toast.error(`Errore caricamento ${titolo}`);
     } finally {
@@ -109,35 +104,6 @@ export default function CatalogoGenericoView({
   }, [confrontoPrezzi, sourceKey]);
 
   useEffect(() => { setVisibili(PASSO); }, [search, filtroPrezzo, soloPreferiti]);
-
-  const togglePreferito = async (prod) => {
-    const eraPreferito = preferiti.has(prod.id);
-    setPreferiti(prev => {
-      const s = new Set(prev);
-      eraPreferito ? s.delete(prod.id) : s.add(prod.id);
-      return s;
-    });
-    try {
-      const res = await axios.post(`${API}/colazione-acquaviva/preferito`, {
-        prodotto_id: prod.id,
-        prodotto_nome: prod.nome,
-        foto_url: prod.foto_url || null,
-        categoria: prod.categoria || null,
-        prezzo_vendita: prod.prezzo || 0,
-        fonte: sourceKey,
-      });
-      toast.success(res.data.preferito
-        ? `⭐ ${prod.nome} aggiunto a tutte e 4 le stagioni`
-        : `${prod.nome} tolto dai preferiti`);
-    } catch {
-      toast.error("Errore preferiti colazione");
-      setPreferiti(prev => {
-        const s = new Set(prev);
-        eraPreferito ? s.add(prod.id) : s.delete(prod.id);
-        return s;
-      });
-    }
-  };
 
   const importaPrecaricato = async () => {
     setImportando(true);
@@ -187,7 +153,7 @@ export default function CatalogoGenericoView({
 
   return (
     <div>
-      {selezionato && <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/55 p-4" onClick={() => setSelezionato(null)}><div className="max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-2xl bg-white shadow-2xl" onClick={e => e.stopPropagation()}><div className="flex items-start justify-between gap-3 border-b border-gray-100 p-4"><div><p className={`m-0 text-[10px] font-black uppercase tracking-widest ${colore.text}`}>{titolo}</p><h3 className="m-0 mt-1 text-xl font-black text-gray-900">{selezionato.nome}</h3></div><button onClick={() => setSelezionato(null)} className="rounded-lg p-2 text-gray-500 hover:bg-gray-100"><X size={18}/></button></div><div className="space-y-4 p-5"><div className={`flex h-52 items-center justify-center overflow-hidden rounded-xl ${colore.light}`}>{selezionato.foto_url ? <img src={fotoSrc(selezionato.foto_url)} alt={selezionato.nome} className="h-full w-full object-contain p-3"/> : <Package size={42} className={`${colore.text} opacity-30`}/>}</div><dl className="grid grid-cols-2 gap-3 text-sm"><div><dt className="text-xs font-bold text-gray-400">Codice</dt><dd className="m-0 font-mono">{selezionato.codice || "—"}</dd></div><div><dt className="text-xs font-bold text-gray-400">Categoria</dt><dd className="m-0">{selezionato.categoria || "—"}</dd></div><div><dt className="text-xs font-bold text-gray-400">Peso singolo</dt><dd className="m-0">{selezionato.grammi || "—"}</dd></div><div><dt className="text-xs font-bold text-gray-400">Quantità cartone</dt><dd className="m-0">{selezionato.pezziCartone || "—"}</dd></div><div><dt className="text-xs font-bold text-gray-400">Peso totale cartone</dt><dd className="m-0">{pesoCartone(selezionato) ? `${pesoCartone(selezionato)} kg` : "—"}</dd></div>{selezionato.ean && <div><dt className="text-xs font-bold text-gray-400">EAN</dt><dd className="m-0 font-mono">{selezionato.ean}</dd></div>}{selezionato.prezzoListino > 0 && <div><dt className="text-xs font-bold text-gray-400">Prezzo di listino</dt><dd className="m-0">{euro(selezionato.prezzoListino)}{selezionato.unitaVendita ? ` per ${selezionato.unitaVendita}` : ""}{selezionato.dataListino ? ` · ${dataIt(selezionato.dataListino)}` : ""} · IVA esclusa</dd></div>}</dl>{selezionato.descrizione && <p className="rounded-xl bg-gray-50 p-3 text-sm leading-6 text-gray-600">{selezionato.descrizione}</p>}{selezionato.link_prodotto && <a href={selezionato.link_prodotto} target="_blank" rel="noreferrer" className={`flex items-center gap-2 text-sm font-bold ${colore.text}`}><ExternalLink size={15}/> Apri la scheda originale del fornitore</a>}{!selezionato.raw?.da_fattura_senza_catalogo && <PrezzoFornitoreEditor prodotto={selezionato} fonte={sourceKey} fornitore={selezionato.fornitore || sourceKey} codiceArticolo={selezionato.codice} onSaved={(dati) => { const aggiornato = { ...selezionato, prezzoFornitore: dati.prezzo_fornitore, prezzo_fornitore: dati.prezzo_fornitore, prezzo: selezionato.prezzoFattura > 0 ? selezionato.prezzoFattura : dati.prezzo_fornitore }; setProdotti(prev => prev.map(item => item.id === selezionato.id ? aggiornato : item)); setSelezionato(aggiornato); aggiornaPrezzoNelCarrello(aggiornato, aggiornato.prezzo, selezionato.prezzoFattura > 0 ? "fattura_xml" : "comunicato_dal_fornitore"); }} />}<button onClick={() => togglePreferito(selezionato)} className="flex w-full items-center justify-center gap-2 rounded-xl border border-[#e6e0d4] py-3 text-sm font-bold text-[#3f5a4e]">{preferiti.has(selezionato.id) ? "★ Preferito colazione" : "☆ Segna come preferito colazione"}</button>{!selezionato.raw?.da_fattura_senza_catalogo && <button onClick={() => toggleRicette(selezionato)} className={`flex w-full items-center justify-center gap-2 rounded-xl py-3 text-sm font-black ${selezionato.inRicette ? "bg-green-100 text-green-700" : "bg-[#5b7a6b] text-white"}`}>{selezionato.inRicette ? <Check size={16}/> : <Plus size={16}/>} {selezionato.inRicette ? "Usato nelle ricette" : "Usa in ricetta"}</button>}</div></div></div>}
+      {selezionato && <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/55 p-4" onClick={() => setSelezionato(null)}><div className="max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-2xl bg-white shadow-2xl" onClick={e => e.stopPropagation()}><div className="flex items-start justify-between gap-3 border-b border-gray-100 p-4"><div><p className={`m-0 text-[10px] font-black uppercase tracking-widest ${colore.text}`}>{titolo}</p><h3 className="m-0 mt-1 text-xl font-black text-gray-900">{selezionato.nome}</h3></div><button onClick={() => setSelezionato(null)} className="rounded-lg p-2 text-gray-500 hover:bg-gray-100"><X size={18}/></button></div><div className="space-y-4 p-5"><div className={`flex h-52 items-center justify-center overflow-hidden rounded-xl ${colore.light}`}>{selezionato.foto_url ? <img src={fotoSrc(selezionato.foto_url)} alt={selezionato.nome} className="h-full w-full object-contain p-3"/> : <Package size={42} className={`${colore.text} opacity-30`}/>}</div><dl className="grid grid-cols-2 gap-3 text-sm"><div><dt className="text-xs font-bold text-gray-400">Codice</dt><dd className="m-0 font-mono">{selezionato.codice || "—"}</dd></div><div><dt className="text-xs font-bold text-gray-400">Categoria</dt><dd className="m-0">{selezionato.categoria || "—"}</dd></div><div><dt className="text-xs font-bold text-gray-400">Peso singolo</dt><dd className="m-0">{selezionato.grammi || "—"}</dd></div><div><dt className="text-xs font-bold text-gray-400">Quantità cartone</dt><dd className="m-0">{selezionato.pezziCartone || "—"}</dd></div><div><dt className="text-xs font-bold text-gray-400">Peso totale cartone</dt><dd className="m-0">{pesoCartone(selezionato) ? `${pesoCartone(selezionato)} kg` : "—"}</dd></div>{selezionato.ean && <div><dt className="text-xs font-bold text-gray-400">EAN</dt><dd className="m-0 font-mono">{selezionato.ean}</dd></div>}{selezionato.prezzoListino > 0 && <div><dt className="text-xs font-bold text-gray-400">Prezzo di listino</dt><dd className="m-0">{euro(selezionato.prezzoListino)}{selezionato.unitaVendita ? ` per ${selezionato.unitaVendita}` : ""}{selezionato.dataListino ? ` · ${dataIt(selezionato.dataListino)}` : ""} · IVA esclusa</dd></div>}</dl>{selezionato.descrizione && <p className="rounded-xl bg-gray-50 p-3 text-sm leading-6 text-gray-600">{selezionato.descrizione}</p>}{selezionato.link_prodotto && <a href={selezionato.link_prodotto} target="_blank" rel="noreferrer" className={`flex items-center gap-2 text-sm font-bold ${colore.text}`}><ExternalLink size={15}/> Apri la scheda originale del fornitore</a>}{!selezionato.raw?.da_fattura_senza_catalogo && <PrezzoFornitoreEditor prodotto={selezionato} fonte={sourceKey} fornitore={selezionato.fornitore || sourceKey} codiceArticolo={selezionato.codice} onSaved={(dati) => { const aggiornato = { ...selezionato, prezzoFornitore: dati.prezzo_fornitore, prezzo_fornitore: dati.prezzo_fornitore, prezzo: selezionato.prezzoFattura > 0 ? selezionato.prezzoFattura : dati.prezzo_fornitore }; setProdotti(prev => prev.map(item => item.id === selezionato.id ? aggiornato : item)); setSelezionato(aggiornato); aggiornaPrezzoNelCarrello(aggiornato, aggiornato.prezzo, selezionato.prezzoFattura > 0 ? "fattura_xml" : "comunicato_dal_fornitore"); }} />}{!selezionato.raw?.da_fattura_senza_catalogo && <button onClick={() => toggleRicette(selezionato)} className={`flex w-full items-center justify-center gap-2 rounded-xl py-3 text-sm font-black ${selezionato.inRicette ? "bg-green-100 text-green-700" : "bg-[#5b7a6b] text-white"}`}>{selezionato.inRicette ? <Check size={16}/> : <Plus size={16}/>} {selezionato.inRicette ? "Usato nelle ricette" : "Usa in ricetta"}</button>}</div></div></div>}
       <div className="flex items-center justify-between mb-3 gap-3 flex-wrap">
         <p className="text-xs font-semibold text-gray-500 uppercase">{filtrati.length} prodotti {titolo}</p>
         {importaPrecaricatoUrl && (
@@ -240,11 +206,9 @@ export default function CatalogoGenericoView({
                 inCart={isInCart(p.id)}
                 ricettaDisponibile={!p.raw?.da_fattura_senza_catalogo}
                 inRicette={!!p.inRicette}
-                preferito={preferiti.has(p.id)}
                 onApri={() => setSelezionato(p)}
                 onCarrello={() => aggiungiCarrello(p)}
                 onRicetta={p.raw?.da_fattura_senza_catalogo ? undefined : () => toggleRicette(p)}
-                onPreferito={() => togglePreferito(p)}
               />
             );
           })}
