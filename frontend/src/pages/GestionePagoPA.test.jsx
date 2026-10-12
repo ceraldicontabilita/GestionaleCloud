@@ -109,6 +109,17 @@ describe('Ricevuta: oneri e sanzioni la associano', () => {
 });
 
 describe('GestionePagoPA - semantica documentale', () => {
+  it('mostra il documento collegato anche prima del riscontro bancario', async () => {
+    api.get.mockImplementation(url => Promise.resolve({ data: url === '/api/pagopa/ricevute'
+      ? [{ id: 'r-doc', verbale_id: 'v-doc', cartelle_collegate: ['cartella:001'], movimento_id: null }]
+      : {} }));
+    render(<MemoryRouter><GestionePagoPA /></MemoryRouter>);
+    expect(await screen.findByRole('button', { name: 'Verbale collegato' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Cartella 001' })).toBeInTheDocument();
+    expect(screen.getByText('Banca da verificare')).toBeInTheDocument();
+    expect(screen.queryByText('Da Associare', { selector: 'span' })).not.toBeInTheDocument();
+  });
+
   it('distingue le famiglie CBILL, MAV, RAV e bollettino postale', () => {
     expect(paymentKindLabel('RICEVUTA_CBILL')).toBe('CBILL');
     expect(paymentKindLabel('RICEVUTA_MAV')).toBe('MAV');
