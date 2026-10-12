@@ -617,6 +617,9 @@ async def process_verbale_document(
             "targa": targa,
             "importo": importo,
             "data_pagamento": data_pagamento,
+            "metodo_pagamento": pagopa_data.get("metodo_pagamento") or "PagoPA",
+            "commissione": pagopa_data.get("commission_amount"),
+            "totale_addebito": pagopa_data.get("bank_debit_total"),
             "source": source,
             "stato": "non_associata",
             "updated_at": now,
@@ -656,10 +659,10 @@ async def process_verbale_document(
             linked_verbale = candidate.get("id") or candidate.get("numero_verbale")
             applied = await applica_pagamento_a_verbale(db, linked_verbale, {
                 "fonte": "gmail" if source.startswith("email") else "drive_pagopa",
-                "psp": "PagoPA",
+                "psp": pagopa_data.get("psp") or "PagoPA",
                 "importo": importo,
                 "data_pagamento": data_pagamento,
-                "metodo_pagamento": "PagoPA",
+                "metodo_pagamento": pagopa_data.get("metodo_pagamento") or "PagoPA",
                 "ricevuta_pagopa_id": receipt_id,
                 "iuv_usato": iuv,
             })

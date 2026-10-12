@@ -60,3 +60,16 @@ def test_testo_alternativo_recupera_spazi_persi_nel_verbale(monkeypatch):
     text=writer._extract_text(buffer.getvalue())
     assert writer._extract_violation_date(text)=='2025-07-02'
     assert writer._extract_amount(text)==121.00
+
+
+def test_bonifico_eseguito_solo_principale_con_commissione_e_data():
+    from app.services.pagopa_receipts import _parse_bonifico_eseguito
+    text=('Bonifico Singolo (Istantaneo) Importo: 121,00 EUR '
+          'Commissione fissa: 1,10 EUR Commissione variabile: 0,00 EUR Totale: 122,10 EUR '
+          'Data esecuzione: 15/08/2025 21:24 Stato: Confermata - Eseguita '
+          'Descrizione causale: Verbale n. B99121976344 del 02/07/2025 targa GG782PN')
+    proof=_parse_bonifico_eseguito(text)
+    assert proof['operation_amount']==121.00 and proof['commission_amount']==1.10
+    assert proof['data_pagamento']=='2025-08-15' and proof['metodo_pagamento']=='Bonifico'
+    assert not _parse_bonifico_eseguito(text.replace('Confermata - Eseguita','Inserita'))
+    assert not _parse_bonifico_eseguito(text.replace('122,10','122,11'))
