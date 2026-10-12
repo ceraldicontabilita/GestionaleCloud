@@ -316,6 +316,7 @@ async def source_certainty(
         "tax_year": item.get("tax_year"),
         "filename": item.get("filename"),
         "protocol": item.get("protocol"),
+        "lipe_canonical_context": item.get("document_type") == "LIPE",
         "lipe_source_registered": item.get('id') in lipe_registered or lipe_sha_by_version.get(item.get('current_version_id')) in lipe_registered_shas,
         "lipe_vigent_periods": lipe_primary.get(item.get('id'), []),
         # Registrata in fiscal_documents con una versione: il deposito e'

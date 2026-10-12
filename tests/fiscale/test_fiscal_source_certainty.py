@@ -145,3 +145,13 @@ def test_lipe_historical_or_coherent_copy_is_not_summed_in_all_declarations_chec
     assert result[0]['field_check_status']=='PRONTO_PER_VERIFICA_CAMPI'
     assert result[1]['field_check_status']=='LIPE_STORICA_O_COPIA'
     assert result[1]['declaration_set_status']=='FONTE_CONSERVATA_NON_SOMMATA'
+
+
+def test_lipe_source_outside_monthly_canonical_selection_is_not_summed():
+    result=annotate_declaration_certainty([{
+        'document_id':'unlinked-copy','document_type':'LIPE','tax_year':2026,
+        'relation_state':'CONFERMATA_NOME_UNIVOCO_E_INDICE_VERIFICATO',
+        'lipe_canonical_context':True,'lipe_source_registered':False,'lipe_vigent_periods':[],
+    }])
+    assert result[0]['field_check_status']=='LIPE_DA_DEPOSITARE'
+    assert result[0]['declaration_set_status']=='FONTE_CONSERVATA_NON_SOMMATA'
