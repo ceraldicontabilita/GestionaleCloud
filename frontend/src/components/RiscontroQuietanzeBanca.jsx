@@ -443,6 +443,7 @@ export default function RiscontroQuietanzeBanca({ anno }) {
           chiave={r => r._id}
           resetKey={`${gruppo}:${anno}`}
           testId="lista-riscontro-quietanze"
+          cardBreakpoint={1600}
         />
       )}
 
