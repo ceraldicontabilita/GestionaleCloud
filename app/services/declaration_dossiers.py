@@ -28,6 +28,10 @@ _YEAR = re.compile(r"(?<!\d)((?:19|20)\d{2})(?!\d)")
 
 
 def _printed_taxpayer(text, company_id):
+    # Named-field Cassetto export separates taxpayer from representative.
+    named = re.search(r"(?m)^\s*Codice fiscale\s*:\s*([A-Z0-9]{11,16})\s*;", text, re.I)
+    if named:
+        return named[1].upper()
     # Ricevute AdE: il contribuente e' distinto dal rappresentante e
     # dall'intermediario, che possono avere altri codici fiscali nello stesso PDF.
     m = re.search(r"(?:DATI\s+RELATIVI\s+AL\s+CONTRIBUENTE|DATI\s+DELLA\s+SOCIETA['’]\s+O\s+ENTE|DATI\s+RICALCOLATI)"
@@ -72,6 +76,9 @@ def document_identity(document: dict, text: str = "") -> dict:
         evidence = re.search(r"Identificativo\s+dichiarazione\s*:\s*(\d{11}\s*-\s*\d{7})", text, re.I)
         ident = _ident(evidence[1] if evidence else name)
     tax_year = _year(quadri.get("anno_imposta") or parsed.get("anno_imposta") or meta.get("tax_year"))
+    if tax_year is None and kind == 'LIPE':
+        named_year = re.search(r"Anno\s+(?:di\s+)?imposta\s*:\s*(20\d{2})\s*;", text, re.I)
+        tax_year = int(named_year[1]) if named_year else None
     if tax_year is None:
         printed_year = re.search(r"(?:per\s+l['’]anno\s+d['’]imposta|periodo\s+d['’]imposta\s+dal\s+\d{2}/\d{2}/)\s*((?:19|20)\d{2})", text, re.I)
         tax_year = int(printed_year[1]) if printed_year else None
@@ -102,7 +109,7 @@ def document_identity(document: dict, text: str = "") -> dict:
         cf = m[1].upper() if m else ""
     return {"taxpayer_id": cf or None, "taxpayer_name": subject[1].strip() if subject else None,
             "declaration_identifier": ident, "tax_year": tax_year, "model_year": model_year,
-            "filed_at": quadri.get("data_presentazione") or parsed.get("data_presentazione")}
+            "filed_at": quadri.get("data_presentazione") or parsed.get("data_presentazione") or meta.get("data_presentazione")}
 
 
 def _original(doc, identity, version=None, *, component=False):

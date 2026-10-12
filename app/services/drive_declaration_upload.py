@@ -39,7 +39,20 @@ def upload_declaration(*,content:bytes,filename:str,category:str,filing_year:int
     source,catalog=index.load_full_catalog(service)
     duplicates=[r for r in catalog["documents"] if index._norm(r.get("SHA-256"))==digest]
     if duplicates:
-        row=duplicates[0]; return {"success":True,"duplicate":True,"document_id":row.get("ID documento"),"sha256":digest,"drive_path":row.get("Percorso Drive")}
+        row = duplicates[0]
+        result = {"success": True, "duplicate": True, "document_id": row.get("ID documento"),
+                  "sha256": digest, "drive_path": row.get("Percorso Drive")}
+        if category == 'lipe':
+            # Repair/replay uses the existing indexed file, never another copy.
+            parent = source['root_id']
+            parts = str(row.get('Percorso Drive') or '').split('/')
+            for position, part in enumerate(parts):
+                matches = [f for f in index._list_children(service, parent) if f.get('name') == part]
+                if len(matches) != 1:
+                    raise ValueError('Originale LIPE indicizzato assente o ambiguo')
+                parent = matches[0]['id']
+            result['drive_file_id'] = parent
+        return result
     document_type=_classification(content,filename,category)
     folders=["01_DICHIARAZIONI_FISCALI",TYPE_FOLDERS[document_type],str(filing_year)]; parent=source["root_id"]
     for name in folders: parent=_folder(service,parent,name)

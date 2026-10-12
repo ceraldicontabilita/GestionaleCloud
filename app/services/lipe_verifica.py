@@ -183,6 +183,10 @@ def parse_lipe_modules(
     text: str, *, layout_words: list[dict[str, Any]] | None = None
 ) -> list[dict[str, Any]]:
     """Una pagina può contenere più moduli VP: li mantiene separati."""
+    from app.services.lipe_parser import parse_cassetto_testuale, modulo_probatorio
+    textual = parse_cassetto_testuale([text])
+    if textual is not None:
+        return [modulo_probatorio(period) for period in textual["periodi"]]
     if layout_words:
         parsed = parse_lipe_page(text, layout_words=layout_words)
         return [parsed] if parsed["month"] or parsed["values"] else []
@@ -231,6 +235,7 @@ async def list_lipe_monthly_evidence(db, *, year: int, company_id: str | None = 
                     "version_id": page.get("version_id") or document.get("current_version_id"),
                     "page_number": page.get("page_number"),
                     "filename": document.get("filename"),
+                    "data_presentazione": (document.get("source_metadata") or {}).get("data_presentazione"),
                     "confidence": min(
                         parsed["confidence"],
                         float(page.get("ocr_confidence") or 1.0),
@@ -249,6 +254,15 @@ async def list_lipe_monthly_evidence(db, *, year: int, company_id: str | None = 
         if not items:
             result[month] = {"stato": "LIPE_NON_PRESENTE", "candidati": []}
         elif len(items) > 1:
+            dates = [item.get('data_presentazione') for item in items]
+            if all(dates) and len(set(dates)) > 1:
+                newest = max(dates)
+                older = [item for item in items if item['data_presentazione'] != newest]
+                items = [item for item in items if item['data_presentazione'] == newest]
+                if len(items) == 1:
+                    result[month] = {'stato': 'LIPE_ESTRATTA' if items[0].get('confidence', 0) >= 1 else 'LIPE_DA_VERIFICARE', **items[0], 'candidati': items,
+                                     'versioni_precedenti': older, 'criterio_versione': 'data_presentazione_successiva'}
+                    continue
             # Copie documentali diverse non sono valori fiscali diversi. Se i
             # campi VP estratti e le quadrature coincidono, mostriamo il dato
             # comune conservando tutte le provenienze; valori discordanti

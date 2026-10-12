@@ -8,7 +8,7 @@ from app.services.expectation_policy import ExpectationStatus
 
 
 def quadro_lipe(doc):
-    if not doc.get("quadratura_ok") or doc.get("stato") == "sostituita":
+    if not doc.get("quadratura_ok") or doc.get("stato") == "sostituita" or doc.get("conflitto_fonti"):
         return None
     final = doc.get("iva_da_versare_o_credito")
     sign = doc.get("iva_da_versare_o_credito_segno")
@@ -88,6 +88,16 @@ async def arricchisci_piano_iva(db, griglia, oggi):
         for c in r["caselle"]:
             mese = int(c["periodo"])
             periodo = f"{anno}-{mese:02d}"
+            conflicted = next((doc for doc in docs if doc.get('periodo') == periodo and doc.get('conflitto_fonti')), None)
+            if conflicted:
+                sources = [conflicted, *(conflicted.get('fonti_alternative') or [])]
+                c['iva'] = {'fonte': 'LIPE_da_verificare', 'verificato': False,
+                    'credito_residuo_cents': None, 'da_versare_cents': None,
+                    'presentazione_lipe': attesa_lipe(anno, mese, oggi, presente=True),
+                    'documenti_da_verificare': [{'nome': doc.get('nome_file'),
+                        'pdf_url': '/api/originale/documento_fiscale/' + quote(str(doc['source_document_id']), safe='')
+                        if doc.get('source_document_id') else None} for doc in sources]}
+                continue
             d = by_period.get(periodo)
             q = quadro_lipe(d) if d else None
             calendario_lipe = attesa_lipe(anno, mese, oggi, presente=bool(q))
