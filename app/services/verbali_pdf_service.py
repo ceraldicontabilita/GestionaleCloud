@@ -48,6 +48,7 @@ async def collect_verbale_pdfs(
             "tipo": "quietanza",
             "size": 0,
             "source": "verbale_legacy",
+            "file_hash": verbale.get("quietanza_hash"),
             **({"content_base64": verbale.get("quietanza_pdf")}
                if include_content else {}),
         })
@@ -104,6 +105,26 @@ async def collect_verbale_pdfs(
                 "file_hash": document.get("file_hash"),
             })
             next_index += 1
+
+    # La prova canonica puo' stare nella raccolta ricevute, anche quando
+    # l'originale e' una contabile di bonifico e non un allegato dell'inbox.
+    receipt_id = verbale.get("ricevuta_pagopa_id")
+    if receipt_id:
+        receipt = await db["ricevute_pagopa"].find_one(
+            {"id": receipt_id, "pdf_data": {"$exists": True, "$ne": ""}},
+            {"_id": 0, "id": 1, "filename": 1, "source_sha256": 1,
+             "file_hash": 1, "pdf_hash": 1, **({"pdf_data": 1} if include_content else {})},
+        )
+        if receipt:
+            receipt_hash = receipt.get("source_sha256") or receipt.get("file_hash") or receipt.get("pdf_hash")
+            if not receipt_hash or not any(item.get("file_hash") == receipt_hash for item in results):
+                results.append({
+                    "indice": max((item["indice"] for item in results), default=-1) + 1,
+                    "id": receipt["id"], "document_id": receipt["id"],
+                    "filename": receipt.get("filename") or "quietanza.pdf", "tipo": "quietanza",
+                    "size": 0, "source": "ricevuta_pagopa", "file_hash": receipt_hash,
+                    **({"content_base64": receipt.get("pdf_data")} if include_content else {}),
+                })
 
     # Allegati delle notifiche PEC agganciate (copia conforme e relata): stessa
     # vista del fascicolo, senza ripetere quelli gia' presenti per impronta.

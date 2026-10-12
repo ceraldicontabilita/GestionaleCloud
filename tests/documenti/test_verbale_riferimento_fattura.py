@@ -23,3 +23,19 @@ def test_originale_sostituisce_riferimento_fattura_senza_nuovo_verbale(tmp_path)
         assert row['verbale_originale_acquisito'] is True and row['importo']==52.4
         assert not row.get('pagato_documentalmente')
     asyncio.run(run())
+
+
+def test_fascicolo_legge_la_ricevuta_canonica_e_non_duplica_inbox():
+    from app.services.verbali_pdf_service import collect_verbale_pdfs
+    db=AsyncMongoMockClient().db
+    async def run():
+        await db.ricevute_pagopa.insert_one({'id':'r1','pdf_data':'receipt-bytes','filename':'bonifico.pdf','source_sha256':'hash1'})
+        root={'id':'v1','numero_verbale':'A99111311018','ricevuta_pagopa_id':'r1'}
+        files=await collect_verbale_pdfs(db,root)
+        assert len(files)==1 and files[0]['content_base64']=='receipt-bytes' and files[0]['tipo']=='quietanza'
+        await db.documents_inbox.insert_one({'id':'d1','verbale_id':'v1','pdf_data':'receipt-bytes','file_hash':'hash1'})
+        files=await collect_verbale_pdfs(db,root)
+        assert len(files)==1
+        metadata=await collect_verbale_pdfs(db,root,include_content=False)
+        assert 'content_base64' not in metadata[0]
+    asyncio.run(run())
