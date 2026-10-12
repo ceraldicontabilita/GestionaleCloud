@@ -46,6 +46,7 @@ export default function DocumentViewerModal({
   onClose,
   onDownload,
   extraActions,
+  detailsPanel,
   pageNumber = 1,
   maxWidth = 960,
   testIdPrefix = 'document-viewer',
@@ -332,6 +333,7 @@ export default function DocumentViewerModal({
           </div>
         </div>
 
+        {detailsPanel}
         {loadError ? (
           <div
             style={{

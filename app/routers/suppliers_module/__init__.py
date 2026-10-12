@@ -39,6 +39,7 @@ from .base import (
     applica_metodo_fornitore_dal, stato_metodo_fornitore_dal,
     get_fornitori_duplicati, get_fornitori_da_decidere,
     merge_fornitori_duplicati, auto_merge_fornitori_duplicati,
+    get_memoria_profili_fiscali, importa_profili_fiscali,
 )
 
 # === ROTTE STATICHE (devono venire PRIMA delle dinamiche) ===
@@ -79,6 +80,8 @@ router.add_api_route("/duplicati", get_fornitori_duplicati, methods=["GET"])
 router.add_api_route("/duplicati/da-decidere", get_fornitori_da_decidere, methods=["GET"])
 router.add_api_route("/duplicati/merge", merge_fornitori_duplicati, methods=["POST"])
 router.add_api_route("/duplicati/auto-merge", auto_merge_fornitori_duplicati, methods=["POST"])
+router.add_api_route("/profili-fiscali/memoria", get_memoria_profili_fiscali, methods=["GET"])
+router.add_api_route("/profili-fiscali/importa", importa_profili_fiscali, methods=["POST"])
 
 # === ROTTE DINAMICHE (devono venire DOPO le statiche) ===
 router.add_api_route("/ricerca-iban-singolo/{supplier_id}", ricerca_iban_singolo_web, methods=["POST"])

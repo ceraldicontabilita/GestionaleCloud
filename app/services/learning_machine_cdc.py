@@ -8,10 +8,27 @@ leggendo la DESCRIZIONE delle linee fattura per assegnare il centro di costo cor
 
 from typing import Dict, Any, List, Tuple, Optional
 import logging
+import re
+import math
 
 from app.services.piano_conti_ufficiale import SOGLIA_CESPITE_TUIR
 
 logger = logging.getLogger(__name__)
+
+
+def _keyword_presente(keyword: str, testo: str) -> bool:
+    """Le parole brevi devono essere intere: TRE non e' EXTREME.
+
+    Mantiene il matching dei termini merceologici lunghi (anche radici e
+    plurali storici), impedendo che sigle/nomi brevi cambino categoria IVA
+    soltanto perche' compaiono dentro una descrizione diversa.
+    """
+    parola = keyword.lower().strip()
+    if not parola:
+        return False
+    if len(parola) <= 4:
+        return re.search(r"(?<!\w)" + re.escape(parola) + r"(?!\w)", testo.lower()) is not None
+    return parola in testo.lower()
 
 # ============================================================================
 # CENTRI DI COSTO - BAR/PASTICCERIA ATECO 56.10.30
@@ -523,6 +540,21 @@ CENTRI_COSTO = {
                     "cesto regalo", "pacco dono"]
     },
 
+    # Acquisti riconosciuti dal motore cespiti canonico. Non sono una spesa
+    # di manutenzione né un piccolo bene deducibile subito: la deduzione
+    # del costo passa dalle quote del cespite. IVA e ammortamento restano
+    # valutazioni distinte. Nessun riconoscimento dal solo nome fornitore.
+    "15.1_ACQUISTO_BENI_STRUMENTALI": {
+        "codice": "BII.2",
+        "nome": "Acquisto impianti e beni strumentali (ammortamento)",
+        "categoria_bilancio": "BII",
+        "deducibilita_ires": 0.0,
+        "deducibilita_irap": 0.0,
+        "deduzione_per_ammortamento": True,
+        "detraibilita_iva": 1.0,
+        "keywords": [],
+    },
+
     # FALLBACK
     "99_ALTRI_COSTI": {
         "codice": "B14.99",
@@ -786,7 +818,7 @@ def classifica_fattura_per_centro_costo(
         score = 0
         for keyword in config.get("keywords", []):
             k = keyword.lower()
-            if k in contenuto_lower:
+            if _keyword_presente(k, contenuto_lower):
                 score += len(keyword) * PESO_CONTENUTO
 
         if score > 0:
@@ -817,6 +849,14 @@ def classifica_fattura_per_centro_costo(
                 confidence = min(confidence, 0.4)
         return best_cdc, config_out, confidence
 
+    # Il riconoscitore già usato dall'archivio cespiti è una prova del
+    # contenuto anche quando il dizionario keyword non conosce il prodotto
+    # (es. «Condizionatore split Daikin»). Non trasforma CDC ignoti in IVA
+    # certa e non capitalizza qui: il writer cespiti resta unico.
+    cdc_beni = "15.1_ACQUISTO_BENI_STRUMENTALI"
+    if (not ammessi or cdc_beni in ammessi) and _righe_beni_strumentali(linee_fattura):
+        return cdc_beni, CENTRI_COSTO[cdc_beni], 0.65
+
     # Solo se le righe non contengono alcun segnale merceologico usiamo il
     # nome del fornitore come indizio. Non può più sovrascrivere il contenuto.
     if fornitore_noto:
@@ -826,7 +866,7 @@ def classifica_fattura_per_centro_costo(
     for cdc_id, config in CENTRI_COSTO.items():
         if ammessi and cdc_id not in ammessi:
             continue
-        score = sum(len(k) for k in config.get("keywords", []) if k.lower() in supplier_lower)
+        score = sum(len(k) for k in config.get("keywords", []) if _keyword_presente(k, supplier_lower))
         if score:
             scores_nome[cdc_id] = score
     if scores_nome:
@@ -835,6 +875,38 @@ def classifica_fattura_per_centro_costo(
 
     # Fallback: altri costi
     return "99_ALTRI_COSTI", CENTRI_COSTO["99_ALTRI_COSTI"], 0.1
+
+
+def _righe_beni_strumentali(linee_fattura: Optional[List[Dict]]) -> bool:
+    """Tutte le righe sono acquisti di beni già riconoscibili come cespiti.
+
+    Esclude auto/immobili (condizioni IVA specifiche), righe senza importo,
+    piccoli beni, servizi e documenti misti. Le esclusioni di manutenzione,
+    noleggio e sconto sono quelle del riconoscitore canonico.
+    """
+    if not linee_fattura:
+        return False
+    from app.routers.cespiti import classify_asset
+
+    categorie_ordinarie = {"impianti_generici", "impianti_cucina", "attrezzature",
+                          "mobili_arredi", "macchine_ufficio", "software", "frigoriferi", "forni"}
+    for riga in linee_fattura:
+        if not isinstance(riga, dict):
+            return False
+        descrizione = str(riga.get("descrizione") or riga.get("description") or "")
+        if re.search(
+            r"\b(?:iphone|smartphone|cellular\w*|telefon\w*|sim|auto|autovettur\w*|vettur\w*|"
+            r"veicol\w*|motocicl\w*|automezz\w*|van|camion\w*)\b",
+            descrizione, re.IGNORECASE,
+        ):
+            return False
+        try:
+            importo = abs(float(riga.get("prezzo_totale") or riga.get("importo") or riga.get("price_total") or 0))
+        except (TypeError, ValueError):
+            return False
+        if not math.isfinite(importo) or importo <= SOGLIA_CESPITE_TUIR or classify_asset(descrizione, importo) not in categorie_ordinarie:
+            return False
+    return True
 
 
 def _importo_da_linee(linee_fattura: Optional[List[Dict]]) -> Optional[float]:
@@ -915,10 +987,13 @@ def punteggi_contenuto(
             continue
         score = 0
         for keyword in config.get("keywords", []):
-            if keyword.lower() in testo_lower:
+            if _keyword_presente(keyword, testo_lower):
                 score += len(keyword)
         if score > 0:
             scores[cdc_id] = score
+    cdc_beni = "15.1_ACQUISTO_BENI_STRUMENTALI"
+    if not scores and (not ammessi or cdc_beni in ammessi) and _righe_beni_strumentali(linee_fattura):
+        scores[cdc_beni] = 50
     return scores
 
 

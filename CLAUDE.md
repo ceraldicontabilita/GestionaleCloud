@@ -2035,6 +2035,45 @@ Devono essere rettificate con storni/scritture corrette, non cancellate.
 
 # 33. Fornitori
 
+## Memoria fiscale richiesta dal titolare — 12/10/2026
+
+`app/data/profili_fiscali_fornitori.json` conserva la ricerca per P.IVA dei
+233 fornitori presenti nel registro, con fonti, data e limiti della verifica.
+È una sorgente versionata per l'import esplicito; la fonte operativa è il
+campo `profilo_fiscale` dell'anagrafica canonica, non un secondo archivio.
+Anteprima e applicazione amministrative non creano fornitori, non cambiano
+pagamenti e non avviano job o ricerche web periodiche. La scheda Fiscalità
+mostra attività, ATECO/versione/stato, regola candidata e fonti. Nessun ATECO
+è dichiarato verificato senza una fonte ufficiale riferita a quella società.
+
+Il classificatore consulta sempre l'identità fiscale esatta e l'anagrafica
+prima di valutare l'IVA; le righe descrivono cosa è stato acquistato.
+Identità/attività/ATECO del venditore non dimostrano uso, inerenza o pro rata
+dell'acquirente. I gruppi IVA richiedono anche l'identità della società;
+fonti secondarie, identità ambigue e contraddizioni non autorizzano una
+percentuale. I profili non riscontrati possono contribuire alla ricerca,
+ma la sola esistenza del profilo non sostituisce una decisione documentale.
+
+Aliquota esposta, percentuale di detrazione IVA, deducibilità del costo e
+coefficiente di ammortamento sono dati distinti. Il 70% dell'art. 164 per
+auto assegnate promiscuamente ai dipendenti riguarda i costi e richiede la
+maggior parte del periodo d'imposta: non è IVA70. Uso del veicolo e quota
+telefonia devono essere documentati; nessun IVA50 fisso sulla telefonia.
+Le condizioni possono essere confermate sulla fattura con fonte e periodo
+di validità, mantenendo l'audit; una scelta di centro di costo non basta.
+Le regole condizionali qui verificate coprono il 2026 e richiedono revisione
+dei riferimenti per altri periodi. Noleggio operativo non crea un cespite
+di proprietà dell'acquirente. Ammortamento e IVA restano separati.
+
+La valutazione conserva fonti, motivo e percentuale esplicita 0..1;
+incertezza = `None`/`DA_VERIFICARE`, mai zero inventato. Liquidazioni già
+confermate e IVA utilizzata restano protette. L'import dei profili non
+riclassifica massivamente lo storico né aggiorna scritture contabili.
+La correzione delle keyword corte evita il caso reale `TRE` dentro
+`EXTREME` sulle caramelle Perfetti: non è una categoria telefonica.
+Queste regole descrivono l'implementazione; popolamento e deploy devono
+essere verificati separatamente sul registro e sulla versione pubblicata.
+
 Identità:
 
 1. P.IVA valida;

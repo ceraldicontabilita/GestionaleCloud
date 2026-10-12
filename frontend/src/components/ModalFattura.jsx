@@ -4,6 +4,7 @@ import api from '../api';
 import DocumentViewerModal from './DocumentViewerModal';
 import { messaggioErroreOriginale, scaricaOriginale } from '../lib/scaricaOriginale';
 import { urlOriginale } from '../lib/vista';
+import FiscalitaFattura from './FiscalitaFattura';
 
 /**
  * Modale in-page per visualizzare una fattura (view-assoinvoice), senza
@@ -114,6 +115,7 @@ export default function ModalFattura({ fatturaId, numero, onClose }) {
         )),
       ]}
       testIdPrefix="modal-fattura"
+      detailsPanel={pagamentoSelezionato ? undefined : <FiscalitaFattura fatturaId={fatturaId} />}
     />
   );
 }

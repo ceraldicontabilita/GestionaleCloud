@@ -28,16 +28,39 @@ async def handler_classifica_cdc(payload: Dict[str, Any], db) -> Dict[str, Any]:
             calcola_importi_fiscali,
             somma_gia_dedotto_periodo_anno,
         )
+        from app.services.fiscalita_fornitore import (
+            adatta_classificazione_al_profilo, motivo_fattura_protetta,
+            risolvi_profilo, valuta_iva_fattura,
+        )
+        from app.utils.id_fattura import filtro_id
+
+        # Rilegge il fatto canonico, anche durante un replay: il payload non
+        # può sovrascrivere un pagamento IVA o una classificazione manuale.
+        fattura_completa = await db["invoices"].find_one({"id": fattura_id})
+        if not fattura_completa:
+            fattura_completa = await db["invoices"].find_one(filtro_id(fattura_id))
+        if not fattura_completa:
+            return {"skipped": True, "reason": "fattura non trovata"}
+        protetta = await motivo_fattura_protetta(db, fattura_completa)
+        if protetta:
+            return {"skipped": True, "reason": protetta}
+        fattura_fiscale = {**payload, **fattura_completa}
+        # Il master del fornitore viene consultato sempre prima del calcolo;
+        # la sorgente JSON non viene applicata da questo handler.
+        profilo_fiscale = await risolvi_profilo(db, fattura_fiscale)
 
         # Il payload reale pubblicato da fatture_upload.py usa campi piatti
         # (fornitore_ragione_sociale, righe_linee) non un oggetto "fornitore"
         # annidato — supportiamo entrambe le forme per compatibilità.
-        fornitore_nome = (payload.get("fornitore") or {}).get("ragione_sociale") \
+        fornitore_nome = fattura_completa.get("supplier_name") \
+            or (payload.get("fornitore") or {}).get("ragione_sociale") \
             or payload.get("fornitore_ragione_sociale", "")
-        descrizione    = payload.get("descrizione", "")
-        righe          = payload.get("righe") or payload.get("righe_linee") or payload.get("linee", [])
-        imponibile     = float(payload.get("imponibile") or 0)
-        iva            = float(payload.get("iva") or 0)
+        descrizione    = fattura_fiscale.get("descrizione", "")
+        righe          = fattura_completa.get("linee") or payload.get("righe") \
+            or payload.get("righe_linee") or payload.get("linee", [])
+        imponibile     = float(fattura_fiscale.get("imponibile") or 0)
+        iva            = float(fattura_fiscale.get("iva") or 0)
+        fattura_fiscale["linee"] = righe
 
         # MOTORE UNICO col learning: consulta PRIMA le configurazioni
         # dell'utente (fornitori_keywords), poi la tabella statica. Prima
@@ -46,6 +69,10 @@ async def handler_classifica_cdc(payload: Dict[str, Any], db) -> Dict[str, Any]:
         cdc_id, cdc_config, confidence, fonte = await classifica_fattura_con_learning(
             db, fornitore_nome, descrizione, righe,
             configurazioni=configurazioni,
+        )
+        cdc_id, cdc_config, confidence, fonte = adatta_classificazione_al_profilo(
+            fattura_fiscale, profilo_fiscale, descrizione, righe,
+            (cdc_id, cdc_config, confidence, fonte),
         )
 
         importi = calcola_importi_fiscali(imponibile, iva, cdc_config)
@@ -58,11 +85,6 @@ async def handler_classifica_cdc(payload: Dict[str, Any], db) -> Dict[str, Any]:
         if cdc_config.get("limite_annuo"):
             from app.services.noleggio.parsers import estrai_numero_contratto
 
-            fattura_completa = await db["invoices"].find_one(
-                {"id": fattura_id},
-                {"_id": 0, "linee": 1, "dati_contratto": 1, "supplier_vat": 1,
-                 "invoice_date": 1, "data_fattura": 1},
-            ) or {}
             numero_contratto_noleggio = estrai_numero_contratto(fattura_completa)
             fornitore_piva = fattura_completa.get("supplier_vat") or payload.get("fornitore_piva")
             data_riferimento = (
@@ -106,6 +128,10 @@ async def handler_classifica_cdc(payload: Dict[str, Any], db) -> Dict[str, Any]:
                 db, fornitore_nome, "", [riga],
                 configurazioni=configurazioni,
             )
+            riga_cdc, riga_config, riga_conf, riga_fonte = adatta_classificazione_al_profilo(
+                fattura_fiscale, profilo_fiscale, "", [riga],
+                (riga_cdc, riga_config, riga_conf, riga_fonte),
+            )
             imponibile_riga = round(_numero(
                 riga.get("prezzo_totale") or riga.get("importo") or riga.get("totale")
             ), 2)
@@ -146,6 +172,14 @@ async def handler_classifica_cdc(payload: Dict[str, Any], db) -> Dict[str, Any]:
         imponibile_classificato = round(sum(q["imponibile"] for q in centri_ripartiti), 2)
         differenza_imponibile = round(imponibile - imponibile_classificato, 2)
 
+        # IVA e deducibilità dei costi sono decisioni distinte: nessun 50%
+        # IVA telefonia ereditato dall'80% IRES, nessun 40% auto senza uso
+        # documentato. Una decisione mancante resta None, non zero.
+        valutazione_iva = valuta_iva_fattura(
+            fattura_fiscale, profilo_fiscale, cdc_id, cdc_config, classificazioni_righe,
+        )
+        iva_da_verificare = valutazione_iva["percentuale_detraibilita_iva"] is None
+
         update = {
             "centro_costo_id":               cdc_id,
             "centro_costo_nome":             cdc_config.get("nome", ""),
@@ -153,8 +187,11 @@ async def handler_classifica_cdc(payload: Dict[str, Any], db) -> Dict[str, Any]:
             "classificazione_fonte":         fonte,
             "imponibile_deducibile_ires":    importi.get("imponibile_deducibile_ires", 0),
             "imponibile_indeducibile_ires":  importi.get("imponibile_indeducibile_ires", 0),
-            "iva_detraibile":                importi.get("iva_detraibile", 0),
-            "iva_indetraibile":              importi.get("iva_indetraibile", 0),
+            "iva_detraibile":                valutazione_iva["iva_detraibile"],
+            "iva_indetraibile":              valutazione_iva["iva_indetraibile"],
+            "percentuale_detraibilita_iva":  valutazione_iva["percentuale_detraibilita_iva"],
+            "valutazione_fiscale_iva":        valutazione_iva["valutazione_fiscale_iva"],
+            "motivo_detraibilita_da_verificare": valutazione_iva["motivo"] if iva_da_verificare else None,
             "classificato_da":               "learning_machine",
             "classificazioni_righe":         classificazioni_righe,
             "centri_costo_ripartizione":     centri_ripartiti,
@@ -163,7 +200,7 @@ async def handler_classifica_cdc(payload: Dict[str, Any], db) -> Dict[str, Any]:
             "imponibile_non_allocato":       differenza_imponibile,
             "stato_classificazione": (
                 "da_verificare"
-                if righe_da_verificare or abs(differenza_imponibile) > 0.05
+                if iva_da_verificare or righe_da_verificare or abs(differenza_imponibile) > 0.05
                 else "classificata"
             ),
         }
@@ -173,7 +210,18 @@ async def handler_classifica_cdc(payload: Dict[str, Any], db) -> Dict[str, Any]:
             update["numero_contratto_noleggio"] = numero_contratto_noleggio
             update["imponibile_limitato_periodo"] = importi.get("imponibile_limitato_periodo")
 
-        await db["invoices"].update_one({"id": fattura_id}, {"$set": update})
+        # Compare-and-set sul fatto letto: se nel frattempo la liquidazione
+        # lo consuma o l'utente conferma il CDC, non si cambia la fattura.
+        filtro = {"id": fattura_completa["id"],
+                  "iva_utilizzata": fattura_completa.get("iva_utilizzata"),
+                  "classificazione_manuale": fattura_completa.get("classificazione_manuale"),
+                  "classificato_da": fattura_completa.get("classificato_da"),
+                  "stato_detrazione_iva": fattura_completa.get("stato_detrazione_iva")}
+        cambiati = {k: v for k, v in update.items() if fattura_completa.get(k) != v}
+        if cambiati:
+            result = await db["invoices"].update_one(filtro, {"$set": cambiati})
+            if getattr(result, "matched_count", 1) == 0:
+                return {"skipped": True, "reason": "fattura modificata durante la classificazione"}
 
         # La detraibilita' e' appena decisa: il motore IVA, girato prima di
         # noi, l'aveva trovata vuota e lasciato la fattura DA_VERIFICARE.
@@ -187,6 +235,8 @@ async def handler_classifica_cdc(payload: Dict[str, Any], db) -> Dict[str, Any]:
             "classificazione_mista": len(centri_ripartiti) > 1,
             "righe_classificate": len(classificazioni_righe),
             "righe_da_verificare": righe_da_verificare,
+            "iva_da_verificare": iva_da_verificare,
+            "percentuale_detraibilita_iva": valutazione_iva["percentuale_detraibilita_iva"],
         }
 
     except Exception as e:
