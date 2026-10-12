@@ -43,3 +43,23 @@ def test_salvataggio_visibile_subito(mag):
     run(m.salva_override(m.OverridePayload(key="ananas l", nome_norm="Ananas fresco", categoria="Frutta/Noci")))
     riga = next(p for p in run(m.gestione_prodotti())["prodotti"] if p["key"] == "ananas l")
     assert riga["nome_norm"] == "Ananas fresco" and riga["categoria"] == "Frutta/Noci"
+
+
+def test_cannoli_sono_semilavorati_e_categoria_selezionabile(mag):
+    m, db = mag
+    run(db.lotti_fornitori.insert_one({
+        "id": "cannoli-1",
+        "prodotto_nome": "Cannoli medi cioccolattati pz 100",
+        "prodotto_nome_norm": "cannoli medi cioccolattati pz 100",
+        "quantita_disponibile": 2,
+        "unita_misura": "CT",
+        "fornitore": "GE.FI.AL. SAS",
+    }))
+    m._GESTIONE_CACHE.update({"dati": None, "scade": 0.0})
+
+    risultato = run(m.gestione_prodotti())
+    riga = next(p for p in risultato["prodotti"] if p["key"].startswith("cannoli medi"))
+
+    assert "Semilavorati" in risultato["categorie"]
+    assert riga["categoria"] == "Semilavorati"
+    assert riga["visualizza"] is True

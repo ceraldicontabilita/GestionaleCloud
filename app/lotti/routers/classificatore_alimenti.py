@@ -119,7 +119,7 @@ FOOD_WORDS = _re.compile(
         "fragol", "lampon", "mirtill", "ananas", "banana", "mela", "pera",
         "albicocc", "pesca", "ciliegi", "fico", "cocco", "datteri", "fichi",
         "panettone", "pandoro", "colomba", "bab\u00e0", "sfogliat", "cornett",
-        "brioche", "croissant", "pizza margherita", "pesce", "gamber",
+        "brioche", "croissant", "cannol", "bign\u00e8", "bigne", "pizza margherita", "pesce", "gamber",
         "anguria", "melone", "kiwi", "mandarino", "estathe", "lurisia",
         "tourtel", "kimbo", "whisk", "tartellett", "surrogato", "fondente",
     ]) + r")",
@@ -127,7 +127,7 @@ FOOD_WORDS = _re.compile(
 )
 
 FOOD_CAT = {
-    "Beveraggi", "Verdure",
+    "Beveraggi", "Verdure", "Semilavorati",
     "Farine/Cereali", "Latticini", "Creme/Paste", "Cioccolato", "Zuccheri",
     "Lieviti", "Oli/Grassi", "Uova", "Frutta/Noci", "Carni/Salumi", "Pesce",
     "Bibite", "Vini e Bevande", "Liquori", "Caffe", "Caffè", "Surgelati",

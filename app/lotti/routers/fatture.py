@@ -851,6 +851,14 @@ async def importa_fattura_xml(
                 logger.debug("[fatture] errore non bloccante ignorato")
             from app.lotti.routers.classificatore_alimenti import e_servizio
 
+            # Identita' stabile della fattura per le righe che alimentano la
+            # giacenza. La posizione XML distingue anche due righe con la stessa
+            # descrizione nella stessa fattura e rende sicuro il retry parziale.
+            lotto_source_key = hashlib.sha256(
+                f"{(fattura_data['fornitore'] or '').strip().casefold()}|"
+                f"{(fattura_data.get('numero_fattura') or '').strip()}".encode("utf-8")
+            ).hexdigest()
+
             for idx, prodotto in enumerate(fattura_data["prodotti"]):
                 desc = re.sub(r"\s+", " ", prodotto.get("descrizione", "").strip())
                 if not desc:
@@ -888,13 +896,24 @@ async def importa_fattura_xml(
                     prezzo = float(str(grezzo).replace(",", ".").strip()) if grezzo not in (None, "") else None
                 except (ValueError, TypeError):
                     prezzo = None
-                # Chiave univoca: fattura + fornitore + descrizione prodotto
-                chiave = {
+                fattura_riga_key = f"{lotto_source_key}:{idx}"
+                # Le nuove righe usano l'identita' puntuale della riga XML.
+                # Il secondo controllo riconosce i lotti storici creati prima
+                # dell'introduzione della chiave, senza ricrearli al primo retry.
+                chiave_legacy = {
                     "fattura_ref": fattura_data.get("numero_fattura", ""),
                     "fornitore": fattura_data["fornitore"],
                     "prodotto_nome": desc,
+                    "fattura_riga_key": {"$exists": False},
                 }
-                exists = await db.lotti_fornitori.find_one(chiave, {"_id": 0, "id": 1})
+                exists = await db.lotti_fornitori.find_one(
+                    {"fattura_riga_key": fattura_riga_key, "origine": "fattura_xml"},
+                    {"_id": 0, "id": 1},
+                )
+                if not exists:
+                    exists = await db.lotti_fornitori.find_one(
+                        chiave_legacy, {"_id": 0, "id": 1}
+                    )
                 if not exists:
                     await db.lotti_fornitori.insert_one(
                         {
@@ -915,6 +934,11 @@ async def importa_fattura_xml(
                             "unita_misura": (prodotto.get("unita_misura") or "PZ").upper(),
                             "prezzo_unitario": prezzo,
                             "fattura_ref": fattura_data.get("numero_fattura", ""),
+                            "fattura_id": (salvata or {}).get("id", ""),
+                            "fattura_source_key": lotto_source_key,
+                            "fattura_riga_key": fattura_riga_key,
+                            "fattura_riga_indice": idx,
+                            "origine": "fattura_xml",
                             "data_fattura": data_fmt,
                             "solo_magazzino": is_solo_mag,
                             "esaurito": False,
