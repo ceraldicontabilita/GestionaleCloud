@@ -154,6 +154,13 @@ def _coordinate_quietanza(doc) -> dict[str, Any]:
     acts = set()
 
     for page in doc:
+        for label in page.search_for("CODICE FISCALE"):
+            digits = sorted((w[0], w[4]) for w in page.get_text("words")
+                            if 80 <= w[0] < 430 and label.y0 - 10 <= w[1] <= label.y1 + 14
+                            and re.fullmatch(r"\d", w[4]))
+            fiscal_code = "".join(t for _, t in digits)
+            if re.fullmatch(r"\d{11}", fiscal_code):
+                parsed["codice_fiscale"] = fiscal_code
         # Il codice atto AE è stampato in undici caselle sotto la sua
         # etichetta. Il layer testuale lo separa dal titolo: non cercare un
         # generico numero a undici cifre (potrebbe essere il CF).
@@ -170,6 +177,41 @@ def _coordinate_quietanza(doc) -> dict[str, Any]:
         for word in page.get_text("words"):
             x0, y0, _x1, _y1, token, *_rest = word
             grouped.setdefault(round(y0 / 2) * 2, []).append((float(x0), token.replace("\x00", "").strip()))
+
+        final_labels = page.search_for("SALDO FINALE")
+        for label in final_labels:
+            balances = [w[4] for w in page.get_text("words") if w[0] >= 500
+                        and label.y0 - 2 <= w[1] <= label.y1 + 14
+                        and re.fullmatch(r"(?:\d{1,3}(?:\.\d{3})+|\d+),\d{2}", w[4])]
+            if len(balances) == 1:
+                parsed["saldo_delega"] = parse_importo(balances[0])
+                parsed["saldo_delega_esplicito"] = True
+
+        # Modelli Smart Forms: le righe INAIL non ripetono l'etichetta
+        # di sezione; debiti e crediti stanno in colonne distinte.
+        page_words = page.get_text("words")
+        if page.search_for("INAIL") and page.search_for("codice ditta"):
+            for anchor in page_words:
+                if not (95 <= anchor[0] < 145 and re.fullmatch(r"\d{5}", anchor[4])):
+                    continue
+                row = sorted((float(w[0]), w[4]) for w in page_words
+                             if abs(float(w[1]) - float(anchor[1])) <= 3.5)
+                def token_at(start, end, pattern):
+                    return next((t for x, t in row if start <= x < end and re.fullmatch(pattern, t)), None)
+                company = token_at(145, 200, r"\d{8}")
+                control = token_at(200, 230, r"\d{2}")
+                reference = token_at(230, 285, r"\d{6}")
+                reason = token_at(285, 320, r"[A-Z]")
+                if not all((company, control, reference, reason)):
+                    continue
+                debit, credit = _row_amount(row, 340, 420), _row_amount(row, 420, 500)
+                if debit or credit:
+                    parsed["sezione_inail"].append({
+                        "codice_sede": anchor[4], "codice_ufficio": anchor[4],
+                        "codice_ditta": company, "codice_controllo": control,
+                        "numero_riferimento": reference, "causale": reason,
+                        "importo_debito": debit, "importo_credito": credit,
+                    })
 
         for words in grouped.values():
             words.sort()
@@ -380,6 +422,8 @@ def parse_quietanza_f24(pdf_path: str = None, pdf_content: bytes = None) -> Dict
     # ============================================
     # DATI GENERALI
     # ============================================
+    if coordinate_data.get("codice_fiscale"):
+        result["dati_generali"]["codice_fiscale"] = coordinate_data["codice_fiscale"]
     if coordinate_data.get("codice_atto"):
         result["dati_generali"]["codice_atto"] = coordinate_data["codice_atto"]
 
@@ -479,7 +523,8 @@ def parse_quietanza_f24(pdf_path: str = None, pdf_content: bytes = None) -> Dict
     if (
         coordinate_data.get("saldo_delega") is not None
         and (
-            coordinate_data["saldo_delega"] > 0
+            coordinate_data.get("saldo_delega_esplicito")
+            or coordinate_data["saldo_delega"] > 0
             or result["dati_generali"].get("saldo_delega") is None
         )
     ):

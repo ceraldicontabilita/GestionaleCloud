@@ -2202,12 +2202,12 @@ async def _lotto_recupero_storico_con_lease(db) -> Dict[str, Any]:
         try:
             from app.services.verbali_pagamento_finder import normalizza_attese_quietanza
             await normalizza_attese_quietanza(db)
-            if state.get("revisione_archivio_versione") != 2:
+            if state.get("revisione_archivio_versione") != 3:
                 from app.services.verbali_document_import import rivedi_verbali_archiviati
                 review = await rivedi_verbali_archiviati(db)
-                await db["sistema_stato"].update_one({"chiave": CHIAVE_RECUPERO_STORICO}, {"$set": {"revisione_archivio": review, "revisione_archivio_versione": 2}})
+                await db["sistema_stato"].update_one({"chiave": CHIAVE_RECUPERO_STORICO}, {"$set": {"revisione_archivio": review, "revisione_archivio_versione": 3}})
                 state["revisione_archivio"] = review
-                state["revisione_archivio_versione"] = 2
+                state["revisione_archivio_versione"] = 3
             scan = await scarica_posta_con_cursori(
                 db, data_inizio=state["richiesto_dal"], stato_chiave=CHIAVE_RECUPERO_STORICO,
                 solo_storico=True, tipi_ammessi=TIPI_RECUPERO_STORICO,
