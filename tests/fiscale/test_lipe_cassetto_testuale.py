@@ -131,3 +131,11 @@ def test_filing_date_for_matching_native_source_resolves_older_amended_export():
         assert row['protocollo']==322737554
         assert row['iva_da_versare_o_credito']==6400
     asyncio.run(run())
+
+
+def test_numeric_export_name_routes_to_canonical_lipe_ingestion():
+    from app.services.fiscal_domain import classify_document
+    from app.routers.documenti import _tipo_dichiarazione
+    text=HEADER+module(1,4)
+    assert classify_document('163990_testuale.pdf',text)['document_type']=='LIPE'
+    assert _tipo_dichiarazione('163990_testuale.pdf',text)=='dichiarazione_fiscale'

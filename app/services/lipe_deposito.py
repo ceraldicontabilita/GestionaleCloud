@@ -99,7 +99,7 @@ async def deposita_lipe(
             continue
 
         esistente = await db[COLL_LIPE].find_one({"periodo": periodo}, {"_id": 0})
-        if esistente and (letto.get('parse_method') == 'cassetto_testuale' or protocollo is None):
+        if esistente and (letto.get('parse_method') == 'cassetto_testuale' or protocollo is None or esistente.get('data_presentazione')):
             # An export ID or commitment date cannot rank filing revisions.
             fields = [*CAMPI_VP.values(), 'iva_dovuta_o_credito_segno', 'iva_da_versare_o_credito_segno']
             same = all(esistente.get(field) == periodo_letto.get(field) for field in fields)

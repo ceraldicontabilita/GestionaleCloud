@@ -3429,7 +3429,7 @@ async def upload_documento_automatico(
             # idempotente per periodo e recupera le LIPE archiviate prima.
             from app.services import lipe_deposito
 
-            if lipe_deposito.e_una_lipe(filename):
+            if lipe_deposito.e_una_lipe(filename) or (registered.get('classification') or {}).get('document_type') == 'LIPE':
                 try:
                     result["lipe"] = await lipe_deposito.deposita_lipe(
                         db, content, nome_file=filename, origine="documenti_upload_auto",
