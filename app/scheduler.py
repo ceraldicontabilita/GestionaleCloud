@@ -527,6 +527,10 @@ async def gmail_full_scan_task():
             logger.error("[SCHEDULER-GMAIL] Pipeline errore (%s): %s",
                          type(pipe_err).__name__, pipe_err)
 
+    # Riprende soltanto un recupero storico richiesto esplicitamente dal titolare.
+    from app.services.email_full_download import esegui_recupero_storico
+    await esegui_recupero_storico(db)
+
 
 def start_scheduler():
     """Avvia lo scheduler con i task programmati."""

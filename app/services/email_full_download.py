@@ -221,6 +221,7 @@ class EmailFullDownloader:
         self.db = db
         self.connection = None
         self._saved_credentials = None
+        self.allowed_categories = None
         self.stats = {
             "emails_processed": 0,
             "pdfs_downloaded": 0,
@@ -549,6 +550,8 @@ class EmailFullDownloader:
             "email_from": email_info.get("from", ""),
             "email_date": email_info.get("date", ""),
             "email_uid": email_info.get("uid", ""),
+            "email_message_id": email_info.get("message_id") or None,
+            "cartella_email": email_info.get("source_folder"),
             "mese": period_info.get("mese"),
             "anno": period_info.get("anno"),
             "associato": False,  # Da associare manualmente se in "altro"
@@ -711,7 +714,7 @@ class EmailFullDownloader:
         # mail prosegue come sempre (la cartella allegata entra dal suo smistamento).
         from app.services.notifiche_pec_cartelle import e_notifica_cartella, registra_notifica_email
 
-        if e_notifica_cartella(subject):
+        if e_notifica_cartella(subject) and (self.allowed_categories is None or "cartella_esattoriale" in self.allowed_categories):
             try:
                 esito_notifica = await registra_notifica_email(
                     self.db, subject, body, messaggio_id=msg.get("Message-ID") or None)
@@ -724,7 +727,7 @@ class EmailFullDownloader:
         # «scheda_tecnica»): non passano dalle parole chiave amministrative,
         # che non le conoscono, e hanno uno smistamento proprio.
         mittenti_schede = await self._load_mittenti_per_tipo("scheda_tecnica")
-        if mittenti_schede and any(s in from_addr.lower() for s in mittenti_schede):
+        if (self.allowed_categories is None or "scheda_tecnica" in self.allowed_categories) and mittenti_schede and any(s in from_addr.lower() for s in mittenti_schede):
             return await self._archivia_schede_tecniche(
                 msg, email_uid, subject, from_addr, date_str, body, source_folder)
 
@@ -732,7 +735,7 @@ class EmailFullDownloader:
         # Allegato.zip, che l'estrazione dei PDF salta. Si legge e si
         # associa alle quietanze come dal Documenti > Import.
         mittenti_dilazione = await self._load_mittenti_per_tipo("dilazione_inps")
-        if mittenti_dilazione and any(
+        if self.allowed_categories is None and mittenti_dilazione and any(
             s in m for s in mittenti_dilazione
             for m in [from_addr.lower()] + _mittenti_messaggi_annidati(msg)
         ):
@@ -786,7 +789,8 @@ class EmailFullDownloader:
             "uid": email_uid.decode() if isinstance(email_uid, bytes) else str(email_uid),
             "subject": subject,
             "from": from_addr,
-            "date": date_str
+            "date": date_str,
+            "message_id": str(msg.get("Message-ID") or "").strip(),
         }
 
         # Estrai tutti i PDF
@@ -796,7 +800,7 @@ class EmailFullDownloader:
             # Modulo di dimissioni telematiche (Ministero del Lavoro, via PEC):
             # e' la conferma delle dimissioni — alert HR + scadenza UNILAV a 5
             # giorni (titolare 14/09/2026), stesso percorso dell'Import manuale.
-            if _sembra_modulo_dimissioni(filename, subject):
+            if self.allowed_categories is None and _sembra_modulo_dimissioni(filename, subject):
                 esito_dim = await self._archivia_dimissioni(filename, content, email_info, source_folder)
                 if esito_dim:
                     pdfs_saved += 1
@@ -804,6 +808,8 @@ class EmailFullDownloader:
 
             # Categorizza
             category = categorize_document(filename, subject, body)
+            if self.allowed_categories is not None and category not in self.allowed_categories:
+                continue
 
             # REGOLA BUSINESS: le fatture NON si scaricano da Gmail
             # Le fatture arrivano SOLO via PEC (Aruba) o import manuale XML
@@ -842,6 +848,8 @@ class EmailFullDownloader:
             for f in folder_list:
                 try:
                     decoded = f.decode('utf-8', errors='replace')
+                    if "\\noselect" in decoded.lower():
+                        continue
                     # Estrai nome cartella dal formato IMAP: (\\flags) "delimiter" "name"
                     if '"' in decoded:
                         parts = decoded.split('"')
@@ -1871,10 +1879,11 @@ def _uid_da_risposta(risposta: Any) -> List[int]:
 
 
 async def _salva_cursori(db, stato: Dict[str, Any]) -> None:
-    stato["chiave"] = CHIAVE_CURSORI_POSTA
+    chiave = stato.get("chiave") or CHIAVE_CURSORI_POSTA
+    stato["chiave"] = chiave
     stato["aggiornato_at"] = datetime.now(timezone.utc).isoformat()
     await db["sistema_stato"].update_one(
-        {"chiave": CHIAVE_CURSORI_POSTA}, {"$set": stato}, upsert=True,
+        {"chiave": chiave}, {"$set": stato}, upsert=True,
     )
 
 
@@ -1906,12 +1915,24 @@ async def _segnala_posta_non_raggiungibile(db, motivo: str) -> None:
 
 async def scarica_posta_con_cursori(
     db, *, budget_secondi: int = 600, max_scaricati: int = 400,
+    data_inizio: Optional[str] = None, stato_chiave: Optional[str] = None,
+    solo_storico: bool = False, tipi_ammessi: Optional[set] = None,
+    comunicazioni_inviate: bool = False,
 ) -> Dict[str, Any]:
-    """Giro automatico: nuovi messaggi di tutte le cartelle, poi lo storico."""
+    """Un solo scaricatore riprendibile per il giro normale e i recuperi espliciti."""
     import asyncio
     import time
 
+    chiave = stato_chiave or CHIAVE_CURSORI_POSTA
+    if data_inizio:
+        giorno_inizio = datetime.strptime(data_inizio, "%Y-%m-%d")
+        if giorno_inizio.date() > datetime.now().date():
+            raise ValueError("La data iniziale non puo' essere futura")
+        since = f"{giorno_inizio.day:02d}-{_MESI_IMAP[giorno_inizio.month - 1]}-{giorno_inizio.year}"
+    else:
+        since = _since_imap(GIORNI_STORICO_POSTA)
     downloader = EmailFullDownloader(db)
+    downloader.allowed_categories = tipi_ammessi
     inizio = time.monotonic()
     esito: Dict[str, Any] = {
         "cartelle": 0, "controllati": 0, "scaricati": 0, "pdf_salvati": 0,
@@ -1922,7 +1943,8 @@ async def scarica_posta_con_cursori(
     if not connesso:
         motivo = (downloader.stats.get("errors") or ["accesso rifiutato"])[-1]
         await _segnala_posta_non_raggiungibile(db, str(motivo)[:200])
-        stato = await db["sistema_stato"].find_one({"chiave": CHIAVE_CURSORI_POSTA}, {"_id": 0}) or {}
+        stato = await db["sistema_stato"].find_one({"chiave": chiave}, {"_id": 0}) or {}
+        stato["chiave"] = chiave
         stato["ultimo_giro"] = {**esito, "errore": str(motivo)[:200],
                                 "at": datetime.now(timezone.utc).isoformat()}
         await _salva_cursori(db, stato)
@@ -1935,8 +1957,13 @@ async def scarica_posta_con_cursori(
     except Exception as exc:
         logger.warning("Alert posta non chiuso (%s): %s", type(exc).__name__, exc)
 
-    stato = await db["sistema_stato"].find_one({"chiave": CHIAVE_CURSORI_POSTA}, {"_id": 0}) or {}
+    stato = await db["sistema_stato"].find_one({"chiave": chiave}, {"_id": 0}) or {}
+    stato["chiave"] = chiave
     cartelle_stato: Dict[str, Any] = dict(stato.get("cartelle") or {})
+    if data_inizio and stato.get("data_inizio") != data_inizio:
+        for cur in cartelle_stato.values():
+            cur["completo"] = False
+        stato["data_inizio"] = data_inizio
     conn = downloader.connection
 
     def tetto() -> bool:
@@ -1946,16 +1973,26 @@ async def scarica_posta_con_cursori(
     async def elabora(cartella: str, uid: int) -> None:
         esito["controllati"] += 1
         typ, dati = await asyncio.to_thread(conn.uid, "FETCH", str(uid), "(BODYSTRUCTURE)")
-        if typ != "OK" or not dati or not _ha_allegati(
+        cartella_inviata = bool(comunicazioni_inviate and re.search(r"(?:sent|inviat)", cartella, re.I))
+        if typ != "OK" or not dati:
+            raise RuntimeError(f"BODYSTRUCTURE non letto: {cartella} UID {uid}")
+        if not cartella_inviata and not _ha_allegati(
             b" ".join(p if isinstance(p, bytes) else b" ".join(p) for p in dati if p)
         ):
             return
         # BODY.PEEK e cartella in sola lettura: il messaggio non diventa «letto».
         typ, dati = await asyncio.to_thread(conn.uid, "FETCH", str(uid), "(BODY.PEEK[])")
         if typ != "OK" or not dati or not isinstance(dati[0], tuple):
-            return
+            raise RuntimeError(f"Messaggio non letto: {cartella} UID {uid}")
         esito["scaricati"] += 1
         msg = email.message_from_bytes(dati[0][1])
+        if cartella_inviata:
+            from app.services.verbali_document_import import conserva_comunicazione_inviata
+            saved = await conserva_comunicazione_inviata(
+                db, msg, dati[0][1], cartella,
+                email_user=(downloader._saved_credentials or (get_email_credentials()[0],))[0],
+            )
+            esito["comunicazioni_salvate"] = esito.get("comunicazioni_salvate", 0) + int(saved)
         esito["pdf_salvati"] += await downloader.process_email(
             str(uid).encode(), msg, source_folder=cartella,
         )
@@ -1963,14 +2000,16 @@ async def scarica_posta_con_cursori(
     async def seleziona(cartella: str) -> Optional[Dict[str, Any]]:
         typ, _ = await asyncio.to_thread(conn.select, f'"{cartella}"', True)
         if typ != "OK":
-            return None
+            raise RuntimeError(f"Cartella non selezionabile: {cartella}")
         validita = (conn.response("UIDVALIDITY")[1] or [None])[0]
         validita = validita.decode() if isinstance(validita, bytes) else str(validita)
         cur = cartelle_stato.get(cartella) or {}
         if cur.get("uidvalidity") != validita:
             # Cartella nuova o ricreata: i vecchi UID non valgono piu'.
             typ, risposta = await asyncio.to_thread(conn.uid, "SEARCH", None, "ALL")
-            uid = _uid_da_risposta(risposta) if typ == "OK" else []
+            if typ != "OK":
+                raise RuntimeError(f"UID non letti: {cartella}")
+            uid = _uid_da_risposta(risposta)
             massimo = uid[-1] if uid else 0
             cur = {"uidvalidity": validita, "alto": massimo, "basso": massimo + 1,
                    "completo": not uid}
@@ -1985,7 +2024,7 @@ async def scarica_posta_con_cursori(
         esito["cartelle"] = len(cartelle)
 
         # 1) I messaggi arrivati dopo l'ultimo giro, in tutte le cartelle.
-        for cartella in cartelle:
+        for cartella in ([] if solo_storico else cartelle):
             if tetto():
                 break
             try:
@@ -1994,6 +2033,8 @@ async def scarica_posta_con_cursori(
                     continue
                 typ, risposta = await asyncio.to_thread(
                     conn.uid, "SEARCH", None, f"UID {int(cur['alto']) + 1}:*")
+                if typ != "OK":
+                    raise RuntimeError(f"Ricerca nuovi messaggi fallita: {cartella}")
                 nuovi = [u for u in (_uid_da_risposta(risposta) if typ == "OK" else [])
                          if u > int(cur["alto"])]
                 for uid in nuovi:
@@ -2005,6 +2046,7 @@ async def scarica_posta_con_cursori(
                         esito["errori"] += 1
                         logger.warning("[Gmail] %s UID %s non letto (%s): %s",
                                        cartella, uid, type(exc).__name__, exc)
+                        break  # un errore non deve far saltare definitivamente il messaggio
                     cur["alto"] = uid
             except Exception as exc:
                 esito["errori"] += 1
@@ -2017,7 +2059,7 @@ async def scarica_posta_con_cursori(
             if tetto():
                 break
             cur = cartelle_stato.get(cartella)
-            if not cur or cur.get("completo"):
+            if cur and cur.get("completo"):
                 continue
             try:
                 cur = await seleziona(cartella)
@@ -2029,7 +2071,9 @@ async def scarica_posta_con_cursori(
                     continue
                 typ, risposta = await asyncio.to_thread(
                     conn.uid, "SEARCH", None,
-                    f"UID 1:{basso - 1} SINCE {_since_imap(GIORNI_STORICO_POSTA)}")
+                    f"UID 1:{basso - 1} SINCE {since}")
+                if typ != "OK":
+                    raise RuntimeError(f"Ricerca storico fallita: {cartella}")
                 vecchi = sorted((u for u in (_uid_da_risposta(risposta) if typ == "OK" else [])
                                  if u < basso), reverse=True)
                 for n, uid in enumerate(vecchi, 1):
@@ -2041,6 +2085,7 @@ async def scarica_posta_con_cursori(
                         esito["errori"] += 1
                         logger.warning("[Gmail] %s UID %s non letto (%s): %s",
                                        cartella, uid, type(exc).__name__, exc)
+                        break
                     cur["basso"] = uid
                     if n % 50 == 0:
                         await _salva_cursori(db, {**stato, "cartelle": cartelle_stato})
@@ -2065,3 +2110,107 @@ async def scarica_posta_con_cursori(
         "ultimo_giro": {**esito, "at": datetime.now(timezone.utc).isoformat()},
     })
     return {"success": True, **esito}
+
+
+CHIAVE_RECUPERO_STORICO = "gmail_recupero_storico"
+TIPI_RECUPERO_STORICO = {"verbale", "f24", "quietanza", "bonifico", "pagopa", "ricevuta_pagopa"}
+
+
+async def richiedi_recupero_storico(db, data_inizio: str) -> Dict[str, Any]:
+    start = datetime.strptime(data_inizio, "%Y-%m-%d").date()
+    if start > datetime.now().date():
+        raise ValueError("La data iniziale non puo' essere futura")
+    state = await db["sistema_stato"].find_one({"chiave": CHIAVE_RECUPERO_STORICO}, {"_id": 0}) or {}
+    if state.get("in_progress") and state.get("richiesto_dal") != data_inizio:
+        raise ValueError("Un recupero storico diverso e' gia' in corso")
+    changes = {"chiave": CHIAVE_RECUPERO_STORICO, "in_progress": True,
+               "stato": "in_corso", "richiesto_dal": data_inizio, "error": None,
+               "started_at": datetime.now(timezone.utc).isoformat()}
+    # Il cursore mantiene la sua data fino al primo lotto, che riapre le cartelle
+    # se il titolare ha allargato il periodo.
+    await db["sistema_stato"].update_one({"chiave": CHIAVE_RECUPERO_STORICO}, {"$set": changes}, upsert=True)
+    return changes
+
+
+async def leggi_stato_recupero_storico(db) -> Dict[str, Any]:
+    state = await db["sistema_stato"].find_one(
+        {"chiave": CHIAVE_RECUPERO_STORICO}, {"_id": 0, "cartelle": 0}) or {}
+    return state
+
+
+async def lotto_recupero_storico(db) -> Dict[str, Any]:
+    """Stesso scaricatore, cursore separato, importatori canonici e lease distribuita."""
+    from contextlib import asynccontextmanager
+
+    @asynccontextmanager
+    async def local_lease():
+        yield True
+
+    factory = getattr(db, "scheduler_lease", None)
+    lease = factory(CHIAVE_RECUPERO_STORICO) if callable(factory) else local_lease()
+    async with lease as acquired:
+        if not acquired:
+            return {"in_progress": True, "lease_occupata": True}
+        state = await leggi_stato_recupero_storico(db)
+        if not state.get("in_progress"):
+            return state
+        try:
+            scan = await scarica_posta_con_cursori(
+                db, data_inizio=state["richiesto_dal"], stato_chiave=CHIAVE_RECUPERO_STORICO,
+                solo_storico=True, tipi_ammessi=TIPI_RECUPERO_STORICO,
+                comunicazioni_inviate=True, budget_secondi=90, max_scaricati=50,
+            )
+            from app.services.post_download_pipeline import (
+                processa_f24_da_email, processa_verbali_da_email, processa_quietanze_da_email,
+            )
+            pipeline = {
+                "f24": await processa_f24_da_email(db),
+                "verbali": await processa_verbali_da_email(db),
+                "quietanze": await processa_quietanze_da_email(db),
+            }
+            totals = dict(state.get("totali") or {})
+            for key in ("controllati", "scaricati", "pdf_salvati", "comunicazioni_salvate", "errori"):
+                totals[key] = totals.get(key, 0) + scan.get(key, 0)
+            failure = scan.get("success") is False or scan.get("errori", 0) > 0
+            # Un lotto finale scarica anche eventuali code degli importatori (500/200).
+            backlog = pipeline["f24"].get("processati", 0) >= 500 or pipeline["quietanze"].get("processati", 0) >= 200
+            complete = bool(scan.get("storico_completo")) and not failure and not backlog
+            pipeline_totals = dict(state.get("pipeline_totali") or {})
+            for domain, counters in pipeline.items():
+                cumulative = dict(pipeline_totals.get(domain) or {})
+                for key, value in counters.items():
+                    if isinstance(value, int) and not isinstance(value, bool):
+                        cumulative[key] = cumulative.get(key, 0) + value
+                pipeline_totals[domain] = cumulative
+            changes = {
+                "in_progress": not complete and not failure,
+                "stato": "errore" if failure else "completato" if complete else "in_corso",
+                "error": scan.get("error") or ("Errori di lettura: i cursori non hanno saltato i messaggi" if failure else None),
+                "totali": totals, "pipeline_ultimo_lotto": pipeline, "pipeline_totali": pipeline_totals,
+                "lotti": state.get("lotti", 0) + 1,
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+            }
+            if complete:
+                changes["completed_at"] = changes["updated_at"]
+            await db["sistema_stato"].update_one({"chiave": CHIAVE_RECUPERO_STORICO}, {"$set": changes})
+            logger.info("[GMAIL-STORICO] dal=%s lotto=%s stato=%s contatori=%s",
+                        state["richiesto_dal"], changes["lotti"], changes["stato"], totals)
+            return {**state, **changes, "ultimo_giro": scan}
+        except Exception as exc:
+            await db["sistema_stato"].update_one({"chiave": CHIAVE_RECUPERO_STORICO}, {"$set": {
+                "in_progress": False, "stato": "errore", "error": f"{type(exc).__name__}: {exc}",
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+            }})
+            logger.exception("[GMAIL-STORICO] lotto interrotto senza perdere il cursore")
+            raise
+
+
+async def esegui_recupero_storico(db) -> Dict[str, Any]:
+    """Elaborazione corrente a lotti; al riavvio riprende il job Gmail esistente."""
+    result = await leggi_stato_recupero_storico(db)
+    while result.get("in_progress"):
+        result = await lotto_recupero_storico(db)
+        if result.get("lease_occupata"):
+            break
+        await asyncio.sleep(0.5)
+    return result

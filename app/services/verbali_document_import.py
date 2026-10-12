@@ -508,6 +508,20 @@ async def process_verbale_document(
     """Conserva relazioni certe; senza numero/IUV lascia il PDF da rivedere."""
     letto = await leggi_documento_verbale(content, filename, parsed_metadata)
     sha256, text = letto["sha256"], letto["text"]
+    # Il modulo allegato non e' un nuovo verbale e non prova da solo l'invio.
+    heading = re.sub(r"\s+", " ", text[:700])
+    driver_form = re.search(
+        r"(?:modulo|dichiarazione|comunicazione)\s+(?:(?:dei|di|per|i)\s+)*"
+        r"(?:dati\s+(?:del\s+)?)?conducente", heading, re.I)
+    if driver_form and not re.search(r"verbale\s+di\s+accertamento", heading, re.I):
+        numbers = riferimenti_comunicazione_conducente(text)
+        await db["documents_inbox"].update_one({"id": document_id}, {"$set": {
+            "tipo_documento": "comunicazione_conducente",
+            "numeri_verbale_citati": numbers,
+            "comunicazione_stato": "documento_presente_invio_non_provato",
+            "prova_consegna_pec": False, "processed": False, "status": "da_verificare",
+        }})
+        return {"status": "comunicazione_da_verificare", "verbale_id": None}
     parsed_metadata, ai_data = letto["parsed_metadata"], letto["ai_data"]
     pagopa_data = letto["pagopa_data"]
     numero, iuv, targa = letto["numero"], letto["iuv"], letto["targa"]
@@ -766,3 +780,95 @@ async def process_verbale_document(
     )
     return {"status": "linked", "tipo": "verbale", "verbale_id": verbale_id,
             "ricevute_agganciate": ricevute_agganciate}
+
+
+def riferimenti_comunicazione_conducente(text: str) -> list[str]:
+    """Numeri citati nel contenuto: piu' riferimenti restano in verifica."""
+    values = set()
+    for pattern in _VERBALE_PATTERNS:
+        for match in pattern.finditer(text or ""):
+            numero = normalizza_numero_verbale(match.group(1))
+            if numero and any(c.isdigit() for c in numero) and not _DATA_GG_MM_AAAA_RE.match(numero):
+                values.add(numero)
+    return sorted(values)
+
+
+async def conserva_comunicazione_inviata(db, msg, raw: bytes, folder: str, *, email_user: str) -> bool:
+    """Originale della posta inviata: prova d'invio dalla casella, non di consegna PEC."""
+    from email.header import make_header, decode_header
+    from email.utils import parseaddr, parsedate_to_datetime
+    import html
+    if not re.search(r"sent|inviat", folder, re.I):
+        return False
+    sender = parseaddr(str(msg.get("From") or ""))[1].lower()
+    permitted = {email_user.strip().lower()}
+    if email_user.lower() == "ceraldigroupsrl@gmail.com":
+        permitted.add("ceraldigroupsrl@legalmail.it")
+    if sender not in permitted:
+        return False
+    subject = str(make_header(decode_header(str(msg.get("Subject") or ""))))
+    parts = []
+    for part in msg.walk():
+        if part.get_content_type() in {"text/plain", "text/html"} and part.get_content_disposition() != "attachment":
+            content = part.get_payload(decode=True) or b""
+            parts.append(content.decode(part.get_content_charset() or "utf-8", errors="replace"))
+    text = html.unescape(re.sub(r"<[^>]+>", " ", "\n".join(parts)))
+    combined = re.sub(r"\s+", " ", subject + " " + text)
+    if not re.search(r"(?:dati.{0,40}conducente|comunicazione.{0,80}conducente|126\s*[- ]?bis)", combined, re.I):
+        return False
+    numbers = riferimenti_comunicazione_conducente(combined)
+    if not numbers:
+        return False
+    message_id = str(msg.get("Message-ID") or "").strip()
+    digest = hashlib.sha256(raw).hexdigest()
+    identity = message_id or digest
+    doc_id = "comunicazione_" + hashlib.sha256(identity.encode()).hexdigest()[:32]
+    if await db["documents_inbox"].find_one({"id": doc_id}, {"id": 1}):
+        return False
+    try:
+        sent_at = parsedate_to_datetime(str(msg.get("Date") or "")).isoformat()
+    except (TypeError, ValueError):
+        sent_at = None
+    document = {
+        "id": doc_id, "filename": doc_id + ".eml", "mime_type": "message/rfc822",
+        "pdf_data": base64.b64encode(raw).decode("ascii"), "file_hash": digest,
+        "tipo_documento": "comunicazione_conducente", "category": "comunicazione_conducente",
+        "email_message_id": message_id or None, "email_from": sender,
+        "email_to": str(msg.get("To") or ""), "email_subject": subject,
+        "email_date": sent_at, "cartella_email": folder,
+        "numeri_verbale_citati": numbers,
+        "comunicazione_stato": "inviata_da_casella" if sent_at and message_id else "invio_da_verificare",
+        "prova_consegna_pec": False,
+        "status": "da_verificare", "processed": False,
+        "source": "gmail_posta_inviata", "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    await db["documents_inbox"].update_one({"id": doc_id}, {"$setOnInsert": document}, upsert=True)
+    return True
+
+
+async def associa_comunicazioni_conducente(db) -> dict:
+    """Un solo riferimento sul verbale; nessuna attribuzione del conducente o invio nuovo."""
+    result = {"controllate": 0, "associate": 0, "da_verificare": 0}
+    docs = await db["documents_inbox"].find(
+        {"tipo_documento": "comunicazione_conducente"}, {"_id": 0, "pdf_data": 0}).to_list(5000)
+    for doc in docs:
+        result["controllate"] += 1
+        numbers = doc.get("numeri_verbale_citati") or []
+        candidates = []
+        if len(numbers) == 1:
+            candidates = await db["verbali_noleggio"].find(
+                {"numero_verbale": numbers[0]}, {"_id": 0, "id": 1, "stato": 1}).to_list(10)
+            candidates = [v for v in candidates if v.get("id") and v.get("stato") != "quarantena"]
+        if len(candidates) != 1:
+            result["da_verificare"] += 1
+            continue
+        verbale_id = candidates[0]["id"]
+        await db["verbali_noleggio"].update_one(
+            {"id": verbale_id}, {"$addToSet": {"comunicazioni_conducente_ids": doc["id"]}})
+        await db["documents_inbox"].update_one({"id": doc["id"]}, {"$set": {
+            "verbale_id": verbale_id, "documento_associato_id": verbale_id,
+            "documento_associato_collection": "verbali_noleggio", "associato": True,
+            "processed": True, "status": "processato",
+        }})
+        result["associate"] += 1
+    return result

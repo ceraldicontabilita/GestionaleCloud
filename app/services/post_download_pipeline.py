@@ -39,8 +39,12 @@ async def processa_f24_da_email(db: ArchivioDocumenti) -> Dict[str, Any]:
     """
     stats = {"processati": 0, "errori": 0, "gia_processati": 0, "nuovi": 0}
 
-    cursor = db["f24_email_attachments"].find({"processed": {"$ne": True}})
-    docs = await cursor.to_list(length=500)
+    docs = []
+    for collection in ("f24_email_attachments", "documents_inbox"):
+        query = {"processed": {"$ne": True}}
+        if collection == "documents_inbox":
+            query["$or"] = [{key: "f24"} for key in ("tipo_documento", "categoria", "category")]
+        docs.extend({**d, "_collection": collection} for d in await db[collection].find(query).to_list(500))
     logger.info(f"[PIPELINE-F24] {len(docs)} F24 da processare")
 
     from app.services.f24_canonico import importa_modello_bytes
@@ -76,7 +80,7 @@ async def processa_f24_da_email(db: ArchivioDocumenti) -> Dict[str, Any]:
                 stats["errori"] += 1
                 marca = {"esito": esito.get("stato_modello") or "errore_lettura",
                          "errore": esito.get("error")}
-            await db["f24_email_attachments"].update_one(
+            await db[doc["_collection"]].update_one(
                 {"id": doc["id"]},
                 {"$set": {"processed": True, **marca,
                           "processed_at": datetime.now(timezone.utc).isoformat()}},
@@ -198,6 +202,8 @@ async def processa_verbali_da_email(db: ArchivioDocumenti) -> Dict[str, Any]:
             logger.error("[PIPELINE-VERBALI] %s: %s: %s", doc.get("id"), type(exc).__name__, exc)
             stats["errori"] += 1
     stats["notifiche_pec"] = await aggancia_notifiche_pec(db, dry_run=False)
+    from app.services.verbali_document_import import associa_comunicazioni_conducente
+    stats["comunicazioni_conducente"] = await associa_comunicazioni_conducente(db)
     return stats
 
 
@@ -209,8 +215,13 @@ async def processa_quietanze_da_email(db: ArchivioDocumenti) -> Dict[str, Any]:
     """
     stats = {"processati": 0, "errori": 0, "f24_pagati": 0}
 
-    cursor = db["quietanze_email_attachments"].find({"processed": {"$ne": True}})
-    docs = await cursor.to_list(length=200)
+    docs = []
+    for collection in ("quietanze_email_attachments", "bonifici_email_attachments", "documents_inbox"):
+        query = {"processed": {"$ne": True}}
+        if collection == "documents_inbox":
+            query["$or"] = [{key: {"$in": ["quietanza", "quietanza_f24", "ricevuta_pagopa", "pagopa", "bonifico"]}}
+                            for key in ("tipo_documento", "categoria", "category")]
+        docs.extend({**d, "_collection": collection} for d in await db[collection].find(query).to_list(200))
     logger.info(f"[PIPELINE-QUIETANZE] {len(docs)} quietanze da processare")
 
     for doc in docs:
@@ -221,6 +232,16 @@ async def processa_quietanze_da_email(db: ArchivioDocumenti) -> Dict[str, Any]:
 
             pdf_bytes = base64.b64decode(pdf_data)
             filename = doc.get("filename", "quietanza.pdf")
+
+            from app.services.verbali_document_import import leggi_documento_verbale, process_verbale_document
+            receipt = await leggi_documento_verbale(pdf_bytes, filename)
+            if receipt["is_receipt"] and (receipt["numero"] or receipt["iuv"]):
+                linked = await process_verbale_document(db, document_id=doc["id"], content=pdf_bytes,
+                                                      filename=filename, source="email_quietanza")
+                await db[doc["_collection"]].update_one({"id": doc["id"]}, {"$set": {
+                    "processed": True, "esito": linked["status"], "verbale_id": linked.get("verbale_id")}})
+                stats["processati"] += 1
+                continue
 
             # Stesso ingresso di Documenti > Import e di Drive: lettura, quadratura,
             # dedup per protocollo e contenuto, abbinamento al modello e alla banca.
@@ -242,7 +263,7 @@ async def processa_quietanze_da_email(db: ArchivioDocumenti) -> Dict[str, Any]:
                 marca = {"esito": esito.get("stato_quietanza") or "errore_lettura",
                          "errore": esito.get("error")}
 
-            await db["quietanze_email_attachments"].update_one(
+            await db[doc["_collection"]].update_one(
                 {"id": doc["id"]},
                 {"$set": {"processed": True, **marca,
                           "processed_at": datetime.now(timezone.utc).isoformat()}}

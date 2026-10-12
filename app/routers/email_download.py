@@ -5,7 +5,7 @@ Router per Download Completo Email e Gestione Documenti Non Associati
 from fastapi import APIRouter, HTTPException, BackgroundTasks, Query, Body, Depends
 from app.utils.dependencies import get_current_admin_user
 from typing import Dict, Any, Optional
-from datetime import datetime, timezone
+from datetime import datetime, timezone, date
 import logging
 
 from app.database import Database
@@ -37,14 +37,19 @@ download_status = {
 @router.get("/status")
 async def get_download_status() -> Dict[str, Any]:
     """Ottiene lo stato del download in corso."""
-    return download_status
+    from app.services.email_full_download import leggi_stato_recupero_storico
+    historical = await leggi_stato_recupero_storico(Database.get_db())
+    return {**download_status, "historical": historical,
+            "in_progress": download_status["in_progress"] or bool(historical.get("in_progress"))}
 
 
 @router.post("/start-full-download")
 async def start_full_download(
     background_tasks: BackgroundTasks,
+    admin_user: Dict = Depends(get_current_admin_user),
     days_back: int = Query(default=1, description="Giorni indietro da scaricare (default 1 giorno)"),
-    folder: str = Query(default="INBOX", description="Cartella IMAP")
+    folder: str = Query(default="INBOX", description="Cartella IMAP"),
+    data_inizio: Optional[date] = Query(default=None, description="Recupero storico esplicito di tutte le cartelle"),
 ) -> Dict[str, Any]:
     """
     Avvia il download completo di tutte le email con PDF.
@@ -55,6 +60,12 @@ async def start_full_download(
     if download_status["in_progress"]:
         raise HTTPException(status_code=400, detail="Download già in corso")
 
+    if data_inizio:
+        from app.services.email_full_download import richiedi_recupero_storico
+        try:
+            await richiedi_recupero_storico(Database.get_db(), data_inizio.isoformat())
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
     download_status["in_progress"] = True
     download_status["started_at"] = datetime.now(timezone.utc).isoformat()
     download_status["stats"] = None
@@ -64,14 +75,18 @@ async def start_full_download(
         global download_status
         try:
             db = Database.get_db()
-            downloader = EmailFullDownloader(db)
-            result = await downloader.download_all_emails(
-                folder=folder,
-                days_back=days_back
-            )
-            download_status["stats"] = result.get("stats")
-            if not result.get("success"):
+            if data_inizio:
+                from app.services.email_full_download import esegui_recupero_storico
+                result = await esegui_recupero_storico(db)
+                download_status["stats"] = result.get("totali")
                 download_status["error"] = result.get("error")
+            else:
+                downloader = EmailFullDownloader(db)
+                await downloader.prepare_credentials()
+                result = await downloader.download_all_emails(folder=folder, days_back=days_back)
+                download_status["stats"] = result.get("stats")
+                if not result.get("success"):
+                    download_status["error"] = result.get("error")
         except Exception as e:
             logger.error(f"Errore download: {e}")
             download_status["error"] = str(e)
@@ -83,7 +98,8 @@ async def start_full_download(
     return {
         "message": "Download avviato in background",
         "days_back": days_back,
-        "folder": folder
+        "folder": "ALL_FOLDERS" if data_inizio else folder,
+        "data_inizio": data_inizio.isoformat() if data_inizio else None,
     }
 
 
