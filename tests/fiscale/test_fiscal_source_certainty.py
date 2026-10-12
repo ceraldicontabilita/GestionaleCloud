@@ -131,3 +131,17 @@ def test_multiple_lipe_same_year_remain_separate_periodic_declarations():
     } for quarter in range(1, 5)])
 
     assert all(item["field_check_status"] == "PRONTO_PER_VERIFICA_CAMPI" for item in result)
+
+
+def test_lipe_historical_or_coherent_copy_is_not_summed_in_all_declarations_check():
+    result = annotate_declaration_certainty([
+        {'document_id':'current','document_type':'LIPE','tax_year':2026,
+         'relation_state':'CONFERMATA_NOME_UNIVOCO_E_INDICE_VERIFICATO',
+         'lipe_source_registered':True,'lipe_vigent_periods':['2026-01']},
+        {'document_id':'old','document_type':'LIPE','tax_year':2026,
+         'relation_state':'CONFERMATA_NOME_UNIVOCO_E_INDICE_VERIFICATO',
+         'lipe_source_registered':True,'lipe_vigent_periods':[]},
+    ])
+    assert result[0]['field_check_status']=='PRONTO_PER_VERIFICA_CAMPI'
+    assert result[1]['field_check_status']=='LIPE_STORICA_O_COPIA'
+    assert result[1]['declaration_set_status']=='FONTE_CONSERVATA_NON_SOMMATA'

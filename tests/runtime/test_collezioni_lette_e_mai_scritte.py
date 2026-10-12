@@ -34,7 +34,6 @@ SCRITTURE = (
 #: I commenti sui conteggi sono la fotografia storica, non un inventario live.
 NOTE = {
     "entity_relations",            # la scrive il trigger, non Python
-    "fiscal_documents",            # 22 righe nel censimento storico
     "piano_conti",                 # piano ufficiale definito in Python
     "contratti_noleggio",
     "dati_isa_snapshot",
@@ -45,7 +44,6 @@ NOTE = {
     "pagamenti_esiti",
     "prima_nota_saldi_iniziali",
     "quietanze",
-    "tax_collection_claims",
     "tfr_acconti",
     "verbali_autovelox",
 }
@@ -84,9 +82,23 @@ def _lette_e_mai_scritte() -> set:
         # (`COLLECTION_OPERAZIONI_DA_CONFERMARE = "operazioni_da_confermare"`)
         # e poi fanno `db[COSTANTE].insert_one(...)`. Senza risolverle, la
         # guardia dichiarava orfana una collezione scritta davvero.
-        costanti = dict(
+        imported_constants = {}
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.ImportFrom) or not (node.module or "").startswith("app."):
+                continue
+            imported_path = RADICE / (node.module.replace(".", "/") + ".py")
+            if not imported_path.is_file():
+                continue
+            imported_source = imported_path.read_text(encoding="utf-8", errors="ignore")
+            definitions = dict(re.findall(
+                r'^([A-Z][A-Z0-9_]*)\s*=\s*["\']([a-z0-9_]+)["\']', imported_source, re.M))
+            for alias in node.names:
+                if alias.name in definitions:
+                    imported_constants[alias.asname or alias.name] = definitions[alias.name]
+        local_constants = dict(
             re.findall(r'^([A-Z][A-Z0-9_]*)\s*=\s*["\']([a-z0-9_]+)["\']', src, re.M)
         )
+        costanti = {**imported_constants, **local_constants}
         for m in re.finditer(
             r'(?<![\w.])db\[\s*["\']([a-z0-9_]+)["\']\s*\]\s*\.?\s*(\w+)?', src
         ):
@@ -94,6 +106,10 @@ def _lette_e_mai_scritte() -> set:
         for m in re.finditer(r'(?<![\w.])db\[\s*([A-Z][A-Z0-9_]*)\s*\]\s*\.?\s*(\w+)?', src):
             nome = costanti.get(m.group(1))
             if nome:
+                # Il perimetro delle letture resta quello storico; risolvi
+                # gli import soltanto per riconoscere i writer realmente presenti.
+                if m.group(1) in imported_constants and m.group(1) not in local_constants and m.group(2) not in SCRITTURE:
+                    continue
                 (scritte if m.group(2) in SCRITTURE else lette).add(nome)
     # Una collezione popolata solo dai test resta vuota in produzione:
     # qui conta soltanto cio' che scrive `app/`.

@@ -152,7 +152,11 @@ def annotate_declaration_certainty(
         siblings = grouped.get((
             str(item.get("document_type") or ""), str(item.get("tax_year") or ""),
         ), [])
-        if supported and identity_confirmed and len(siblings) <= 1:
+        if item.get('document_type') == 'LIPE' and item.get('lipe_source_registered') and not item.get('lipe_vigent_periods'):
+            item['field_check_status'] = 'LIPE_STORICA_O_COPIA'
+            item['declaration_set_status'] = 'FONTE_CONSERVATA_NON_SOMMATA'
+            item['related_document_ids'] = []
+        elif supported and identity_confirmed and len(siblings) <= 1:
             item["field_check_status"] = DECLARATION_READY
             item["declaration_set_status"] = "UNICA_PER_TIPO_E_ANNO_IMPOSTA"
             item["related_document_ids"] = []

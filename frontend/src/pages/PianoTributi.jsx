@@ -148,6 +148,10 @@ function DettaglioCasella({ voce, casella }) {
           <div>La comunicazione non e' una quietanza. Il credito residuo richiede gli importi della liquidazione o della LIPE.</div>
           {casella.iva.comunicazione.source_url && <a href={casella.iva.comunicazione.source_url} target="_blank" rel="noopener noreferrer">Apri email del commercialista</a>}
         </div>}
+        {casella.iva.documenti_da_verificare && <div role="alert" style={{ marginTop: 8 }}>
+          <strong>LIPE con importi discordanti: occorre confermare la versione vigente.</strong>
+          {casella.iva.documenti_da_verificare.map((doc, i) => <div key={i}>{doc.pdf_url ? <a href={doc.pdf_url} target="_blank" rel="noopener noreferrer">Apri {doc.nome}</a> : doc.nome}</div>)}
+        </div>}
         {casella.iva.credito_residuo_cents != null ? <>
           <div>Credito iniziale: <strong>{importo((casella.iva.credito_iniziale_cents || 0) / 100)}</strong></div>
           {casella.iva.fonte === 'LIPE' && <div>

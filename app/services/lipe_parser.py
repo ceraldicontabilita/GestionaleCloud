@@ -29,6 +29,7 @@ verifica su ogni periodo; se non torna, il periodo esce con
 Una cella vuota resta `None`, mai zero: febbraio 2026 ha VP2 (operazioni
 attive) in bianco, ed e' un fatto del documento, non un difetto di lettura.
 """
+import re
 from decimal import Decimal
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -126,6 +127,9 @@ def quadra(periodo: Dict[str, Any]) -> bool:
     «non quadrato» e la LIPE vera veniva scartata come fonte. Un rigo assente
     vale zero solo qui dentro, per il controllo: sul dato resta `None`.
     """
+    if periodo.get("iva_dovuta_o_credito") is None or periodo.get("iva_da_versare_o_credito") is None:
+        return False
+
     def n(chiave: str) -> Decimal:
         valore = periodo.get(chiave)
         return Decimal("0") if valore is None else Decimal(str(valore))
@@ -177,6 +181,81 @@ def _anno(parole: List[Dict[str, Any]]) -> Optional[str]:
     return None
 
 
+
+def parse_cassetto_testuale(pages: List[str]) -> Optional[Dict[str, Any]]:
+    """Export AdE con campi nominati e terminatore ';', anche a cavallo pagina.
+
+    Il numero del file non e' un protocollo e la data dell'impegno non e'
+    una data di presentazione. Non usare il layout del modulo a caselle.
+    """
+    text = "\n".join(pages)
+    matches = list(re.finditer(r"Mod\.(\d+)\s*-\s*(VP\d+)\s+([^:;]+):\s*([^;]*);", text, re.I))
+    if not matches:
+        return None
+    years = set(re.findall(r"Anno\s+(?:di\s+)?imposta\s*:\s*(20\d{2})\s*;", text, re.I))
+    year = next(iter(years)) if len(years) == 1 else None
+    taxpayers = set(re.findall(r"(?m)^\s*Codice fiscale\s*:\s*([A-Z0-9]{11,16})\s*;", text, re.I))
+    modules = {}
+    for match in matches:
+        number, field, label, raw = match.groups()
+        field = field.upper(); label = " ".join(label.split()); raw = "".join(raw.split())
+        module = modules.setdefault(number, {})
+        # Keep the PDF page, not a line number.
+        source_page = next((i + 1 for i in range(len(pages)) if match.start() < sum(len(p) + 1 for p in pages[:i + 1])), len(pages))
+        module.setdefault("pagina", source_page)
+        module.setdefault('field_pages', {})[field] = source_page
+        if field == 'VP13' and label.lower() == 'metodo':
+            continue
+        if field in module:
+            module['ambiguous'] = True
+        module[field] = (label, raw)
+    periods = []
+    for number, module in modules.items():
+        raw_month = module.get('VP1', ('', ''))[1]
+        month = raw_month.zfill(2) if raw_month.isdigit() and 1 <= int(raw_month) <= 12 else None
+        period = {'pagina': module['pagina'], 'source_module': int(number), 'mese': month,
+                  'periodo': f'{year}-{month}' if year and month else None,
+                  'parse_method': 'cassetto_testuale', 'raw_evidence': {}, 'source_field_pages': module.get('field_pages') or {}}
+        invalid = bool(module.get('ambiguous'))
+        for field, name in CAMPI_VP.items():
+            period[name] = None
+            if field not in module:
+                continue
+            label, raw = module[field]
+            if not re.fullmatch(r'(?:\d{1,3}(?:\.\d{3})+|\d+),\d{2}', raw):
+                invalid = True
+                continue
+            period[name] = float(Decimal(raw.replace('.', '').replace(',', '.')))
+            period['raw_evidence'][field] = f'Mod.{number} - {field} {label}:{raw};'
+            if field in {'VP6', 'VP14'}:
+                side = 'credito' if re.search(r'\bcredito\b', label, re.I) else ('debito' if re.search(r'dovuta|da versare', label, re.I) else None)
+                period[name + '_segno'] = side
+                invalid = invalid or side is None
+        period['quadratura_ok'] = not invalid and bool(month) and quadra(period)
+        periods.append(period)
+    return {'anno': year, 'taxpayer_id': next(iter(taxpayers)) if len(taxpayers) == 1 else None,
+            'parse_method': 'cassetto_testuale', 'periodi': periods, 'periodi_letti': len(periods),
+            'periodi_che_non_quadrano': [p['periodo'] for p in periods if not p['quadratura_ok']]}
+
+
+def modulo_probatorio(period: Dict[str, Any]) -> Dict[str, Any]:
+    values = {f'{field.lower()}_cents': int(Decimal(str(period[name])) * 100)
+              for field, name in CAMPI_VP.items() if period.get(name) is not None}
+    for field in ('VP6', 'VP14'):
+        side = period.get(CAMPI_VP[field] + '_segno')
+        if side: values[f'{field.lower()}_side'] = side
+    # A named-field export omits empty cells. Zero is only for arithmetic,
+    # while lipe_periodi retains None for those source cells.
+    for field in ('vp4_cents', 'vp5_cents'):
+        values.setdefault(field, 0)
+    return {'month': int(period['mese']) if period.get('mese') else None,
+            'values': values, 'raw_evidence': period.get('raw_evidence') or {},
+            'parse_method': 'cassetto_testuale', 'source_module': period.get('source_module'),
+            'source_field_pages': period.get('source_field_pages') or {},
+            'quadrature': {'vp6': bool(period['quadratura_ok']), 'vp14': bool(period['quadratura_ok'])},
+            'confidence': 1.0 if period['quadratura_ok'] else 0.6}
+
+
 def parse_lipe(pdf_bytes: bytes) -> Dict[str, Any]:
     """Legge una LIPE e restituisce un periodo per ogni quadro VP compilato."""
     import io
@@ -187,6 +266,9 @@ def parse_lipe(pdf_bytes: bytes) -> Dict[str, Any]:
     anno: Optional[str] = None
 
     with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
+        textual = parse_cassetto_testuale([page.extract_text() or "" for page in pdf.pages])
+        if textual is not None:
+            return textual
         for numero_pagina, pagina in enumerate(pdf.pages, start=1):
             parole = pagina.extract_words()
             if anno is None:

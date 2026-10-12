@@ -704,8 +704,8 @@ def _parse_bonifico_eseguito(text: str, content: bytes | None = None) -> dict[st
             import pdfplumber
             with pdfplumber.open(io.BytesIO(content)) as pdf:
                 text = "\n".join(page.extract_text() or "" for page in pdf.pages)
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning("Lettura tabellare contabile non disponibile (%s)", type(exc).__name__)
     compact = re.sub(r"\s+", " ", text)
     if not re.search(r"Bonifico\s+Singolo", compact, re.I) or not re.search(r"Stato\s*:\s*Confermata\s*-\s*Eseguita\b", compact, re.I):
         return {}

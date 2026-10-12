@@ -220,6 +220,8 @@ def test_l_acconto_di_vp13_si_legge_nella_colonna_di_destra(monkeypatch):
     import types
 
     class _Pagina:
+        def extract_text(self):
+            return ""
         def __init__(self, parole):
             self._parole = parole
 

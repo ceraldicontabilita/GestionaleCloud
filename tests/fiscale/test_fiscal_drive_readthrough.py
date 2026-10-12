@@ -37,7 +37,15 @@ def _registro():
     }
 
 
+class _EmptyCursor:
+    async def to_list(self, _limit):
+        return []
+
+
 class _Coll:
+    def find(self, _query, _projection=None):
+        return _EmptyCursor()
+
     async def count_documents(self, _query):
         return 3
 

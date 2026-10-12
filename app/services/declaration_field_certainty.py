@@ -16,7 +16,7 @@ from typing import Any, Iterable
 
 
 PARSER_VERSION = "770-st-sv-v2-drive-layout"
-LIPE_PARSER_VERSION = "lipe-vp-v4-drive-layout"
+LIPE_PARSER_VERSION = "lipe-vp-v5-cassetto-named-fields"
 IVA_PARSER_VERSION = "iva-vl-vx-v1-drive-layout"
 REDDITI_SC_PARSER_VERSION = "redditi-sc-rn-rx-v2-rx1-payable"
 IRAP_PARSER_VERSION = "irap-ir-v1-drive-layout"
@@ -164,19 +164,26 @@ def extract_lipe_fields(content: bytes, *, document_id: str, tax_year: int | Non
                         filename: str | None = None, sha256: str | None = None) -> dict[str, Any]:
     """Estrae moduli VP solo da coordinate native e quadrature complete."""
     from app.services.lipe_verifica import parse_lipe_page
+    from app.services.lipe_parser import parse_lipe, modulo_probatorio
 
     modules: list[dict[str, Any]] = []
     tax_rows: list[dict[str, Any]] = []
     rejected: list[dict[str, Any]] = []
-    for page_number, text, words in _fitz_pages(content):
-        if not any(str(word.get("text") or "").strip().upper() == "VP1" for word in words):
-            continue
-        parsed = parse_lipe_page(text, layout_words=words)
+    source_pages = list(_fitz_pages(content))
+    textual = parse_lipe(content) if any(re.search(r"Mod\.\d+\s*-\s*VP1", text) for _, text, _ in source_pages) else None
+    entries = []
+    if textual is not None:
+        entries = [(period['pagina'], modulo_probatorio(period)) for period in textual['periodi']]
+    else:
+        for page_number, text, words in source_pages:
+            if any(str(word.get("text") or "").strip().upper() == "VP1" for word in words):
+                entries.append((page_number, parse_lipe_page(text, layout_words=words)))
+    for page_number, parsed in entries:
         values = parsed.get("values") or {}
         required = {"vp4_cents", "vp5_cents", "vp6_cents", "vp14_cents", "vp6_side", "vp14_side"}
         quadrature = parsed.get("quadrature") or {}
         certain = (
-            parsed.get("parse_method") == "pdf_layout"
+            parsed.get("parse_method") in {"pdf_layout", "cassetto_testuale"}
             and parsed.get("month") in range(1, 13)
             and required.issubset(values)
             and quadrature.get("vp6") is True
@@ -188,7 +195,7 @@ def extract_lipe_fields(content: bytes, *, document_id: str, tax_year: int | Non
             if parsed.get("raw_evidence", {}).get(field)
         )
         module = {
-            "id": f"lipe-module:{document_id}:{page_number}",
+            "id": f"lipe-module:{document_id}:{page_number}:{parsed.get('source_module') or parsed.get('month')}",
             "document_id": document_id, "filename": filename, "sha256": sha256,
             "page_number": page_number, "tax_year": tax_year,
             "month": parsed.get("month"), "reference_period": (
@@ -198,7 +205,7 @@ def extract_lipe_fields(content: bytes, *, document_id: str, tax_year: int | Non
             "source_text": evidence, "quadrature": quadrature,
             "parser_version": LIPE_PARSER_VERSION,
             "extraction_status": CERTAIN if certain else REVIEW,
-            "certainty_reason": "coordinate_native_e_quadrature_vp6_vp14"
+            "certainty_reason": ("campi_nominati_cassetto_e_quadrature_vp6_vp14" if parsed.get("parse_method") == "cassetto_testuale" else "coordinate_native_e_quadrature_vp6_vp14")
             if certain else "modulo_vp_non_completo_o_non_quadrato",
         }
         modules.append(module)
@@ -211,15 +218,16 @@ def extract_lipe_fields(content: bytes, *, document_id: str, tax_year: int | Non
             continue
         month = int(parsed["month"])
         raw = parsed.get("raw_evidence", {}).get("VP14") or evidence
+        amount_page = (parsed.get("source_field_pages") or {}).get("VP14", page_number)
         tax_rows.append({
-            "id": _row_identity(document_id, page_number, month, raw),
+            "id": _row_identity(document_id, amount_page, month, raw),
             "document_id": document_id, "filename": filename, "sha256": sha256,
-            "page_number": page_number, "source_text": raw,
+            "page_number": amount_page, "source_text": raw,
             "parser_version": LIPE_PARSER_VERSION, "tax_code": str(6000 + month),
             "reference_period": f"{tax_year}-{month:02d}",
             "debit_amount": vp14_cents / 100, "credit_amount": 0.0,
             "extraction_status": CERTAIN,
-            "certainty_reason": "vp14_debito_quadrato_con_coordinate_native",
+            "certainty_reason": "vp14_debito_quadrato_con_campi_nominati" if parsed.get("parse_method") == "cassetto_testuale" else "vp14_debito_quadrato_con_coordinate_native",
         })
         module["f24_expectation"] = "F24_MENSILE_ATTESO"
     certain_modules = sum(module["extraction_status"] == CERTAIN for module in modules)

@@ -305,6 +305,10 @@ async def _lipe_canoniche(db, anni: Optional[Set[int]]) -> Tuple[List[Dict[str, 
             escluse.append({"periodo": riga["periodo"], "nome_file": riga.get("nome_file"),
                             "motivo": "sostituita da una ritrasmissione con protocollo piu' alto"})
             continue
+        if riga.get('conflitto_fonti'):
+            escluse.append({'periodo': riga['periodo'], 'nome_file': riga.get('nome_file'),
+                            'motivo': 'LIPE con fonti discordanti: versione vigente da confermare'})
+            continue
         if riga.get("quadratura_ok") is not True:
             escluse.append({"periodo": riga["periodo"], "nome_file": riga.get("nome_file"),
                             "motivo": "l'aritmetica del quadro VP non torna (quadratura_ok non vero)"})

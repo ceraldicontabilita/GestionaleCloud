@@ -147,6 +147,9 @@ _CLASSIFIERS: tuple[tuple[DocumentType, tuple[str, ...]], ...] = (
 
 def classify_document(filename: str, text: str = "") -> dict[str, Any]:
     haystack = f"{filename} {text[:12000]}".casefold()
+    if 'comunicazione iva' in haystack and 'anno imposta' in haystack and re.search(r'\bmod\.\d+\s*-\s*vp1\b', haystack) and 'vp14' in haystack:
+        return {'document_type': DocumentType.LIPE.value, 'confidence': 0.95,
+                'reasons': ['campi_nominati_cassetto_iva_vp'], 'requires_review': False}
     for doc_type, markers in _CLASSIFIERS:
         matched = [marker for marker in markers if marker in haystack]
         if matched:

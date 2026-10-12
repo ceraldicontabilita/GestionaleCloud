@@ -20,7 +20,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from app.constants.canale_documento import STATO_LIPE_CANONICA, canale_obbligatorio
-from app.services.lipe_parser import parse_lipe
+from app.services.lipe_parser import parse_lipe, CAMPI_VP
 
 logger = logging.getLogger(__name__)
 
@@ -72,15 +72,21 @@ async def deposita_lipe(
     db, pdf_bytes: bytes, *, nome_file: str, origine: str,
     drive_file_id: Optional[str] = None, dry_run: bool = False,
     source_document_id: Optional[str] = None,
+    data_presentazione: Optional[str] = None, riferimento_cassetto: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Legge una LIPE e deposita i suoi periodi. Idempotente per periodo."""
     letto = await asyncio.to_thread(parse_lipe, pdf_bytes)
     protocollo = protocollo_da_nome(nome_file)
     ora = datetime.now(timezone.utc).isoformat()
+    if data_presentazione:
+        from datetime import date
+        data_presentazione = date.fromisoformat(data_presentazione).isoformat()
 
     depositati: List[str] = []
     scartati: List[Dict[str, Any]] = []
     ignorati: List[str] = []
+    fonti_aggiunte: List[str] = []
+    conflitti: List[str] = []
 
     for periodo_letto in letto["periodi"]:
         periodo = periodo_letto.get("periodo")
@@ -93,6 +99,70 @@ async def deposita_lipe(
             continue
 
         esistente = await db[COLL_LIPE].find_one({"periodo": periodo}, {"_id": 0})
+        if esistente and (letto.get('parse_method') == 'cassetto_testuale' or protocollo is None or esistente.get('data_presentazione')):
+            # An export ID or commitment date cannot rank filing revisions.
+            fields = [*CAMPI_VP.values(), 'iva_dovuta_o_credito_segno', 'iva_da_versare_o_credito_segno']
+            same = all(esistente.get(field) == periodo_letto.get(field) for field in fields)
+            digest = hashlib.sha256(pdf_bytes).hexdigest()
+            alternatives = list(esistente.get('fonti_alternative') or [])
+            source = {**{k: v for k, v in periodo_letto.items() if k != 'pagina'},
+                      'nome_file': nome_file, 'source_sha256': digest, 'source_page': periodo_letto.get('pagina'),
+                      'source_document_id': source_document_id, 'drive_file_id': drive_file_id,
+                      'coerente_con_vigente': same, 'data_presentazione': data_presentazione,
+                      'data_presentazione_fonte': 'conferma_titolare' if data_presentazione else None,
+                      'riferimento_cassetto': riferimento_cassetto}
+            if data_presentazione:
+                alternatives = [source if a.get('source_sha256') == digest else a for a in alternatives]
+            old_date = esistente.get('data_presentazione')
+            if same and data_presentazione:
+                if not esistente.get('source_document_id') and source_document_id and esistente.get('source_sha256') != digest:
+                    previous_source = {k: v for k, v in esistente.items() if k not in {'fonti_alternative', '_id', 'id'}}
+                    if not any(a.get('source_sha256') == previous_source.get('source_sha256') for a in alternatives):
+                        alternatives.append(previous_source)
+                latest = max(data_presentazione, old_date or data_presentazione)
+                differing = [a for a in alternatives if any(a.get(field) != esistente.get(field) for field in fields)]
+                unresolved = any(not a.get('data_presentazione') or a['data_presentazione'] >= latest for a in differing)
+                if digest != esistente.get('source_sha256') and not any(a.get('source_sha256') == digest for a in alternatives):
+                    alternatives.append(source)
+                if not dry_run:
+                    await db[COLL_LIPE].update_one({'periodo': periodo}, {'$set': {
+                        'fonti_alternative': alternatives, 'data_presentazione': latest,
+                        'data_presentazione_fonte': 'conferma_titolare',
+                        'data_presentazione_source_sha256': digest, 'riferimento_cassetto': riferimento_cassetto,
+                        'conflitto_fonti': unresolved,
+                        **({'source_document_id': source_document_id, 'source_sha256': digest,
+                            'drive_file_id': drive_file_id, 'source_page': periodo_letto.get('pagina'),
+                            'nome_file': nome_file} if not esistente.get('source_document_id') and source_document_id else {}),
+                    }})
+                fonti_aggiunte.append(periodo)
+                if unresolved: conflitti.append(periodo)
+                continue
+            if not same and data_presentazione and old_date and data_presentazione != old_date:
+                if data_presentazione > old_date:
+                    old_source = {k: v for k, v in esistente.items() if k not in {'fonti_alternative', '_id', 'id'}}
+                    alternatives = [a for a in alternatives if a.get('source_sha256') != digest]
+                    if not any(a.get('source_sha256') == old_source.get('source_sha256') for a in alternatives):
+                        alternatives.append(old_source)
+                    row = {**source, 'anno': letto.get('anno'), 'origine': origine,
+                           'protocollo': protocollo, 'stato': STATO_LIPE_CANONICA,
+                           'canale': canale_obbligatorio(origine, drive_file_id=drive_file_id),
+                           'fonti_alternative': alternatives, 'conflitto_fonti': False,
+                           'aggiornato_at': ora, 'criterio_versione': 'data_presentazione_successiva'}
+                    if not dry_run:
+                        await db[COLL_LIPE].update_one({'periodo': periodo}, {'$set': row})
+                    depositati.append(periodo)
+                    continue
+                source['superata_per_data_presentazione'] = True
+            if digest != esistente.get('source_sha256') and not any(a.get('source_sha256') == digest for a in alternatives):
+                alternatives.append(source)
+                if not dry_run:
+                    await db[COLL_LIPE].update_one({'periodo': periodo}, {'$set': {
+                        'fonti_alternative': alternatives, 'conflitto_fonti': bool(esistente.get('conflitto_fonti')) or (not same and not source.get('superata_per_data_presentazione')),
+                    }})
+            fonti_aggiunte.append(periodo)
+            if not same:
+                conflitti.append(periodo)
+            continue
         if esistente:
             vecchio = esistente.get("protocollo")
             if protocollo is not None and vecchio is not None and protocollo < vecchio:
@@ -120,6 +190,9 @@ async def deposita_lipe(
             "stato": STATO_LIPE_CANONICA,
             "sostituisce": sostituisce,
             "aggiornato_at": ora,
+            "data_presentazione": data_presentazione,
+            "data_presentazione_fonte": "conferma_titolare" if data_presentazione else None,
+            "riferimento_cassetto": riferimento_cassetto,
         }
         if not dry_run:
             await db[COLL_LIPE].update_one(
@@ -136,6 +209,8 @@ async def deposita_lipe(
         "depositati": depositati,
         "ignorati_perche_superati": ignorati,
         "scartati": scartati,
+        "fonti_aggiunte": fonti_aggiunte,
+        "periodi_con_fonti_discordanti": conflitti,
     }
 
 
