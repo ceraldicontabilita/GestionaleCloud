@@ -122,6 +122,26 @@ def test_ridotto_documentato_e_scadenza_provata():
     assert not m.importo_ricevuta_compatibile(v,{},36.4)
 
 
+@pytest.mark.parametrize('notifica,scadenza', [
+    ('2025-07-29', '2025-08-04'),  # quinto giorno domenica
+    ('2025-12-20', '2025-12-27'),  # Natale/Santo Stefano; sabato feriale
+    ('2025-08-04', '2025-08-09'),  # il sabato non slitta
+])
+def test_ridotto_stesso_termine_per_ricevuta_e_importo_atteso(notifica, scadenza):
+    from datetime import date, timedelta
+    from app.services.notifiche_pec_verbali import scadenze_da_notifica
+    from app.services.verbali_importo_atteso import valuta_importo_atteso
+    v = dict(importo=87, importo_ordinario=87, importo_ridotto=62.55,
+             data_notifica_fonte='pec', data_notifica=notifica)
+    ultimo = date.fromisoformat(scadenza)
+    dopo = ultimo + timedelta(days=1)
+    assert scadenze_da_notifica(notifica)['pagamento_ridotto'] == scadenza
+    assert not valuta_importo_atteso(v, ultimo)['applicare']
+    assert valuta_importo_atteso(v, dopo)['applicare']
+    assert m.importo_ricevuta_compatibile(v, {'data_pagamento': scadenza}, 62.55)
+    assert not m.importo_ricevuta_compatibile(v, {'data_pagamento': dopo.isoformat()}, 62.55)
+
+
 def test_quote_documentate_su_due_cartelle_e_parziale_non_chiude():
     db=ClientArchivioMemoria()['quote']
     async def scenario():

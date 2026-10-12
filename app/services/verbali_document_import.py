@@ -609,7 +609,7 @@ async def process_verbale_document(
             company_id=settings.FISCAL_COMPANY_ID, source=source,
             source_metadata={"source_document_id": document_id, "source_sha256": sha256})
         if not imported.get("success"):
-            return {"status": "review", "tipo": "ricevuta_pagopa", "reason": imported.get("error")}
+            return {"status": "review", "tipo": "ricevuta_pagopa", "verbale_id": None, "reason": imported.get("error")}
         receipt = imported["receipt"]
         receipt_id = receipt["id"]
         linked_verbale = receipt.get("verbale_id")

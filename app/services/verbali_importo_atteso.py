@@ -25,7 +25,7 @@ from decimal import Decimal, InvalidOperation
 from typing import Any, Dict, List, Optional
 
 from app.constants.stati_verbale import e_chiuso
-from app.services.notifiche_pec_verbali import GIORNI_PAGAMENTO_RIDOTTO
+from app.services.notifiche_pec_verbali import GIORNI_PAGAMENTO_RIDOTTO, scadenza_pagamento_ridotto
 
 logger = logging.getLogger(__name__)
 
@@ -82,7 +82,7 @@ def valuta_importo_atteso(verbale: Dict[str, Any], oggi: Optional[date] = None) 
     ordinario = decimale(verbale.get("importo_ordinario"))
     if ordinario is None or ordinario <= 0:
         return {"applicare": False, "motivo": "ordinario_non_letto"}
-    scadenza = notifica + timedelta(days=GIORNI_PAGAMENTO_RIDOTTO)
+    scadenza = scadenza_pagamento_ridotto(notifica)
     if oggi <= scadenza:
         return {"applicare": False, "motivo": "entro_i_5_giorni", "scadenza_ridotto": scadenza.isoformat()}
     ridotto = decimale(verbale.get("importo_ridotto"))

@@ -69,6 +69,20 @@ def metadati_notifica(oggetto: Any, mittente: Any, data_email: Any) -> Dict[str,
     }
 
 
+def scadenza_pagamento_ridotto(notifica: date) -> date:
+    """Cinque giorni di calendario; solo la scadenza festiva slitta.
+
+    Il sabato resta feriale. Fonte: Citta' metropolitana di Milano,
+    https://www.cittametropolitana.mi.it/servizi/Pagare-una-multa-per-violazione-del-Codice-della-Strada/
+    """
+    from app.services.calendario_lavorativo import festivita_nazionali
+
+    scadenza = notifica + timedelta(days=GIORNI_PAGAMENTO_RIDOTTO)
+    while scadenza.weekday() == 6 or scadenza in festivita_nazionali(scadenza.year):
+        scadenza += timedelta(days=1)
+    return scadenza
+
+
 def scadenze_da_notifica(data_notifica: Optional[str]) -> Dict[str, str]:
     """Termini dalla notifica; senza data di notifica non si inventa nulla."""
     if not data_notifica:
@@ -78,7 +92,7 @@ def scadenze_da_notifica(data_notifica: Optional[str]) -> Dict[str, str]:
     except ValueError:
         return {}
     return {
-        "pagamento_ridotto": (giorno + timedelta(days=GIORNI_PAGAMENTO_RIDOTTO)).isoformat(),
+        "pagamento_ridotto": scadenza_pagamento_ridotto(giorno).isoformat(),
         "ricorso_giudice_di_pace": (giorno + timedelta(days=GIORNI_GIUDICE_DI_PACE)).isoformat(),
         "ricorso_prefetto": (giorno + timedelta(days=GIORNI_PREFETTO)).isoformat(),
     }

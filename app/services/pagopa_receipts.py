@@ -840,13 +840,13 @@ def parse_receipt_pdf(content: bytes, filename: str | None = None) -> dict[str, 
     code = bpm_payment.get("identificativo_bolletta")
     code_source = f"{compact} {filename or ''}"
     for pattern in (
-        r"(?:identificativo\s+(?:univoco\s+)?(?:versamento|bolletta)|id\s+univoco\s+versamento|IUV|CBILL)\s*[:#-]?\s*(\d{15,20})",
+        r"(?:identificativo\s+(?:univoco\s+)?(?:versamento|bolletta)|id\s+univoco\s+versamento|codice\s+avviso|IUV|CBILL)\s*[:#-]?\s*(\d{15,20})",
         r"\b(3(?:\s*\d){17})\b",
         r"\b([03]\d{16,17})\b",
     ):
         if code:
             break
-        if not any(word in upper for word in ("PAGOPA", "CBILL", "IUV", "RICEVUTA TELEMATICA")):
+        if not any(word in upper for word in ("PAGOPA", "CBILL", "IUV", "RICEVUTA TELEMATICA", "CODICE AVVISO", "ID UNIVOCO VERSAMENTO")):
             continue
         match = re.search(pattern, code_source, re.IGNORECASE)
         if match:
@@ -1101,9 +1101,10 @@ def importo_ricevuta_compatibile(verbale: dict[str, Any], ricevuta: dict[str, An
         return False
     # Un importo ridotto pagato dopo il termine PEC provato non chiude il verbale.
     if verbale.get("data_notifica_fonte") == "pec" and verbale.get("data_notifica"):
-        from datetime import date, timedelta
+        from datetime import date
+        from app.services.notifiche_pec_verbali import scadenza_pagamento_ridotto
         try:
-            limite = date.fromisoformat(str(verbale["data_notifica"])[:10]) + timedelta(days=5)
+            limite = scadenza_pagamento_ridotto(date.fromisoformat(str(verbale["data_notifica"])[:10]))
             return date.fromisoformat(str(ricevuta.get("data_pagamento"))[:10]) <= limite
         except ValueError:
             return False
@@ -1427,6 +1428,7 @@ async def import_receipt(
         "associazione_automatica": bool(movement), "created_at": now,
         "versato_documentalmente": True,
         "banca_verificata": bool(movement),
+        "stato": "associata" if movement else "non_associata",
         # Ricevuta di un intermediario (Mooney): chi ha incassato, con cosa e' stata
         # pagata e i riferimenti che la banca o PayPal potranno citare.
         **{campo: values.get(campo) for campo in CAMPI_INTERMEDIARIO if values.get(campo) not in (None, "")},
@@ -1452,6 +1454,8 @@ async def import_receipt(
         for key in ("banca_verificata", "associazione_automatica"):
             if existing.get(key):
                 patch[key] = existing[key]
+        if existing.get("verbale_id") or existing.get("movimento_id"):
+            patch["stato"] = "associata"
         if values.get("fee_amount") is None and existing.get("fee_amount") is not None:
             for key in ("fee_amount", "fee_amount_cents", "bank_debit_total", "bank_debit_total_cents"):
                 if existing.get(key) is not None:
