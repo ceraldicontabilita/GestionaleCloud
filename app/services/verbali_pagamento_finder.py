@@ -485,14 +485,14 @@ async def applica_pagamento_a_verbale(db, verbale_id, match):
         stato = "pagato"
         stato_pratica = "PAGATO_DOCUMENTALE"
     else:
-        stato = "pagato_attesa_quietanza"
+        stato = "attesa_quietanza"
         stato_pratica = "ATTESA_QUIETANZA"
 
     pagamento_id = (
         match.get("paypal_transaction_id")
         or match.get("ricevuta_pagopa_id")
         or verbale.get("pagamento_id")
-        or incoming_bank_id
+        if documentary_verified else None
     )
     update = {
         "stato": stato,
@@ -506,7 +506,8 @@ async def applica_pagamento_a_verbale(db, verbale_id, match):
         "importo": match.get("importo") or None,
         "metodo_pagamento": match.get("metodo_pagamento"),
         "psp": match.get("psp"),
-        "data_pagamento": match.get("data_pagamento"),
+        "data_pagamento": (match.get("data_pagamento") if incoming_documentary_id else verbale.get("data_pagamento") if documentary_verified else None),
+        "data_riscontro_banca": match.get("data_pagamento") if incoming_bank_id else None,
         "fonte_riconciliazione": match.get("fonte"),
         "riconciliato_paypal": bool(
             verbale.get("riconciliato_paypal") or match.get("fonte") == "paypal"
@@ -566,6 +567,29 @@ async def applica_pagamento_a_verbale(db, verbale_id, match):
     return res.modified_count > 0
 
 
+async def normalizza_attese_quietanza(db) -> int:
+    """I vecchi soli riscontri bancari restano aperti, conservando la provenienza."""
+    rows = await db["verbali_noleggio"].find({
+        "stato": {"$in": ["pagato_attesa_quietanza", "pagato_attesa_fattura"]},
+        "pagato_documentalmente": {"$ne": True}, "banca_verificata": True,
+    }, {"_id": 0, "pdf_data": 0}).to_list(5000)
+    changed = 0
+    for row in rows:
+        if row.get("stato") not in {"pagato_attesa_quietanza", "pagato_attesa_fattura"} or not row.get("banca_verificata") or row.get("pagato_documentalmente"):
+            continue
+        if any(row.get(k) for k in ("ricevuta_pagopa_id", "paypal_transaction_id", "quietanza_hash")):
+            continue
+        old = {k: row[k] for k in ("pagamento_id", "data_pagamento", "fonte_pagamento") if row.get(k) is not None}
+        update = {"$set": {"stato": "attesa_quietanza", "stato_pratica": "ATTESA_QUIETANZA",
+                            "riscontro_banca_legacy": old,
+                            "updated_at": datetime.now(timezone.utc).isoformat()}}
+        if old:
+            update["$unset"] = {k: "" for k in old}
+        result = await db["verbali_noleggio"].update_one({"id": row["id"]}, update)
+        changed += int(bool(result.modified_count))
+    return changed
+
+
 async def riconcilia_verbali_strict(db) -> Dict[str, Any]:
     """Riconcilia solo con prove strutturate, mai per importo/data da soli.
 
@@ -573,6 +597,7 @@ async def riconcilia_verbali_strict(db) -> Dict[str, Any]:
     IUV o numero verbale (oppure targa esplicita) e importo uguale al
     centesimo. Un candidato assente o ambiguo resta non riconciliato.
     """
+    normalized = await normalizza_attese_quietanza(db)
     verbali = await db["verbali_noleggio"].find(
         {
             "$and": [
@@ -590,6 +615,7 @@ async def riconcilia_verbali_strict(db) -> Dict[str, Any]:
     ).to_list(1000)
     stats: Dict[str, Any] = {
         "verbali_da_riconciliare": len(verbali),
+        "attese_quietanza_normalizzate": normalized,
         "riconciliati": 0,
         "riconciliati_paypal": 0,
         "riconciliati_pagopa": 0,

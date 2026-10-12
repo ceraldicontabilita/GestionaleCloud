@@ -250,7 +250,7 @@ def test_banca_con_numero_verbale_e_importo_al_centesimo_riconcilia():
     assert verbale["banca_verificata"] is True and verbale["movimento_banca_id"] == "m1"
     # la sola banca non e' prova documentale
     assert verbale["pagato_documentalmente"] is False
-    assert verbale["stato"] == "pagato_attesa_quietanza"
+    assert verbale["stato"] == "attesa_quietanza"
 
 
 def test_banca_con_importo_diverso_di_un_centesimo_non_riconcilia():

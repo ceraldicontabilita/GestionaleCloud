@@ -31,7 +31,7 @@ logger = logging.getLogger(__name__)
 # 1. PIPELINE F24
 # ============================================================
 
-async def processa_f24_da_email(db: ArchivioDocumenti) -> Dict[str, Any]:
+async def processa_f24_da_email(db: ArchivioDocumenti, *, defer_controparti: bool = False) -> Dict[str, Any]:
     """
     Processa tutti gli F24 PDF scaricati da Gmail.
     Ogni allegato passa da ``importa_modello_bytes``, l'ingresso unico dei
@@ -69,6 +69,7 @@ async def processa_f24_da_email(db: ArchivioDocumenti) -> Dict[str, Any]:
                     "email_date": doc.get("email_date", ""),
                     "attachment_id": doc.get("id"),
                 },
+                **({"defer_controparti": True} if defer_controparti else {}),
             )
             if esito.get("success"):
                 stats["gia_processati" if esito.get("duplicate") else "nuovi"] += 1
@@ -230,8 +231,10 @@ async def processa_quietanze_da_email(db: ArchivioDocumenti) -> Dict[str, Any]:
             if not pdf_data:
                 continue
 
-            pdf_bytes = base64.b64decode(pdf_data)
             filename = doc.get("filename", "quietanza.pdf")
+            if not filename.lower().endswith(".pdf"):
+                continue  # CSV, Excel e script non sono quietanze PDF.
+            pdf_bytes = base64.b64decode(pdf_data)
 
             from app.services.verbali_document_import import leggi_documento_verbale, process_verbale_document
             receipt = await leggi_documento_verbale(pdf_bytes, filename)
@@ -242,6 +245,11 @@ async def processa_quietanze_da_email(db: ArchivioDocumenti) -> Dict[str, Any]:
                     "processed": True, "esito": linked["status"], "verbale_id": linked.get("verbale_id")}})
                 stats["processati"] += 1
                 continue
+
+            if (doc.get("category") == "bonifico" or doc.get("tipo_documento") == "bonifico") and not re.search(
+                r"\bf[\s_-]?24\b", receipt["text"], re.I
+            ):
+                continue  # Un bonifico generico appartiene al suo dominio.
 
             # Stesso ingresso di Documenti > Import e di Drive: lettura, quadratura,
             # dedup per protocollo e contenuto, abbinamento al modello e alla banca.

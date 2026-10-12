@@ -47,13 +47,17 @@ def test_aperto_e_pagato_non_si_sovrappongono():
     assert not e_aperto(None) and not e_pagato(None)
 
 
-def test_il_legacy_attesa_fattura_resta_fra_i_pagati_ma_non_si_scrive():
+def test_il_legacy_attesa_quietanza_resta_aperto_e_non_si_scrive_attesa_fattura():
     """E' il nome sbagliato di «attesa quietanza»: si legge, non si scrive.
 
     CLAUDE.md: «Lo stato corretto dopo un pagamento privo di ricevuta
     ufficiale e' `attesa quietanza`, **mai** `attesa fattura`».
     """
-    assert "pagato_attesa_fattura" in STATI_PAGATI
+    assert "pagato_attesa_fattura" in STATI_APERTI
+    assert not e_pagato("pagato_attesa_fattura")
+    assert e_aperto("pagato_attesa_quietanza")
+    assert not e_pagato("pagato_attesa_quietanza")
+    assert e_aperto("attesa_quietanza")
     scrittori = []
     for sorgente in (ROOT / "app").rglob("*.py"):
         testo = sorgente.read_text(encoding="utf-8")

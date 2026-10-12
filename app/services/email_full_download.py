@@ -859,7 +859,7 @@ class EmailFullDownloader:
         try:
             status, folder_list = self.connection.list()
             if status != "OK":
-                return ["INBOX"]
+                raise RuntimeError("Lista cartelle IMAP non disponibile")
 
             folders = []
             for f in folder_list:
@@ -887,6 +887,8 @@ class EmailFullDownloader:
 
         except Exception as e:
             logger.warning(f"[Gmail] Errore lista cartelle: {e}")
+            if self.allowed_categories is not None:
+                raise
             return ["INBOX"]
 
     async def _scan_single_folder(
@@ -2125,10 +2127,10 @@ async def scarica_posta_con_cursori(
         await asyncio.to_thread(downloader.disconnect)
 
     esito["interrotto_per_tetto"] = tetto()
-    esito["storico_completo"] = bool(cartelle_stato) and all(
-        c.get("completo") for c in cartelle_stato.values())
+    esito["storico_completo"] = bool(cartelle) and all(
+        (cartelle_stato.get(name) or {}).get("completo") for name in cartelle)
     esito["storico_mancante_cartelle"] = sum(
-        1 for c in cartelle_stato.values() if not c.get("completo"))
+        1 for name in cartelle if not (cartelle_stato.get(name) or {}).get("completo"))
     esito["pdf_per_categoria"] = downloader.stats.get("pdfs_by_category", {})
     await _salva_cursori(db, {
         **stato, "cartelle": cartelle_stato,
@@ -2148,6 +2150,8 @@ async def richiedi_recupero_storico(db, data_inizio: str) -> Dict[str, Any]:
     state = await db["sistema_stato"].find_one({"chiave": CHIAVE_RECUPERO_STORICO}, {"_id": 0}) or {}
     if state.get("in_progress") and state.get("richiesto_dal") != data_inizio:
         raise ValueError("Un recupero storico diverso e' gia' in corso")
+    if state.get("in_progress") and state.get("richiesto_dal") == data_inizio:
+        return state
     changes = {"chiave": CHIAVE_RECUPERO_STORICO, "in_progress": True,
                "stato": "in_corso", "richiesto_dal": data_inizio, "error": None,
                "started_at": datetime.now(timezone.utc).isoformat()}
@@ -2163,7 +2167,7 @@ async def leggi_stato_recupero_storico(db) -> Dict[str, Any]:
     return state
 
 
-async def lotto_recupero_storico(db) -> Dict[str, Any]:
+async def _lotto_recupero_storico_con_lease(db) -> Dict[str, Any]:
     """Stesso scaricatore, cursore separato, importatori canonici e lease distribuita."""
     from contextlib import asynccontextmanager
 
@@ -2172,7 +2176,7 @@ async def lotto_recupero_storico(db) -> Dict[str, Any]:
         yield True
 
     factory = getattr(db, "scheduler_lease", None)
-    lease = factory(CHIAVE_RECUPERO_STORICO) if callable(factory) else local_lease()
+    lease = factory(CHIAVE_RECUPERO_STORICO, ttl_seconds=120) if callable(factory) else local_lease()
     async with lease as acquired:
         if not acquired:
             return {"in_progress": True, "lease_occupata": True}
@@ -2180,6 +2184,8 @@ async def lotto_recupero_storico(db) -> Dict[str, Any]:
         if not state.get("in_progress"):
             return state
         try:
+            from app.services.verbali_pagamento_finder import normalizza_attese_quietanza
+            await normalizza_attese_quietanza(db)
             if not state.get("revisione_archivio"):
                 from app.services.verbali_document_import import rivedi_verbali_archiviati
                 review = await rivedi_verbali_archiviati(db)
@@ -2194,7 +2200,7 @@ async def lotto_recupero_storico(db) -> Dict[str, Any]:
                 processa_f24_da_email, processa_verbali_da_email, processa_quietanze_da_email,
             )
             pipeline = {
-                "f24": await processa_f24_da_email(db),
+                "f24": await processa_f24_da_email(db, defer_controparti=True),
                 "verbali": await processa_verbali_da_email(db),
                 "quietanze": await processa_quietanze_da_email(db),
             }
@@ -2205,6 +2211,11 @@ async def lotto_recupero_storico(db) -> Dict[str, Any]:
             # Un lotto finale scarica anche eventuali code degli importatori (500/200).
             backlog = pipeline["f24"].get("processati", 0) >= 500 or pipeline["quietanze"].get("processati", 0) >= 200
             complete = bool(scan.get("storico_completo")) and not failure and not backlog
+            if complete:
+                # Una riconciliazione canonica finale, non 436 quietanze ripassate
+                # per ogni PDF del recupero. I nuovi originali restano subito salvati.
+                from app.services.quietanze_import import ricollega_quietanze_orfane
+                pipeline["quietanze_f24_finali"] = await ricollega_quietanze_orfane(db)
             pipeline_totals = dict(state.get("pipeline_totali") or {})
             for domain, counters in pipeline.items():
                 cumulative = dict(pipeline_totals.get(domain) or {})
@@ -2244,3 +2255,15 @@ async def esegui_recupero_storico(db) -> Dict[str, Any]:
             break
         await asyncio.sleep(0.5)
     return result
+
+
+_RECUPERO_STORICO_LOCK = asyncio.Lock()
+
+
+async def lotto_recupero_storico(db) -> Dict[str, Any]:
+    # La lease SQL accetta il medesimo owner: serve anche un lock nel processo
+    # fra la richiesta HTTP e il job Gmail, prima della lease distribuita.
+    if _RECUPERO_STORICO_LOCK.locked():
+        return {"in_progress": True, "lease_occupata": True}
+    async with _RECUPERO_STORICO_LOCK:
+        return await _lotto_recupero_storico_con_lease(db)

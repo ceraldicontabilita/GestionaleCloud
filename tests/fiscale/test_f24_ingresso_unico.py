@@ -215,3 +215,23 @@ def test_parse_f24_llm_e_alias_della_pipeline_posta(monkeypatch):
     assert esito["success"] is True and chiamate == ["db"]
     import importlib.util
     assert importlib.util.find_spec("app.services.llm_document_parser") is None
+
+
+def test_lotto_salva_originali_senza_ripassare_tutto_archivio_per_ogni_pdf(monkeypatch):
+    from unittest.mock import AsyncMock
+    db = AsyncMongoMockClient()['lotto_storico']
+    monkeypatch.setattr('app.services.parser_f24.parse_f24_commercialista',
+                        lambda pdf_content: _parsed(int(pdf_content[-1:]) * 10000))
+    counterpart = AsyncMock(return_value={})
+    monkeypatch.setattr(f24_canonico, 'cerca_controparti_f24', counterpart)
+    async def run():
+        for value in (1, 2):
+            result = await f24_canonico.importa_modello_bytes(db, f'%PDF-{value}'.encode(),
+                f'F24-{value}.pdf', source='gmail_scan', defer_controparti=True)
+            assert result['success'] and result['controparti'] is None
+        assert await db.f24_unificato.count_documents({}) == 2
+        assert await db.f24_unificato.count_documents({'pagato': True}) == 0
+        counterpart.assert_not_awaited()
+        await f24_canonico.importa_modello_bytes(db, b'%PDF-3', 'F24-3.pdf')
+        counterpart.assert_awaited_once()
+    asyncio.run(run())

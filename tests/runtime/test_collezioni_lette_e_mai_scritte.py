@@ -34,7 +34,6 @@ SCRITTURE = (
 #: I commenti sui conteggi sono la fotografia storica, non un inventario live.
 NOTE = {
     "entity_relations",            # la scrive il trigger, non Python
-    "iva_comunicazioni",           # originali storici archiviati esternamente; piano_iva li legge soltanto
     "fiscal_documents",            # 22 righe nel censimento storico
     "piano_conti",                 # piano ufficiale definito in Python
     "contratti_noleggio",
