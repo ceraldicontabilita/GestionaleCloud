@@ -972,6 +972,18 @@ def parse_f24_commercialista(pdf_path: str = None, pdf_content: bytes = None) ->
                                 })
                         break
 
+    if not result["sezione_inail"]:
+        # Gli stessi modelli storici a colonne vengono letti anche nel canale
+        # modello, senza copiarvi data o prova di versamento della quietanza.
+        from app.services.f24_parser import _coordinate_quietanza
+        coordinates = _coordinate_quietanza(doc)
+        if coordinates.get("sezione_inail"):
+            result["sezione_inail"] = coordinates["sezione_inail"]
+            if coordinates.get("codice_fiscale") and not result["dati_generali"].get("codice_fiscale"):
+                result["dati_generali"]["codice_fiscale"] = coordinates["codice_fiscale"]
+            if coordinates.get("saldo_delega_esplicito"):
+                result["dati_generali"]["saldo_delega"] = coordinates["saldo_delega"]
+
     # Provenienza completa e importi canonici: ogni riga mantiene il testo
     # originale, la pagina e il rettangolo delle parole che l'hanno generata.
     for section_name in (

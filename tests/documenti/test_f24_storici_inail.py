@@ -73,3 +73,12 @@ def test_bonifico_eseguito_solo_principale_con_commissione_e_data():
     assert proof['data_pagamento']=='2025-08-15' and proof['metodo_pagamento']=='Bonifico'
     assert not _parse_bonifico_eseguito(text.replace('Confermata - Eseguita','Inserita'))
     assert not _parse_bonifico_eseguito(text.replace('122,10','122,11'))
+
+
+def test_anche_ingresso_modello_legge_righe_inail_senza_prova_pagamento():
+    from app.services.parser_f24 import parse_f24_commercialista
+    data=parse_f24_commercialista(pdf_content=_model([('902014','633,93',None)],'633,93'))
+    assert len(data['sezione_inail'])==1
+    assert data['totali']['totale_debito_cents']==63393
+    assert data['dati_generali']['codice_fiscale']=='01234567890'
+    assert not data['dati_generali'].get('data_pagamento')
