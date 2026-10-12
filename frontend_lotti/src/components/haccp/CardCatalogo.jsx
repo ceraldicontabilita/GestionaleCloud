@@ -4,7 +4,8 @@
  * Solo l'indispensabile: foto, nome, prezzo, l'eventuale fornitore che costa
  * meno (nome e prezzo, niente frasi) e i due gesti da mani sporche: Acquista
  * e Al ricettario. Codice, descrizione, prezzo netto da scrivere, preferito
- * e scheda tecnica stanno nel dettaglio, che si apre toccando la card.
+ * e scheda tecnica stanno nel dettaglio, che si apre toccando la card. I
+ * prodotti acquistati sono prioritari tramite il filtro comune delle fatture.
  */
 import { Check, Package, Plus, ShoppingCart, TrendingDown } from "lucide-react";
 
@@ -23,8 +24,8 @@ export function rigaConfronto(c, formatta) {
 }
 
 export default function CardCatalogo({
-  nome, foto, prezzo, notaPrezzo, confronto, inCart, inRicette, preferito,
-  colore = "sage", onApri, onCarrello, onRicetta, onPreferito, testId, ricettaDisponibile = true,
+  nome, foto, prezzo, notaPrezzo, confronto, inCart, inRicette,
+  colore = "sage", onApri, onCarrello, onRicetta, testId, ricettaDisponibile = true,
 }) {
   const stop = (fn) => (e) => { e.stopPropagation(); fn?.(); };
   return (
@@ -40,13 +41,6 @@ export default function CardCatalogo({
               onError={(e) => { e.target.style.display = "none"; }} />
           ) : (
             <Package size={30} className="text-[#5b7a6b] opacity-30" aria-hidden="true" />
-          )}
-          {onPreferito && (
-            <button type="button" onClick={stop(onPreferito)}
-              aria-label={preferito ? "Togli dai preferiti colazione" : "Segna come preferito colazione"}
-              className={`absolute left-1 top-1 flex h-7 w-7 items-center justify-center rounded-full text-sm ${preferito ? "bg-white text-[#c4894a]" : "bg-black/30 text-white"}`}>
-              {preferito ? "★" : "☆"}
-            </button>
           )}
         </div>
         <div className="flex min-w-0 flex-1 flex-col gap-1">
