@@ -7,7 +7,7 @@
  * e scheda tecnica stanno nel dettaglio, che si apre toccando la card. I
  * prodotti acquistati sono prioritari tramite il filtro comune delle fatture.
  */
-import { Check, Heart, Package, Plus, ShoppingCart, TrendingDown } from "lucide-react";
+import { Check, Heart, Info, Package, Plus, ShoppingCart, TrendingDown } from "lucide-react";
 
 const COLORI_FOTO = {
   amber: "bg-amber-50", rose: "bg-rose-50", orange: "bg-orange-50",
@@ -91,6 +91,10 @@ export default function CardCatalogo({
           {preferito ? "Preferito" : "Preferiti"}
         </button>}
       </div>
+      {onApri && <button type="button" onClick={stop(onApri)}
+        className="flex min-h-[40px] w-full items-center justify-center gap-1.5 rounded-xl border border-[#dce8e0] bg-white text-[13px] font-bold text-[#3f5a4e]">
+        <Info size={15} aria-hidden="true" /> Maggiori dettagli
+      </button>}
     </div>
   );
 }

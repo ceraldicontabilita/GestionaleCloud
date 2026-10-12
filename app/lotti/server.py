@@ -106,6 +106,7 @@ from app.lotti.routers.ordini_hotel import router as r_ordini_hotel
 from app.lotti.routers.saima import router as r_saima
 from app.lotti.routers.saima_ricettari import router as r_saima_ricettari
 from app.lotti.routers.mepa import router as r_mepa
+from app.lotti.routers.irca import router as r_irca
 from app.lotti.routers.cataloghi_arricchimento import router as r_cataloghi_arricchimento
 
 # ── Sistema e infrastruttura ────────────────────────────────────────────────
@@ -147,7 +148,7 @@ for r in [
     r_sconti, r_prodotti_vendita, r_acquaviva, r_colazione, r_vendita_banco, r_listino, r_azienda, r_magazzino_bar, r_magazzino_unificato,
     r_gestionale_fatture,
     r_ordini_fornitori, r_email_ordini, r_ordini_hotel, r_saima, r_saima_ricettari,
-    r_mepa, r_cataloghi_arricchimento, r_costi_giornalieri, r_corrispettivi, r_attrezzature, r_pipeline, r_scheduler,
+    r_mepa, r_irca, r_cataloghi_arricchimento, r_costi_giornalieri, r_corrispettivi, r_attrezzature, r_pipeline, r_scheduler,
     r_controllo_dati, r_backup, r_supervisor, r_tablet_operatori, r_scheda_prodotto, r_log_attivita, r_utils, r_stampanti,
     r_gelati, r_auth, r_digest, r_catalogo_forno, r_cataloghi_prezzi, r_fornitori_rivendita, r_fonti_catalogo, r_collaudi,
     r_produzione_consigliata, r_ricerca_globale,
