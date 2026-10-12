@@ -40,6 +40,33 @@ def test_fatture_erp_mepa_popolano_preferiti_oltre_prima_pagina_e_acquisti_futur
     run(scenario())
 
 
+def test_preferito_manuale_compare_con_gli_acquistati_senza_diventare_acquisto(monkeypatch):
+    async def scenario():
+        erp, lotti = AsyncMongoMockClient().erp, AsyncMongoMockClient().lotti
+        monkeypatch.setattr(Database, "db", erp)
+        monkeypatch.setattr(cataloghi_prezzi, "db", lotti)
+        await erp.invoices.insert_one(fattura())
+        await lotti.dizionario_ingredienti.insert_many([
+            {"id": "mix", "nome": "Dolce forno", "codice_articolo": "IRCA240", "fonte": "mepa"},
+            {"id": "nuovo", "nome": "Prodotto da provare", "codice_articolo": "NEW01", "fonte": "mepa", "categoria": "Semilavorati"},
+        ])
+        payload = cataloghi_prezzi.PreferitoManualeUpdate(prodotto={
+            "id": "nuovo", "nome": "Prodotto da provare", "codice_articolo": "NEW01",
+            "fonte": "mepa", "categoria": "Semilavorati", "descrizione": "Descrizione del fornitore",
+        })
+        assert (await cataloghi_prezzi.aggiorna_preferito_manuale("mepa", payload, _admin={}))["preferito"]
+        out = await cataloghi_prezzi.preferiti_acquisti("mepa")
+        assert out["totale"] == 2 and out["acquistati"] == 1 and out["preferiti_manuali"] == 1
+        manuale = next(p for p in out["prodotti"] if p["codice_articolo"] == "NEW01")
+        assert manuale["preferito_manuale"] is True
+        assert manuale["gia_acquistato"] is False
+        assert "prezzo_fattura" not in manuale and await lotti.fatture.count_documents({}) == 0
+        payload.preferito = False
+        await cataloghi_prezzi.aggiorna_preferito_manuale("mepa", payload, _admin={})
+        assert (await cataloghi_prezzi.preferiti_acquisti("mepa"))["totale"] == 1
+    run(scenario())
+
+
 def test_esclude_crediti_archiviate_collisioni_fornitore_sbagliato(monkeypatch):
     async def scenario():
         erp, lotti = AsyncMongoMockClient().erp, AsyncMongoMockClient().lotti

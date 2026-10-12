@@ -21,6 +21,7 @@ export default function usePreferitiAcquisti(fonte) {
   const [loading, setLoading] = useState(true);
   const [errore, setErrore] = useState("");
   const richiesta = useRef(0);
+  const [salvataggi, setSalvataggi] = useState(new Set());
   const carica = useCallback(async () => {
     const id = ++richiesta.current;
     setLoading(true);
@@ -28,9 +29,29 @@ export default function usePreferitiAcquisti(fonte) {
       const r = await axios.get(`${API}/cataloghi/preferiti/${encodeURIComponent(fonte)}`);
       if (id === richiesta.current) { setProdotti(r.data.prodotti || []); setErrore(""); }
     } catch {
-      if (id === richiesta.current) setErrore("Non riesco a leggere i preferiti dalle fatture. Riprova.");
+      if (id === richiesta.current) setErrore("Non riesco a leggere acquisti e preferiti. Riprova.");
     } finally { if (id === richiesta.current) setLoading(false); }
   }, [fonte]);
   useEffect(() => { carica(); return () => { richiesta.current++; }; }, [carica]);
-  return { prodotti, loading, errore, carica };
+  const chiave = useCallback(p => String(p?.codice_articolo || p?.codice || p?.id || "").trim().toLowerCase(), []);
+  const isPreferito = useCallback(p => {
+    const k = chiave(p?.raw || p);
+    return prodotti.some(x => x.preferito_manuale && chiave(x) === k);
+  }, [chiave, prodotti]);
+  const toggle = useCallback(async p => {
+    const originale = p?.raw || p;
+    const k = chiave(originale);
+    if (!k || salvataggi.has(k)) return;
+    const preferito = !isPreferito(originale);
+    setSalvataggi(prev => new Set(prev).add(k));
+    try {
+      await axios.put(`${API}/cataloghi/preferiti/${encodeURIComponent(fonte)}`, { prodotto: originale, preferito });
+      await carica();
+      return preferito;
+    } finally {
+      setSalvataggi(prev => { const next = new Set(prev); next.delete(k); return next; });
+    }
+  }, [carica, chiave, fonte, isPreferito, salvataggi]);
+  const isSalvando = useCallback(p => salvataggi.has(chiave(p?.raw || p)), [chiave, salvataggi]);
+  return { prodotti, loading, errore, carica, isPreferito, isSalvando, toggle };
 }

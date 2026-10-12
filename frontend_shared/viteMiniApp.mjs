@@ -14,7 +14,9 @@ export function miniAppConfig({ root, base, mode, loadEnv, transformWithEsbuild,
     root, base,
     plugins: [
       { name: 'jsx-in-existing-js', enforce: 'pre', async transform(code, id) {
-        if (id.startsWith(path.join(root, 'src')) && /\.js$/.test(id)) {
+        const normalizedId = path.normalize(id);
+        const normalizedSrc = path.normalize(path.join(root, 'src'));
+        if (normalizedId.startsWith(normalizedSrc) && /\.js$/.test(normalizedId)) {
           return transformWithEsbuild(code, id, { loader: 'jsx', jsx: 'automatic' });
         }
       } },

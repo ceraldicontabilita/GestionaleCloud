@@ -15,7 +15,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import axios from "axios";
 import { toast } from "sonner";
-import { Search, RefreshCw, Package, ChevronRight, Home, Download, Tag, LayoutGrid, List, ExternalLink, Check, Plus, Trash2, X, Info, ZoomIn, ShoppingCart } from "lucide-react";
+import { Search, RefreshCw, Package, ChevronRight, Home, Download, Tag, LayoutGrid, List, ExternalLink, Check, Plus, Trash2, X, Info, ZoomIn, ShoppingCart, Heart } from "lucide-react";
 import { API } from "../../utils/constants";
 import usePreferitiAcquisti, { useStatoCatalogo } from "../../hooks/usePreferitiAcquisti";
 import RicercaCatalogo from "./shared/RicercaCatalogo";
@@ -375,13 +375,20 @@ const CardCategoria = ({ cat, onClick, colore }) => {
 // Card prodotto — clic apre il modal dettaglio. Solo l'indispensabile: la card e'
 // CardCatalogo, la stessa di tutti i cataloghi; codice, descrizione, prezzo netto
 // da scrivere e scheda tecnica stanno nel dettaglio.
-const CardProdotto = ({ prodotto, colore, onDettaglio, giaNelDizionario, onCarrello, inCart, onToggleRicette }) => {
+const CardProdotto = ({ prodotto, colore, onDettaglio, giaNelDizionario, onCarrello, inCart, onToggleRicette, preferito, preferitoInSalvataggio, onPreferito }) => {
   const prezzo = prezzoProdotto(prodotto);
   return (
     <CardCatalogo
       testId={`cart-btn-${prodotto.id || prodotto.nome?.slice(0, 10)}`}
       nome={prodotto.nome_display || prodotto.nome}
       foto={prodotto.immagine_url || ""}
+      codice={prodotto.codice_articolo || prodotto.codice || ""}
+      categoria={prodotto.categoria || ""}
+      descrizione={prodotto.descrizione || ""}
+      confezione={prodotto.unita_confezione || prodotto.confezione || ""}
+      giaAcquistato={!!prodotto.gia_acquistato}
+      preferito={preferito}
+      preferitoInSalvataggio={preferitoInSalvataggio}
       prezzo={prezzo > 0 ? euro(prezzo) : ""}
       notaPrezzo={prezzo > 0 ? (prezzoFatturaProdotto(prodotto) > 0 ? "ultima fattura" : "netto fornitore") : ""}
       colore={colore}
@@ -391,12 +398,13 @@ const CardProdotto = ({ prodotto, colore, onDettaglio, giaNelDizionario, onCarre
       onApri={() => onDettaglio(prodotto)}
       onCarrello={() => onCarrello(prodotto)}
       onRicetta={prodotto.da_fattura_senza_catalogo ? undefined : () => onToggleRicette(prodotto, giaNelDizionario)}
+      onPreferito={prodotto.gia_acquistato ? undefined : () => onPreferito(prodotto)}
     />
   );
 };
 
 // Riga prodotto (vista lista) — clic apre modal
-const RigaProdotto = ({ prodotto, colore, fornitore, onDettaglio, giaNelDizionario, onCarrello, inCart, onToggleRicette, onPrezzoSalvato }) => {
+const RigaProdotto = ({ prodotto, colore, fornitore, onDettaglio, giaNelDizionario, onCarrello, inCart, onToggleRicette, onPrezzoSalvato, preferito, preferitoInSalvataggio, onPreferito }) => {
   const [imgErr, setImgErr] = useState(false);
   const imgUrl = prodotto.immagine_url || "";
 
@@ -405,7 +413,7 @@ const RigaProdotto = ({ prodotto, colore, fornitore, onDettaglio, giaNelDizionar
       <div onClick={() => onDettaglio(prodotto)} className="cursor-pointer flex items-center gap-3 flex-1 min-w-0">
         <div className={`w-12 h-12 rounded-lg ${COLORI[colore].light} flex items-center justify-center overflow-hidden flex-shrink-0`}>
           {imgUrl && !imgErr ? (
-            <img src={imgUrl} alt={prodotto.nome} onError={() => setImgErr(true)} className="w-full h-full object-contain p-1" />
+            <img src={imgUrl} alt={prodotto.nome} loading="lazy" decoding="async" onError={() => setImgErr(true)} className="w-full h-full object-contain p-1" />
           ) : (
             <Package size={18} className={COLORI[colore].text + " opacity-25"} />
           )}
@@ -414,6 +422,7 @@ const RigaProdotto = ({ prodotto, colore, fornitore, onDettaglio, giaNelDizionar
           <p className="text-sm font-semibold text-gray-800 truncate">{prodotto.nome_display || prodotto.nome}</p>
           <p className="text-xs text-gray-400">{prodotto.codice_articolo || ""}{prodotto.unita_confezione ? ` · ${prodotto.unita_confezione}` : ""}</p>
           {prodotto.gia_acquistato && <p className="text-[10px] font-black uppercase text-emerald-700">Già acquistato · da fattura XML</p>}
+          {preferito && <p className="text-[10px] font-black uppercase text-rose-700">Preferito</p>}
           {prodotto.descrizione && <p className="text-xs text-gray-500 truncate">{prodotto.descrizione}</p>}
         </div>
       </div>
@@ -428,6 +437,11 @@ const RigaProdotto = ({ prodotto, colore, fornitore, onDettaglio, giaNelDizionar
         />
       </div>}
       <div className="flex items-center gap-2 flex-shrink-0">
+        {!prodotto.gia_acquistato && <button type="button" aria-pressed={preferito} disabled={preferitoInSalvataggio}
+          onClick={(e) => { e.stopPropagation(); onPreferito(prodotto); }}
+          className={`flex min-h-[36px] items-center gap-1 rounded-lg border px-2 text-[10px] font-bold disabled:opacity-50 ${preferito ? "border-rose-200 bg-rose-50 text-rose-700" : "border-gray-200 bg-white text-gray-600"}`}>
+          <Heart size={13} fill={preferito ? "currentColor" : "none"}/> {preferito ? "Preferito" : "Aggiungi ai preferiti"}
+        </button>}
         {!prodotto.da_fattura_senza_catalogo && <button onClick={() => onToggleRicette(prodotto, giaNelDizionario)} className={`px-2 py-1 rounded-lg text-[10px] font-bold ${giaNelDizionario ? "bg-green-100 text-green-700" : "bg-[#edf4ef] text-[#4c6b5c]"}`}>{giaNelDizionario ? "✓ Ricette" : "+ Ricette"}</button>}
         {(prezzoProdotto(prodotto) > 0) && (
           <span className="text-xs font-bold text-gray-600">€{prezzoProdotto(prodotto).toFixed(2)}</span>
@@ -464,6 +478,7 @@ const setHashCategoria = (fornitore, catSlug) => {
 
 // Componente principale
 export const CatalogoFornitoreView = ({ fornitore, nome, logoUrl }) => {
+  const PASSO = 60;
   const colore = fornitore === "saima" ? "saima" : fornitore === "acquaviva" ? "acquaviva" : "mepa";
   const [categorie, setCategorie] = useState([]);
   const [prodotti, setProdotti] = useState([]);
@@ -477,8 +492,17 @@ export const CatalogoFornitoreView = ({ fornitore, nome, logoUrl }) => {
   const [search, setSearch] = useStatoCatalogo(fornitore, "ricerca", "");
   const [soloPreferiti, setSoloPreferiti] = useStatoCatalogo(fornitore, "preferiti", true);
   const preferitiAcquisti = usePreferitiAcquisti(fornitore);
+  const togglePreferito = async (prodotto) => {
+    try {
+      const aggiunto = await preferitiAcquisti.toggle(prodotto);
+      toast.success(aggiunto ? "Aggiunto ad Acquistati e preferiti" : "Rimosso dai preferiti");
+    } catch { toast.error("Non riesco ad aggiornare i preferiti"); }
+  };
   const richiestaProdotti = useRef(0);
   const [vistaGriglia, setVistaGriglia] = useState(true);
+  const [visibili, setVisibili] = useState(PASSO);
+  const [categoriaFiltro, setCategoriaFiltro] = useState("tutte");
+  const [ordine, setOrdine] = useState("originale");
   const { aggiungi: aggiungiCarrello, isInCart } = useCart(nome);
   const [dizionarioIds, setDizionarioIds] = useState(new Set());
   const [prodottoSelezionato, setProdottoSelezionato] = useState(null);
@@ -620,6 +644,8 @@ export const CatalogoFornitoreView = ({ fornitore, nome, logoUrl }) => {
 
   };
 
+  useEffect(() => { setVisibili(PASSO); }, [search, categoriaAttiva, categoriaFiltro, ordine, soloPreferiti]);
+
   const handleAvviaScraping = async () => {
     setScrapingInCorso(true);
     try {
@@ -668,15 +694,28 @@ export const CatalogoFornitoreView = ({ fornitore, nome, logoUrl }) => {
   };
 
   const prodottiFiltrati = useMemo(() => {
-    const lista = soloPreferiti ? preferitiAcquisti.prodotti : prodotti;
-    if (!search) return lista;
+    let lista = soloPreferiti ? preferitiAcquisti.prodotti : prodotti;
+    if (soloPreferiti && categoriaFiltro !== "tutte") {
+      lista = lista.filter(p => String(p.categoria || "").split(" > ")[0].trim() === categoriaFiltro);
+    }
     const q = search.toLowerCase();
-    return lista.filter(p =>
+    if (q) lista = lista.filter(p =>
       (p.nome || "").toLowerCase().includes(q) ||
+      (p.nome_display || "").toLowerCase().includes(q) ||
       (p.codice_articolo || "").toLowerCase().includes(q) ||
-      (p.descrizione || "").toLowerCase().includes(q)
+      (p.descrizione || "").toLowerCase().includes(q) ||
+      (p.categoria || "").toLowerCase().includes(q)
     );
-  }, [prodotti, search, soloPreferiti, preferitiAcquisti.prodotti]);
+    if (ordine === "nome") lista = [...lista].sort((a, b) => String(a.nome_display || a.nome || "").localeCompare(String(b.nome_display || b.nome || ""), "it"));
+    if (ordine === "prezzo_min") lista = [...lista].sort((a, b) => (prezzoProdotto(a) || Number.MAX_SAFE_INTEGER) - (prezzoProdotto(b) || Number.MAX_SAFE_INTEGER));
+    if (ordine === "prezzo_max") lista = [...lista].sort((a, b) => prezzoProdotto(b) - prezzoProdotto(a));
+    return lista;
+  }, [prodotti, search, categoriaFiltro, ordine, soloPreferiti, preferitiAcquisti.prodotti]);
+  const categorieFiltro = useMemo(() => {
+    if (!soloPreferiti) return categorie.map(c => c.nome).filter(Boolean);
+    return [...new Set(preferitiAcquisti.prodotti.map(p => String(p.categoria || "").split(" > ")[0].trim()).filter(Boolean))]
+      .sort((a, b) => a.localeCompare(b, "it"));
+  }, [categorie, soloPreferiti, preferitiAcquisti.prodotti]);
 
   return (
     <div className="flex flex-col h-full space-y-4">
@@ -737,8 +776,27 @@ export const CatalogoFornitoreView = ({ fornitore, nome, logoUrl }) => {
             <span className={`${COLORI[colore].text} font-semibold`}>{categoriaAttiva}</span>
           </button>
         )}
-        <RicercaCatalogo value={search} onChange={setSearch}
-          placeholder={`Cerca in ${soloPreferiti ? "prodotti acquistati" : categoriaAttiva || "tutto il catalogo"}...`} />
+        <div className="min-w-[240px] flex-1"><RicercaCatalogo value={search} onChange={setSearch}
+          placeholder={`Cerca nome, codice o descrizione in ${soloPreferiti ? "prodotti acquistati" : categoriaAttiva || "tutto il catalogo"}...`} /></div>
+        <label className="sr-only" htmlFor={`categoria-${fornitore}`}>Categoria</label>
+        <select id={`categoria-${fornitore}`} aria-label="Filtra per categoria"
+          value={soloPreferiti ? categoriaFiltro : (categoriaAttiva || "tutte")}
+          onChange={e => {
+            const valore = e.target.value;
+            if (soloPreferiti) setCategoriaFiltro(valore);
+            else if (valore === "tutte") { setCategoriaAttiva(null); setProdotti([]); }
+            else handleSelectCategoria({ nome: valore });
+          }}
+          className="min-h-[44px] max-w-full rounded-xl border border-gray-200 bg-white px-3 text-sm font-bold text-gray-700">
+          <option value="tutte">Tutte le categorie</option>
+          {categorieFiltro.map(c => <option key={c} value={c}>{c}</option>)}
+        </select>
+        <label className="sr-only" htmlFor={`ordine-${fornitore}`}>Ordina prodotti</label>
+        <select id={`ordine-${fornitore}`} aria-label="Ordina prodotti" value={ordine} onChange={e => setOrdine(e.target.value)}
+          className="min-h-[44px] rounded-xl border border-gray-200 bg-white px-3 text-sm font-bold text-gray-700">
+          <option value="originale">Ordine catalogo</option><option value="nome">Nome A–Z</option>
+          <option value="prezzo_min">Prezzo più basso</option><option value="prezzo_max">Prezzo più alto</option>
+        </select>
         <div className="flex gap-1 bg-gray-100 rounded-xl p-1">
           <button onClick={() => setVistaGriglia(true)} className={`p-1.5 rounded-lg ${vistaGriglia ? "bg-white shadow-sm" : "text-gray-400"}`}><LayoutGrid size={14} /></button>
           <button onClick={() => setVistaGriglia(false)} className={`p-1.5 rounded-lg ${!vistaGriglia ? "bg-white shadow-sm" : "text-gray-400"}`}><List size={14} /></button>
@@ -789,24 +847,30 @@ export const CatalogoFornitoreView = ({ fornitore, nome, logoUrl }) => {
             </div>
           ) : vistaGriglia ? (
             <div className={GRIGLIA_CARD}>
-              {prodottiFiltrati.map(p => (
+              {prodottiFiltrati.slice(0, visibili).map(p => (
                 <CardProdotto key={p.id} prodotto={p} colore={colore}
                   onDettaglio={apriProdotto}
                   giaNelDizionario={dizionarioIds.has(p.id)}
                   onCarrello={aggiungiCarrello}
                   inCart={isInCart(p.id || `ext_${(p.nome||"").toLowerCase().replace(/\s+/g,"_").slice(0,40)}`)}
-                  onToggleRicette={handleToggleRicette} />
+                  onToggleRicette={handleToggleRicette}
+                  preferito={preferitiAcquisti.isPreferito(p)}
+                  preferitoInSalvataggio={preferitiAcquisti.isSalvando(p)}
+                  onPreferito={togglePreferito} />
               ))}
             </div>
           ) : (
             <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
-              {prodottiFiltrati.map(p => (
+              {prodottiFiltrati.slice(0, visibili).map(p => (
                 <RigaProdotto key={p.id} prodotto={p} colore={colore} fornitore={fornitore}
                   onDettaglio={apriProdotto}
                   giaNelDizionario={dizionarioIds.has(p.id)}
                   onCarrello={aggiungiCarrello}
                   inCart={isInCart(p.id || `ext_${(p.nome||"").toLowerCase().replace(/\s+/g,"_").slice(0,40)}`)}
                   onToggleRicette={handleToggleRicette}
+                  preferito={preferitiAcquisti.isPreferito(p)}
+                  preferitoInSalvataggio={preferitiAcquisti.isSalvando(p)}
+                  onPreferito={togglePreferito}
                   onPrezzoSalvato={(dati) => {
                     const aggiornato = { ...p, ...dati };
                     setProdotti(prev => prev.map(item => item.id === p.id ? aggiornato : item));
@@ -815,6 +879,14 @@ export const CatalogoFornitoreView = ({ fornitore, nome, logoUrl }) => {
               ))}
             </div>
           )
+        )}
+        {prodottiFiltrati.length > visibili && (
+          <div className="mt-4 flex justify-center">
+            <button type="button" onClick={() => setVisibili(v => v + PASSO)}
+              className="min-h-[44px] rounded-xl border border-gray-200 bg-white px-5 text-sm font-bold text-gray-700">
+              Mostra altri ({prodottiFiltrati.length - visibili} ancora)
+            </button>
+          </div>
         )}
       </div>
     </div>
