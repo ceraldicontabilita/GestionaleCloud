@@ -297,6 +297,7 @@ export default function DashboardView({ stats = {}, onRefresh, onNavigate }) {
             <ActionCard icon={Store} title="Banco vendita" subtitle="Apri il banco, registra vendita e scarica lotti." badge={riepilogo.bancoAperto ? `${riepilogo.bancoAperto} aperto` : "Tablet"} tone="sandV" onClick={() => navigate("tablet/vendita")} />
             <ActionCard icon={Package} title="Magazzino" subtitle="Scarichi rapidi, giacenze e movimenti con la sessione attiva." badge="Tablet" tone="sandDarkV" onClick={() => navigate("tablet/magazzino")} />
             <ActionCard icon={AlertTriangle} title="Cosa usare oggi" subtitle="Lotti per urgenza scadenza e valore economico, con azioni rapide." badge={riepilogo.scadenzeUrgenti ? `${riepilogo.scadenzeUrgenti} urgenti` : "OK"} tone={riepilogo.scadenzeUrgenti ? "red" : "amber"} onClick={() => navigate("cosa_usare_oggi")} />
+          <ActionCard icon={ShoppingCart} title="Ordini fornitori" subtitle="Catalogo, confronto prezzi, carrello e invio." badge={ordiniBozza ? `${ordiniBozza}` : "OK"} tone={ordiniBozza ? "amber" : "neutral"} onClick={() => navigate("ordini")} />
             <ActionCard icon={Hotel} title="Ordini hotel" subtitle="Dolce e salato richiesti dalle strutture, con allergeni e lotti." badge={ordiniHotel.pendenti ? `${ordiniHotel.pendenti} nuovi` : "OK"} tone={ordiniHotel.pendenti ? "amber" : "green"} onClick={() => navigate("ordini_hotel")} />
           </div>
         </div>
@@ -324,7 +325,6 @@ export default function DashboardView({ stats = {}, onRefresh, onNavigate }) {
         <SectionTitle title="Area ufficio" subtitle="Gestione dati, cataloghi e fornitori." />
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
           <ActionCard icon={BookOpen} title="Ricette" subtitle="Ricettario, varianti, food cost e allergeni." badge={stats.ricette ? `${stats.ricette}` : ""} tone="salvia" onClick={() => navigate("ricette")} />
-          <ActionCard icon={ShoppingCart} title="Acquisti & Ordini" subtitle="Catalogo, confronto prezzi, carrello e invio." badge={ordiniBozza ? `${ordiniBozza}` : "OK"} tone={ordiniBozza ? "amber" : "neutral"} onClick={() => navigate("ordini")} />
           <ActionCard icon={Building2} title="Fornitori" subtitle="Anagrafica, qualifica e schede ricevimento." badge="Rubrica" tone="green" onClick={() => navigate("fornitori")} />
           <ActionCard icon={Network} title="Mappa tracciabilità" subtitle="Il percorso di un prodotto, dalla fattura allo smaltimento." badge="Mappa" tone="neutral" onClick={() => navigate("mappa_tracciabilita")} />
         </div>

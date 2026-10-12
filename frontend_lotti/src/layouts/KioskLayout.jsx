@@ -1,13 +1,15 @@
 // Layout KIOSK (tablet di reparto) — estratto da App.js (fase 2, 24/07/2026).
 // Gestisce la sessione operatore (PIN) e instrada al reparto giusto.
-// La persona resta identificata mentre passa tra i reparti. Le azioni di
-// magazzino chiedono una conferma recente separata, senza chiudere il reparto.
+// La persona resta identificata mentre passa tra i reparti, anche quando
+// l'amministratore centrale non ha una scheda dipendente HR.
+import { useEffect, useState } from "react";
+import { loginGestionale } from "../auth";
 import { TabletView } from "../components/haccp/TabletView";
 import TabletHome, { REPARTI_SOLO_ADMIN } from "../components/haccp/TabletHome";
 import { VenditaBancoView } from "../components/haccp/VenditaBancoView";
 import MagazzinoBarView from "../components/haccp/MagazzinoBarView";
 import OrdiniView from "../components/haccp/OrdiniView";
-import { clearTabletSession, getTabletSession, moveTabletSessionTo, repartiAmmessi, sessioneTitolareAttiva } from "../utils/tabletSession";
+import { clearTabletSession, getTabletSession, moveTabletSessionTo, repartiAmmessi, ripristinaSessioneTitolare, sessioneTitolareAttiva } from "../utils/tabletSession";
 import BarraReparto from "../components/haccp/tablet/BarraReparto";
 import ErrorBoundary from "../components/ErrorBoundary";
 import RegistriHaccpTablet from "../components/haccp/tablet/RegistriHaccpTablet";
@@ -30,6 +32,34 @@ function ConBarra({ reparto, children }) {
 }
 
 export default function KioskLayout({ hash }) {
+  const [errore, setErrore] = useState(false);
+  const [tentativo, setTentativo] = useState(0);
+  const [, aggiorna] = useState(0);
+  const daRipristinare = sessioneTitolareAttiva() && getTabletSession()?.ruolo !== "amministratore";
+
+  useEffect(() => {
+    if (!daRipristinare) return;
+    let attivo = true;
+    setErrore(false);
+    ripristinaSessioneTitolare().then(() => {
+      if (attivo) aggiorna(n => n + 1);
+    }).catch(() => { if (attivo) setErrore(true); });
+    return () => { attivo = false; };
+  }, [daRipristinare, tentativo]);
+
+  if (daRipristinare) return (
+    <div role="status" className="mx-auto max-w-lg p-6 text-center">
+      {errore ? <>
+        <p>Non è stato possibile recuperare la sessione. Riprova per aprire il reparto.</p>
+        <button type="button" onClick={() => setTentativo(n => n + 1)}>Riprova</button>
+        <a className="block mt-4" href={loginGestionale(`/lotti/#${hash}`)}>Torna al Gestionale</a>
+      </> : "Apertura del reparto…"}
+    </div>
+  );
+  return <RepartoKiosk hash={hash} />;
+}
+
+function RepartoKiosk({ hash }) {
   const reparto = hash.split("/")[1] || "home";
 
   // Home kiosk — nessuna autenticazione richiesta, solo selezione reparto

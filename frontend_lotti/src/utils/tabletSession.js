@@ -1,6 +1,16 @@
 import { getToken, isAdmin, logout } from "../auth";
+import axios from "axios";
+import { API } from "./constants";
 
 const SESSION_KEY = "tablet_operatore";
+
+// Identità amministrativa centrale distinta dalla scheda HR: non inventiamo
+// un dipendente per consentire al titolare di usare il magazzino.
+function identitaCentrale(session) {
+  return session?.ruolo === "amministratore" && session?.via === "sessione_erp"
+    && typeof session?.actor_id === "string" && session.actor_id.startsWith("erp:")
+    && sessioneTitolareAttiva();
+}
 
 function readRaw() {
   try {
@@ -27,7 +37,7 @@ export function getTabletSession() {
     if (session) clearTabletSession();
     return null;
   }
-  if (!session?.dipendente_id || !session?.nome) {
+  if ((!session?.dipendente_id && !identitaCentrale(session)) || !session?.nome) {
     if (session) {
       clearTabletSession();
       logout();
@@ -38,14 +48,15 @@ export function getTabletSession() {
 }
 
 export function saveTabletSession(operatore, reparto) {
-  if (!operatore?.dipendente_id) throw new Error("ID dipendente obbligatorio");
+  if (!operatore?.dipendente_id && !identitaCentrale(operatore)) throw new Error("ID dipendente obbligatorio");
   const now = Date.now();
   const previous = readRaw() || {};
-  const sameOperator = previous.dipendente_id && previous.dipendente_id === operatore.dipendente_id;
+  const id = operatore.actor_id || operatore.dipendente_id;
+  const sameOperator = id && id === (previous.actor_id || previous.dipendente_id);
   const session = {
-    ...previous,
+    ...(sameOperator ? previous : {}),
     ...operatore,
-    reparto: reparto || previous.reparto || "",
+    reparto: reparto || (sameOperator ? previous.reparto : "") || "",
     startedAt: sameOperator ? Number(previous.startedAt || now) : now,
     lastSeenAt: now,
   };
@@ -71,15 +82,35 @@ export function sessioneTitolareAttiva() {
  * Dopo l'ingresso dal Gestionale il token e' del titolare: la persona del
  * tablet deve essere la stessa, o un dipendente rimasto identificato
  * firmerebbe col token del titolare. Se il titolare ha una scheda HR diventa
- * lui l'operatore; altrimenti l'operatore si azzera e la prossima card di
- * reparto chiede il PIN.
+ * lui l'operatore; altrimenti conserva la propria identità ERP, senza un
+ * altro PIN. Le regole di firma HACCP restano verificate dal backend:
+ * un actor ERP non viene trasformato in dipendente.
  */
 export function allineaSessioneTitolare(titolare, reparto) {
-  if (titolare?.dipendente_id) {
+  // Un cambio persona/ruolo non eredita mansioni o limiti del dipendente.
+  clearTabletSession();
+  if (titolare?.dipendente_id || identitaCentrale(titolare)) {
     return saveTabletSession({ ...titolare, ruolo: "amministratore" }, reparto);
   }
-  clearTabletSession();
   return null;
+}
+
+/** Recupera anche i token già emessi prima di salvare l'identità sul tablet. */
+export async function ripristinaSessioneTitolare() {
+  const token = getToken();
+  if (!token || !isAdmin()) throw new Error("Sessione amministrativa assente");
+  const { data } = await axios.get(`${API}/auth/me`, { timeout: 10000 });
+  // Logout/cambio persona o rinnovo SSO durante la richiesta: mai ripristinare
+  // la persona precedente sopra la nuova sessione.
+  if (getToken() !== token) {
+    const corrente = getTabletSession();
+    if (isAdmin() && corrente?.ruolo === "amministratore") return corrente;
+    throw new Error("Sessione cambiata");
+  }
+  if (data?.user?.ruolo !== "amministratore") throw new Error("Sessione amministrativa non verificata");
+  const session = allineaSessioneTitolare(data.user);
+  if (!session) throw new Error("Identità amministrativa non disponibile");
+  return session;
 }
 
 /**

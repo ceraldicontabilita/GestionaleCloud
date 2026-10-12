@@ -110,6 +110,8 @@ def test_lotti_session_rilascia_token_del_titolare(monkeypatch):
     dati = auth.verify_token(esito["token"])
     assert dati["sub"] == "hr-vince" and dati["ruolo"] == "amministratore" and dati["via"] == "sessione_erp"
     assert esito["operatore"]["dipendente_id"] == "hr-vince"
+    assert esito["operatore"]["actor_id"] == "hr-vince"
+    assert esito["operatore"]["via"] == "sessione_erp"
     with pytest.raises(HTTPException) as exc:
         run(auth.sessione_dal_gestionale(Richiesta("")))
     assert exc.value.status_code == 401
@@ -126,6 +128,8 @@ def test_lotti_senza_titolare_univoco_il_token_non_firma(monkeypatch):
     monkeypatch.setattr(lotti_db, "database", db)
     esito = run(auth.sessione_dal_gestionale(Richiesta(f"access_token={_token_erp()}")))
     assert esito["operatore"]["dipendente_id"] is None
+    assert esito["operatore"]["actor_id"] == "erp:u-1"
+    assert esito["operatore"]["via"] == "sessione_erp"
 
     class ConToken:
         headers = {"authorization": f"Bearer {esito['token']}"}
@@ -135,6 +139,20 @@ def test_lotti_senza_titolare_univoco_il_token_non_firma(monkeypatch):
 
     firma = run(firma_registrazione(ConToken(), "", ""))
     assert firma["firma_verificata"] is False
+
+
+@pytest.mark.parametrize("sub,dipendente_id", [("erp:u-1", None), ("hr-vince", "hr-vince")])
+def test_lotti_me_distingue_attore_centrale_da_dipendente(monkeypatch, sub, dipendente_id):
+    from app.lotti import auth
+
+    async def token_verificato(_request):
+        return {"sub": sub, "nome": "Titolare", "ruolo": "amministratore", "via": "sessione_erp"}
+
+    monkeypatch.setattr(auth, "_token_valido_e_non_revocato", token_verificato)
+    user = run(auth.me(Richiesta()))["user"]
+    assert user["actor_id"] == sub
+    assert user["dipendente_id"] == dipendente_id
+    assert user["ruolo"] == "amministratore"
 
 
 def test_menu_session(monkeypatch):

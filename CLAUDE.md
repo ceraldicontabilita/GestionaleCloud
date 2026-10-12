@@ -3972,6 +3972,16 @@ Il titolare entra dalla sessione amministratore del Gestionale e vede tutto, com
 
 Il Gestionale e i comandi riservati restano protetti anche lato server.
 
+L'ingresso nei reparti (in particolare **Magazzino**) riusa questa sessione
+anche quando il titolare non ha una scheda HR univoca. In quel caso si conserva
+`actor_id` della sessione ERP, senza inventare un `dipendente_id`. Per i token
+già presenti nel browser il kiosk recupera l'identità da `/auth/me` prima di
+aprire il reparto; un guasto di rete offre **Riprova**, non il PIN personale.
+Il cambio al titolare elimina l'identità e i limiti dell'operatore precedente.
+**Cambia operatore** resta un'uscita esplicita dalla sessione del tablet.
+La card **Ordini fornitori** è nella Home operativa, visibile anche con
+**Ufficio e archivio** chiuso, distinta da **Ordini hotel**.
+
 ### Operatore
 
 L'operatore entra dal tablet con il proprio PIN personale.
