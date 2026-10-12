@@ -2155,6 +2155,11 @@ async def lotto_recupero_storico(db) -> Dict[str, Any]:
         if not state.get("in_progress"):
             return state
         try:
+            if not state.get("revisione_archivio"):
+                from app.services.verbali_document_import import rivedi_verbali_archiviati
+                review = await rivedi_verbali_archiviati(db)
+                await db["sistema_stato"].update_one({"chiave": CHIAVE_RECUPERO_STORICO}, {"$set": {"revisione_archivio": review}})
+                state["revisione_archivio"] = review
             scan = await scarica_posta_con_cursori(
                 db, data_inizio=state["richiesto_dal"], stato_chiave=CHIAVE_RECUPERO_STORICO,
                 solo_storico=True, tipi_ammessi=TIPI_RECUPERO_STORICO,

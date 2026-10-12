@@ -81,3 +81,22 @@ def test_modulo_conducente_non_crea_verbale_e_non_prova_invio(monkeypatch):
         doc = await db.documents_inbox.find_one({'id': 'form'})
         assert doc['comunicazione_stato'] == 'documento_presente_invio_non_provato'
     asyncio.run(run())
+
+
+def test_originale_personale_escluso_senza_cancellare_e_preruolo_non_duplicato(monkeypatch):
+    db = AsyncMongoMockClient().db
+    from app.services import pagopa_receipts
+    monkeypatch.setattr(pagopa_receipts, 'parse_receipt_pdf', lambda *a, **kw: {})
+    monkeypatch.setattr(writer, '_extract_text', lambda b: b.decode())
+
+    async def run():
+        await db.verbali_noleggio.insert_one({'id': 'personale', 'source_document_id': 'p1', 'stato': 'aperto'})
+        excluded = await writer.process_verbale_document(db, document_id='p1', content=b'Verbale n. A22110899760 CERALDI ANTONIETTA CERALDIANTONIETTA@LEGALMAIL.IT', filename='originale.pdf')
+        assert excluded['status'] == 'escluso_verbali_aziendali'
+        assert (await db.verbali_noleggio.find_one({'id': 'personale'}))['stato'] == 'quarantena'
+        await db.verbali_noleggio.insert_one({'id': 'azienda', 'numero_verbale': '20210355244', 'source_document_id': 's1', 'stato': 'salvato'})
+        corrected = await writer.process_verbale_document(db, document_id='s1', content=b'AVVISO DI PAGAMENTO CERALDI GROUP SRL Verbale 20210355244 - BB19140301282', filename='preruolo.pdf')
+        assert corrected['verbale_id'] == 'azienda'
+        assert (await db.verbali_noleggio.find_one({'id': 'azienda'}))['numero_verbale'] == 'BB19140301282'
+        assert await db.verbali_noleggio.count_documents({}) == 2
+    asyncio.run(run())
