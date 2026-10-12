@@ -99,7 +99,7 @@ async def deposita_lipe(
             continue
 
         esistente = await db[COLL_LIPE].find_one({"periodo": periodo}, {"_id": 0})
-        if esistente and (letto.get('parse_method') == 'cassetto_testuale' or (data_presentazione and protocollo is None)):
+        if esistente and (letto.get('parse_method') == 'cassetto_testuale' or protocollo is None):
             # An export ID or commitment date cannot rank filing revisions.
             fields = [*CAMPI_VP.values(), 'iva_dovuta_o_credito_segno', 'iva_da_versare_o_credito_segno']
             same = all(esistente.get(field) == periodo_letto.get(field) for field in fields)
@@ -111,7 +111,25 @@ async def deposita_lipe(
                       'coerente_con_vigente': same, 'data_presentazione': data_presentazione,
                       'data_presentazione_fonte': 'conferma_titolare' if data_presentazione else None,
                       'riferimento_cassetto': riferimento_cassetto}
+            if data_presentazione:
+                alternatives = [source if a.get('source_sha256') == digest else a for a in alternatives]
             old_date = esistente.get('data_presentazione')
+            if same and data_presentazione:
+                latest = max(data_presentazione, old_date or data_presentazione)
+                differing = [a for a in alternatives if any(a.get(field) != esistente.get(field) for field in fields)]
+                unresolved = any(not a.get('data_presentazione') or a['data_presentazione'] >= latest for a in differing)
+                if digest != esistente.get('source_sha256') and not any(a.get('source_sha256') == digest for a in alternatives):
+                    alternatives.append(source)
+                if not dry_run:
+                    await db[COLL_LIPE].update_one({'periodo': periodo}, {'$set': {
+                        'fonti_alternative': alternatives, 'data_presentazione': latest,
+                        'data_presentazione_fonte': 'conferma_titolare',
+                        'data_presentazione_source_sha256': digest, 'riferimento_cassetto': riferimento_cassetto,
+                        'conflitto_fonti': unresolved,
+                    }})
+                fonti_aggiunte.append(periodo)
+                if unresolved: conflitti.append(periodo)
+                continue
             if not same and data_presentazione and old_date and data_presentazione != old_date:
                 if data_presentazione > old_date:
                     old_source = {k: v for k, v in esistente.items() if k not in {'fonti_alternative', '_id', 'id'}}

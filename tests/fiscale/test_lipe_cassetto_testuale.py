@@ -117,3 +117,17 @@ def test_upload_checks_year_taxpayer_and_arithmetic_before_drive(monkeypatch,yea
         asyncio.run(upload_documento_fiscale(file=UploadFile(filename='export.pdf',file=BytesIO(pdf([text]))),
             categoria='lipe',periodo=year,note=None,data_presentazione=None,riferimento_cassetto=None,_admin={'email':'admin'}))
     assert caught.value.status_code==422
+
+
+def test_filing_date_for_matching_native_source_resolves_older_amended_export():
+    async def run():
+        db=_Db();correct=pdf([HEADER+module(1,4)]);old=pdf([HEADER+module(1,4,debt='3.500,00',final='6.500,00')])
+        await deposita_lipe(db,correct,nome_file='LIPE_2026_322737554.pdf',origine='test')
+        await deposita_lipe(db,old,nome_file='old_testuale.pdf',origine='test',data_presentazione='2026-05-30')
+        assert db['lipe_periodi'].docs[0]['conflitto_fonti']
+        await deposita_lipe(db,correct,nome_file='correct_testuale.pdf',origine='test',data_presentazione='2027-04-06')
+        row=db['lipe_periodi'].docs[0]
+        assert not row['conflitto_fonti']
+        assert row['protocollo']==322737554
+        assert row['iva_da_versare_o_credito']==6400
+    asyncio.run(run())
