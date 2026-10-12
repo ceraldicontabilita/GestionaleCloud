@@ -87,6 +87,25 @@ def test_originale_dichiarazione_recupera_versione_esatta_per_hash(ambiente):
     assert r.status_code == 200 and r.content == PDF
 
 
+@pytest.mark.parametrize('content,status', [(PDF,200),(PDF+b'alterato',409)])
+def test_originale_dichiarazione_da_occorrenza_verificata(ambiente,monkeypatch,content,status):
+    from app.config import settings
+    from app.services import drive_download
+    app,inserisci,_=ambiente
+    sha=hashlib.sha256(PDF).hexdigest()
+    inserisci('fiscal_documents',{'id':'decl','company_id':settings.FISCAL_COMPANY_ID,'current_version_id':'v1',
+        'source_occurrences':[{'drive_file_id':'drive','sha256':sha}]})
+    inserisci('fiscal_document_versions',{'id':'v1','document_id':'decl','company_id':settings.FISCAL_COMPANY_ID,'sha256':sha})
+    async def download(fid,**kwargs):
+        assert fid=='drive'
+        return content
+    monkeypatch.setattr(drive_download,'scarica_originale',download)
+    with _client(app) as client:
+        result=client.get('/api/originale/documento_fiscale/decl')
+    assert result.status_code==status
+    if status==200:assert result.content==PDF
+
+
 def test_originale_dichiarazione_non_apre_pdf_di_altra_azienda(ambiente):
     from app.config import settings
     app, inserisci, _ = ambiente

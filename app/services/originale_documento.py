@@ -339,7 +339,12 @@ async def _documento_fiscale(db, ident: str, indice: int) -> Originale:
                       {"$or": [{"company_id": azienda}, {"company_id": None}, {"company_id": ""}]}]}, {"_id": 0}
         ).to_list(20)
     errore_impronta = None
-    for candidato in (sorgente, per_impronta, *quietanze_per_impronta, documento):
+    occorrenze_drive = [
+        {"drive_file_id": occ["drive_file_id"], "nome_file": documento.get("filename")}
+        for occ in documento.get("source_occurrences") or []
+        if impronta and occ.get("drive_file_id") and occ.get("sha256") == impronta
+    ]
+    for candidato in (sorgente, per_impronta, *quietanze_per_impronta, documento, *occorrenze_drive):
         if candidato:
             try:
                 return await _da_record(candidato, predefinito="documento.pdf", tipo="documento_fiscale", ident=ident,

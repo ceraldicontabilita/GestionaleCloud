@@ -406,6 +406,45 @@ class FiscalDocumentIngestionService:
             return {"esito": "errore", "errore": f"{type(exc).__name__}: {exc}"}
         return esito.get("quadri")
 
+    async def repair_original_reference(
+        self, *, document_id: str, content: bytes, drive_file_id: str,
+        drive_parent_id: str | None = None, drive_path: str | None = None,
+    ) -> bool:
+        """Riaggancia byte verificati senza rileggere quadri o importare operazioni.
+
+        Il contenuto deve appartenere alla versione corrente del medesimo
+        contribuente. Conserva i riferimenti precedenti e non cambia importi,
+        validazione fiscale o stato di elaborazione.
+        """
+        if not content or not drive_file_id:
+            raise ValueError("Originale e ID Drive obbligatori")
+        digest = sha256_bytes(content)
+        document = await self.db[COLL_FISCAL_DOCUMENTS].find_one(
+            {"company_id": self.company_id, "id": document_id}, {"_id": 0},
+        )
+        if not document:
+            raise ValueError("Documento fiscale non trovato per il contribuente")
+        version = await self.db[COLL_FISCAL_DOCUMENT_VERSIONS].find_one(
+            {"company_id": self.company_id, "id": document.get("current_version_id"),
+             "document_id": document_id, "sha256": digest}, {"_id": 0, "id": 1},
+        )
+        if not version:
+            raise ValueError("SHA-256 diverso dalla versione corrente")
+        occurrence = {"source": "original_reference_repair", "drive_file_id": drive_file_id,
+                      "sha256": digest}
+        if drive_parent_id:
+            occurrence["drive_parent_id"] = drive_parent_id
+        if drive_path:
+            occurrence["source_path"] = drive_path
+        # Non sovrascrivere source_metadata: puo' contenere cronologia delle
+        # rettifiche o un riferimento aggiornato da un import concorrente.
+        result = await self.db[COLL_FISCAL_DOCUMENTS].update_one(
+            {"company_id": self.company_id, "id": document_id,
+             "current_version_id": version["id"]},
+            {"$addToSet": {"source_occurrences": occurrence}},
+        )
+        return bool(result.matched_count)
+
     async def mark_source_deleted(self, drive_file_id: str, deleted_at: str | None = None) -> int:
         result = await self.db[COLL_FISCAL_DOCUMENTS].update_many(
             {"company_id": self.company_id, "source_metadata.drive_file_id": drive_file_id},
