@@ -26,8 +26,8 @@ def piva(f):
 ALIASES = {
     "mepa": ["ME.PA. ALIMENTARI S.R.L.", "MEPA Alimentari"],
     "saima": ["SAIMA S.p.A."],
-    "acquaviva": ["Dolciaria Acquaviva S.p.A.", "Vandemoortele Italia"],
-    "vandemoortele": ["Vandemoortele Italia"],
+    "acquaviva": ["Dolciaria Acquaviva S.p.A.", "Vandemoortele Italia", "Vandemoortele Europe NV (Sede Secondaria Italia)"],
+    "vandemoortele": ["Vandemoortele Italia", "Vandemoortele Europe NV (Sede Secondaria Italia)"],
     "alpha": ["PROGETTO ALPHA S.R.L.S"],
     "alfa": ["PROGETTO ALPHA S.R.L.S"],
     "tremarie": ["Tre Marie", "Sammontana Italia", "Sammontana"],
@@ -86,6 +86,14 @@ def articoli_acquistati(fatture):
             if re.search(r"\b(trasporto|spese|sconto|abbuono|bollo|contributo conai)\b", nome, re.I):
                 continue
             totale = numero(r.get("prezzo_totale") or r.get("line_total"))
+            informativa = nome.casefold() == "riga ausiliaria contenente informazioni tecniche e aggiuntive del documento" or any(
+                str(d.get("tipo_dato") or "").casefold() == "aswtriga"
+                and "#ID#" in str(d.get("riferimento_testo") or "").upper()
+                for d in r.get("altri_dati_gestionali") or [] if isinstance(d, dict)
+            )
+            if informativa and prezzo == 0 and totale in (None, 0):
+                # Metadati del documento XML, non un articolo gratuito/omaggio.
+                continue
             if quantita and totale is not None:
                 if totale < 0:
                     continue

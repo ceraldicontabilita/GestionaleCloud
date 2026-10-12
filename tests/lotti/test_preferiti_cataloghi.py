@@ -64,6 +64,21 @@ def test_fornitore_dinamico_usa_piva_e_non_sottostringa(monkeypatch):
     run(scenario())
 
 
+def test_catalogo_acquaviva_vandemoortele_legge_denom_in_fatture_2026(monkeypatch):
+    async def scenario():
+        erp, lotti = AsyncMongoMockClient().erp, AsyncMongoMockClient().lotti
+        monkeypatch.setattr(Database, "db", erp)
+        await lotti.fonti_catalogo_esterne.insert_one({"fornitore_key": "acquaviva", "nome": "Dolciaria Acquaviva S.p.A.", "partita_iva": ""})
+        await erp.invoices.insert_many([
+            fattura(id="aqv", supplier_name="Dolciaria Acquaviva S.p.A.", supplier_vat="01269431217"),
+            fattura(id="vdm", supplier_name="VANDEMOORTELE EUROPE NV,           (SEDE SECONDARIA ITALIA)", supplier_vat="02644480994"),
+            fattura(id="altro", supplier_name="Vandemoortele Europe Services", supplier_vat="99999999999"),
+        ])
+        assert {f["id"] for f in await fatture_catalogo(lotti, "acquaviva")} == {"aqv", "vdm"}
+        assert {f["id"] for f in await fatture_catalogo(lotti, "vandemoortele")} == {"vdm"}
+    run(scenario())
+
+
 def test_ambigui_restano_originali_non_diventano_altro_prodotto():
     articoli = articoli_acquistati([fattura()])
     catalogo = [{"id": "a", "codice_articolo": "IRCA240", "nome": "Variante uno"},
@@ -88,3 +103,20 @@ def test_listino_reale_non_viene_azzerato_ne_sostituito_da_fattura():
     for prezzi in ({}, {"caffe": {"prezzo": 10}}):
         p = applica_prezzo_da_fatture([{"nome": "Caffe", "prezzo_listino": 12, "fonte_catalogo": "listino"}], prezzi)[0]
         assert p["prezzo_listino"] == 12
+
+
+def test_righe_informative_xml_non_diventano_prodotti_ma_omaggi_si():
+    righe = [
+        {"descrizione": "Riga ausiliaria contenente informazioni tecniche e aggiuntive del documento",
+         "quantita": "1", "prezzo_unitario": "0.00", "prezzo_totale": "0.00"},
+        {"descrizione": "Dati documento", "quantita": "1", "prezzo_unitario": "0.00",
+         "altri_dati_gestionali": [{"tipo_dato": "AswTRiga", "riferimento_testo": "Informazioni documento #ID#"}]},
+        {"descrizione": "Cioccolato omaggio", "codice_articolo": "OM01", "quantita": "1",
+         "prezzo_unitario": "0.00", "prezzo_totale": "0.00",
+         "altri_dati_gestionali": [{"tipo_dato": "AswTRiga", "riferimento_testo": "Merce #ME#"}]},
+    ]
+    prodotti = collega_preferiti(articoli_acquistati([fattura(linee=righe)]), [], "mepa")
+    assert len(prodotti) == 1
+    assert prodotti[0]["codice_articolo"] == "OM01"
+    assert prodotti[0]["prezzo_fattura"] == 0
+    assert len(righe) == 3  # L'originale della fattura non viene modificato.
