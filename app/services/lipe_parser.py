@@ -201,7 +201,9 @@ def parse_cassetto_testuale(pages: List[str]) -> Optional[Dict[str, Any]]:
         field = field.upper(); label = " ".join(label.split()); raw = "".join(raw.split())
         module = modules.setdefault(number, {})
         # Keep the PDF page, not a line number.
-        module.setdefault("pagina", next((i + 1 for i in range(len(pages)) if match.start() < sum(len(p) + 1 for p in pages[:i + 1])), len(pages)))
+        source_page = next((i + 1 for i in range(len(pages)) if match.start() < sum(len(p) + 1 for p in pages[:i + 1])), len(pages))
+        module.setdefault("pagina", source_page)
+        module.setdefault('field_pages', {})[field] = source_page
         if field == 'VP13' and label.lower() == 'metodo':
             continue
         if field in module:
@@ -213,7 +215,7 @@ def parse_cassetto_testuale(pages: List[str]) -> Optional[Dict[str, Any]]:
         month = raw_month.zfill(2) if raw_month.isdigit() and 1 <= int(raw_month) <= 12 else None
         period = {'pagina': module['pagina'], 'source_module': int(number), 'mese': month,
                   'periodo': f'{year}-{month}' if year and month else None,
-                  'parse_method': 'cassetto_testuale', 'raw_evidence': {}}
+                  'parse_method': 'cassetto_testuale', 'raw_evidence': {}, 'source_field_pages': module.get('field_pages') or {}}
         invalid = bool(module.get('ambiguous'))
         for field, name in CAMPI_VP.items():
             period[name] = None
@@ -249,6 +251,7 @@ def modulo_probatorio(period: Dict[str, Any]) -> Dict[str, Any]:
     return {'month': int(period['mese']) if period.get('mese') else None,
             'values': values, 'raw_evidence': period.get('raw_evidence') or {},
             'parse_method': 'cassetto_testuale', 'source_module': period.get('source_module'),
+            'source_field_pages': period.get('source_field_pages') or {},
             'quadrature': {'vp6': bool(period['quadratura_ok']), 'vp14': bool(period['quadratura_ok'])},
             'confidence': 1.0 if period['quadratura_ok'] else 0.6}
 

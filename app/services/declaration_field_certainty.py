@@ -218,10 +218,11 @@ def extract_lipe_fields(content: bytes, *, document_id: str, tax_year: int | Non
             continue
         month = int(parsed["month"])
         raw = parsed.get("raw_evidence", {}).get("VP14") or evidence
+        amount_page = (parsed.get("source_field_pages") or {}).get("VP14", page_number)
         tax_rows.append({
-            "id": _row_identity(document_id, page_number, month, raw),
+            "id": _row_identity(document_id, amount_page, month, raw),
             "document_id": document_id, "filename": filename, "sha256": sha256,
-            "page_number": page_number, "source_text": raw,
+            "page_number": amount_page, "source_text": raw,
             "parser_version": LIPE_PARSER_VERSION, "tax_code": str(6000 + month),
             "reference_period": f"{tax_year}-{month:02d}",
             "debit_amount": vp14_cents / 100, "credit_amount": 0.0,

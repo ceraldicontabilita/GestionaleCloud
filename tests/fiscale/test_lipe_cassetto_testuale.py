@@ -139,3 +139,15 @@ def test_numeric_export_name_routes_to_canonical_lipe_ingestion():
     text=HEADER+module(1,4)
     assert classify_document('163990_testuale.pdf',text)['document_type']=='LIPE'
     assert _tipo_dichiarazione('163990_testuale.pdf',text)=='dichiarazione_fiscale'
+
+
+def test_debit_amount_evidence_uses_actual_page_when_module_crosses_page_boundary():
+    text=module(1,4,debt='3.600,00',credit='0,00',final='3.600,00').replace('IVA a credito','IVA da versare')
+    before,after=text.split('Mod.1 - VP14')
+    content=pdf([HEADER+before,'Mod.1 - VP14'+after])
+    parsed=parse_lipe(content)
+    assert parsed['periodi'][0]['pagina']==1
+    assert parsed['periodi'][0]['source_field_pages']['VP14']==2
+    proof=extract_lipe_fields(content,document_id='cross',tax_year=2026)
+    assert proof['tax_rows'][0]['page_number']==2
+    assert proof['tax_rows'][0]['debit_amount']==3600
