@@ -92,3 +92,26 @@ def test_copia_pdf_conserva_numero_oltre_la_vecchia_troncatura(tmp_path):
     _genera_pdf_da_testo('Oggetto: ' + 'descrizione lunga ' * 15 + 'VERBALE N.: B99121382028',str(path))
     from pypdf import PdfReader
     assert 'B99121382028' in '\n'.join(p.extract_text() for p in PdfReader(path).pages)
+
+
+def test_rilettura_non_sovrascrive_importo_verificato(monkeypatch):
+    db = AsyncMongoMockClient().db
+    original = writer.leggi_documento_verbale
+    async def wrong_parser(*args, **kwargs):
+        result = await original(*args, **kwargs)
+        result.update(is_receipt=False, is_notice=False, importo=5.07, importo_conflitto=True,
+                      numero="B99121382028")
+        return result
+    monkeypatch.setattr(writer, "leggi_documento_verbale", wrong_parser)
+    async def run():
+        await db.verbali_noleggio.insert_one({"id":"v1", "numero_verbale":"B99121382028",
+            "importo":121.00, "importo_centesimi":12100, "importo_verificato":True})
+        from tempfile import TemporaryDirectory
+        from pathlib import Path
+        with TemporaryDirectory() as tmp:
+            path=Path(tmp)/"originale.pdf"
+            _genera_pdf_da_testo("Verbale di accertamento B99121382028",str(path))
+            await writer.process_verbale_document(db, document_id="doc1",content=path.read_bytes(),filename=path.name)
+        row=await db.verbali_noleggio.find_one({"id":"v1"})
+        assert row["importo"]==121.00 and row["importo_centesimi"]==12100
+    asyncio.run(run())

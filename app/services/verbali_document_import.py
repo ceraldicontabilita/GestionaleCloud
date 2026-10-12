@@ -794,6 +794,10 @@ async def process_verbale_document(
                 *(('importo', 'importo_fonte', 'importo_conflitto_risolto') if importo_conflitto else ()),
             })
         }
+    if existing and existing.get("importo_verificato"):
+        # Una nuova estrazione non annulla la verifica documentale dell'operatore.
+        for key in ("importo", "importo_centesimi", "importo_fonte", "importo_conflitto_risolto"):
+            values.pop(key, None)
     verbale_query = (
         {"id": existing.get("id")}
         if existing and existing.get("id")
