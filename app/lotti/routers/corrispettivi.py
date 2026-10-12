@@ -1,13 +1,10 @@
 """
 corrispettivi.py — Sezione Corrispettivi (incassi giornalieri).
 
-Stessa logica delle fatture: la collection `corrispettivi` è di proprietà di
-Lotti (import controllato, idempotente per data), non sincronizzata dall'ERP.
+La fonte e il writer dei corrispettivi sono ERP. Lotti legge una proiezione
+e delega import XML e inserimento manuale agli stessi ingressi ERP.
 
-Questo modulo NON inventa lo schema: il campo data è noto (indice su `data`),
-il campo importo viene RILEVATO dal documento reale tra candidati noti (e in
-fallback dal campo numerico più grande), e l'endpoint /schema mostra cosa ha
-rilevato così è verificabile.
+I campi data e totale sono quelli definiti dall'archivio ERP canonico.
 
 Espone:
 - GET  /corrispettivi/schema        → chiavi di un doc reale + campo importo rilevato
@@ -16,7 +13,6 @@ Espone:
 - POST /corrispettivi               → inserimento/aggiornamento manuale (idempotente per data)
 """
 
-import xml.etree.ElementTree as ET
 from datetime import datetime, date, timedelta
 from typing import Optional
 from fastapi import APIRouter, HTTPException, UploadFile, File
@@ -27,16 +23,6 @@ from fastapi import Depends
 
 router = APIRouter(prefix="/corrispettivi", tags=["Corrispettivi"])
 
-# Possibili nomi del campo importo nelle collection corrispettivi reali.
-# Non si inventano valori: si sceglie tra questi quello PRESENTE nel documento.
-# `totale_giorno` è il campo scritto dall'import XML COR10 (vedi sotto).
-CANDIDATI_IMPORTO = [
-    "totale_giorno", "importo", "totale", "corrispettivo", "corrispettivi",
-    "incasso", "imponibile", "ammontare", "total", "totale_corrispettivi",
-]
-CANDIDATI_DATA = ["data", "data_corrispettivo", "giorno", "date"]
-
-
 def _to_float(v) -> float:
     try:
         if isinstance(v, str):
@@ -44,29 +30,6 @@ def _to_float(v) -> float:
         return float(v)
     except (TypeError, ValueError):
         return 0.0
-
-
-def _rileva_campo_importo(doc: dict) -> Optional[str]:
-    """Rileva il campo importo da un documento reale, senza inventarlo."""
-    for c in CANDIDATI_IMPORTO:
-        if c in doc and _to_float(doc[c]) != 0:
-            return c
-    # fallback: il campo numerico col valore assoluto più grande (escluse le date)
-    best, best_val = None, 0.0
-    for k, v in doc.items():
-        if k in CANDIDATI_DATA or k.startswith("_"):
-            continue
-        val = abs(_to_float(v))
-        if val > best_val:
-            best, best_val = k, val
-    return best
-
-
-def _rileva_campo_data(doc: dict) -> Optional[str]:
-    for c in CANDIDATI_DATA:
-        if c in doc:
-            return c
-    return None
 
 
 def _parse_data(v) -> Optional[date]:
@@ -84,108 +47,55 @@ def _parse_data(v) -> Optional[date]:
     return None
 
 
+async def _documenti_corrispettivi() -> list[dict]:
+    """Proiezione della fonte ERP: nessun archivio finanziario parallelo."""
+    from app.database import Database
+    from app.routers.invoices.corrispettivi import chiave_giornata_xml
+    rows = await Database.get_db()["corrispettivi"].find(
+        {"entity_status": {"$ne": "deleted"}, "status": {"$nin": ["deleted", "archived"]}},
+        {"_id": 0, "id": 1, "data": 1, "data_rilevazione": 1, "totale": 1,
+         "totale_complessivo": 1, "corrispettivo_key": 1, "matricola_rt": 1,
+         "id_dispositivo": 1, "matricola": 1},
+    ).to_list(20000)
+    seen, out = set(), []
+    for row in rows:
+        key = chiave_giornata_xml(row)
+        if key in seen:
+            continue
+        seen.add(key)
+        row = dict(row)
+        if row.get("data") is None:
+            row["data"] = row.get("data_rilevazione")
+        if row.get("totale") is None:
+            row["totale"] = row.get("totale_complessivo")
+        if _parse_data(row.get("data")) and row.get("totale") is not None:
+            out.append(row)
+    return out
+
+
 async def _campi_rilevati() -> tuple[Optional[str], Optional[str]]:
-    doc = await db.corrispettivi.find_one({}, {"_id": 0})
-    if not doc:
-        return None, None
-    return _rileva_campo_data(doc), _rileva_campo_importo(doc)
-
-
-# ── Parser corrispettivi telematici Agenzia Entrate (COR10/RT) ────────────────
-def _ln(tag: str) -> str:
-    """local-name di un tag namespaced ({ns}Nome -> Nome)."""
-    return tag.split("}")[-1]
-
-
-def _txt(root, nome: str) -> Optional[str]:
-    for e in root.iter():
-        if _ln(e.tag) == nome:
-            return (e.text or "").strip()
-    return None
-
-
-def _parse_corrispettivo_xml(content: bytes) -> dict:
-    """Estrae da un XML COR10 il totale vendite del giorno.
-
-    'Totale giorno vendite' = PagatoContanti + PagatoElettronico (incasso lordo).
-    Giorni inattivi (PeriodoInattivo) → totale 0, data = Dal.
-    Fallback se i campi Pagato mancano: somma di (Ammontare + Imposta) dei Riepilogo.
-    """
-    root = ET.fromstring(content)
-
-    # Giorno inattivo (chiusura)
-    inattivo = None
-    for e in root.iter():
-        if _ln(e.tag) == "PeriodoInattivo":
-            inattivo = e
-            break
-    if inattivo is not None:
-        d = _parse_data(_txt(inattivo, "Dal"))
-        return {
-            "data": d.isoformat() if d else None,
-            "totale_giorno": 0.0, "contanti": 0.0, "elettronico": 0.0,
-            "n_documenti": 0, "inattivo": True,
-            "progressivo": _txt(root, "Progressivo"),
-            "dispositivo": _txt(root, "IdDispositivo"),
-        }
-
-    d = _parse_data(_txt(root, "DataOraRilevazione"))
-    contanti = _to_float(_txt(root, "PagatoContanti"))
-    elettronico = _to_float(_txt(root, "PagatoElettronico"))
-    totale = round(contanti + elettronico, 2)
-    if totale == 0:
-        # fallback: imponibile + imposta su tutti i Riepilogo
-        tot = 0.0
-        for e in root.iter():
-            if _ln(e.tag) == "Riepilogo":
-                tot += _to_float(_txt(e, "Ammontare")) + _to_float(_txt(e, "Imposta"))
-        totale = round(tot, 2)
-    return {
-        "data": d.isoformat() if d else None,
-        "totale_giorno": totale,
-        "contanti": contanti,
-        "elettronico": elettronico,
-        "n_documenti": int(_to_float(_txt(root, "NumeroDocCommerciali"))),
-        "inattivo": False,
-        "progressivo": _txt(root, "Progressivo"),
-        "dispositivo": _txt(root, "IdDispositivo"),
-    }
+    return ("data", "totale") if await _documenti_corrispettivi() else (None, None)
 
 
 @router.post("/importa-xml")
 async def importa_xml(files: list[UploadFile] = File(...), _admin=Depends(require_admin)):
-    """Import manuale dei corrispettivi telematici (XML COR10), idempotente per
-    data. Stessa logica delle fatture: i dati entrano in modo esplicito nel
-    perimetro di Lotti, non sincronizzati dall'ERP."""
-    risultati = []
-    importati = 0
-    for f in files:
-        try:
-            rec = _parse_corrispettivo_xml(await f.read())
-        except Exception as e:
-            risultati.append({"file": f.filename, "errore": f"XML non valido: {e}"})
-            continue
-        if not rec.get("data"):
-            risultati.append({"file": f.filename, "errore": "data non riconosciuta"})
-            continue
-        await db.corrispettivi.update_one(
-            {"data": rec["data"]},
-            {"$set": {**rec, "origine": "xml_rt", "updated_at": datetime.utcnow().isoformat()}},
-            upsert=True,
-        )
-        importati += 1
-        risultati.append({"file": f.filename, **rec})
-    return {"importati": importati, "totale_file": len(files), "dettaglio": risultati}
+    """Un solo writer e parser: l'import XML canonico ERP."""
+    from app.routers.invoices.corrispettivi import upload_corrispettivi_xml_bulk
+    result = await upload_corrispettivi_xml_bulk(files=files, force_update=False)
+    return {"importati": result.get("imported", 0), "totale_file": len(files),
+            "duplicati": result.get("skipped", 0), "dettaglio": result,
+            "fonte": "ERP"}
 
 
 @router.get("/schema")
 async def schema_corrispettivi():
     """Mostra le chiavi di un documento reale e i campi rilevati (verificabile)."""
-    doc = await db.corrispettivi.find_one({}, {"_id": 0})
+    rows = await _documenti_corrispettivi()
+    doc = rows[0] if rows else None
     if not doc:
         return {"presente": False, "messaggio": "Collection corrispettivi vuota"}
-    campo_data, campo_importo = _rileva_campo_data(doc), _rileva_campo_importo(doc)
-    n = await db.corrispettivi.count_documents({})
+    campo_data, campo_importo = "data", "totale"
+    n = len(rows)
     return {
         "presente": True,
         "documenti": n,
@@ -198,7 +108,7 @@ async def schema_corrispettivi():
 
 async def _serie(campo_data: str, campo_importo: str, dal: date, al: date) -> dict:
     """Somma incassi per giorno tra dal e al (inclusi)."""
-    docs = await db.corrispettivi.find({}, {"_id": 0}).to_list(20000)
+    docs = await _documenti_corrispettivi()
     per_giorno: dict[str, float] = {}
     for d in docs:
         g = _parse_data(d.get(campo_data))
@@ -489,7 +399,7 @@ async def previsione(mese: Optional[int] = None, anno: Optional[int] = None):
     else:
         anno_target = anno or oggi.year
 
-    docs = await db.corrispettivi.find({}, {"_id": 0}).to_list(20000)
+    docs = await _documenti_corrispettivi()
     per_anno: dict[int, float] = {}
     for d in docs:
         g = _parse_data(d.get(campo_data))
@@ -546,13 +456,6 @@ async def upsert_corrispettivo(payload: CorrispettivoManuale, _admin=Depends(req
     g = _parse_data(payload.data)
     if not g:
         raise HTTPException(400, "Data non valida (usa YYYY-MM-DD)")
-    campo_data, campo_importo = await _campi_rilevati()
-    campo_data = campo_data or "data"
-    campo_importo = campo_importo or "importo"
-    await db.corrispettivi.update_one(
-        {campo_data: g.isoformat()},
-        {"$set": {campo_data: g.isoformat(), campo_importo: float(payload.importo),
-                  "origine": "manuale", "updated_at": datetime.utcnow().isoformat()}},
-        upsert=True,
-    )
-    return {"ok": True, "data": g.isoformat(), "importo": float(payload.importo)}
+    from app.routers.invoices.corrispettivi import inserisci_corrispettivo_manuale
+    result = await inserisci_corrispettivo_manuale(data={"data": g.isoformat(), "totale": payload.importo})
+    return {"ok": True, "data": g.isoformat(), "importo": payload.importo, "fonte": "ERP", "esito": result}

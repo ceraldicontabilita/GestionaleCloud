@@ -2252,6 +2252,12 @@ export function TabellaAnalisiF24({ anno }) {
                           >
                             Quietanza
                           </button>
+                        ) : r.verifica_importi_originale?.confronto_f24_id ? (
+                          <button type="button" style={bottoneFile}
+                            onClick={() => setPdfViewer({ title: 'F24 collegato al pagamento da confrontare',
+                              fetchUrl: `/api/originale/f24/${encodeURIComponent(r.verifica_importi_originale.confronto_f24_id)}` })}>
+                            Confronta F24 collegato al pagamento
+                          </button>
                         ) : (
                           <span style={{ fontSize: 11, color: '#7a776e' }}>
                             {r.documento_collegato?.quietanza_id
