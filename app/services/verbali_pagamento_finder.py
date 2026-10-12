@@ -575,6 +575,8 @@ async def normalizza_attese_quietanza(db) -> int:
     }, {"_id": 0, "pdf_data": 0}).to_list(5000)
     changed = 0
     for row in rows:
+        if row.get("stato") not in {"pagato_attesa_quietanza", "pagato_attesa_fattura"} or not row.get("banca_verificata") or row.get("pagato_documentalmente"):
+            continue
         if any(row.get(k) for k in ("ricevuta_pagopa_id", "paypal_transaction_id", "quietanza_hash")):
             continue
         old = {k: row[k] for k in ("pagamento_id", "data_pagamento", "fonte_pagamento") if row.get(k) is not None}
