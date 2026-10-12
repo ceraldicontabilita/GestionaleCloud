@@ -229,7 +229,7 @@ export default function DettaglioVerbale() {
         : 'Nessun movimento bancario collegato',
     },
     {
-      key: 'quietanza', title: 'Quietanza PartenoPay / PagoPA',
+      key: 'quietanza', title: 'Quietanza / ricevuta di pagamento',
       present: fascicolo.quietanza?.presente,
       detail: fascicolo.quietanza?.documento?.filename || fascicolo.quietanza?.documenti_drive?.[0]?.nome || fascicolo.quietanza?.riferimento_archivio || fascicolo.quietanza?.fonte || 'Non presente',
       document: fascicolo.quietanza?.documento,

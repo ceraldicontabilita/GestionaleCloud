@@ -211,6 +211,8 @@ def _coordinate_quietanza(doc) -> dict[str, Any]:
                         "codice_ditta": company, "codice_controllo": control,
                         "numero_riferimento": reference, "causale": reason,
                         "importo_debito": debit, "importo_credito": credit,
+                        "pagina": page.number + 1, "riga_y": float(anchor[1]),
+                        "testo_sorgente": " ".join(t for _, t in row),
                     })
 
         for words in grouped.values():

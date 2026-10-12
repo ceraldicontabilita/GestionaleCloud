@@ -715,6 +715,29 @@ async def process_verbale_document(
         same_source = await db["verbali_noleggio"].find({"source_document_id": document_id}, {"_id": 0}).to_list(2)
         if len(same_source) == 1:
             existing, same_original = same_source[0], True
+    if not existing:
+        invoice_references = [value for value in (numero, ai_data.get("numero_registro"), ai_data.get("numero_atto")) if value]
+        pending = await db["verbali_noleggio"].find({
+            "origine": "FATTURA_SPESA_NOLEGGIO", "stato": {"$ne": "quarantena"},
+            "numero_riferimento_fattura": {"$in": invoice_references},
+        }, {"_id": 0}).to_list(3)
+        pending = [row for row in pending if row.get("origine") == "FATTURA_SPESA_NOLEGGIO"
+                   and row.get("stato") != "quarantena"
+                   and row.get("numero_riferimento_fattura") in invoice_references]
+        if len(pending) > 1:
+            await db["documents_inbox"].update_one({"id": document_id}, {"$set": {
+                **extracted, "processed": False, "status": "da_revisionare",
+                "review_reason": "riferimento_fattura_non_univoco",
+            }})
+            return {"status": "review", "tipo": "verbale", "reason": "riferimento_fattura_non_univoco"}
+        if len(pending) == 1:
+            if pending[0].get("targa") and targa and pending[0]["targa"].upper() != targa.upper():
+                await db["documents_inbox"].update_one({"id": document_id}, {"$set": {
+                    **extracted, "processed": False, "status": "da_revisionare",
+                    "review_reason": "targa_diversa_del_riferimento_fattura",
+                }})
+                return {"status": "review", "tipo": "verbale", "reason": "targa_diversa_del_riferimento_fattura"}
+            existing, same_original = pending[0], True
     verbale_id = str((existing or {}).get("id") or f"verbale_{hashlib.sha256(str(identity).encode()).hexdigest()[:32]}")
     violation_date = letto["data_violazione"]
     # Il driver e' quello all'ora dell'infrazione, se il PDF la dice.

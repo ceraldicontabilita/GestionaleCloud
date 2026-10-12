@@ -144,3 +144,17 @@ def test_due_fatture_candidate_non_creano_collegamenti_concorrenti(monkeypatch):
         assert result['associazioni_ambigue']==1
         assert await db['verbali_noleggio'].count_documents({})==0
     asyncio.run(run())
+
+
+def test_numero_registro_fattura_collega_il_verbale_originale(monkeypatch):
+    db=ArchivioDocumenti();monkeypatch.setattr(Database,'get_db',staticmethod(lambda:db))
+    async def run():
+        await db['verbali_noleggio'].insert_one({'id':'originale','numero_verbale':'A99111311018',
+            'numero_registro':'20990355546','targa':'HB411GV','stato':'aperto'})
+        await db['invoices'].insert_one({'id':'f1','supplier_name':'LEASYS','status':'imported',
+            'linee':[{'descrizione':'HB411GV X3','altri_dati_gestionali':[{'riferimento_testo':'n. verbale 20990355546'}]}]})
+        await verbali_riconciliazione.scan_fatture_per_verbali()
+        assert await db['verbali_noleggio'].count_documents({})==1
+        row=await db['verbali_noleggio'].find_one({'id':'originale'})
+        assert row['fattura_id']=='f1' and row['numero_verbale']=='A99111311018' and row['stato']=='aperto'
+    asyncio.run(run())

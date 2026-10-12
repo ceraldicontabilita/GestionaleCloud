@@ -579,7 +579,10 @@ async def scan_fatture_per_verbali() -> Dict[str, Any]:
         from app.services.verbali_collegamento_fattura import fattura_id_del_verbale
         from hashlib import sha256
         for number, candidates in matches.items():
-            rows = await db["verbali_noleggio"].find({"numero_verbale": number}).to_list(20)
+            rows = await db["verbali_noleggio"].find({"$or": [
+                {"numero_verbale": number}, {"numero_registro": number},
+                {"numero_atto": number}, {"numero_riferimento_fattura": number},
+            ]}).to_list(20)
             if any(row.get("stato") == "quarantena" for row in rows) or len(rows) > 1:
                 continue
             row = rows[0] if rows else None
@@ -587,6 +590,16 @@ async def scan_fatture_per_verbali() -> Dict[str, Any]:
                 ambigue += 1
                 continue
             invoice_id, invoice = next(iter(candidates.items()))
+            plates = set()
+            for line in invoice.get("linee") or []:
+                line_text = " ".join([str(line.get("descrizione") or ""),
+                    *(str(a.get("riferimento_testo") or "") for a in line.get("altri_dati_gestionali") or [])])
+                if re.search(r"(?<![A-Z0-9])" + re.escape(number) + r"(?![A-Z0-9])", line_text, re.I):
+                    plates.update(re.findall(r"\b[A-Z]{2}\d{3}[A-Z]{2}\b", line_text.upper()))
+            invoice_plate = next(iter(plates)) if len(plates) == 1 else invoice.get("targa")
+            if row and row.get("targa") and invoice_plate and row["targa"].upper() != invoice_plate.upper():
+                ambigue += 1
+                continue
             previous_id = fattura_id_del_verbale(row or {})
             if previous_id:
                 ambigue += int(previous_id != invoice_id)
@@ -598,12 +611,15 @@ async def scan_fatture_per_verbali() -> Dict[str, Any]:
                 # il versamento della sanzione: non modifica lo stato pagamento.
                 if not row.get("fornitore"):
                     values["fornitore"] = invoice.get("supplier_name") or invoice.get("fornitore")
-                if not row.get("targa") and invoice.get("targa"):
-                    values["targa"] = invoice["targa"]
+                if not row.get("targa") and invoice_plate:
+                    values["targa"] = invoice_plate
+                    values["targa_fonte"] = "riga_fattura"
                 await db["verbali_noleggio"].update_one({"id": row["id"]} if row.get("id") else {"numero_verbale": number}, {"$set": values})
             else:
                 values.update(id="verbale_fattura_" + sha256(number.encode()).hexdigest()[:32],
-                    numero_verbale=number, stato="fattura_ricevuta", source="scan_fatture",
+                    numero_verbale=number, numero_riferimento_fattura=number,
+                    targa=invoice_plate, targa_fonte="riga_fattura" if invoice_plate else None,
+                    stato="fattura_ricevuta", source="scan_fatture",
                     origine="FATTURA_SPESA_NOLEGGIO", verbale_originale_acquisito=False,
                     stato_pratica="DA_ACQUISIRE_VERBALE", created_at=datetime.now(timezone.utc).isoformat())
                 await db["verbali_noleggio"].update_one({"numero_verbale": number}, {"$setOnInsert": values}, upsert=True)
