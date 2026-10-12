@@ -218,3 +218,27 @@ def test_copia_senza_commissione_non_perde_addebito_documentato(monkeypatch):
         assert r['fee_amount']==1.5 and r['bank_debit_total']==58.55
         assert await db['documents_inbox'].count_documents({'sha256':hashlib.sha256(b'%PDF-portal').hexdigest()})==1
     asyncio.run(scenario())
+
+
+def test_avviso_municipia_legge_totale_da_pagare_con_altre_cifre(monkeypatch):
+    parsed = parse(monkeypatch, '''AVVISO DI PAGAMENTO PagoPA
+REGIONE DI PROVA
+Codice Avviso 301000000000000001
+SEZIONE RIEPILOGO DEL DEBITO
+Importo ingiunto 450,00
+Ulteriori interessi maturati 53,19
+TOTALE DA PAGARE
+€ 503,19
+Limiti di legge 2.500,00 Euro
+''')
+    assert parsed['importo'] == 503.19
+    assert parsed['document_kind'] == 'AVVISO_PAGOPA'
+    assert parsed['is_payment_receipt'] is False
+    db = ClientArchivioMemoria()['municipia']
+    async def scenario():
+        await db['documents_inbox'].insert_one({'id': 'avviso', 'category': 'avviso_pagopa', 'parsed_metadata': parsed})
+        receipt = {'id': 'pagamento', 'identificativo_bolletta': '01000000000000001', 'importo': 503.19, 'data_pagamento': '2026-03-30'}
+        await db['ricevute_pagopa'].insert_one(receipt)
+        assert await m.associa_avvisi_a_ricevuta(db, receipt) == ['avviso']
+        assert (await db['documents_inbox'].find_one({'id': 'avviso'}))['obligation_status'] == 'PAGATO_DOCUMENTALE'
+    asyncio.run(scenario())

@@ -863,7 +863,7 @@ def parse_receipt_pdf(content: bytes, filename: str | None = None) -> dict[str, 
         amount = float(amount_match.group(1).replace(".", "").replace(",", "."))
     if amount is None and is_notice:
         notice_amount = re.search(
-            r"(?:importo\s+(?:totale\s+)?da\s+pagare|rata\s+unica)\s*[:€EUR ]*([\d.]+,\d{2})",
+            r"(?:importo\s+(?:totale\s+)?da\s+pagare|totale\s+da\s+pagare|rata\s+unica)\s*[:€EUR ]*([\d.]+,\d{2})",
             compact, re.IGNORECASE,
         )
         if notice_amount:
