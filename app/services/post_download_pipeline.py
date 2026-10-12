@@ -153,9 +153,13 @@ async def processa_verbali_da_email(db: ArchivioDocumenti) -> Dict[str, Any]:
     from app.services.notifiche_pec_verbali import aggancia_notifiche_pec, metadati_notifica
 
     stats = {"processati": 0, "errori": 0, "nuovi_verbali": 0}
-    docs = await db["verbali_email_attachments"].find(
-        {"processed": {"$ne": True}}
-    ).to_list(length=500)
+    docs = []
+    for collection in ("verbali_email_attachments", "documents_inbox"):
+        query = {"processed": {"$ne": True}}
+        if collection == "documents_inbox":
+            query["$or"] = [{key: "verbale"} for key in ("tipo_documento", "categoria", "category")]
+        rows = await db[collection].find(query).to_list(length=500)
+        docs.extend({**row, "_collection": collection} for row in rows)
     for doc in docs:
         try:
             if not doc.get("pdf_data"):
@@ -172,11 +176,22 @@ async def processa_verbali_da_email(db: ArchivioDocumenti) -> Dict[str, Any]:
                 parsed_metadata={"data_notifica": meta["data_notifica"]} if meta["data_notifica"] else None,
             )
             if result.get("verbale_id"):
-                await db["verbali_email_attachments"].update_one(
-                    {"id": doc["id"]}, {"$set": {
-                        "processed": True, "documento_associato_id": result["verbale_id"],
-                        "documento_associato_collection": "verbali_noleggio", "associato": True,
-                    }},
+                verbale = await db["verbali_noleggio"].find_one(
+                    {"id": result["verbale_id"]}, {"_id": 0, "data_verbale": 1}) or {}
+                fields = {
+                    "processed": True, "status": "processato", "verbale_id": result["verbale_id"],
+                    "documento_associato_id": result["verbale_id"],
+                    "documento_associato_collection": "verbali_noleggio", "associato": True,
+                }
+                # Il periodo del documento deriva dall'atto, non dalla data della legge citata.
+                date_verbale = verbale.get("data_verbale")
+                if date_verbale:
+                    day = datetime.fromisoformat(date_verbale)
+                    fields.update(periodo_anno=day.year, periodo_mese=day.month,
+                                  periodo_raw=f"{day.month:02d}/{day.year}",
+                                  identificatore_periodo=f"{day.year}_{day.month:02d}")
+                await db[doc["_collection"]].update_one(
+                    {"id": doc["id"]}, {"$set": fields, "$unset": {"ai_parsing_error": ""}},
                 )
                 stats["processati"] += 1
         except Exception as exc:

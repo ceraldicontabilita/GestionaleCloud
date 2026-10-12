@@ -108,9 +108,10 @@ async def registra_notifica_pec(
         "ente_mittente": notifica.get("ente_mittente"),
         "numero_registro": notifica.get("numero_registro"),
         "oggetto": notifica.get("oggetto"),
+        "email_message_id": notifica.get("email_message_id"),
         "scadenze": scadenze_da_notifica(notifica.get("data_notifica")),
         "allegati": [
-            {"id": a.get("id"), "filename": a.get("filename"), "hash": a.get("pdf_hash")}
+            {"id": a.get("id"), "filename": a.get("filename"), "hash": a.get("pdf_hash") or a.get("file_hash")}
             for a in allegati
         ],
     }
@@ -198,14 +199,17 @@ async def aggancia_notifiche_pec(db, *, dry_run: bool = True) -> Dict[str, Any]:
     esito = {"dry_run": dry_run, "notifiche": 0, "agganciate": 0, "gia_agganciate": 0,
              "da_agganciare": 0, "senza_verbale": 0, "ambigue": 0, "senza_numero": 0, "errori": 0,
              "elenco_da_agganciare": []}
-    righe = await db[COLL_ALLEGATI].find(
-        {}, {"_id": 0, "pdf_data": 0}
-    ).to_list(5000)
+    righe = []
+    for collection in (COLL_ALLEGATI, "documents_inbox"):
+        query = {} if collection == COLL_ALLEGATI else {"email_subject": {"$regex": r"\[upec\d+\]", "$options": "i"}}
+        rows = await db[collection].find(query, {"_id": 0, "pdf_data": 0}).to_list(5000)
+        righe.extend({**row, "_collection": collection} for row in rows)
     gruppi: Dict[str, List[Dict[str, Any]]] = {}
     for riga in righe:
         meta = metadati_notifica(riga.get("email_subject"), riga.get("email_from"), riga.get("email_date"))
         if not meta["upec_id"]:
             continue
+        meta["email_message_id"] = riga.get("email_message_id")
         gruppi.setdefault(meta["upec_id"], []).append({**riga, "_meta": meta})
 
     for upec, allegati in gruppi.items():
@@ -214,7 +218,7 @@ async def aggancia_notifiche_pec(db, *, dry_run: bool = True) -> Dict[str, Any]:
         numero = None
         try:
             for allegato in sorted(allegati, key=lambda a: "COPIACONFORME" not in str(a.get("filename", "")).upper()):
-                completo = await db[COLL_ALLEGATI].find_one({"id": allegato["id"]}, {"_id": 0, "pdf_data": 1})
+                completo = await db[allegato["_collection"]].find_one({"id": allegato["id"]}, {"_id": 0, "pdf_data": 1})
                 if not completo or not completo.get("pdf_data"):
                     continue
                 testo = _extract_text(base64.b64decode(completo["pdf_data"]))
@@ -240,7 +244,7 @@ async def aggancia_notifiche_pec(db, *, dry_run: bool = True) -> Dict[str, Any]:
             })
             if not dry_run:
                 for allegato in allegati:
-                    await db[COLL_ALLEGATI].update_one(
+                    await db[allegato["_collection"]].update_one(
                         {"id": allegato["id"]},
                         {"$set": {"notifica_stato": "da_agganciare", "numero_verbale_letto": numero,
                                   "notifica_motivo": "senza_verbale" if not veri else "verbali_ambigui"}},
@@ -253,12 +257,12 @@ async def aggancia_notifiche_pec(db, *, dry_run: bool = True) -> Dict[str, Any]:
         cambiato = await registra_notifica_pec(db, verbale, meta, allegati)
         esito["agganciate" if cambiato else "gia_agganciate"] += 1
         for allegato in allegati:
-            await db[COLL_ALLEGATI].update_one(
+            await db[allegato["_collection"]].update_one(
                 {"id": allegato["id"]},
                 {"$set": {"notifica_stato": "agganciata", "numero_verbale_letto": numero,
                           "documento_associato_id": verbale["id"],
                           "documento_associato_collection": "verbali_noleggio",
-                          "associato": True}},
+                          "associato": True, "processed": True, "status": "processato"}},
             )
     esito["elenco_da_agganciare"] = esito["elenco_da_agganciare"][:100]
     return esito
