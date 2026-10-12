@@ -2074,6 +2074,12 @@ def detect_document_type(filename: str, file_content: bytes) -> str:
     ):
         return "ricevuta_pagopa"
 
+    # La quietanza ITB del bollettino non e' una delega F24.
+    if ("QUIETANZA DI PAGAMENTO" in compact_pdf_text
+        and "NUMERO BOLLETTINO" in compact_pdf_text
+        and "IMPORTO BOLLETTINO" in compact_pdf_text):
+        return "ricevuta_bollettino_postale"
+
     # Struttura positiva del modello F24.  Non dipendere dal nome file e non
     # usare una singola parola: una nota INPS o un avviso PagoPA possono
     # citare F24, ma non contengono simultaneamente delega, anagrafica e
@@ -4086,6 +4092,15 @@ async def upload_documento_automatico(
             result["doc_id"] = doc_id
             result["bonifico_transfer_id"] = ingest.get("transfer_id")
             result["associato_dipendente"] = bool(ingest.get("associato"))
+            # La contabile eseguita con causale di un verbale alimenta anche
+            # il fascicolo canonico, senza creare un secondo verbale.
+            from app.services.verbali_document_import import leggi_documento_verbale, process_verbale_document
+            proof = await leggi_documento_verbale(content, filename)
+            if proof["is_receipt"] and proof["numero"]:
+                result["association"] = await process_verbale_document(
+                    db, document_id=ingest.get("transfer_id") or doc_id,
+                    content=content, filename=filename, source="bonifico_documentale",
+                )
 
     except Exception as e:
         logger.error(f"Errore processing {tipo_rilevato}: {e}")

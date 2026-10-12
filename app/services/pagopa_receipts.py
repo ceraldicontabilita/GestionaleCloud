@@ -698,13 +698,43 @@ def _pdf_page_count(content: bytes) -> int | None:
             return None
 
 
+def _parse_bonifico_eseguito(text: str, content: bytes | None = None) -> dict[str, Any]:
+    if content and re.search(r"Bonifico\s+Singolo", text, re.I):
+        try:
+            import pdfplumber
+            with pdfplumber.open(io.BytesIO(content)) as pdf:
+                text = "\n".join(page.extract_text() or "" for page in pdf.pages)
+        except Exception as exc:
+            logger.warning("Lettura tabellare contabile non disponibile (%s)", type(exc).__name__)
+    compact = re.sub(r"\s+", " ", text)
+    if not re.search(r"Bonifico\s+Singolo", compact, re.I) or not re.search(r"Stato\s*:\s*Confermata\s*-\s*Eseguita\b", compact, re.I):
+        return {}
+    def amount(label):
+        match = re.search(label + r"\s*:\s*([\d.]+,\d{2})\s*EUR", compact, re.I)
+        return Decimal(match.group(1).replace(".", "").replace(",", ".")) if match else None
+    principal, fixed, variable, total = (amount(label) for label in (r"\bImporto", "Commissione fissa", "Commissione variabile", r"\bTotale"))
+    execution = re.search(r"Data\s+esecuzione\s*:\s*(\d{2}/\d{2}/\d{4})", compact, re.I)
+    if None in (principal, fixed, variable, total) or principal <= 0 or principal + fixed + variable != total or not execution:
+        return {}
+    try:
+        executed_at = datetime.strptime(execution.group(1), "%d/%m/%Y").date().isoformat()
+    except ValueError:
+        return {}
+    return {"document_kind": "RICEVUTA_BONIFICO", "is_payment_receipt": True,
+            "operation_amount": float(principal), "bank_debit_total": float(total),
+            "commission_amount": float(fixed + variable), "quadratura_valida": True,
+            "data_pagamento": executed_at, "metodo_pagamento": "Bonifico",
+            "psp": "Banco BPM", "stato_esecuzione": "Confermata - Eseguita",
+            "importo_source_text": str(principal).replace(".", ",")}
+
+
 def parse_receipt_pdf(content: bytes, filename: str | None = None) -> dict[str, Any]:
     text, ocr_used = _extract_receipt_text(content)
     page_count = _pdf_page_count(content)
     compact = re.sub(r"\s+", " ", text)
     upper = compact.upper()
     marker_text = re.sub(r"[^A-Z0-9]", "", upper)
-    bpm_payment = (_parse_bpm_payment(text) or _parse_mooney_payment(text)
+    bpm_payment = (_parse_bpm_payment(text) or _parse_bonifico_eseguito(text, content) or _parse_mooney_payment(text)
                    or _parse_ader_attestazione(text))
     if bpm_payment:
         _attach_pdf_coordinates(content, bpm_payment)
@@ -827,7 +857,7 @@ def parse_receipt_pdf(content: bytes, filename: str | None = None) -> dict[str, 
         "codice_avviso": {"page_number": 1, "source_text": notice_code, "normalized_value": notice_code, "parser_version": PARSER_VERSION},
         "numero_verbale": {"page_number": 1, "source_text": verbale_match.group(1) if verbale_match else None, "normalized_value": verbale_match.group(1).upper().rstrip("-") if verbale_match else None, "parser_version": PARSER_VERSION},
         "targa": {"page_number": 1, "source_text": targa_match.group(1) if targa_match else None, "normalized_value": targa_match.group(1).upper() if targa_match else None, "parser_version": PARSER_VERSION},
-        "importo": {"page_number": 1, "source_text": amount_match.group(0) if amount_match else None, "normalized_value": amount, "parser_version": PARSER_VERSION},
+        "importo": {"page_number": 1, "source_text": bpm_payment.get("importo_source_text") or (amount_match.group(0) if amount_match else None), "normalized_value": amount, "parser_version": PARSER_VERSION},
         "data_scadenza": {"page_number": 1, "source_text": data_scadenza, "normalized_value": data_scadenza, "parser_version": PARSER_VERSION},
         "beneficiario": {"page_number": 1, "source_text": beneficiary, "normalized_value": beneficiary, "parser_version": PARSER_VERSION},
         "codice_cbill": {"page_number": 1, "source_text": cbill_candidates[0] if cbill_candidates else None, "normalized_value": cbill_candidates[0] if cbill_candidates else None, "parser_version": PARSER_VERSION},

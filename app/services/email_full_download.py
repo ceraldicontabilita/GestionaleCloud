@@ -2008,6 +2008,17 @@ async def scarica_posta_con_cursori(
         sender = parseaddr(email.message_from_bytes(headers).get("From", ""))[1].lower()
         allowed_psp = await downloader._load_mittenti_per_tipo("pagopa")
         allowed_psp |= await downloader._load_mittenti_per_tipo("ricevuta_pagopa")
+        if solo_storico and sender and not cartella_inviata:
+            header_message = email.message_from_bytes(headers)
+            header_subject = decode_mime_header(header_message.get("Subject", "")).upper()
+            nested_envelope = b'"MESSAGE" "RFC822"' in metadata.upper() or b'MESSAGE/RFC822' in metadata.upper()
+            certificate = header_subject.startswith(("CONSEGNA:", "ACCETTAZIONE:"))
+            trusted = await downloader._load_trusted_senders_generico()
+            from_header = decode_mime_header(header_message.get("From", "")).lower()
+            # Questi messaggi sarebbero comunque scartati dal writer. Le
+            # buste annidate e le ricevute PEC vengono invece lette per intero.
+            if not nested_envelope and not certificate and sender not in allowed_psp and not any(s in from_header for s in trusted):
+                return
         if not cartella_inviata and not _ha_allegati(metadata):
             # I messaggi del commercialista senza PDF (es. IVA luglio) non
             # devono essere scartati dal filtro degli allegati.
@@ -2202,12 +2213,12 @@ async def _lotto_recupero_storico_con_lease(db) -> Dict[str, Any]:
         try:
             from app.services.verbali_pagamento_finder import normalizza_attese_quietanza
             await normalizza_attese_quietanza(db)
-            if state.get("revisione_archivio_versione") != 2:
+            if state.get("revisione_archivio_versione") != 3:
                 from app.services.verbali_document_import import rivedi_verbali_archiviati
                 review = await rivedi_verbali_archiviati(db)
-                await db["sistema_stato"].update_one({"chiave": CHIAVE_RECUPERO_STORICO}, {"$set": {"revisione_archivio": review, "revisione_archivio_versione": 2}})
+                await db["sistema_stato"].update_one({"chiave": CHIAVE_RECUPERO_STORICO}, {"$set": {"revisione_archivio": review, "revisione_archivio_versione": 3}})
                 state["revisione_archivio"] = review
-                state["revisione_archivio_versione"] = 2
+                state["revisione_archivio_versione"] = 3
             scan = await scarica_posta_con_cursori(
                 db, data_inizio=state["richiesto_dal"], stato_chiave=CHIAVE_RECUPERO_STORICO,
                 solo_storico=True, tipi_ammessi=TIPI_RECUPERO_STORICO,

@@ -49,12 +49,18 @@ def _extract_text(content: bytes) -> str:
         pass
     # Gli avvisi PagoPA generati con structure tree non valido possono perdere
     # tutti i valori con pdfplumber pur restando PDF vettoriali leggibili.
-    if len(text.strip()) < 120:
+    compact_text = re.sub(r"\s+", " ", text)
+    merged_payment_terms = "entro5giorni" in re.sub(r"\s+", "", text).lower() and not re.search(r"entro\s+5\s+giorni", compact_text, re.I)
+    merged_event_date = bool(re.search(r"Indata\d{2}/\d{2}/\d{4}alleore", text, re.I))
+    if len(text.strip()) < 120 or merged_payment_terms or merged_event_date:
         try:
             import fitz
             with fitz.open(stream=content, filetype="pdf") as document:
                 fitz_text = "\n".join(page.get_text() or "" for page in document)
-            if len(fitz_text.strip()) > len(text.strip()):
+            if len(fitz_text.strip()) > len(text.strip()) or (
+                (merged_payment_terms or merged_event_date)
+                and re.search(r"entro\s+5\s+giorni|in\s+data\s+\d{2}/\d{2}/\d{4}\s+alle\s+ore", fitz_text, re.I)
+            ):
                 text = fitz_text
         except Exception:
             pass
@@ -611,6 +617,9 @@ async def process_verbale_document(
             "targa": targa,
             "importo": importo,
             "data_pagamento": data_pagamento,
+            "metodo_pagamento": pagopa_data.get("metodo_pagamento") or "PagoPA",
+            "commissione": pagopa_data.get("commission_amount"),
+            "totale_addebito": pagopa_data.get("bank_debit_total"),
             "source": source,
             "stato": "non_associata",
             "updated_at": now,
@@ -650,10 +659,10 @@ async def process_verbale_document(
             linked_verbale = candidate.get("id") or candidate.get("numero_verbale")
             applied = await applica_pagamento_a_verbale(db, linked_verbale, {
                 "fonte": "gmail" if source.startswith("email") else "drive_pagopa",
-                "psp": "PagoPA",
+                "psp": pagopa_data.get("psp") or "PagoPA",
                 "importo": importo,
                 "data_pagamento": data_pagamento,
-                "metodo_pagamento": "PagoPA",
+                "metodo_pagamento": pagopa_data.get("metodo_pagamento") or "PagoPA",
                 "ricevuta_pagopa_id": receipt_id,
                 "iuv_usato": iuv,
             })
