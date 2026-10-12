@@ -33,6 +33,17 @@ export default function usePreferitiAcquisti(fonte) {
     } finally { if (id === richiesta.current) setLoading(false); }
   }, [fonte]);
   useEffect(() => { carica(); return () => { richiesta.current++; }; }, [carica]);
+  useEffect(() => {
+    const aggiornaDaSync = event => {
+      if (event.detail?.fonte !== fonte || !Array.isArray(event.detail?.prodotti)) return;
+      richiesta.current++;
+      setProdotti(event.detail.prodotti);
+      setErrore("");
+      setLoading(false);
+    };
+    window.addEventListener("cataloghi-preferiti-sincronizzati", aggiornaDaSync);
+    return () => window.removeEventListener("cataloghi-preferiti-sincronizzati", aggiornaDaSync);
+  }, [fonte]);
   const chiave = useCallback(p => String(p?.codice_articolo || p?.codice || p?.id || "").trim().toLowerCase(), []);
   const isPreferito = useCallback(p => {
     const k = chiave(p?.raw || p);

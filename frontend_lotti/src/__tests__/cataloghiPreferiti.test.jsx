@@ -124,3 +124,17 @@ test.each(["mepa", "saima", "acquaviva"])("%s non usa più i preferiti delle qua
   expect([...node.querySelectorAll("button")].some(b => /preferito colazione/i.test(b.getAttribute("aria-label") || b.textContent))).toBe(false);
   expect(node.textContent).toContain("prodotti già acquistati dalle fatture");
 });
+
+test("il sync fatture aggiorna subito i prodotti del catalogo aperto", async () => {
+  const aggiornato = { ...p, id: "p2", nome: "Mandorle da fattura", codice_articolo: "GOUR076", prezzo_fattura: 10.1299 };
+  await act(async () => root.render(mepa()));
+  expect(node.textContent).toContain(p.nome);
+
+  await act(async () => window.dispatchEvent(new CustomEvent("cataloghi-preferiti-sincronizzati", {
+    detail: { fonte: "mepa", prodotti: [aggiornato] },
+  })));
+
+  expect(node.textContent).toContain("Mandorle da fattura");
+  expect(node.textContent).toContain("€ 10,13");
+  expect(node.textContent).not.toContain(p.nome);
+});
