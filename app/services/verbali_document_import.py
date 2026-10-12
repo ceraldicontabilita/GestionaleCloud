@@ -62,6 +62,10 @@ def _extract_text(content: bytes) -> str:
 
 
 def _extract_numero(text: str) -> Optional[str]:
+    # Nei preruoli il registro precede il vero numero: «Verbale 20210355244 - BB19140301282».
+    preruolo = re.search(r"\bVerbale\s+\d{8,20}\s*-\s*([A-Z]{1,3}\d{8,14})\b", text or "", re.I)
+    if preruolo:
+        return preruolo.group(1).upper()
     for pattern in _VERBALE_PATTERNS:
         for match in pattern.finditer(text or ""):
             value = match.group(1).strip(" .:-").upper()
@@ -508,6 +512,52 @@ async def process_verbale_document(
     """Conserva relazioni certe; senza numero/IUV lascia il PDF da rivedere."""
     letto = await leggi_documento_verbale(content, filename, parsed_metadata)
     sha256, text = letto["sha256"], letto["text"]
+    # Il modulo allegato non e' un nuovo verbale e non prova da solo l'invio.
+    heading = re.sub(r"\s+", " ", text[:700])
+    driver_form = re.search(
+        r"(?:modulo|dichiarazione|comunicazione)\s+(?:(?:dei|di|per|i)\s+)*"
+        r"(?:dati\s+(?:del\s+)?)?conducente", heading, re.I)
+    if driver_form and not re.search(r"verbale\s+di\s+accertamento", heading, re.I):
+        numbers = riferimenti_comunicazione_conducente(text)
+        await db["documents_inbox"].update_one({"id": document_id}, {"$set": {
+            "tipo_documento": "comunicazione_conducente",
+            "numeri_verbale_citati": numbers,
+            "comunicazione_stato": "documento_presente_invio_non_provato",
+            "prova_consegna_pec": False, "processed": False, "status": "da_verificare",
+        }})
+        return {"status": "comunicazione_da_verificare", "verbale_id": None}
+    # Documenti esplicitamente personali o di altro dominio non entrano nei
+    # verbali aziendali. Gli originali e gli eventuali record precedenti restano.
+    normalized = re.sub(r"\s+", " ", text)
+    foreign_reason = None
+    if re.search(r"bolletta\s+(?:luce|gas)|pignoramento\s+credito\s+presso\s+terzi", normalized, re.I):
+        foreign_reason = "documento_di_altro_dominio"
+    elif re.search(r"\bDW730ZF\b", normalized, re.I) or (
+        re.search(r"CERALDI\s+ANTONIETTA", normalized, re.I)
+        and not re.search(r"CERALDI\s+GROUP|04523831214", normalized, re.I)
+    ):
+        foreign_reason = "documento_personale_non_aziendale"
+    if foreign_reason:
+        previous = await db["verbali_noleggio"].find(
+            {"$or": [{"source_document_id": document_id}, {"document_ids": document_id}]}, {"_id": 0}).to_list(100)
+        for row in previous:
+            await db["verbali_noleggio"].update_one({"id": row["id"]}, {"$set": {
+                "stato": "quarantena", "quarantena_motivo": foreign_reason,
+                "stato_precedente_quarantena": row.get("stato_precedente_quarantena") or row.get("stato"),
+                "verbale_originale_acquisito": False,
+                "review_document_id": document_id, "review_sha256": sha256,
+            }})
+        await db["documents_inbox"].update_one({"id": document_id}, {"$set": {
+            "status": "da_revisionare", "escluso_da_verbali_aziendali": True,
+            "motivo_esclusione_verbali": foreign_reason, "source_sha256": sha256,
+        }})
+        return {"status": "escluso_verbali_aziendali", "reason": foreign_reason, "verbale_id": None}
+    if re.search(r"relazione\s+di\s+notificazione", normalized[:900], re.I):
+        await db["verbali_noleggio"].update_many(
+            {"source_document_id": document_id}, {"$set": {
+                "verbale_originale_acquisito": False, "stato_pratica": "DA_ACQUISIRE_VERBALE",
+            }})
+        return {"status": "relata_da_associare", "verbale_id": None}
     parsed_metadata, ai_data = letto["parsed_metadata"], letto["ai_data"]
     pagopa_data = letto["pagopa_data"]
     numero, iuv, targa = letto["numero"], letto["iuv"], letto["targa"]
@@ -533,12 +583,16 @@ async def process_verbale_document(
     }
 
     if is_receipt:
-        receipt_id = f"pagopa_{sha256[:32]}"
+        old_receipt = await db["ricevute_pagopa"].find_one({"$or": [
+            {"source_sha256": sha256}, {"pdf_hash": sha256}, {"file_hash": sha256},
+        ]}, {"_id": 0, "id": 1})
+        receipt_id = (old_receipt or {}).get("id") or f"pagopa_{sha256[:32]}"
         receipt = {
             "id": receipt_id,
             "source_document_id": document_id,
             "source_sha256": sha256,
             "filename": filename,
+            "pdf_data": base64.b64encode(content).decode("ascii"),
             "numero_verbale": numero,
             "iuv": iuv,
             "targa": targa,
@@ -627,6 +681,11 @@ async def process_verbale_document(
 
     identity = {"numero_verbale": numero} if numero else {"iuv": iuv}
     existing = await db["verbali_noleggio"].find_one(identity, {"_id": 0})
+    same_original = False
+    if not existing:
+        same_source = await db["verbali_noleggio"].find({"source_document_id": document_id}, {"_id": 0}).to_list(2)
+        if len(same_source) == 1:
+            existing, same_original = same_source[0], True
     verbale_id = str((existing or {}).get("id") or f"verbale_{hashlib.sha256(str(identity).encode()).hexdigest()[:32]}")
     violation_date = letto["data_violazione"]
     # Il driver e' quello all'ora dell'infrazione, se il PDF la dice.
@@ -715,6 +774,7 @@ async def process_verbale_document(
             key: value for key, value in values.items()
             if value not in (None, "") and (existing.get(key) in (None, "") or key in {
                 "source_document_id", "source_sha256", "updated_at",
+                *(("numero_verbale",) if same_original else ()),
                 *(('importo', 'importo_fonte', 'importo_conflitto_risolto') if importo_conflitto else ()),
             })
         }
@@ -766,3 +826,124 @@ async def process_verbale_document(
     )
     return {"status": "linked", "tipo": "verbale", "verbale_id": verbale_id,
             "ricevute_agganciate": ricevute_agganciate}
+
+
+def riferimenti_comunicazione_conducente(text: str) -> list[str]:
+    """Numeri citati nel contenuto: piu' riferimenti restano in verifica."""
+    values = set()
+    for pattern in _VERBALE_PATTERNS:
+        for match in pattern.finditer(text or ""):
+            numero = normalizza_numero_verbale(match.group(1))
+            if numero and any(c.isdigit() for c in numero) and not _DATA_GG_MM_AAAA_RE.match(numero):
+                values.add(numero)
+    return sorted(values)
+
+
+async def conserva_comunicazione_inviata(db, msg, raw: bytes, folder: str, *, email_user: str) -> bool:
+    """Originale della posta inviata: prova d'invio dalla casella, non di consegna PEC."""
+    from email.header import make_header, decode_header
+    from email.utils import parseaddr, parsedate_to_datetime
+    import html
+    if not re.search(r"sent|inviat", folder, re.I):
+        return False
+    sender = parseaddr(str(msg.get("From") or ""))[1].lower()
+    permitted = {email_user.strip().lower()}
+    if email_user.lower() == "ceraldigroupsrl@gmail.com":
+        permitted.add("ceraldigroupsrl@legalmail.it")
+    if sender not in permitted:
+        return False
+    subject = str(make_header(decode_header(str(msg.get("Subject") or ""))))
+    parts = []
+    for part in msg.walk():
+        if part.get_content_type() in {"text/plain", "text/html"} and part.get_content_disposition() != "attachment":
+            content = part.get_payload(decode=True) or b""
+            parts.append(content.decode(part.get_content_charset() or "utf-8", errors="replace"))
+    text = html.unescape(re.sub(r"<[^>]+>", " ", "\n".join(parts)))
+    combined = re.sub(r"\s+", " ", subject + " " + text)
+    if not re.search(r"(?:dati.{0,40}conducente|comunicazione.{0,80}conducente|126\s*[- ]?bis)", combined, re.I):
+        return False
+    numbers = riferimenti_comunicazione_conducente(combined)
+    if not numbers:
+        return False
+    message_id = str(msg.get("Message-ID") or "").strip()
+    digest = hashlib.sha256(raw).hexdigest()
+    identity = message_id or digest
+    doc_id = "comunicazione_" + hashlib.sha256(identity.encode()).hexdigest()[:32]
+    if await db["documents_inbox"].find_one({"id": doc_id}, {"id": 1}):
+        return False
+    try:
+        sent_at = parsedate_to_datetime(str(msg.get("Date") or "")).isoformat()
+    except (TypeError, ValueError):
+        sent_at = None
+    document = {
+        "id": doc_id, "filename": doc_id + ".eml", "mime_type": "message/rfc822",
+        "pdf_data": base64.b64encode(raw).decode("ascii"), "file_hash": digest,
+        "tipo_documento": "comunicazione_conducente", "category": "comunicazione_conducente",
+        "email_message_id": message_id or None, "email_from": sender,
+        "email_to": str(msg.get("To") or ""), "email_subject": subject,
+        "email_date": sent_at, "cartella_email": folder,
+        "numeri_verbale_citati": numbers,
+        "comunicazione_stato": "inviata_da_casella" if sent_at and message_id else "invio_da_verificare",
+        "prova_consegna_pec": False,
+        "status": "da_verificare", "processed": False,
+        "source": "gmail_posta_inviata", "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    await db["documents_inbox"].update_one({"id": doc_id}, {"$setOnInsert": document}, upsert=True)
+    return True
+
+
+async def associa_comunicazioni_conducente(db) -> dict:
+    """Un solo riferimento sul verbale; nessuna attribuzione del conducente o invio nuovo."""
+    result = {"controllate": 0, "associate": 0, "da_verificare": 0}
+    docs = await db["documents_inbox"].find(
+        {"tipo_documento": "comunicazione_conducente"}, {"_id": 0, "pdf_data": 0}).to_list(5000)
+    for doc in docs:
+        result["controllate"] += 1
+        numbers = doc.get("numeri_verbale_citati") or []
+        candidates = []
+        if len(numbers) == 1:
+            candidates = await db["verbali_noleggio"].find(
+                {"numero_verbale": numbers[0]}, {"_id": 0, "id": 1, "stato": 1}).to_list(10)
+            candidates = [v for v in candidates if v.get("id") and v.get("stato") != "quarantena"]
+        if len(candidates) != 1:
+            result["da_verificare"] += 1
+            continue
+        verbale_id = candidates[0]["id"]
+        await db["verbali_noleggio"].update_one(
+            {"id": verbale_id}, {"$addToSet": {"comunicazioni_conducente_ids": doc["id"]}})
+        await db["documents_inbox"].update_one({"id": doc["id"]}, {"$set": {
+            "verbale_id": verbale_id, "documento_associato_id": verbale_id,
+            "documento_associato_collection": "verbali_noleggio", "associato": True,
+            "processed": True, "status": "processato",
+        }})
+        result["associate"] += 1
+    return result
+
+
+async def rivedi_verbali_archiviati(db) -> dict:
+    """Rilettura esplicita degli originali; gli esiti incerti restano da revisionare."""
+    from app.services.verbali_pdf_service import collect_verbale_pdfs
+    result = {"controllati": 0, "senza_originale": 0, "esclusi": 0, "errori": 0}
+    rows = await db["verbali_noleggio"].find({"stato": {"$ne": "quarantena"}}, {"_id": 0, "pdf_data": 0}).to_list(5000)
+    for row in rows:
+        try:
+            # La vista canonica ricostruisce il payload solo per questo ID.
+            full = await db["verbali_noleggio"].find_one({"id": row["id"]}, {"_id": 0})
+            documents = await collect_verbale_pdfs(db, full or row, include_content=True)
+            original_id = row.get("source_document_id")
+            original = next((d for d in documents if d.get("document_id") == original_id and d.get("content_base64")), None)
+            if not original:
+                original = next((d for d in documents if d.get("source") == "verbale_legacy" and d.get("content_base64")), None)
+            if not original:
+                result["senza_originale"] += 1
+                continue
+            outcome = await process_verbale_document(
+                db, document_id=original_id or row["id"],
+                content=base64.b64decode(original["content_base64"]),
+                filename=original["filename"], source="revisione_originale_archiviato",
+            )
+            result["controllati"] += 1
+            result["esclusi"] += int(outcome.get("status") == "escluso_verbali_aziendali")
+        except Exception:
+            result["errori"] += 1
+    return result

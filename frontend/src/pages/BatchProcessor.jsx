@@ -279,6 +279,36 @@ export default function BatchProcessor() {
   });
   const [progress, setProgress] = useState(0);
 
+  const [historicalFrom, setHistoricalFrom] = useState('2003-01-01');
+  const [historical, setHistorical] = useState(null);
+  const [historicalError, setHistoricalError] = useState('');
+  const [historicalStarting, setHistoricalStarting] = useState(false);
+  useEffect(() => {
+    let live = true;
+    const read = async () => {
+      try {
+        const { data } = await api.get('/api/email-download/status');
+        if (live) setHistorical(data.historical || null);
+      } catch (error) {
+        if (live) setHistoricalError(error.response?.data?.detail || error.message);
+      }
+    };
+    read();
+    const timer = setInterval(read, 5000);
+    return () => { live = false; clearInterval(timer); };
+  }, []);
+  const startHistorical = async () => {
+    setHistoricalStarting(true);
+    setHistoricalError('');
+    try {
+      await api.post(`/api/email-download/start-full-download?data_inizio=${encodeURIComponent(historicalFrom)}`);
+      const { data } = await api.get('/api/email-download/status');
+      setHistorical(data.historical);
+    } catch (error) {
+      setHistoricalError(error.response?.data?.detail || error.message);
+    } finally { setHistoricalStarting(false); }
+  };
+
   const hasRunRef = useRef(false);
   const logContainerRef = useRef(null);
 
@@ -506,6 +536,24 @@ export default function BatchProcessor() {
       subtitle="Sincronizzazione automatica email, fatture, F24 e documenti"
     >
       <div style={styles.container}>
+        <Card title="Recupero storico della posta" icon={<Mail size={20} />}>
+          <p>Verbali, quietanze, modelli F24 con codici tributo e comunicazioni dei dati del conducente dalla posta inviata. Il recupero riprende dall'ultimo messaggio controllato e conserva gli originali.</p>
+          <p>La configurazione periodica dei giorni indietro resta invariata. Le associazioni ambigue richiedono verifica; nessuna trattenuta viene applicata.</p>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+            <label>Dal <input aria-label="Data iniziale recupero posta" type="date" value={historicalFrom}
+              onChange={e => setHistoricalFrom(e.target.value)} disabled={historical?.in_progress} /></label>
+            <Button onClick={startHistorical} disabled={historicalStarting || historical?.in_progress || !historicalFrom}>
+              {historical?.in_progress ? 'Recupero in corso' : 'Avvia recupero storico'}
+            </Button>
+          </div>
+          {historical && <div role="status" style={{ marginTop: 12 }}>
+            Stato: {historical.stato || 'non avviato'} · Dal: {historical.richiesto_dal || '—'} · Lotti: {historical.lotti || 0}
+            <br />Messaggi controllati: {historical.totali?.controllati || 0} · Originali salvati: {historical.totali?.pdf_salvati || 0} · Comunicazioni salvate: {historical.totali?.comunicazioni_salvate || 0}
+            {historical.error && <p role="alert">{historical.error}</p>}
+          </div>}
+          {historicalError && <p role="alert">{String(historicalError)}</p>}
+        </Card>
+
         {/* Header con controlli */}
         <div style={styles.header}>
           <div />
