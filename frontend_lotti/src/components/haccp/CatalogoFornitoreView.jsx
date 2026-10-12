@@ -375,7 +375,7 @@ const CardCategoria = ({ cat, onClick, colore }) => {
 // Card prodotto — clic apre il modal dettaglio. Solo l'indispensabile: la card e'
 // CardCatalogo, la stessa di tutti i cataloghi; codice, descrizione, prezzo netto
 // da scrivere e scheda tecnica stanno nel dettaglio.
-const CardProdotto = ({ prodotto, colore, onDettaglio, giaNelDizionario, onCarrello, inCart, preferitoColazione, onTogglePreferito, onToggleRicette }) => {
+const CardProdotto = ({ prodotto, colore, onDettaglio, giaNelDizionario, onCarrello, inCart, onToggleRicette }) => {
   const prezzo = prezzoProdotto(prodotto);
   return (
     <CardCatalogo
@@ -388,17 +388,15 @@ const CardProdotto = ({ prodotto, colore, onDettaglio, giaNelDizionario, onCarre
       inCart={inCart}
       ricettaDisponibile={!prodotto.da_fattura_senza_catalogo}
       inRicette={giaNelDizionario}
-      preferito={preferitoColazione}
       onApri={() => onDettaglio(prodotto)}
       onCarrello={() => onCarrello(prodotto)}
       onRicetta={prodotto.da_fattura_senza_catalogo ? undefined : () => onToggleRicette(prodotto, giaNelDizionario)}
-      onPreferito={() => onTogglePreferito(prodotto)}
     />
   );
 };
 
 // Riga prodotto (vista lista) — clic apre modal
-const RigaProdotto = ({ prodotto, colore, fornitore, onDettaglio, giaNelDizionario, onCarrello, inCart, preferitoColazione, onTogglePreferito, onToggleRicette, onPrezzoSalvato }) => {
+const RigaProdotto = ({ prodotto, colore, fornitore, onDettaglio, giaNelDizionario, onCarrello, inCart, onToggleRicette, onPrezzoSalvato }) => {
   const [imgErr, setImgErr] = useState(false);
   const imgUrl = prodotto.immagine_url || "";
 
@@ -434,13 +432,6 @@ const RigaProdotto = ({ prodotto, colore, fornitore, onDettaglio, giaNelDizionar
         {(prezzoProdotto(prodotto) > 0) && (
           <span className="text-xs font-bold text-gray-600">€{prezzoProdotto(prodotto).toFixed(2)}</span>
         )}
-        <button
-          onClick={(e) => { e.stopPropagation(); onTogglePreferito(prodotto); }}
-          title={preferitoColazione ? "Preferito colazione — tocca per togliere" : "Segna come preferito colazione"}
-          className={`px-1.5 py-1 rounded-lg text-xs ${preferitoColazione ? "text-amber-500" : "text-gray-300 hover:text-amber-400"}`}
-        >
-          {preferitoColazione ? "★" : "☆"}
-        </button>
         <button
           data-testid={`cart-btn-lista-${prodotto.id || prodotto.nome?.slice(0,10)}`}
           onClick={(e) => { e.stopPropagation(); onCarrello(prodotto); }}
@@ -491,10 +482,6 @@ export const CatalogoFornitoreView = ({ fornitore, nome, logoUrl }) => {
   const { aggiungi: aggiungiCarrello, isInCart } = useCart(nome);
   const [dizionarioIds, setDizionarioIds] = useState(new Set());
   const [prodottoSelezionato, setProdottoSelezionato] = useState(null);
-  // Preferiti colazione (richiesta Enzo 03/07/2026, "l'asterisco ovunque"):
-  // stessa stella/meccanismo già costruito per Acquaviva/ricette — marca un
-  // prodotto Saima/MePA come da inserire SEMPRE in tutte e 4 le stagioni.
-  const [preferitiColazione, setPreferitiColazione] = useState(new Set());
   const autoAvvioTentato = useRef(false);
 
   /** Wrapper: aggiorna stato + URL */
@@ -569,19 +556,11 @@ export const CatalogoFornitoreView = ({ fornitore, nome, logoUrl }) => {
     } catch {}
   }, [fornitore]);
 
-  const caricaPreferitiColazione = useCallback(async () => {
-    try {
-      const r = await axios.get(`${API}/colazione-acquaviva/preferiti`);
-      setPreferitiColazione(new Set(r.data || []));
-    } catch {}
-  }, []);
-
   useEffect(() => {
     caricaCategorie();
     caricaStato();
     caricaDizionario();
-    caricaPreferitiColazione();
-  }, [caricaCategorie, caricaStato, caricaDizionario, caricaPreferitiColazione]);
+  }, [caricaCategorie, caricaStato, caricaDizionario]);
 
   // Se il DB e' nuovo, l'amministratore non deve prima trovare e premere un
   // pulsante: avvia una sola volta il popolamento. Durante lo scraping vengono
@@ -606,35 +585,6 @@ export const CatalogoFornitoreView = ({ fornitore, nome, logoUrl }) => {
     }, 7000);
     return () => window.clearInterval(timer);
   }, [statoScraping?.stato, caricaStato, caricaCategorie]);
-
-  const togglePreferitoColazione = async (prodotto) => {
-    const eraPreferito = preferitiColazione.has(prodotto.id);
-    setPreferitiColazione(prev => {
-      const s = new Set(prev);
-      eraPreferito ? s.delete(prodotto.id) : s.add(prodotto.id);
-      return s;
-    });
-    try {
-      const res = await axios.post(`${API}/colazione-acquaviva/preferito`, {
-        prodotto_id: prodotto.id,
-        prodotto_nome: prodotto.nome_display || prodotto.nome,
-        foto_url: prodotto.immagine_url || null,
-        categoria: prodotto.categoria || null,
-        prezzo_vendita: prezzoProdotto(prodotto),
-        fonte: prodotto.fonte || fornitore,
-      });
-      toast.success(res.data.preferito
-        ? `⭐ ${prodotto.nome_display || prodotto.nome} aggiunto a tutte e 4 le stagioni`
-        : `${prodotto.nome_display || prodotto.nome} tolto dai preferiti`);
-    } catch (e) {
-      toast.error("Errore preferiti colazione");
-      setPreferitiColazione(prev => {
-        const s = new Set(prev);
-        eraPreferito ? s.add(prodotto.id) : s.delete(prodotto.id);
-        return s;
-      });
-    }
-  };
 
   useEffect(() => {
     if (soloPreferiti || (!search && !categoriaAttiva)) {
@@ -788,7 +738,7 @@ export const CatalogoFornitoreView = ({ fornitore, nome, logoUrl }) => {
           </button>
         )}
         <RicercaCatalogo value={search} onChange={setSearch}
-          placeholder={`Cerca in ${soloPreferiti ? "preferiti" : categoriaAttiva || "tutto il catalogo"}...`} />
+          placeholder={`Cerca in ${soloPreferiti ? "prodotti acquistati" : categoriaAttiva || "tutto il catalogo"}...`} />
         <div className="flex gap-1 bg-gray-100 rounded-xl p-1">
           <button onClick={() => setVistaGriglia(true)} className={`p-1.5 rounded-lg ${vistaGriglia ? "bg-white shadow-sm" : "text-gray-400"}`}><LayoutGrid size={14} /></button>
           <button onClick={() => setVistaGriglia(false)} className={`p-1.5 rounded-lg ${!vistaGriglia ? "bg-white shadow-sm" : "text-gray-400"}`}><List size={14} /></button>
@@ -845,8 +795,6 @@ export const CatalogoFornitoreView = ({ fornitore, nome, logoUrl }) => {
                   giaNelDizionario={dizionarioIds.has(p.id)}
                   onCarrello={aggiungiCarrello}
                   inCart={isInCart(p.id || `ext_${(p.nome||"").toLowerCase().replace(/\s+/g,"_").slice(0,40)}`)}
-                  preferitoColazione={preferitiColazione.has(p.id)}
-                  onTogglePreferito={togglePreferitoColazione}
                   onToggleRicette={handleToggleRicette} />
               ))}
             </div>
@@ -858,8 +806,6 @@ export const CatalogoFornitoreView = ({ fornitore, nome, logoUrl }) => {
                   giaNelDizionario={dizionarioIds.has(p.id)}
                   onCarrello={aggiungiCarrello}
                   inCart={isInCart(p.id || `ext_${(p.nome||"").toLowerCase().replace(/\s+/g,"_").slice(0,40)}`)}
-                  preferitoColazione={preferitiColazione.has(p.id)}
-                  onTogglePreferito={togglePreferitoColazione}
                   onToggleRicette={handleToggleRicette}
                   onPrezzoSalvato={(dati) => {
                     const aggiornato = { ...p, ...dati };

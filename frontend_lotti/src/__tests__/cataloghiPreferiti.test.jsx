@@ -20,6 +20,7 @@ async function digita(value) {
 }
 async function clock(ms) { await act(async () => jest.advanceTimersByTime(ms)); }
 const mepa = () => <CatalogoFornitoreView fornitore="mepa" nome="Me.Pa" colore="mepa" />;
+const catalogoFornitore = sourceKey => <CatalogoFornitoreView fornitore={sourceKey} nome={sourceKey} />;
 
 beforeEach(() => {
   jest.useFakeTimers(); sessionStorage.clear(); localStorage.clear();
@@ -41,7 +42,9 @@ afterEach(async () => { await act(async () => root.unmount()); node.remove(); je
 test("scraping e tastiera non cancellano ricerca o carrello; ripristino dopo cambio pagina", async () => {
   localStorage.setItem("ordini_smart_carrello", JSON.stringify([{ id: "ordine", nome: "Riga in corso", quantita: 2 }]));
   await act(async () => root.render(mepa()));
-  expect(button("Preferiti (1)").getAttribute("aria-pressed")).toBe("true");
+  expect(button("Acquistati prima (1)").getAttribute("aria-pressed")).toBe("true");
+  expect(node.textContent).not.toContain("Preferito colazione");
+  expect(node.textContent).not.toContain("Segna come preferito colazione");
   await digita("mozzarella"); await clock(15000);
   expect(input().value).toBe("mozzarella"); expect(document.activeElement).toBe(input());
   expect(node.textContent).toContain(p.nome);
@@ -76,9 +79,11 @@ test.each(["bindi", "tremarie", "fornitore-personalizzato"])("%s usa i preferiti
   await act(async () => root.render(<CatalogoGenericoView sourceKey={sourceKey} titolo={sourceKey} fetchUrl="/tutti" mapItem={mapItem} />));
   expect(axios.get).toHaveBeenCalledWith(expect.stringContaining(`/cataloghi/preferiti/${sourceKey}`));
   expect(node.textContent).toContain(p.nome); expect(node.textContent).not.toContain("Articolo mai acquistato");
+  expect(node.textContent).not.toContain("Preferito colazione");
+  expect(node.textContent).not.toContain("Segna come preferito colazione");
   await act(async () => button("Tutto il catalogo").click());
   expect(node.textContent).toContain("Articolo mai acquistato");
-  await act(async () => button("Preferiti").click()); await digita("mozzarella");
+  await act(async () => button("Acquistati prima").click()); await digita("mozzarella");
   await act(async () => input().dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })));
   expect(document.activeElement).not.toBe(input()); expect(node.textContent).toContain(p.nome);
 });
@@ -89,4 +94,11 @@ test("articolo originale fattura è ordinabile anche quando manca dal catalogo",
     ? Promise.resolve({ data: { prodotti: [{ ...p, id: "acquisto_1", da_fattura_senza_catalogo: true }] } }) : standard(url, cfg));
   await act(async () => root.render(mepa()));
   expect(button("Acquista")).toBeTruthy(); expect(button("Al ricettario")).toBeUndefined();
+});
+
+test.each(["mepa", "saima", "acquaviva"])("%s non usa più i preferiti delle quattro stagioni", async sourceKey => {
+  await act(async () => root.render(catalogoFornitore(sourceKey)));
+  expect(axios.get).not.toHaveBeenCalledWith(expect.stringContaining("colazione-acquaviva/preferiti"));
+  expect([...node.querySelectorAll("button")].some(b => /preferito colazione/i.test(b.getAttribute("aria-label") || b.textContent))).toBe(false);
+  expect(node.textContent).toContain("I prodotti già acquistati compaiono subito");
 });
