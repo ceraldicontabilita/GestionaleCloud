@@ -14,6 +14,7 @@ import pytest
 
 from app.db_collections import COLL_QUIETANZE_F24
 from app.routers import documenti
+from app.routers import fiscal_control
 from app.services import dilazioni_inps as di
 from app.services.archivio_documenti_memoria import ClientArchivioMemoria
 from app.services.mittenti import BUILTIN_MITTENTI
@@ -102,6 +103,25 @@ nella "SEZIONE INPS", i seguenti dati:
 indicando,
 """
 
+ISTANZA_2012 = """
+ISTANZA E ATTO DI IMPEGNO PER IL PAGAMENTO DILAZIONATO DI CONTRIBUTI IN FASE AMMINISTRATIVA
+Protocollo domanda: INPS.5100.21/11/2012.0258155
+MATRICOLA: 5124776507
+CHIEDE che gli sia concesso di pagare la somma di euro 14.267,00 mediante versamento in rate mensili
+eguali e consecutive: RATE DA 2 A 24: 24
+DI VOLERE CHIEDERE LA RATEAZIONE PER I SEGUENTI PERIODI:
+Numero Inadempienza Periodo (mm/aaaa) Importo dovuto contributi euro Importo dovuto sanzioni euro
+572 05/2012 1.484,00 0,00
+573 06/2012 2.244,00 0,00
+574 07/2012 3.419,00 0,00
+575 08/2012 2.346,00 0,00
+09/2012 1.961,00 0,00
+10/2012 1.563,00 0,00
+04/2012 800,00 0,00
+03/2012 450,00 0,00
+Totale da dilazionare Euro 14.267,00 Totale da dilazionare Euro 0,00
+"""
+
 
 def _run(coroutine):
     loop = asyncio.new_event_loop()
@@ -151,9 +171,72 @@ def test_riconosce_e_legge_il_piano_vero():
     assert PIANO["mancanti"] == []
 
 
+def test_l_istanza_2012_non_diventa_un_accoglimento_o_un_pagamento():
+    assert di.riconosci_istanza(ISTANZA_2012)
+    assert not di.riconosci(ISTANZA_2012)
+    istanza = di.leggi_istanza(ISTANZA_2012)
+    assert (istanza["rif"], istanza["matricola"], istanza["data_domanda"]) == (
+        "INPS.5100.21/11/2012.0258155", "5124776507", "2012-11-21")
+    assert (istanza["periodo_da"], istanza["periodo_a"]) == ("03/2012", "10/2012")
+    assert [r["periodo"] for r in istanza["periodi"]] == [
+        "03/2012", "04/2012", "05/2012", "06/2012", "07/2012", "08/2012", "09/2012", "10/2012"]
+    assert istanza["totale_richiesto_cents"] == istanza["somma_periodi_cents"] == 1_426_700
+    assert istanza["quadra"] and istanza["mancanti"] == []
+
+
+def test_l_istanza_resta_da_verificare_finche_non_arriva_l_accoglimento():
+    db = ClientArchivioMemoria()["istanza-inps-2012"]
+    istanza = di.leggi_istanza(ISTANZA_2012)
+    iid = _run(di.deposita_istanza(db, istanza, documento_id="doc-i", filename="istanza.pdf", sha256="sha"))
+    salvata = _run(db[di.COLL_ISTANZE_DILAZIONI_INPS].find_one({"id": iid}))
+    assert salvata["stato_richiesta"] == "PRESENTATA_DA_VERIFICARE"
+    assert salvata.get("dilazione_id") is None
+
+
+def test_la_situazione_fiscale_espone_i_periodi_senza_dichiararli_pagati(monkeypatch):
+    db = ClientArchivioMemoria()["situazione-fiscale-istanza-inps-2012"]
+    istanza = di.leggi_istanza(ISTANZA_2012)
+    _run(di.deposita_istanza(db, istanza, documento_id="doc-i", filename="istanza.pdf", sha256="sha"))
+    monkeypatch.setattr(fiscal_control.Database, "get_db", classmethod(lambda _cls: db))
+    payload = _run(fiscal_control.dilazioni_inps(_admin={}))
+    assert payload["total"] == 1
+    assert payload["items"][0]["stato_richiesta"] == "PRESENTATA_DA_VERIFICARE"
+    assert payload["items"][0]["periodi"][0]["periodo"] == "03/2012"
+    assert "pagamento" in payload["regola"]
+
+
+def test_l_accoglimento_si_collega_solo_con_coordinate_documentali_esatte():
+    db = ClientArchivioMemoria()["istanza-inps-collegamento"]
+    istanza = di.leggi_istanza(ISTANZA_2012)
+    iid = _run(di.deposita_istanza(db, istanza, documento_id="doc-i", filename="istanza.pdf", sha256="sha"))
+    _run(db[di.COLL_DILAZIONI_INPS].insert_one({
+        "id": "dilazione-inps-2012", "rif": "INPS.5100.ACCOLTA",
+        "matricola": "5124776507", "data_domanda": "2012-11-21", "data_delibera": "2012-12-01",
+        "periodo_da": "03/2012", "periodo_a": "10/2012", "piano": [],
+    }))
+    _run(di.collega_istanze(db))
+    salvata = _run(db[di.COLL_ISTANZE_DILAZIONI_INPS].find_one({"id": iid}))
+    assert (salvata["stato_richiesta"], salvata["dilazione_id"]) == ("ACCOLTA", "dilazione-inps-2012")
+
+    _run(db[di.COLL_DILAZIONI_INPS].insert_one({
+        "id": "piano-ambiguo", "matricola": "5124776507", "data_domanda": "2012-11-21",
+        "data_delibera": "2012-12-02", "periodo_da": "03/2012", "periodo_a": "10/2012", "piano": [],
+    }))
+    _run(di.collega_istanze(db))
+    ambigua = _run(db[di.COLL_ISTANZE_DILAZIONI_INPS].find_one({"id": iid}))
+    assert ambigua["stato_richiesta"] == "PRESENTATA_DA_VERIFICARE"
+    assert ambigua["dilazione_id"] is None
+    assert len(ambigua["candidati_accoglimento"]) == 2
+
+
 def test_l_import_lo_classifica_come_dilazione_non_come_f24(monkeypatch):
     monkeypatch.setattr(documenti, "_pdf_text_for_detection", lambda *_a, **_k: TESTO.upper())
     assert documenti.detect_document_type("_5124776507_24-02-2026.pdf", b"%PDF-1.4 finto") == di.TIPO
+
+
+def test_l_import_classifica_l_istanza_senza_chiamarla_piano(monkeypatch):
+    monkeypatch.setattr(documenti, "_pdf_text_for_detection", lambda *_a, **_k: ISTANZA_2012.upper())
+    assert documenti.detect_document_type("DichiarazioneDilazioni.pdf", b"%PDF-1.4 finto") == di.TIPO_ISTANZA
 
 
 def test_una_lettera_senza_piano_non_e_una_dilazione():

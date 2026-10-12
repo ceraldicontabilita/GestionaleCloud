@@ -238,6 +238,59 @@ async def f24_rows(
     }
 
 
+@router.get("/dilazioni-inps")
+async def dilazioni_inps(_admin: Dict[str, Any] = Depends(get_current_admin_user)):
+    """Domande e piani INPS, con stati documentali che non inventano pagamenti."""
+    from app.services.dilazioni_inps import (
+        COLL_DILAZIONI_INPS, COLL_ISTANZE_DILAZIONI_INPS,
+    )
+
+    db = Database.get_db()
+    istanze, piani = await asyncio.gather(
+        db[COLL_ISTANZE_DILAZIONI_INPS].find({}, {"_id": 0}).sort("data_domanda", -1).to_list(2000),
+        db[COLL_DILAZIONI_INPS].find({}, {"_id": 0}).sort("data_delibera", -1).to_list(2000),
+    )
+    piani_per_id = {p.get("id"): p for p in piani}
+    items = []
+    for istanza in istanze:
+        piano = piani_per_id.get(istanza.get("dilazione_id"))
+        items.append({
+            "id": istanza.get("id"), "tipo": "ISTANZA", "rif": istanza.get("rif"),
+            "data_domanda": istanza.get("data_domanda"), "matricola": istanza.get("matricola"),
+            "periodo_da": istanza.get("periodo_da"), "periodo_a": istanza.get("periodo_a"),
+            "periodi": istanza.get("periodi") or [],
+            "totale_richiesto_cents": istanza.get("totale_richiesto_cents"),
+            "rate_min": istanza.get("rate_min"), "rate_max": istanza.get("rate_max"),
+            "stato_richiesta": istanza.get("stato_richiesta") or "PRESENTATA_DA_VERIFICARE",
+            "documento_id": istanza.get("documento_id"), "filename": istanza.get("filename"),
+            "dilazione_id": istanza.get("dilazione_id"),
+            "data_accoglimento": piano.get("data_delibera") if piano else None,
+            "stato_piano": piano.get("stato") if piano else None,
+            "rate": (piano.get("rate") or piano.get("piano") or []) if piano else [],
+            "residuo_cents": piano.get("residuo_cents") if piano else None,
+        })
+    # Un accoglimento privo della domanda originale resta visibile, ma non la ricostruisce.
+    collegati = {i.get("dilazione_id") for i in istanze if i.get("dilazione_id")}
+    for piano in piani:
+        if piano.get("id") in collegati:
+            continue
+        items.append({
+            "id": piano.get("id"), "tipo": "PIANO_SENZA_ISTANZA", "rif": piano.get("rif"),
+            "data_accoglimento": piano.get("data_delibera"), "matricola": piano.get("matricola"),
+            "periodo_da": piano.get("periodo_da"), "periodo_a": piano.get("periodo_a"),
+            "stato_richiesta": "ACCOLTA_ISTANZA_ORIGINALE_NON_TROVATA",
+            "stato_piano": piano.get("stato"), "rate": piano.get("rate") or piano.get("piano") or [],
+            "residuo_cents": piano.get("residuo_cents"),
+            "documento_id": piano.get("documento_id"), "filename": piano.get("filename"),
+        })
+    items.sort(key=lambda row: (row.get("data_domanda") or row.get("data_accoglimento") or "", row.get("id") or ""), reverse=True)
+    return {
+        "items": items, "total": len(items),
+        "sources": {"istanze_dilazioni_inps": len(istanze), "dilazioni_inps": len(piani)},
+        "regola": "L'istanza non prova l'accoglimento; il piano non prova il pagamento; ogni rata richiede la sua quietanza.",
+    }
+
+
 @router.get("/declarations")
 async def declarations(
     year: int | None = Query(None, ge=2000, le=2100),

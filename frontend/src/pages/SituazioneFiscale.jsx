@@ -15,10 +15,12 @@ import DeclarationDossier from '../components/DeclarationDossier';
 const PianoTributi = lazy(() => import('./PianoTributi'));
 const Tributi = lazy(() => import('./Tributi'));
 const Ritenute = lazy(() => import('./Ritenute'));
+const DilazioniInps = lazy(() => import('./DilazioniInps'));
 const SCHEDE_INCORPORATE = [
   ['piano', 'Piano tributi', PianoTributi],
   ['tributi-per-codice', 'Tributi', Tributi],
   ['ritenute', 'Ritenute', Ritenute],
+  ['dilazioni-inps', 'Dilazioni INPS', DilazioniInps],
 ];
 
 const TABS = [
