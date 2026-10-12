@@ -275,25 +275,26 @@ def test_storico_che_non_copre_la_data_non_propone_il_driver_di_oggi():
 
 
 def test_ricevuta_pagopa_non_si_associa_se_importo_non_coincide(monkeypatch):
-    db = _Db()
-    db["documents_inbox"].docs = [{"id": "doc-r"}]
-    db["verbali_noleggio"].docs = [{
+    import fitz
+
+    db = ClientArchivioMemoria()["receipt-mismatch"]
+    _run(db["documents_inbox"].insert_one({"id": "doc-r"}))
+    _run(db["verbali_noleggio"].insert_one({
         "id": "verb-1", "numero_verbale": "A25111540620", "importo": 120.51
-    }]
-    monkeypatch.setattr(
-        mod,
-        "_extract_text",
-        lambda _content: (
-            "Ricevuta di pagamento Verbale numero A25111540620 "
-            "Codice Avviso 012345678901234567 Totale 120,50 Data pagamento 05/08/2026"
-        ),
-    )
+    }))
+    with fitz.open() as pdf:
+        pdf.new_page().insert_text((40, 50),
+            "ATTESTAZIONE DI PAGAMENTO - Pagamento eseguito\n"
+            "Verbale N. A25111540620\nCodice Avviso 012345678901234567\n"
+            "Totale 120,50\nData pagamento 05/08/2026\n"
+            "Ente creditore: Comune di Prova - Servizio sanzioni amministrative")
+        content = pdf.tobytes()
 
     result = _run(mod.process_verbale_document(
-        db, document_id="doc-r", content=b"receipt", filename="ricevuta_pagopa.pdf"
+        db, document_id="doc-r", content=content, filename="ricevuta_pagopa.pdf"
     ))
 
     assert result["status"] == "review"
     assert result["verbale_id"] is None
-    assert db["ricevute_pagopa"].docs[0]["stato"] == "non_associata"
-    assert db["documents_inbox"].docs[0]["processed"] is False
+    assert _run(db["ricevute_pagopa"].find_one({}))["stato"] == "non_associata"
+    assert _run(db["documents_inbox"].find_one({"id": "doc-r"}))["processed"] is False

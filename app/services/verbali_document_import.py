@@ -602,85 +602,22 @@ async def process_verbale_document(
     }
 
     if is_receipt:
-        old_receipt = await db["ricevute_pagopa"].find_one({"$or": [
-            {"source_sha256": sha256}, {"pdf_hash": sha256}, {"file_hash": sha256},
-        ]}, {"_id": 0, "id": 1})
-        receipt_id = (old_receipt or {}).get("id") or f"pagopa_{sha256[:32]}"
-        receipt = {
-            "id": receipt_id,
-            "source_document_id": document_id,
-            "source_sha256": sha256,
-            "filename": filename,
-            "pdf_data": base64.b64encode(content).decode("ascii"),
-            "numero_verbale": numero,
-            "iuv": iuv,
-            "targa": targa,
-            "importo": importo,
-            "data_pagamento": data_pagamento,
-            "metodo_pagamento": pagopa_data.get("metodo_pagamento") or "PagoPA",
-            "commissione": pagopa_data.get("commission_amount"),
-            "totale_addebito": pagopa_data.get("bank_debit_total"),
-            "source": source,
-            "stato": "non_associata",
-            "updated_at": now,
-        }
-        await db["ricevute_pagopa"].update_one(
-            {"id": receipt_id},
-            {"$set": receipt, "$setOnInsert": {"created_at": now}},
-            upsert=True,
-        )
-        candidates = []
-        riferiti = []
-        references = []
-        if numero:
-            references.append({"numero_verbale": numero})
-        if iuv:
-            references.append({"iuv": iuv})
-        if references and importo:
-            riferiti = await db["verbali_noleggio"].find(
-                {"$or": references}, {"_id": 0}
-            ).limit(20).to_list(20)
-            candidates = [
-                item for item in riferiti
-                if item.get("stato") != "quarantena" and amounts_equal_to_cent(item.get("importo"), importo)
-            ]
-        # Una email di ricevuta non e' il verbale originale, anche nei record legacy.
-        same_source = await db["verbali_noleggio"].find({"source_document_id": document_id}, {"_id": 0, "pdf_data": 0}).to_list(20)
-        for legacy in same_source:
-            if legacy.get("source_document_id") == document_id and legacy.get("stato") != "quarantena":
-                await db["verbali_noleggio"].update_one({"id": legacy["id"]}, {"$set": {
-                    "verbale_originale_acquisito": False, "origine": "RICEVUTA_PAGOPA",
-                }})
-        linked_verbale = None
-        if len(candidates) == 1:
-            from app.services.verbali_pagamento_finder import applica_pagamento_a_verbale
+        from app.config import settings
+        from app.services.pagopa_receipts import import_receipt
 
-            candidate = candidates[0]
-            linked_verbale = candidate.get("id") or candidate.get("numero_verbale")
-            applied = await applica_pagamento_a_verbale(db, linked_verbale, {
-                "fonte": "gmail" if source.startswith("email") else "drive_pagopa",
-                "psp": pagopa_data.get("psp") or "PagoPA",
-                "importo": importo,
-                "data_pagamento": data_pagamento,
-                "metodo_pagamento": pagopa_data.get("metodo_pagamento") or "PagoPA",
-                "ricevuta_pagopa_id": receipt_id,
-                "iuv_usato": iuv,
-            })
-            if applied:
-                await db["ricevute_pagopa"].update_one(
-                    {"id": receipt_id},
-                    {"$set": {"stato": "associata", "verbale_id": linked_verbale}},
-                )
-        if not linked_verbale and not riferiti and (numero or targa):
-            # Nessun verbale con quel numero/IUV (uno con importo diverso e' un altro
-            # caso, «importo non coincide»): la ricevuta resta conservata «senza
-            # verbale» con l'alert, e non ne crea uno (si aggancia quando arriva).
-            from app.services.pagopa_receipts import segna_ricevuta_senza_verbale
-
-            await segna_ricevuta_senza_verbale(
-                db, {**receipt, "identificativo_bolletta": iuv},
-                {"matched": False, "reason": "verbale_non_trovato", "stato_verbale": "senza_verbale"},
-            )
+        imported = await import_receipt(db, content=content, filename=filename,
+            company_id=settings.FISCAL_COMPANY_ID, source=source,
+            source_metadata={"source_document_id": document_id, "source_sha256": sha256})
+        if not imported.get("success"):
+            return {"status": "review", "tipo": "ricevuta_pagopa", "verbale_id": None, "reason": imported.get("error")}
+        receipt = imported["receipt"]
+        receipt_id = receipt["id"]
+        linked_verbale = receipt.get("verbale_id")
+        # Bonifica dei soli vecchi verbali creati dalla medesima email: una
+        # ricevuta non puo' diventare l'originale del verbale che dovrebbe pagare.
+        await db["verbali_noleggio"].update_many({"source_document_id": document_id}, {"$set": {
+            "verbale_originale_acquisito": False, "origine": "RICEVUTA_PAGOPA",
+        }})
         await db["documents_inbox"].update_one(
             {"id": document_id},
             {"$set": {

@@ -87,7 +87,7 @@ export default function GestionePagoPA() {
   const fetchRicevute = useCallback(async () => {
     setLoading(true);
     try {
-      const response = await api.get('/api/pagopa/ricevute');
+      const response = await api.get('/api/pagopa/ricevute', { params: { limit: 1000 } });
       setRicevute(response.data || []);
     } catch (error) {
       console.error('Errore fetch ricevute:', error);
@@ -227,9 +227,19 @@ export default function GestionePagoPA() {
                                 fontWeight: 600,
                               }}
                             >
-                              Da Associare
+                              {ricevuta.verbale_id || ricevuta.cartelle_collegate?.length || ricevuta.avvisi_collegati?.length
+                                ? 'Banca da verificare' : 'Da Associare'}
                             </span>
                           )}
+                          {[
+                            ...(ricevuta.verbale_id ? [{ tipo: 'verbale', id: ricevuta.verbale_id, label: 'Verbale collegato' }] : []),
+                            ...(ricevuta.cartelle_collegate || []).map(id => ({ tipo: 'cartella', id, label: `Cartella ${id.replace('cartella:', '')}` })),
+                            ...(ricevuta.avvisi_collegati || []).map(id => ({ tipo: 'documento', id, label: 'Avviso collegato' })),
+                          ].map(doc => <button key={`${doc.tipo}:${doc.id}`} type="button"
+                            className="text-xs underline text-green-800"
+                            onClick={() => setPdfViewer({ title: doc.label, url: urlOriginale(doc) })}>
+                            {doc.label}
+                          </button>)}
                           {ricevuta.fiscal_target_id && <Link to="/situazione-fiscale/riscossione" style={{ fontSize: 11, color: '#4c4a44' }}>
                             Rata/cartelle collegate ({(ricevuta.cartelle_collegate || []).length})
                           </Link>}

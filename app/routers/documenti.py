@@ -1951,6 +1951,10 @@ def detect_document_type(filename: str, file_content: bytes) -> str:
     # separatori rimossi conserva comunque la struttura semantica e deve
     # essere usato prima del nome file.
     marker_pdf_text = re.sub(r"[^A-Z0-9]", "", pdf_text)
+    from app.services.pagopa_receipts import e_attestazione_ader, e_ricevuta_email_pagopa
+
+    if e_ricevuta_email_pagopa(pdf_text) or e_attestazione_ader(pdf_text):
+        return "ricevuta_pagopa"
     # Piano di una dilazione INPS: cita il «mod. F24» ma e' l'obbligo che le
     # quietanze RC01 dovranno pagare, rata per rata.
     from app.services.dilazioni_inps import (
@@ -2120,11 +2124,18 @@ def detect_document_type(filename: str, file_content: bytes) -> str:
     ):
         return "quietanza_f24"
     if (
-        "AVVISO DI PAGAMENTO" in compact_pdf_text
+        ("AVVISO DI PAGAMENTO" in compact_pdf_text and any(p in marker_pdf_text for p in ("PAGOPA", "CBILL", "IUV")))
         or "QUANTO E QUANDO PAGARE" in compact_pdf_text
         or "RATA UNICA ENTRO IL" in compact_pdf_text
     ):
         return "avviso_pagopa"
+
+    # Un avviso commerciale contiene anche il modulo postale da compilare e la
+    # promessa di una futura fattura quietanzata: non prova un versamento F24.
+    if ("AVVISO DI PAGAMENTO" in compact_pdf_text
+        and "FATTURA QUIETANZATA" in compact_pdf_text
+        and "AL RICEVIMENTO DEL PAGAMENTO" in compact_pdf_text):
+        return "auto"
 
     # Stampa PDF di una fattura elettronica: dice «Bonifico» e IBAN nelle condizioni
     # di pagamento, ma e' la fattura, non una prova di pagamento. Letta come bonifico
@@ -3588,6 +3599,15 @@ async def upload_documento_automatico(
                 source_context=source_context,
                 metadata=metadata,
             )
+            if tipo_rilevato == "avviso_pagopa" and archived.get("doc_id"):
+                from app.services.pagopa_receipts import associa_avvisi_a_ricevuta
+                code = (metadata or {}).get("identificativo_bolletta")
+                if code:
+                    receipts = await db["ricevute_pagopa"].find({"$or": [
+                        {"identificativo_bolletta": code}, {"iuv": code}
+                    ], "duplicate_of": {"$exists": False}}, {"_id": 0, "pdf_data": 0}).to_list(100)
+                    for existing_receipt in receipts:
+                        await associa_avvisi_a_ricevuta(db, existing_receipt)
             if tipo_rilevato == "avviso_pagopa" and archived.get("success"):
                 from app.services.verbali_document_import import process_verbale_document
 
