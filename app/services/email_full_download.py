@@ -2008,6 +2008,17 @@ async def scarica_posta_con_cursori(
         sender = parseaddr(email.message_from_bytes(headers).get("From", ""))[1].lower()
         allowed_psp = await downloader._load_mittenti_per_tipo("pagopa")
         allowed_psp |= await downloader._load_mittenti_per_tipo("ricevuta_pagopa")
+        if solo_storico and sender and not cartella_inviata:
+            header_message = email.message_from_bytes(headers)
+            header_subject = decode_mime_header(header_message.get("Subject", "")).upper()
+            nested_envelope = b'"MESSAGE" "RFC822"' in metadata.upper() or b'MESSAGE/RFC822' in metadata.upper()
+            certificate = header_subject.startswith(("CONSEGNA:", "ACCETTAZIONE:"))
+            trusted = await downloader._load_trusted_senders_generico()
+            from_header = decode_mime_header(header_message.get("From", "")).lower()
+            # Questi messaggi sarebbero comunque scartati dal writer. Le
+            # buste annidate e le ricevute PEC vengono invece lette per intero.
+            if not nested_envelope and not certificate and sender not in allowed_psp and not any(s in from_header for s in trusted):
+                return
         if not cartella_inviata and not _ha_allegati(metadata):
             # I messaggi del commercialista senza PDF (es. IVA luglio) non
             # devono essere scartati dal filtro degli allegati.

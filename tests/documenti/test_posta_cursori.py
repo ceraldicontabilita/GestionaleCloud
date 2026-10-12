@@ -211,3 +211,22 @@ def test_mail_commercialista_senza_allegati_non_viene_saltata(db, monkeypatch):
     result=asyncio.run(scenario())
     assert elaborati==[('INBOX',1)] and result['scaricati']==1
     assert all(casella.sola_lettura)
+
+
+def test_storico_non_scarica_corpi_non_attendibili_ma_legge_buste_pec(db, monkeypatch):
+    class Casella(FintaCasella):
+        def uid(self, command, *args):
+            if command == 'FETCH' and 'BODYSTRUCTURE' in args[1]:
+                uid=int(args[0])
+                structure=b'("APPLICATION" "PDF" ("NAME" "file.pdf"))'
+                if uid==2: structure=b'("MESSAGE" "RFC822" ("NAME" "postacert.eml"))'
+                return 'OK',[(structure,b'From: esterno@example.com\r\nSubject: documento\r\n')]
+            return super().uid(command,*args)
+    casella=Casella({'INBOX':{1:True,2:True}});elaborati=[]
+    _collega(monkeypatch,casella,elaborati)
+    async def run():
+        await db['mittenti_email'].insert_one({'pattern':'attendibile@example.com','attivo':True,'tipo_documento':'verbale'})
+        return await efd.scarica_posta_con_cursori(db,data_inizio='2003-01-01',solo_storico=True,max_scaricati=10)
+    result=asyncio.run(run())
+    assert elaborati==[('INBOX',2)]
+    assert result['controllati']==2 and result['storico_completo'] is True
