@@ -27,6 +27,21 @@ router = APIRouter(prefix="/magazzino", tags=["Magazzino Unificato"])
 
 # ── Categorizzazione automatica prodotti fornitore ────────────────────────────
 CATEGORIE_FORNITORI = {
+    # Prodotti gia' lavorati acquistati pronti per essere farciti, decorati o
+    # impiegati nella produzione. Va prima delle categorie per ingrediente:
+    # "cannoli ... cioccolattati" e' un semilavorato, non cacao sfuso.
+    "Semilavorati": [
+        "cannol",
+        "cornett",
+        "croissant",
+        "brioche",
+        "bigne",
+        "bignè",
+        "tartellett",
+        "pan di spagna",
+        "pandispagna",
+        "sfogliat",
+    ],
     "Farine/Cereali": [
         "farin",
         "semola",
@@ -264,7 +279,7 @@ def _unifica_bar(doc: dict) -> dict:
 
 # ── GET prodotti unificati ─────────────────────────────────────────────────────
 CATEGORIE_SELEZIONABILI = [
-    "Farine/Cereali", "Latticini", "Uova", "Oli/Grassi", "Zuccheri", "Cioccolato",
+    "Semilavorati", "Farine/Cereali", "Latticini", "Uova", "Oli/Grassi", "Zuccheri", "Cioccolato",
     "Creme/Paste", "Frutta/Noci", "Verdure", "Carni/Salumi", "Lieviti", "Beveraggi",
     "Imballaggi", "Pulizia", "Altro",
 ]

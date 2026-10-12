@@ -270,6 +270,26 @@ def test_import_parziale_reale_retry_completa_senza_raddoppiare_lotti(ponte, mon
     assert run(database.lotti_fornitori.count_documents({})) == 2
 
 
+def test_righe_xml_uguali_caricano_entrambe_e_il_retry_non_raddoppia(ponte, monkeypatch):
+    module, database = ponte
+    _ingresso_reale(ponte, monkeypatch, lines=[
+        {"description": "CANNOLI MEDI CIOCCOLATTATI PZ 100", "quantity": 2,
+         "unit": "CT", "unit_price": 10, "line_total": 20},
+        {"description": "CANNOLI MEDI CIOCCOLATTATI PZ 100", "quantity": 3,
+         "unit": "CT", "unit_price": 10, "line_total": 30},
+    ])
+
+    assert run(module.alimenta_lotti_da_fattura("invoice-1"))["stato"] == "alimentata"
+    lotti = run(database.lotti_fornitori.find({}, {"_id": 0}).to_list(10))
+    assert len(lotti) == 2
+    assert sorted(l["quantita_disponibile"] for l in lotti) == [2.0, 3.0]
+    assert len({l["fattura_riga_key"] for l in lotti}) == 2
+    assert all(l["origine"] == "fattura_xml" and l["fattura_id"] for l in lotti)
+
+    assert run(module.alimenta_lotti_da_fattura("invoice-1"))["stato"] == "alimentata"
+    assert run(database.lotti_fornitori.count_documents({})) == 2
+
+
 @pytest.mark.parametrize("ingresso", ["evento", "sync"])
 def test_xml_mutato_regola_unica_preserva_documento_e_quantita(ponte, monkeypatch, ingresso):
     module, database = ponte

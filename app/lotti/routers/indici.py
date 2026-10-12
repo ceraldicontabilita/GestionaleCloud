@@ -62,6 +62,16 @@ async def crea_indici(db):
     except Exception as e:
         logger.warning(f"[FATTURE] dedup/unique: {e}")
 
+    # Una riga XML puo' incrementare la giacenza una sola volta. `sparse`
+    # conserva i lotti storici che non avevano ancora questa identita'.
+    try:
+        await db.lotti_fornitori.create_index(
+            "fattura_riga_key", unique=True, sparse=True,
+            name="uniq_lotto_fattura_riga",
+        )
+    except Exception as e:
+        logger.warning(f"[LOTTI] indice unique fattura_riga_key: {e}")
+
     creati = 0
     for collezione, indici in piano.items():
         for idx in indici:
