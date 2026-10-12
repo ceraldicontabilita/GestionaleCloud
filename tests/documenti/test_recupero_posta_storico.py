@@ -100,3 +100,39 @@ def test_originale_personale_escluso_senza_cancellare_e_preruolo_non_duplicato(m
         assert (await db.verbali_noleggio.find_one({'id': 'azienda'}))['numero_verbale'] == 'BB19140301282'
         assert await db.verbali_noleggio.count_documents({}) == 2
     asyncio.run(run())
+
+
+def test_lotto_non_reentra_nello_stesso_processo(monkeypatch):
+    async def run():
+        started, finish = asyncio.Event(), asyncio.Event()
+        async def inner(db):
+            started.set()
+            await finish.wait()
+            return {'in_progress': False, 'stato': 'completato'}
+        monkeypatch.setattr(efd, '_lotto_recupero_storico_con_lease', inner)
+        first = asyncio.create_task(efd.lotto_recupero_storico(None))
+        await started.wait()
+        assert (await efd.lotto_recupero_storico(None))['lease_occupata'] is True
+        finish.set()
+        assert (await first)['stato'] == 'completato'
+    asyncio.run(run())
+
+
+def test_completo_richiede_anche_cartelle_non_ancora_visitate(monkeypatch):
+    db = AsyncMongoMockClient().db
+    box = FintaCasella({'INBOX': {1: True}, 'Archivio': {3: True}})
+    processed = []
+    _collega(monkeypatch, box, processed)
+    first = asyncio.run(efd.scarica_posta_con_cursori(db, data_inizio='2003-01-01',
+        stato_chiave=efd.CHIAVE_RECUPERO_STORICO, solo_storico=True, max_scaricati=1))
+    assert not first['storico_completo'] and first['storico_mancante_cartelle'] == 1
+    second = asyncio.run(efd.scarica_posta_con_cursori(db, data_inizio='2003-01-01',
+        stato_chiave=efd.CHIAVE_RECUPERO_STORICO, solo_storico=True, max_scaricati=20))
+    assert second['storico_completo']
+    assert processed == [('INBOX', 1), ('Archivio', 3)]
+
+
+def test_data_pagamento_italiana_non_e_data_della_violazione():
+    text = 'TARGA GW980EP DATA: 05/04/2025. Data e ora 15 maggio 2025, 18:27:14'
+    assert writer._extract_payment_date(text) == '2025-05-15'
+    assert writer._extract_payment_date('Data e ora 31 febbraio 2025') is None

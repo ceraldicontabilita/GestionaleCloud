@@ -168,7 +168,14 @@ def _extract_payment_date(text: str) -> Optional[str]:
         re.I,
     )
     if not match:
-        return None
+        italian = re.search(r"(?:data\s+(?:e\s+ora|pagamento))\s*:?\s*(\d{1,2})\s+(\w+)\s+(20\d{2})", text or "", re.I)
+        months = {name: index for index, name in enumerate(("gennaio", "febbraio", "marzo", "aprile", "maggio", "giugno", "luglio", "agosto", "settembre", "ottobre", "novembre", "dicembre"), 1)}
+        if not italian or italian.group(2).lower() not in months:
+            return None
+        try:
+            return date(int(italian.group(3)), months[italian.group(2).lower()], int(italian.group(1))).isoformat()
+        except ValueError:
+            return None
     raw = match.group(1).replace("-", "/")
     day, month, year = raw.split("/")
     return f"{year}-{month}-{day}"
@@ -464,7 +471,7 @@ async def leggi_documento_verbale(
         or (targa_match.group(1).upper() if targa_match else None)
     )
     importo, importo_fonte, importo_conflitto = _select_document_amount(ai_data, pagopa_data, text)
-    data_pagamento = _extract_payment_date(text)
+    data_pagamento = _extract_payment_date(text) or pagopa_data.get("data_pagamento")
     negative_payment = (
         pagopa_data.get("document_kind") == "ESITO_PAGOPA_NEGATIVO"
         or any(marker in combined.casefold() for marker in _NEGATIVE_PAYMENT_MARKERS)

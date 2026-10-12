@@ -130,8 +130,11 @@ def test_sola_banca_non_diventa_pagamento_documentale():
     assert applied is True
     assert verbale["pagato_documentalmente"] is False
     assert verbale["banca_verificata"] is True
-    assert verbale["stato"] == "pagato_attesa_quietanza"
+    assert verbale["stato"] == "attesa_quietanza"
     assert verbale["stato_pratica"] == "ATTESA_QUIETANZA"
+    assert "pagamento_id" not in verbale and "data_pagamento" not in verbale
+    from app.constants.stati_verbale import e_pagato, e_chiuso
+    assert not e_pagato(verbale["stato"]) and not e_chiuso(verbale["stato"])
 
 
 def test_ricevuta_e_banca_completano_attese_separate():
@@ -212,3 +215,19 @@ def test_dopo_la_ricevuta_cerca_ancora_la_banca(monkeypatch):
 
     assert result["movimento_id"] == "mov-1"
     assert calls == ["bank"]
+
+
+def test_riscontro_legacy_resta_aperto_con_originale_banca_tracciato():
+    from mongomock_motor import AsyncMongoMockClient
+    db = AsyncMongoMockClient().db
+    async def run():
+        await db.verbali_noleggio.insert_one({'id':'v1','stato':'pagato_attesa_quietanza',
+            'banca_verificata':True,'pagato_documentalmente':False,'movimento_banca_id':'m1',
+            'pagamento_id':'m1','data_pagamento':'2026-04-23'})
+        assert await mod.normalizza_attese_quietanza(db) == 1
+        row = await db.verbali_noleggio.find_one({'id':'v1'})
+        assert row['stato'] == 'attesa_quietanza' and row['movimento_banca_id'] == 'm1'
+        assert 'pagamento_id' not in row and 'data_pagamento' not in row
+        assert row['riscontro_banca_legacy']['pagamento_id'] == 'm1'
+        assert await mod.normalizza_attese_quietanza(db) == 0
+    _run(run())

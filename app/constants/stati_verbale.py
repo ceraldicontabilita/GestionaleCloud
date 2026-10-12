@@ -40,6 +40,10 @@ __all__ = [
 
 #: Il verbale non ha ancora una prova di pagamento: lo si cerca ancora.
 STATI_APERTI = frozenset({
+    "aperto",
+    "attesa_quietanza",
+    "pagato_attesa_quietanza",
+    "pagato_attesa_fattura",
     "salvato",
     "importato",
     "da_scaricare",
@@ -54,11 +58,9 @@ STATI_APERTI = frozenset({
 #: Il nome sbagliato di «attesa quietanza», in via di migrazione.
 STATO_ATTESA_QUIETANZA_LEGACY = "pagato_attesa_fattura"
 
-#: Una prova di pagamento c'e' gia' (documentale, bancaria o entrambe).
+#: Solo prova documentale: il riscontro bancario da solo resta aperto.
 STATI_PAGATI = frozenset({
     "pagato",
-    "pagato_attesa_quietanza",
-    STATO_ATTESA_QUIETANZA_LEGACY,
     "riconciliato",
 })
 

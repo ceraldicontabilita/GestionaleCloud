@@ -27,14 +27,15 @@ const STATI_VERBALE = {
   salvato: { label: 'Documento salvato', variant: 'neutral', icon: FileText },
   fattura_ricevuta: { label: 'Fattura Ricevuta', variant: 'info', icon: FileText },
   pagato: { label: 'Pagato', variant: 'success', icon: CreditCard },
+  attesa_quietanza: { label: 'Attesa quietanza', variant: 'warning', icon: Hourglass },
   pagato_attesa_quietanza: {
-    label: 'Pagato (att. quietanza)',
+    label: 'Attesa quietanza',
     variant: 'warning',
     icon: Hourglass,
   },
   // Compatibilità di lettura finché la migrazione dei record storici termina.
   pagato_attesa_fattura: {
-    label: 'Pagato (att. quietanza)',
+    label: 'Attesa quietanza',
     variant: 'warning',
     icon: Hourglass,
   },

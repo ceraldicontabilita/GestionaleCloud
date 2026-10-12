@@ -426,7 +426,7 @@ class TestTrattenutaSoloConQuietanza:
         ok = _run(applica_pagamento_a_verbale(db, "v1", {
             "fonte": "banca", "importo": 57.05, "data_pagamento": "2026-04-23", "movimento_id": "m1"}))
         assert ok is True
-        assert _run(db["verbali_noleggio"].find_one({"id": "v1"}))["stato"] == "pagato_attesa_quietanza"
+        assert _run(db["verbali_noleggio"].find_one({"id": "v1"}))["stato"] == "attesa_quietanza"
         assert _run(db["trattenute_dipendenti"].count_documents({})) == 0
 
     def test_upload_quietanza_senza_pdf_non_apre_la_trattenuta(self, monkeypatch):
