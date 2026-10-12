@@ -288,7 +288,7 @@ async def _scarica_cataloghi(client: httpx.AsyncClient) -> tuple[int, int]:
             doc["scaricato_il"] = _ora()
         raccolti.extend(docs)
         await _aggiorna_stato(fase="cataloghi", avanzamento=len(raccolti), totale_fase=None)
-    await _bulk_upsert(db[COLL_CATALOGHI], raccolti)
+    await _bulk_upsert_cataloghi(raccolti)
     return len(raccolti), falliti
 
 
@@ -348,6 +348,30 @@ async def _bulk_upsert(collection, documents: list[dict], chiave: str = "id") ->
         await bulk_write_compat(collection, richieste, ordered=False)
 
 
+async def _bulk_upsert_ricette(documents: list[dict]) -> None:
+    """Writer esplicito: rende verificabile il proprietario della collezione."""
+    if not documents:
+        return
+    richieste = [UpdateOne({"id": d["id"]}, {"$set": d}, upsert=True) for d in documents]
+    if hasattr(db["irca_ricette"], "database") and hasattr(db["irca_ricette"].database, "store"):
+        await db["irca_ricette"].bulk_write(richieste, ordered=False)
+    else:
+        from app.lotti.bulk_compat import bulk_write_compat
+        await bulk_write_compat(db["irca_ricette"], richieste, ordered=False)
+
+
+async def _bulk_upsert_cataloghi(documents: list[dict]) -> None:
+    """Writer esplicito: rende verificabile il proprietario della collezione."""
+    if not documents:
+        return
+    richieste = [UpdateOne({"id": d["id"]}, {"$set": d}, upsert=True) for d in documents]
+    if hasattr(db["irca_cataloghi"], "database") and hasattr(db["irca_cataloghi"].database, "store"):
+        await db["irca_cataloghi"].bulk_write(richieste, ordered=False)
+    else:
+        from app.lotti.bulk_compat import bulk_write_compat
+        await bulk_write_compat(db["irca_cataloghi"], richieste, ordered=False)
+
+
 async def _aggiorna_stato(**fields) -> None:
     await db.sync_status.update_one({"_id": STATO_ID}, {"$set": fields}, upsert=True)
 
@@ -369,7 +393,10 @@ async def _scarica_collezione(tipo: str, parser, collection, client) -> tuple[in
                 validi.append(risultato)
             else:
                 falliti += 1
-        await _bulk_upsert(collection, validi)
+        if tipo == "recipes":
+            await _bulk_upsert_ricette(validi)
+        else:
+            await _bulk_upsert(collection, validi)
         raccolti.extend(validi)
         riusciti += len(validi)
         await _aggiorna_stato(
@@ -860,7 +887,7 @@ async def _genera_distinta(payload: DistintaPayload) -> dict:
 
 
 @router.post("/distinta")
-async def genera_distinta(payload: DistintaPayload):
+async def genera_distinta(payload: DistintaPayload, _admin=Depends(require_admin)):
     return await _genera_distinta(payload)
 
 
