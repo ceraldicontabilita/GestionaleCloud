@@ -21,6 +21,8 @@ Produzione:
 
 Verifica Gmail del 12/10/2026: la casella configurata in produzione è `ceraldigroupsrl@gmail.com`; è distinta dall'account OAuth Drive. Il test IMAP rifiuta la password attuale. La scansione completa legge anche la credenziale cifrata salvata in Impostazioni Gmail prima degli alias di ambiente; un download che restituisce `success=false` chiude il monitor come fallito e non come sincronizzazione vuota riuscita. Una Password per le app valida deve essere salvata per la casella corretta prima di certificare l'importazione email.
 
+Collaudo del 12/10/2026: la funzione SQL di ripristino Menu è stata eseguita realmente su PostgreSQL 16 locale, con dieci tabelle di fixture; un errore NOT NULL nell'ultima tabella annulla anche gli aggiornamenti precedenti. Non è un ripristino del database produttivo completo. Gli originali XML delle tre fatture del campione confermano le differenze di totale, che restano da verificare. Le LIPE 2026 trovate su Drive coprono gennaio-marzo. Il recupero automatico dei vecchi `service_account_storage_quota` avviene solo con credenziali OAuth personali realmente usate dal servizio Drive, al massimo dieci file per passaggio della rimessa in coda; gli errori di contenuto mantengono il proprio stato.
+
 Questo file è la **fonte normativa del repository**.
 
 Contiene:

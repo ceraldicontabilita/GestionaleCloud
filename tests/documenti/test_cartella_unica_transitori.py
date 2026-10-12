@@ -75,3 +75,24 @@ def test_il_nul_si_toglie_dal_payload_senza_toccare_il_resto():
     assert pulito == {"p_docs": [{"id": "a", "testo": "abcd", "n": 3, "k": ["x", {"y": "z"}]}]}
     senza = {"p_docs": [{"id": "a", "testo": "ab"}]}
     assert _senza_nul(senza) is senza   # niente da pulire: lo stesso oggetto
+
+
+def test_vecchi_errori_quota_riprovati_solo_con_oauth_e_a_lotti():
+    from types import SimpleNamespace
+    from google.oauth2.credentials import Credentials
+    drive = DriveFinto()
+    db = AsyncMongoMockClient()["quota"]
+    for i in range(12):
+        ident = f"quota-{i}"
+        drive.aggiungi(ident, "originale.pdf", b"%PDF-fixture", "errori")
+        run(db[cu.REGISTRO].insert_one({
+            "id": ident, "nome": "originale.pdf", "cartella": cu.ERRORI,
+            "tipo": "dichiarazione_fiscale", "motivo": "service_account_storage_quota",
+            "regole_classificazione": cu.REGOLE_CLASSIFICAZIONE,
+        }))
+    assert run(cu.rimetti_in_coda_buste_gia_presenti(db, drive, dict(CARTELLE))) == 0
+    drive._http = SimpleNamespace(credentials=Credentials(token="fixture"))
+    assert run(cu.rimetti_in_coda_buste_gia_presenti(db, drive, dict(CARTELLE))) == 10
+    assert run(db[cu.REGISTRO].count_documents({"cartella": cu.ERRORI})) == 2
+    assert run(cu.rimetti_in_coda_buste_gia_presenti(db, drive, dict(CARTELLE))) == 2
+    assert run(cu.rimetti_in_coda_buste_gia_presenti(db, drive, dict(CARTELLE))) == 0

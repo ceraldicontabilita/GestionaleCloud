@@ -606,12 +606,17 @@ async def rimetti_in_coda_buste_gia_presenti(db, service, cartelle: Dict[str, st
          "regole_non_riconosciuti": 1, "regole_classificazione": 1, "rinvii": 1},
     ).to_list(None)
     rimessi = 0
+    quota_recuperati = 0
+    from google.oauth2.credentials import Credentials as PersonalCredentials
+    oauth_personale = isinstance(getattr(getattr(service, "_http", None), "credentials", None), PersonalCredentials)
     for riga in righe:
         if limite is not None and rimessi >= limite:
             break
         motivo = str(riga.get("motivo") or "")
         da_rileggere = False
         transitorio = False
+        quota_risolta = (oauth_personale and "service_account_storage_quota" in motivo
+                         and quota_recuperati < 10)
         if riga.get("cartella") == ARRETRATO:
             # Una busta presa per estratto conto (cita la banca d'appoggio) e
             # parcheggiata fra l'arretrato degli estratti: va riletta da busta.
@@ -640,7 +645,7 @@ async def rimetti_in_coda_buste_gia_presenti(db, service, cartelle: Dict[str, st
                 da_rileggere = da_rileggere or (
                     (tipo_riga.startswith("estratto_conto") and _ESTRATTO_NON_ESTRATTO in motivo)
                     or (tipo_riga == "fattura_pdf" and motivo.startswith(_FATTURA_PDF_ITALIANA)))
-            if (not gia_presente and not busta_come_estratto and not da_rileggere
+            if (not quota_risolta and not gia_presente and not busta_come_estratto and not da_rileggere
                     and not _GUASTO_DI_RETE.match(motivo)
                     and not (e_guasto_transitorio(motivo) and int(riga.get("rinvii") or 0) < MAX_RINVII)):
                 continue
@@ -653,11 +658,14 @@ async def rimetti_in_coda_buste_gia_presenti(db, service, cartelle: Dict[str, st
                                     destinazione, "da rileggere")
             await _registra(db, riga["id"], cartella=INBOX, esito="rimesso_in_coda",
                             drive_parent_id=destinazione, percorso_categoria=percorso,
-                            motivo=("rileggere con le regole nuove" if da_rileggere
+                            motivo=("quota account di servizio: riprova con OAuth personale" if quota_risolta
+                                    else "rileggere con le regole nuove" if da_rileggere
                                     else "guasto transitorio, si rilegge" if transitorio
                                     else "busta gia' in archivio, non un errore"),
                             )
             rimessi += 1
+            if quota_risolta:
+                quota_recuperati += 1
         except Exception as exc:
             logger.warning("[cartella-unica] %s non rimesso in coda: %s: %s",
                            riga.get("nome") or riga["id"], type(exc).__name__, exc)
