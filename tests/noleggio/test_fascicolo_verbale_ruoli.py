@@ -48,3 +48,13 @@ def test_i_documenti_drive_vanno_nella_casella_del_loro_tipo(monkeypatch):
     f = _fascicolo(monkeypatch, [], documenti_drive=drive)
     assert [d["drive_id"] for d in f["quietanza"]["documenti_drive"]] == ["1AbCdEfGhIjKlMnOpQrStUv"]
     assert f["quietanza"]["presente"] is True and f["verbale"]["presente"] is False
+
+
+def test_relata_pec_e_notifica_e_copia_conforme_e_originale(monkeypatch):
+    copia = {"filename": "COPIACONFORMEPEC_9470772.pdf", "tipo": "verbale", "indice": 0}
+    relata = {"filename": "RELATAPEC_9470772.pdf", "tipo": "verbale", "indice": 1}
+    f = _fascicolo(monkeypatch, [copia, relata])
+    assert f["notifica"]["presente"] is True
+    assert f["notifica"]["documento"] == relata
+    assert f["verbale"]["documento"] == copia
+    assert f["quietanza"]["presente"] is False

@@ -15,6 +15,7 @@ Questa guardia non pretende di azzerare la lista di colpo: sono decisioni di
 dominio, una per una. Pretende che la lista **possa solo accorciarsi**: un
 nome nuovo fa fallire la CI, e uno risolto va tolto da qui.
 """
+import ast
 import re
 from pathlib import Path
 
@@ -33,9 +34,9 @@ SCRITTURE = (
 #: I commenti sui conteggi sono la fotografia storica, non un inventario live.
 NOTE = {
     "entity_relations",            # la scrive il trigger, non Python
+    "iva_comunicazioni",           # originali storici archiviati esternamente; piano_iva li legge soltanto
     "fiscal_documents",            # 22 righe nel censimento storico
     "piano_conti",                 # piano ufficiale definito in Python
-    "cartelle_email_attachments",
     "contratti_noleggio",
     "dati_isa_snapshot",
     "dizionario_articoli",
@@ -61,6 +62,25 @@ def _lette_e_mai_scritte() -> set:
         if "__pycache__" in str(py):
             continue
         src = py.read_text(encoding="utf-8", errors="ignore")
+        # Il downloader scrive tramite CATEGORY_COLLECTIONS.get(category):
+        # risolvi il mapping soltanto quando la variabile e' davvero usata in
+        # una scrittura. Non basta dichiarare un nome per superare la guardia.
+        tree = ast.parse(src)
+        maps = {}
+        for node in tree.body:
+            if isinstance(node, ast.Assign) and isinstance(node.value, ast.Dict):
+                try:
+                    value = ast.literal_eval(node.value)
+                except (ValueError, TypeError):
+                    continue
+                if isinstance(value, dict) and all(isinstance(v, str) for v in value.values()):
+                    for target in node.targets:
+                        if isinstance(target, ast.Name):
+                            maps[target.id] = set(value.values())
+        for var, mapping in re.findall(r'(\w+)\s*=\s*([A-Z][A-Z0-9_]*)\.get\(', src):
+            if mapping in maps and re.search(
+                r'(?:self\.)?db\[' + re.escape(var) + r'\]\.(?:' + '|'.join(SCRITTURE) + r')\(', src):
+                scritte.update(maps[mapping])
         # Molti moduli non scrivono il nome inline ma tengono una costante
         # (`COLLECTION_OPERAZIONI_DA_CONFERMARE = "operazioni_da_confermare"`)
         # e poi fanno `db[COSTANTE].insert_one(...)`. Senza risolverle, la

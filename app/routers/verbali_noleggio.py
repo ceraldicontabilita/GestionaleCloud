@@ -412,7 +412,7 @@ async def get_dettaglio_verbale(numero_verbale: str) -> Dict[str, Any]:
     _TERMINI_QUIETANZA = ("quietanz", "ricevut", "partenopay", "pagopa", "attestazione", "pagamento")
     # Ogni file ha UN solo ruolo: prima quietanza, poi notifica, il resto e' il verbale.
     documento_quietanza = next((d for d in documenti if any(t in _testo_ruolo(d) for t in _TERMINI_QUIETANZA)), None)
-    documento_notifica = next((d for d in documenti if d is not documento_quietanza and "notific" in _testo_ruolo(d)), None)
+    documento_notifica = next((d for d in documenti if d is not documento_quietanza and any(t in _testo_ruolo(d) for t in ("notific", "relatapec", "relata"))), None)
     restanti = [d for d in documenti if d is not documento_quietanza and d is not documento_notifica
                 and not any(t in _testo_ruolo(d) for t in _TERMINI_QUIETANZA)]
     documento_verbale = next((d for d in restanti if "verbale" in _testo_ruolo(d)), None) or (restanti[0] if restanti else None)
