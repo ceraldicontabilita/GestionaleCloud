@@ -458,3 +458,41 @@ def test_quietanza_di_altra_azienda_non_e_fallback(ambiente):
     inserisci('quietanze_f24', {'id':'q-foreign','company_id':'foreign','pdf_hash':sha,'pdf_data':_b64(PDF)})
     with _client(app) as client:
         assert client.get('/api/originale/documento_fiscale/fdoc-q').status_code==404
+
+
+@pytest.mark.parametrize('content,status', [(PDF, 200), (PDF + b'alterato', 409), (b'', 404)])
+def test_cartella_recupera_copia_drive_per_impronta_se_vecchio_id_non_esiste(ambiente, monkeypatch, content, status):
+    from app.services import drive_cartella_unica, drive_download
+
+    app, inserisci, _ = ambiente
+    sha = hashlib.sha256(PDF).hexdigest()
+    inserisci('cartelle_pagamento', {'id': 'cartella:123', 'nome': 'cartella.pdf',
+                                    'drive_file_id': 'vecchia-copia', 'sha256': sha})
+    async def download(fid, **kwargs):
+        assert fid == 'vecchia-copia'
+        return b''
+    async def originale(db, **kwargs):
+        assert kwargs == {'sha256': sha}
+        return {'contenuto': content, 'nome': 'copia.pdf'} if content else None
+    monkeypatch.setattr(drive_download, 'scarica_originale', download)
+    monkeypatch.setattr(drive_cartella_unica, 'originale', originale)
+    with _client(app) as client:
+        result = client.get('/api/originale/cartella/cartella:123')
+    assert result.status_code == status
+    if status == 200:
+        assert result.content == PDF
+        assert 'cartella.pdf' in result.headers['content-disposition']
+        assert result.headers['x-originale-sha256'] == sha
+
+
+def test_cartella_senza_impronta_non_cerca_file_per_nome(ambiente, monkeypatch):
+    from app.services import drive_cartella_unica
+
+    app, inserisci, _ = ambiente
+    inserisci('cartelle_pagamento', {'id': 'cartella:123', 'nome': 'cartella.pdf'})
+    async def originale(*args, **kwargs):
+        raise AssertionError('Nessuna ricerca senza impronta certa')
+    monkeypatch.setattr(drive_cartella_unica, 'originale', originale)
+    with _client(app) as client:
+        result = client.get('/api/originale/cartella/cartella:123')
+    assert result.status_code == 404
