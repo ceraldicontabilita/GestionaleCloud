@@ -894,7 +894,11 @@ def _righe_beni_strumentali(linee_fattura: Optional[List[Dict]]) -> bool:
         if not isinstance(riga, dict):
             return False
         descrizione = str(riga.get("descrizione") or riga.get("description") or "")
-        if re.search(r"\b(?:iphone|smartphone|cellular\w*|telefon\w*|sim)\b", descrizione, re.IGNORECASE):
+        if re.search(
+            r"\b(?:iphone|smartphone|cellular\w*|telefon\w*|sim|auto|autovettur\w*|vettur\w*|"
+            r"veicol\w*|motocicl\w*|automezz\w*|van|camion\w*)\b",
+            descrizione, re.IGNORECASE,
+        ):
             return False
         try:
             importo = abs(float(riga.get("prezzo_totale") or riga.get("importo") or riga.get("price_total") or 0))

@@ -414,6 +414,10 @@ def valuta_iva_fattura(
         if pct_riga is not None and pct_cdc is not None and pct_riga != pct_cdc:
             return esito(None, "Righe con trattamento IVA diverso: valutazione separata necessaria")
 
+    ha_beni_strumentali = (cdc_id == "15.1_ACQUISTO_BENI_STRUMENTALI"
+                          or any(r.get("centro_costo_id") == "15.1_ACQUISTO_BENI_STRUMENTALI" for r in righe))
+    if ha_beni_strumentali and contesto.get("inerente") is not True:
+        return esito(None, "Bene strumentale: inerenza dell'acquisto non documentata")
     regola = profilo.get("regola_iva") or "ordinaria_documento"
     if regola == "merci_attivita" and not cdc_id.startswith("1."):
         # Alcuni grossisti vendono anche detergenza o attrezzature. La stessa
@@ -448,7 +452,8 @@ def valuta_iva_fattura(
             pct = Decimal(1)
         else:
             return esito(None, "Utilizzo del veicolo non documentato: nessun 40%/100% automatico")
-    elif regola in {"beni_servizi_misti", "cespiti", "ordinaria"}:
+    elif (regola in {"beni_servizi_misti", "cespiti", "ordinaria"}
+          or ha_beni_strumentali):
         if contesto.get("inerente") is not True or pct_cdc != 1 or not testo:
             return esito(None, "Attività del fornitore insufficiente: documentare natura e inerenza dell'acquisto")
         if not righe or (regola != "cespiti" and any(r.get("richiede_verifica") for r in righe)):

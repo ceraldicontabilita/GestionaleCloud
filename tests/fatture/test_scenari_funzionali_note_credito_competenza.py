@@ -52,6 +52,40 @@ def test_nota_di_credito_td04_scrive_l_inverso_non_e_un_costo_e_non_crea_cespiti
         nota = await importa(db, xml_fattura(numero="NC1", tipo="TD04", data="2026-09-12", imponibile="1500.00",
                                              iva="330.00", totale="1830.00", descrizione="Condizionatore split Daikin"),
                              ingresso, nome_file="nc.xml")
+        # Il riconoscimento del cespite non prova la sua destinazione
+        # aziendale: all'import l'IVA e il giornale devono restare in attesa.
+        for documento in (origine, nota):
+            prima = await fattura(db, documento["id"])
+            assert prima.get("iva_detraibile") is None
+            assert prima["stato_detrazione_iva"] == "DA_VERIFICARE"
+        assert await tutti(db, "movimenti_contabili") == []
+
+        # Il contabile documenta la destinazione del bene e lo storno nella
+        # medesima API usata dal modulo «Fiscalità della fattura». Solo
+        # dopo la decisione reale ripassa il writer canonico del giornale.
+        from app.routers.invoices.fatture_upload import router as router_fatture
+        from app.utils.dependencies import get_current_admin_user
+        from app.services.registrazione_contabile import registra_documento_import
+        app_fiscale = app_con((router_fatture, "/api/fatture"))
+        app_fiscale.dependency_overrides[get_current_admin_user] = lambda: {
+            "user_id": "contabile-collaudo", "role": "admin"}
+        for documento in (origine, nota):
+            contesto = {
+                "inerente": True,
+                "fonte_documento": (
+                    f"Fattura {origine['id']} e nota {nota['id']}: "
+                    "climatizzazione del locale aziendale; storno del medesimo bene"),
+                "validita_fiscale": {"dal": "2026-01-01", "al": "2026-12-31"},
+                "pro_rata_applicabile": False,
+            }
+            conferma = await richiesta(app_fiscale, "PUT",
+                f"/api/fatture/{documento['id']}/contesto-fiscale-iva", json=contesto)
+            assert conferma.status_code == 200, conferma.text
+            assert conferma.json()["iva_da_verificare"] is False
+            deciso = await fattura(db, documento["id"])
+            assert deciso["contesto_fiscale_iva"]["confermato_da"] == "contabile-collaudo"
+            registrazione = await registra_documento_import(db, "fattura", deciso)
+            assert registrazione["stato"] == "registrato", registrazione
         await _con_personale(db)
         app = _app_bilancio()
         return {"origine": origine, "nota": nota, "giornale": await tutti(db, "movimenti_contabili"),

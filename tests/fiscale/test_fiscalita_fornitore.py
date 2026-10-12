@@ -64,6 +64,26 @@ def contesto(**extra):
             "validita_fiscale": VALIDITA, "inerente": True, **extra}
 
 
+def test_cespite_senza_profilo_richiede_inerenza_documentata():
+    cdc = "15.1_ACQUISTO_BENI_STRUMENTALI"
+    inv = invoice(linee=[{"descrizione": "Condizionatore split Daikin", "prezzo_totale": 1500}])
+    risolta = {"stato": "assente", "profilo": None}
+    righe = [{"centro_costo_id": cdc, "richiede_verifica": False}]
+    assert fiscale.valuta_iva_fattura(inv, risolta, cdc, CENTRI_COSTO[cdc], righe)["iva_detraibile"] is None
+    inv["contesto_fiscale_iva"] = contesto()
+    assert fiscale.valuta_iva_fattura(inv, risolta, cdc, CENTRI_COSTO[cdc], righe)["iva_detraibile"] == 18.21
+
+
+def test_cespite_in_fattura_mista_merci_richiede_comunque_inerenza():
+    inv = invoice(linee=[{"descrizione": "FRISK EXTREME", "prezzo_totale": 100},
+                         {"descrizione": "Condizionatore split Daikin", "prezzo_totale": 1500}])
+    righe = [{"centro_costo_id": MERCI, "richiede_verifica": False},
+             {"centro_costo_id": "15.1_ACQUISTO_BENI_STRUMENTALI", "richiede_verifica": False}]
+    assert valutazione(profilo(), inv, MERCI, righe)["iva_detraibile"] is None
+    inv["contesto_fiscale_iva"] = contesto()
+    assert valutazione(profilo(), inv, MERCI, righe)["iva_detraibile"] == 18.21
+
+
 def test_grossista_alimentare_puo_vendere_detergenza_documentata():
     cdc = "12.1_PULIZIA_LOCALE"
     p = profilo(centri_costo_ammessi=[MERCI, cdc])

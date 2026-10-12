@@ -46,3 +46,11 @@ def test_cespite_ordinario_non_confuso_con_manutenzione_noleggio_auto_o_righe_mi
     ])
     assert not lm._righe_beni_strumentali([{"descrizione": "Condizionatore split Daikin", "prezzo_totale": 500}])
     assert not lm._righe_beni_strumentali([{"descrizione": "Condizionatore split Daikin", "prezzo_totale": float("inf")}])
+
+
+def test_accessori_e_impianti_di_veicoli_non_sono_cespiti_iva_ordinaria():
+    for veicolo in ("auto", "autovettura", "vettura", "veicolo", "motociclo", "automezzo", "van", "camion"):
+        righe = [{"descrizione": f"Condizionatore split Daikin per {veicolo}", "prezzo_totale": 1500}]
+        assert not lm._righe_beni_strumentali(righe)
+        centro, _, _ = lm.classifica_fattura_per_centro_costo("Fornitore Test Srl", "", righe)
+        assert centro != "15.1_ACQUISTO_BENI_STRUMENTALI"
