@@ -23,7 +23,7 @@ export default function IrcaSpuntiView() {
     setLoading(true);
     try {
       const [r, c] = await Promise.all([
-        axios.get(`${API}/irca/ricette?limit=500`),
+        axios.get(`${API}/irca/ricette?limit=2000`),
         axios.get(`${API}/irca/cataloghi`),
       ]);
       setRicette(r.data?.ricette || []);
@@ -74,7 +74,7 @@ export default function IrcaSpuntiView() {
     try {
       const r = await axios.post(`${API}/irca/progetta-dolce`, {
         descrizione, peso_pezzo_g: Number(peso), pezzi: Number(pezzi), genera_immagine: true,
-      }, { timeout: 180000 });
+      }, { timeout: 240000 });
       setProgetto(r.data);
       toast.success("Bozza tecnica e quantità generate");
     } catch (e) { toast.error(e.response?.data?.detail || "Progettazione non riuscita"); }

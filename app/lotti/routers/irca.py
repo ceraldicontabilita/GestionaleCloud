@@ -612,14 +612,16 @@ async def _candidati_progetto(descrizione: str) -> tuple[list[dict], list[dict]]
     ricette.sort(key=lambda d: _punteggio_testo(d, parole, ("nome", "categoria", "ingredienti", "fasi", "prodotti_irca")), reverse=True)
     parole_tecniche = parole | {"emulsionante", "emulsione", "stabilizzante", "soffice", "crema", "glassa"}
     prodotti.sort(key=lambda d: _punteggio_testo(d, parole_tecniche, ("nome", "categoria", "descrizione", "descrizione_breve", "dettagli_irca")), reverse=True)
-    ricette_scelte = ricette[:18]
+    # Manteniamo il contesto abbastanza ricco per comporre base, inserto e
+    # copertura, ma abbastanza compatto da non far scadere la chiamata LLM.
+    ricette_scelte = ricette[:10]
     riferiti = {
         p.get("slug") for r in ricette_scelte for p in r.get("prodotti_irca", []) if p.get("slug")
     }
-    prodotti_scelti = prodotti[:45]
+    prodotti_scelti = prodotti[:30]
     presenti = {p.get("slug") for p in prodotti_scelti}
     prodotti_scelti.extend(p for p in prodotti if p.get("slug") in riferiti and p.get("slug") not in presenti)
-    return ricette_scelte, prodotti_scelti[:80]
+    return ricette_scelte, prodotti_scelti[:45]
 
 
 def _json_da_testo(value: str) -> dict:
@@ -671,7 +673,8 @@ async def _progetta_dolce(payload: ProgettoDolcePayload) -> dict:
     } for r in ricette]
     prodotti_fonti = [{
         "slug": p.get("slug"), "nome": p.get("nome"), "codici": p.get("codici_irca", []),
-        "descrizione": p.get("descrizione"), "uso": p.get("dettagli_irca", {}).get("modalita_d_uso", ""),
+        "descrizione": str(p.get("descrizione") or "")[:1200],
+        "uso": str(p.get("dettagli_irca", {}).get("modalita_d_uso", "") or "")[:800],
         "url": p.get("link_prodotto"),
     } for p in prodotti]
     prompt = f"""Sei un tecnologo alimentare e pastry chef. Devi preparare una BOZZA TECNICA tracciabile usando esclusivamente le fonti IRCA fornite.
@@ -692,10 +695,10 @@ Rispondi SOLO JSON con questa forma:
 {{"titolo":"", "descrizione_concept":"", "resa_percentuale":90, "componenti":[{{"nome":"base|inserto|copertura|decorazione", "descrizione":"", "ingredienti":[{{"nome":"", "product_slug":null, "quantita_per_kg_lordo_g":0, "funzione":"", "evidenza":""}}]}}], "ricette_riferimento":[{{"slug":"", "motivo":""}}], "emulsionanti_e_stabilizzanti":[{{"product_slug":"", "motivo":"", "dose_da_validare":true}}], "procedimento":[""], "controlli_e_rischi":[""], "prompt_immagine":""}}
 
 RICETTE IRCA:
-{json.dumps(ricette_fonti, ensure_ascii=False)[:45000]}
+{json.dumps(ricette_fonti, ensure_ascii=False)[:26000]}
 
 PRODOTTI IRCA:
-{json.dumps(prodotti_fonti, ensure_ascii=False)[:35000]}"""
+{json.dumps(prodotti_fonti, ensure_ascii=False)[:20000]}"""
     chat = LlmChat(
         chiave_api(), model=document_model_name(), timeout_s=90, tentativi=2,
         max_tokens=5000, scopo="irca_progetto_dolce", db=db,
@@ -954,7 +957,7 @@ async def dettaglio_prodotto(slug: str):
 @router.get("/ricette")
 async def lista_ricette(
     q: str = "", prodotto: str = "", skip: int = Query(0, ge=0),
-    limit: int = Query(100, ge=1, le=500),
+    limit: int = Query(100, ge=1, le=2000),
 ):
     filtro = {}
     if q:
