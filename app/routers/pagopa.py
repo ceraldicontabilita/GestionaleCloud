@@ -81,7 +81,7 @@ async def list_ricevute(
     """Lista ricevute PagoPA caricate."""
     db = Database.get_db()
     
-    query = {}
+    query = {"duplicate_of": {"$exists": False}}
     if anno:
         query["data_pagamento"] = {"$regex": f"^{anno}"}
     if associata is not None:
@@ -321,7 +321,8 @@ async def auto_associa_ricevute_db(db) -> Dict[str, Any]:
             {"movimento_id": ""},
             {"movimento_id": {"$exists": False}}
         ],
-        "identificativo_bolletta": {"$exists": True, "$ne": None}
+        "identificativo_bolletta": {"$exists": True, "$ne": None},
+        "duplicate_of": {"$exists": False},
     }, {"_id": 0}).to_list(1000)
     
     risultati["ricevute_analizzate"] = len(ricevute)
@@ -473,7 +474,7 @@ async def stats_pagopa(anno: int = None) -> Dict[str, Any]:
     con_ricevuta = await db.estratto_conto_movimenti.count_documents(query_mov)
     
     # Ricevute caricate
-    query_ric = {}
+    query_ric = {"duplicate_of": {"$exists": False}}
     if anno:
         query_ric["data_pagamento"] = {"$regex": f"^{anno}"}
     tot_ricevute = await db[COLLECTION_RICEVUTE].count_documents(query_ric)

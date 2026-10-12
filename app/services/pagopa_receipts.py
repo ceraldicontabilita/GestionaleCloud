@@ -9,6 +9,7 @@ import io
 import logging
 import re
 import uuid
+import unicodedata
 from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from typing import Any
@@ -37,7 +38,7 @@ CAMPI_INTERMEDIARIO = (
     "causale", "ora_pagamento", "importi_quadrano",
     "agente_riscossione", "intestatario", "psp_bic", "psp_nome", "documenti",
     "cartella_number", "importo_tributi", "interessi_mora", "diritti_notifica",
-    "natura", "natura_fonte",
+    "natura", "natura_fonte", "codice_fiscale_debitore",
 )
 
 # Che cos'e' il pagamento verso l'ente: lo dice il titolare, la ricevuta no.
@@ -52,7 +53,7 @@ NATURE_RICEVUTA = {
 # (decisione del 06/10/2026): diritti, oneri e sanzioni non hanno una riga propria da
 # cercare nell'estratto. Lo stato di banca (`movimento_id`) resta un'altra cosa.
 NATURE_ASSOCIATE = ("onere_pratica", "sanzione_interessi")
-PARSER_VERSION = "payment-receipt-layout-v5"
+PARSER_VERSION = "payment-receipt-layout-v6"
 
 
 def _money_decimal(value: str | None) -> Decimal | None:
@@ -383,6 +384,11 @@ def _parse_mooney_payment(text: str) -> dict[str, Any]:
         r"Data\s*e\s*[0o]ra\s*:?\s*(\d{2})/(\d{2})/(\d{4})\s*(\d{2}):(\d{2})",
         righe, re.IGNORECASE,
     )
+    if not data_ora:
+        # Intestazione tabellare: etichette separate dai valori, una sola data/ora.
+        dates = list(re.finditer(r"\b(\d{2})[/-](\d{2})[/-](\d{4})\s+(\d{2}:\d{2}(?::\d{2})?)", prima))
+        if len({m.groups() for m in dates}) == 1:
+            data_ora = dates[0]
     data_pagamento = ora = None
     if data_ora:
         giorno, mese, anno, ore, minuti = data_ora.groups()
@@ -442,13 +448,79 @@ def _parse_mooney_payment(text: str) -> dict[str, Any]:
 _ADER_TITOLO = re.compile(r"Ricevuta\s+di\s+pagamento", re.IGNORECASE)
 
 
+def _receipt_text(text: str) -> str:
+    # Glifi delle stampe ADER e residui booleani delle email convertite in PDF.
+    text = unicodedata.normalize("NFKC", text or "")
+    for glyph, value in (("Ɵ", "ti"), ("ƫ", "tti"), ("Ʃ", "tt")):
+        text = text.replace(glyph, value)
+    return re.sub(r"(?i)\bfalse(?=(?:Importo|Commissione)\s*[:(])", "", text)
+
+
 def e_attestazione_ader(text: str) -> bool:
-    testo = text or ""
+    testo = _receipt_text(text)
     return bool(
         _ADER_TITOLO.search(testo)
-        and re.search(r"Agente\s+della\s+Riscossione", testo, re.IGNORECASE)
-        and re.search(r"Dettaglio\s+transazione", testo, re.IGNORECASE)
+        and re.search(r"Agente\s+della\s+Riscossione", testo, re.I)
+        and re.search(r"(?:Dettaglio\s+transazione|Riepilogo\s+pagamento)", testo, re.I)
     )
+
+
+def e_ricevuta_email_pagopa(text: str) -> bool:
+    """Identifica il formato; l'esito e la quadratura si controllano nel parser."""
+    text = _receipt_text(text)
+    return bool(re.search(r"pago\s*pa", text, re.I) and re.search(
+        r"pagamento\s+(?:è|e['’]?)?\s*andato\s+a\s+buon\s+fine|"
+        r"Hai\s+inviato\s+un\s+pagamento", text, re.I))
+
+
+def _parse_email_pagopa(text: str) -> dict[str, Any]:
+    if not e_ricevuta_email_pagopa(text):
+        return {}
+    text = _receipt_text(text)
+    compact = re.sub(r"\s+", " ", text)
+    principal = re.search(r"\bImporto\s*:?\s*([\d.]+,\d{2})(?:\s*€)?", compact, re.I)
+    total = re.search(r"\bTotale\s*:?\s*([\d.]+,\d{2})\s*€", compact, re.I)
+    fee = re.search(r"Commissione[^\n]{0,100}?([\d.]+,\d{2})\s*€", text, re.I)
+    code = re.search(r"Codice\s+Avviso\s*:?\s*(\d{16,18})", compact, re.I)
+    # Vecchia email tabellare: IUV su due righe, seguito dall'importo dell'ente.
+    legacy = re.search(r"(?m)^\s*(\d{15,18}(?:[ \t]*\n[ \t]*\d{1,3})?)\s*\n\s*([\d.]+,\d{2})\s*€", text)
+    if legacy and not principal:
+        amount = _money_decimal(legacy.group(2))
+        iuv = re.sub(r"\s+", "", legacy.group(1))
+    else:
+        amount = _money_decimal(principal.group(1)) if principal else None
+        iuv = code.group(1) if code else None
+    total_value = _money_decimal(total.group(1)) if total else None
+    fee_value = _money_decimal(fee.group(1)) if fee else None
+    # Il vecchio modello non esplicita la commissione: conservare la differenza
+    # documentata fra totale e quota ente, indicandone la provenienza.
+    if legacy and fee_value is None and total_value is not None and amount is not None and total_value >= amount:
+        fee_value = total_value - amount
+    balanced = amount is not None and total_value is not None and fee_value is not None and amount + fee_value == total_value
+    months = dict(zip(("gennaio febbraio marzo aprile maggio giugno luglio agosto settembre ottobre novembre dicembre").split(), range(1, 13)))
+    date_match = re.search(r"Data\s+e\s+ora\s*:?\s*(\d{1,2})\s+(\w+)\s+(\d{4})", compact, re.I)
+    payment_date = None
+    if date_match:
+        try:
+            payment_date = datetime(int(date_match[3]), months[date_match[2].lower()], int(date_match[1])).date().isoformat()
+        except (ValueError, KeyError):
+            pass
+    beneficiary = re.search(r"Ente\s+creditore\s*:?\s*(.+?)(?=\s+Codice\s+Fiscale|\s+Codice\s+Avviso|$)", compact, re.I)
+    result = {
+        "document_kind": "RICEVUTA_PAGOPA", "identificativo_bolletta": iuv,
+        "operation_amount": float(amount) if amount is not None else None,
+        "fee_amount": float(fee_value) if fee_value is not None else None,
+        "fee_amount_cents": int(fee_value * 100) if fee_value is not None else None,
+        "commission_amount": float(fee_value) if fee_value is not None else None,
+        "bank_debit_total": float(total_value) if total_value is not None else None,
+        "bank_debit_total_cents": int(total_value * 100) if total_value is not None else None,
+        "data_pagamento": payment_date, "quadratura_valida": balanced,
+        "is_payment_receipt": bool(balanced and iuv and payment_date),
+        "fee_source": "totale_meno_quota_ente" if legacy and not fee else "commissione_documentata",
+    }
+    if beneficiary:
+        result["beneficiario"] = beneficiary[1].strip()
+    return result
 
 
 def _importo_ader(valore: str | None) -> Decimal | None:
@@ -470,6 +542,7 @@ def _parse_ader_attestazione(text: str) -> dict[str, Any]:
     documenti deve fare il totale del pagamento al centesimo: se non torna,
     non e' un pagamento riconosciuto, resta da verificare.
     """
+    text = _receipt_text(text)
     if not e_attestazione_ader(text):
         return {}
 
@@ -478,7 +551,7 @@ def _parse_ader_attestazione(text: str) -> dict[str, Any]:
         return trovato.group(1).strip() if trovato else None
 
     def cifra(etichetta: str, blocco: str = text) -> Decimal | None:
-        return _importo_ader(campo(rf"{etichetta}\s*:\s*(?:€|EUR)\s*([\d.,]+)", blocco))
+        return _importo_ader(campo(rf"{etichetta}\s*:(?:[^€\d]{{0,100}})(?:€|EUR)\s*([\d.,]+)", blocco))
 
     prima, *dettagli = re.split(r"Dettaglio\s+documento\s+n\.", text, flags=re.IGNORECASE)
     documenti: list[dict[str, Any]] = []
@@ -486,13 +559,14 @@ def _parse_ader_attestazione(text: str) -> dict[str, Any]:
         # Ogni voce e' una riga «etichetta: € importo»; il totale e' l'unica che
         # comincia per «Totale». Nessun elenco chiuso di voci: una voce che
         # l'Agente aggiunge domani entra nella somma o fa fallire la quadratura.
-        voci = [
-            {"etichetta": re.sub(r"\s+", " ", etichetta).strip(),
-             "importo": float(_importo_ader(valore) or 0)}
-            for etichetta, valore in re.findall(
-                r"^\s*([A-Za-zÀ-ÿ' ./]+?)\s*:\s*(?:€|EUR)\s*([\d.,]+)\s*$", blocco, re.MULTILINE)
-            if not etichetta.strip().lower().startswith(("totale", "importo originario"))
-        ]
+        quota_block = re.split(r"Ente\s+creditore\s*:", blocco, flags=re.I)[-1]
+        quota_block = re.split(r"Totale\s+(?:pagato|Cartella/Avviso)\s*:", quota_block, flags=re.I)[0]
+        etichette = re.findall(r"(Importo tributi|Interessi di mora|Diritti di notifica|Oneri di riscossione|Aggio)\s*:", quota_block, re.I)
+        importi = re.findall(r"(?:€|EUR)\s*([\d.,]+)", quota_block)
+        # Le vecchie stampe hanno prima tutte le etichette poi tutti i valori.
+        # Una voce sconosciuta o un valore in piu' impedisce la quadratura.
+        voci = [{"etichetta": label, "importo": float(_importo_ader(value))}
+                for label, value in zip(etichette, importi)] if len(etichette) == len(importi) else []
         totale = cifra("Totale pagato", blocco)
         if totale is None:
             totale = cifra("Totale Cartella/Avviso", blocco)
@@ -502,9 +576,11 @@ def _parse_ader_attestazione(text: str) -> dict[str, Any]:
             trovate = [v["importo"] for v in voci if v["etichetta"].lower() == nome]
             return trovate[0] if trovate else None
 
+        cartella_block = re.search(r"Cartella/Avviso\s+n\.\s*:(.+?)Ente\s+creditore", blocco, re.I | re.S)
+        numero = campo(r"\b(\d{20})\b", cartella_block[1]) if cartella_block else None
         documenti.append({
-            "numero": campo(r"Cartella/Avviso\s+n\.\s*:\s*(\d{15,25})", blocco),
-            "ente_creditore": campo(r"Ente\s+creditore\s*:\s*(.+)", blocco),
+            "numero": numero or campo(r"Cartella/Avviso\s+n\.\s*:\s*(\d{15,25})", blocco) or (campo(r"^\s*(\d{15,25})", blocco) if dettagli else None),
+            "ente_creditore": (lambda value: value if value and not value.endswith(":") else None)(campo(r"Ente\s+creditore\s*:\s*(.+)", blocco)),
             "voci": voci,
             "importo_tributi": voce("importo tributi"),
             "interessi_mora": voce("interessi di mora"),
@@ -529,7 +605,12 @@ def _parse_ader_attestazione(text: str) -> dict[str, Any]:
         quadra and diritti_totali > 0 and tributi_totali == 0 and interessi_totali == 0
         and all(v["etichetta"].lower() == "diritti di notifica" for d in documenti for v in d["voci"])
     )
-    data_ora = re.search(r"Data/ora\s*:\s*(\d{2})/(\d{2})/(\d{4})\s+(\d{2}:\d{2}(?::\d{2})?)", text)
+    data_ora = re.search(r"Data/ora\s*:\s*(\d{2})[/-](\d{2})[/-](\d{4})\s+(\d{2}:\d{2}(?::\d{2})?)", text)
+    if not data_ora:
+        # Intestazione tabellare: etichette separate dai valori, una sola data/ora.
+        dates = list(re.finditer(r"\b(\d{2})[/-](\d{2})[/-](\d{4})\s+(\d{2}:\d{2}(?::\d{2})?)", prima))
+        if len({m.groups() for m in dates}) == 1:
+            data_ora = dates[0]
     data_pagamento = ora = None
     if data_ora:
         giorno, mese, anno, ora = data_ora.groups()
@@ -543,12 +624,17 @@ def _parse_ader_attestazione(text: str) -> dict[str, Any]:
         re.search(r"Transazione\s+eseguita", text, re.IGNORECASE)
         and re.search(r"registrato\s+correttamente", text, re.IGNORECASE)
     )
+    # Attestazioni ADER 2022 a pagina singola: titolo di ricevuta, ID PSP,
+    # transazione e ID riscossione, senza la frase finale del formato successivo.
+    eseguita = eseguita or bool(re.search(r"Transazione\s+numero\s*:\s*\d+", text, re.I)
+        and re.search(r"ID\s+Univoco\s+Riscossione\s*:\s*\d+", text, re.I) and psp)
     numeri = [d["numero"] for d in documenti if d["numero"]]
     return {
         "document_kind": "RICEVUTA_PAGOPA",
         "intermediario": "Agenzia delle Entrate-Riscossione",
         "agente_riscossione": campo(r"Agente\s+della\s+Riscossione\s*:\s*(.+)"),
         "intestatario": campo(r"Intestata\s+a\s*:\s*(.+)"),
+        "codice_fiscale_debitore": campo(r"Codice\s+fiscale\s*:\s*(\d{11}|[A-Z0-9]{16})"),
         "identificativo_bolletta": iuv,
         "operation_amount": float(totale_pagamento) if totale_pagamento is not None else None,
         "operation_amount_cents": int(totale_pagamento * 100) if totale_pagamento is not None else None,
@@ -730,11 +816,13 @@ def _parse_bonifico_eseguito(text: str, content: bytes | None = None) -> dict[st
 
 def parse_receipt_pdf(content: bytes, filename: str | None = None) -> dict[str, Any]:
     text, ocr_used = _extract_receipt_text(content)
+    text = _receipt_text(text)
     page_count = _pdf_page_count(content)
     compact = re.sub(r"\s+", " ", text)
     upper = compact.upper()
     marker_text = re.sub(r"[^A-Z0-9]", "", upper)
-    bpm_payment = (_parse_bpm_payment(text) or _parse_bonifico_eseguito(text, content) or _parse_mooney_payment(text)
+    email_payment = _parse_email_pagopa(text)
+    bpm_payment = (email_payment or _parse_bpm_payment(text) or _parse_bonifico_eseguito(text, content) or _parse_mooney_payment(text)
                    or _parse_ader_attestazione(text))
     if bpm_payment:
         _attach_pdf_coordinates(content, bpm_payment)
@@ -758,6 +846,8 @@ def parse_receipt_pdf(content: bytes, filename: str | None = None) -> dict[str, 
     ):
         if code:
             break
+        if not any(word in upper for word in ("PAGOPA", "CBILL", "IUV", "RICEVUTA TELEMATICA")):
+            continue
         match = re.search(pattern, code_source, re.IGNORECASE)
         if match:
             code = re.sub(r"\s+", "", match.group(1))
@@ -769,20 +859,8 @@ def parse_receipt_pdf(content: bytes, filename: str | None = None) -> dict[str, 
         r"(?:importo\s+totale\s+pagato|importo\s+(?:pagato|versato|totale)|totale)\s*[:€EUR ]*([\d.]+,\d{2})",
         compact, re.IGNORECASE,
     )
-    if amount_match and amount is None:
+    if amount_match and amount is None and not email_payment:
         amount = float(amount_match.group(1).replace(".", "").replace(",", "."))
-    # Nel riepilogo email il Totale include la commissione, l'Importo e' la sanzione.
-    if any(m in marker_text for m in ("PAGAMENTOEANDATOABUONFINE", "PAGAMENTOANDATOABUONFINE")) and not is_negative_outcome:
-        principal = re.search(r"\bImporto\s*:\s*([\d.]+,\d{2})|\bImporto\s+([\d.]+,\d{2})\s*€", compact, re.I)
-        commission = re.search(r"Commissione.{0,100}?([\d.]+,\d{2})\s*€", compact, re.I)
-        total = re.search(r"\bTotale\s*:?\s*([\d.]+,\d{2})\s*€", compact, re.I)
-        if principal and commission and total:
-            values = [Decimal(v.replace(".", "").replace(",", ".")) for v in
-                      (principal.group(1) or principal.group(2), commission.group(1), total.group(1))]
-            if values[0] + values[1] == values[2]:
-                amount = float(values[0])
-                bpm_payment.update(operation_amount=amount, bank_debit_total=float(values[2]),
-                                   commission_amount=float(values[1]), quadratura_valida=True)
     if amount is None and is_notice:
         notice_amount = re.search(
             r"(?:importo\s+(?:totale\s+)?da\s+pagare|rata\s+unica)\s*[:€EUR ]*([\d.]+,\d{2})",
@@ -805,13 +883,13 @@ def parse_receipt_pdf(content: bytes, filename: str | None = None) -> dict[str, 
     if date_match and not payment_date:
         day, month, year = date_match.group(1).split("/")
         payment_date = f"{year}-{month}-{day}"
-    targa_match = re.search(r"\bTARGA\s*:\s*([A-Z]{2}\d{3}[A-Z]{2})\b", compact, re.IGNORECASE)
+    targa_match = re.search(r"\bTARGA\s*:?\s*([A-Z]{2}\d{3}[A-Z]{2})\b", compact, re.IGNORECASE)
     verbale_match = re.search(
-        r"\bVERBALE\s+N[.°º]?\s*:\s*([A-Z0-9/-]{6,30})",
+        r"\bVERBALE\s+N[.°º]?\s*:?\s*([A-Z0-9/-]{6,30})",
         compact, re.IGNORECASE,
     )
     violation_date_match = re.search(
-        r"\bTARGA\s*:\s*[A-Z]{2}\d{3}[A-Z]{2}\s*-\s*DATA\s*:\s*(\d{2}/\d{2}/\d{2,4})",
+        r"\bTARGA\s*:?\s*[A-Z]{2}\d{3}[A-Z]{2}\s*-\s*DATA\s*:\s*(\d{2}/\d{2}/\d{2,4})",
         compact, re.IGNORECASE,
     )
     violation_date = None
@@ -869,10 +947,12 @@ def parse_receipt_pdf(content: bytes, filename: str | None = None) -> dict[str, 
         "importo": amount,
         "operation_amount": amount,
         "operation_amount_cents": int(Decimal(str(amount)) * 100) if amount is not None else None,
-        "bank_debit_total": bpm_payment.get("bank_debit_total") or amount,
+        "bank_debit_total": bpm_payment.get("bank_debit_total", amount),
         "bank_debit_total_cents": (
             bpm_payment.get("bank_debit_total_cents")
-            or (int(Decimal(str(amount)) * 100) if amount is not None else None)
+            if bpm_payment.get("bank_debit_total_cents") is not None
+            else (int(Decimal(str(bpm_payment.get("bank_debit_total", amount))) * 100)
+                  if bpm_payment.get("bank_debit_total", amount) is not None else None)
         ),
         "data_pagamento": payment_date,
         "targa": targa_match.group(1).upper() if targa_match else None,
@@ -887,8 +967,8 @@ def parse_receipt_pdf(content: bytes, filename: str | None = None) -> dict[str, 
         "page_count": page_count,
         "document_kind": document_kind,
         "is_payment_receipt": bool(
-            bpm_payment.get("is_payment_receipt")
-            or (is_receipt and not is_notice and not is_negative_outcome)
+            not is_negative_outcome and (bpm_payment.get("is_payment_receipt")
+            if "is_payment_receipt" in bpm_payment else (is_receipt and not is_notice))
         ),
         "parser_version": PARSER_VERSION,
         "field_evidence": {**(bpm_payment.get("field_evidence") or {}), **generic_evidence},
@@ -998,7 +1078,7 @@ async def ricollega_ricevute_paypal(db) -> dict[str, int]:
     esito = {"in_attesa": 0, "collegate": 0}
     attese = await db[COLLECTION_RICEVUTE].find({
         "paypal_transaction_id": {"$nin": [None, ""]},
-        "paypal_collegato": {"$ne": True},
+        "paypal_collegato": {"$ne": True}, "duplicate_of": {"$exists": False},
     }, {"_id": 0, "pdf_data": 0}).to_list(500)
     for ricevuta in attese:
         esito["in_attesa"] += 1
@@ -1007,11 +1087,34 @@ async def ricollega_ricevute_paypal(db) -> dict[str, int]:
     return esito
 
 
+def importo_ricevuta_compatibile(verbale: dict[str, Any], ricevuta: dict[str, Any], amount: Any) -> bool:
+    """Quota ente, ordinaria o ridotta documentata; mai la commissione PSP."""
+    if verbale.get("stato") == "quarantena" or verbale.get("origine") == "RICEVUTA_PAGOPA":
+        return False
+    if verbale.get("targa") and ricevuta.get("targa") and verbale["targa"].upper() != ricevuta["targa"].upper():
+        return False
+    if amounts_equal_to_cent(verbale.get("importo"), amount):
+        return True
+    if amounts_equal_to_cent(verbale.get("importo_ordinario"), amount):
+        return True
+    if not amounts_equal_to_cent(verbale.get("importo_ridotto"), amount):
+        return False
+    # Un importo ridotto pagato dopo il termine PEC provato non chiude il verbale.
+    if verbale.get("data_notifica_fonte") == "pec" and verbale.get("data_notifica"):
+        from datetime import date, timedelta
+        try:
+            limite = date.fromisoformat(str(verbale["data_notifica"])[:10]) + timedelta(days=5)
+            return date.fromisoformat(str(ricevuta.get("data_pagamento"))[:10]) <= limite
+        except ValueError:
+            return False
+    return True
+
+
 async def _associate_receipt_to_verbale(
     db, *, receipt_id: str, parsed: dict[str, Any], amount: Any,
 ) -> dict[str, Any]:
     """Collega solo identita' documentale esatta e importo al centesimo."""
-    iuv = str(parsed.get("identificativo_bolletta") or "").strip()
+    iuv = str(parsed.get("identificativo_bolletta") or parsed.get("iuv") or "").strip()
     numero = str(parsed.get("numero_verbale") or "").strip().upper()
     references = []
     if iuv:
@@ -1026,7 +1129,7 @@ async def _associate_receipt_to_verbale(
     ).limit(20).to_list(20)
     candidates: dict[str, dict[str, Any]] = {}
     for item in found:
-        if not amounts_equal_to_cent(item.get("importo"), amount):
+        if not importo_ricevuta_compatibile(item, parsed, amount):
             continue
         key = str(item.get("id") or item.get("numero_verbale") or item.get("iuv"))
         candidates[key] = item
@@ -1119,7 +1222,9 @@ async def aggancia_ricevute_in_attesa(db, verbale: dict[str, Any]) -> dict[str, 
     from app.services.verbali_pagamento_finder import applica_pagamento_a_verbale
 
     for ricevuta in attese:
-        if not amounts_equal_to_cent(verbale.get("importo"), ricevuta.get("importo")):
+        if ricevuta.get("duplicate_of"):
+            continue
+        if not importo_ricevuta_compatibile(verbale, ricevuta, ricevuta.get("importo")):
             esito["importo_diverso"] += 1
             continue
         applied = await applica_pagamento_a_verbale(db, verbale["id"], {
@@ -1143,6 +1248,83 @@ async def aggancia_ricevute_in_attesa(db, verbale: dict[str, Any]) -> dict[str, 
         await risolvi_alert(CODICE_ALERT_SENZA_VERBALE, str(ricevuta["id"]), db, "verbale_arrivato")
         esito["agganciate"] += 1
     return esito
+
+
+async def associa_avvisi_a_ricevuta(db, receipt: dict[str, Any]) -> list[str]:
+    """Prova documentale su un avviso gia' acquisito, per IUV e quota ente esatti."""
+    code = str(receipt.get("identificativo_bolletta") or receipt.get("iuv") or "")
+    if not code or receipt.get("duplicate_of"):
+        return []
+    forms = [code]
+    if len(code) == 18:
+        forms.append(code[1:])
+    elif len(code) == 17:
+        forms.extend(["1" + code, "3" + code])
+    rows = await db["documents_inbox"].find({"$or": [
+        {key: {"$in": forms}} for key in ("parsed_metadata.identificativo_bolletta", "parsed_metadata.codice_avviso", "iuv_estratto")
+    ]}, {"_id": 0, "pdf_data": 0}).to_list(500)
+    linked = []
+    for row in rows:
+        meta = row.get("parsed_metadata") or {}
+        kind = row.get("document_type") or row.get("tipo_documento") or row.get("category")
+        if kind != "avviso_pagopa" or meta.get("is_payment_receipt"):
+            continue
+        if not amounts_equal_to_cent(meta.get("importo"), receipt.get("importo")):
+            continue
+        await db["documents_inbox"].update_one({"id": row["id"]}, {"$set": {
+            "obligation_status": "PAGATO_DOCUMENTALE", "parsed_metadata.obligation_status": "PAGATO_DOCUMENTALE",
+            "ricevuta_pagopa_id": receipt["id"], "data_pagamento": receipt.get("data_pagamento"),
+            "importo_pagato": receipt["importo"], "pagato_documentalmente": True,
+            "pagato": True, "chiuso": True, "processed": True, "status": "processato",
+            "payment_evidence_url": f"/api/originale/ricevuta_pagopa/{receipt['id']}",
+        }})
+        linked.append(row["id"])
+    if linked:
+        await db[COLLECTION_RICEVUTE].update_one({"id": receipt["id"]},
+            {"$addToSet": {"avvisi_collegati": {"$each": linked}}})
+    return linked
+
+
+async def consolida_copie_ricevuta(db, receipt: dict[str, Any]) -> dict[str, Any]:
+    """Un pagamento, piu' originali apribili. Non elimina record referenziati."""
+    code = receipt.get("identificativo_bolletta") or receipt.get("iuv")
+    day = receipt.get("data_pagamento")
+    if not code or not day:
+        return receipt
+    forms = [code]
+    if len(str(code)) == 18 and str(code)[0] in "13":
+        forms.append(str(code)[1:])
+    elif len(str(code)) == 17:
+        forms.extend(["1" + str(code), "3" + str(code)])
+    rows = await db[COLLECTION_RICEVUTE].find({
+        "$or": [{"identificativo_bolletta": {"$in": forms}}, {"iuv": {"$in": forms}}],
+        "data_pagamento": day, "duplicate_of": {"$exists": False},
+    }, {"_id": 0, "pdf_data": 0}).to_list(100)
+    rows = [r for r in rows if amounts_equal_to_cent(r.get("importo"), receipt.get("importo"))]
+    if len(rows) < 2:
+        return receipt
+    for field in ("verbale_id", "movimento_id", "fiscal_payment_id", "natura"):
+        if len({str(r[field]) for r in rows if r.get(field)}) > 1:
+            return receipt  # prove con collegamenti contrastanti: non fonderle
+    rows.sort(key=lambda r: (not bool(r.get("verbale_id") or r.get("movimento_id")), str(r["id"])))
+    canonical = rows[0]
+    for copy in rows[1:]:
+        fields = {k: v for k, v in copy.items() if canonical.get(k) in (None, "", []) and v not in (None, "", [])
+                  and k not in {"id", "filename", "pdf_hash", "source_sha256", "file_hash", "size", "source", "source_context", "created_at"}}
+        if copy.get("fee_amount") is not None and canonical.get("fee_amount") is None:
+            fields.update({k: copy[k] for k in ("fee_amount", "fee_amount_cents", "bank_debit_total", "bank_debit_total_cents") if copy.get(k) is not None})
+        canonical.update(fields)
+        await db[COLLECTION_RICEVUTE].update_one({"id": canonical["id"]}, {"$set": fields,
+            "$addToSet": {"document_sources": {"receipt_id": copy["id"],
+                "sha256": copy.get("pdf_hash") or copy.get("source_sha256"), "filename": copy.get("filename")}}})
+        await db[COLLECTION_RICEVUTE].update_one({"id": copy["id"]}, {"$set": {
+            "duplicate_of": canonical["id"], "duplicate_reason": "stesso_iuv_data_quota_ente",
+        }})
+        await db["verbali_noleggio"].update_many({"ricevuta_pagopa_id": copy["id"]},
+            {"$set": {"ricevuta_pagopa_id": canonical["id"]}})
+        await db["estratto_conto_movimenti"].update_many({"ricevuta_pagopa_id": copy["id"]},
+            {"$set": {"ricevuta_pagopa_id": canonical["id"]}})
+    return {**receipt, **canonical} if canonical["id"] == receipt["id"] else canonical
 
 
 async def import_receipt(
@@ -1182,25 +1364,21 @@ async def import_receipt(
 
     pdf_hash = hashlib.sha256(content).hexdigest()
     existing = await db[COLLECTION_RICEVUTE].find_one(
-        {"pdf_hash": pdf_hash}, {"_id": 0},
+        {"$or": [{key: pdf_hash} for key in ("pdf_hash", "source_sha256", "file_hash")]}, {"_id": 0},
     )
-    if existing:
-        return {"success": True, "duplicate": True, "receipt": existing,
-                "riconciliazione_fiscale": existing.get("riconciliazione_fiscale")}
-
-    # Lo stesso pagamento documentato da un secondo file (l'attestazione del
-    # portale dopo la ricevuta dell'intermediario): stesso IUV, stesso importo,
-    # stesso giorno. Un solo record: il file nuovo non ne crea un secondo.
-    stesso = await db[COLLECTION_RICEVUTE].find_one(
-        {"identificativo_bolletta": code, "data_pagamento": values.get("data_pagamento")},
-        {"_id": 0, "pdf_data": 0},
-    )
-    if stesso and amounts_equal_to_cent(stesso.get("importo"), amount):
-        return {"success": True, "duplicate": True, "receipt": stesso,
-                "duplicate_motivo": "stesso_iuv_importo_data",
-                "riconciliazione_fiscale": stesso.get("riconciliazione_fiscale")}
-
-    receipt_id = str(uuid.uuid4())
+    if existing and existing.get("duplicate_of"):
+        existing = await db[COLLECTION_RICEVUTE].find_one({"id": existing["duplicate_of"]}, {"_id": 0})
+    if not existing and values.get("data_pagamento"):
+        candidates = await db[COLLECTION_RICEVUTE].find({
+            "$or": [{"identificativo_bolletta": code}, {"iuv": code}],
+            "data_pagamento": values["data_pagamento"], "duplicate_of": {"$exists": False},
+        }, {"_id": 0, "pdf_data": 0}).to_list(100)
+        candidates = [r for r in candidates if amounts_equal_to_cent(r.get("importo"), amount)]
+        # Le copie legacy restano apribili, ma il pagamento ha una sola identita'.
+        if candidates:
+            existing = sorted(candidates, key=lambda r: (not bool(r.get("verbale_id") or r.get("movimento_id")), str(r.get("id"))))[0]
+    receipt_id = existing["id"] if existing else str(uuid.uuid5(uuid.NAMESPACE_URL,
+        f"pagopa:{company_id}:{code}:{values.get('data_pagamento')}:{Decimal(str(amount)):.2f}"))
     strong_codes = list(dict.fromkeys(
         str(values.get(field) or "").strip()
         for field in (
@@ -1264,7 +1442,42 @@ async def import_receipt(
                 "updated_at": now,
             }},
         )
-    await db[COLLECTION_RICEVUTE].insert_one(receipt.copy())
+    duplicate = bool(existing)
+    if existing:
+        # Rilettura idempotente: aggiorna i campi estratti, conserva originale,
+        # classificazioni manuali e collegamenti gia' provati.
+        immutable = {"id", "filename", "pdf_data", "pdf_hash", "content_type", "size", "source",
+                     "source_context", "created_at", "note", "natura", "natura_fonte"}
+        patch = {k: v for k, v in receipt.items() if k not in immutable and v is not None}
+        for key in ("banca_verificata", "associazione_automatica"):
+            if existing.get(key):
+                patch[key] = existing[key]
+        if values.get("fee_amount") is None and existing.get("fee_amount") is not None:
+            for key in ("fee_amount", "fee_amount_cents", "bank_debit_total", "bank_debit_total_cents"):
+                if existing.get(key) is not None:
+                    patch[key] = existing[key]
+        old_values = {k: existing.get(k) for k in ("importo", "data_pagamento", "fee_amount", "bank_debit_total", "parser_version")}
+        if not existing.get("parser_previous_values") and any(old_values.get(k) != patch.get(k) for k in old_values):
+            patch["parser_previous_values"] = old_values
+        receipt = {**existing, **patch}
+        await db[COLLECTION_RICEVUTE].update_one({"id": receipt_id}, {"$set": patch})
+    else:
+        await db[COLLECTION_RICEVUTE].update_one({"id": receipt_id}, {"$setOnInsert": receipt.copy()}, upsert=True)
+    canonical = await consolida_copie_ricevuta(db, receipt)
+    if canonical["id"] != receipt_id:
+        duplicate = True
+        receipt = canonical
+        receipt_id = receipt["id"]
+    # Una seconda attestazione e' una prova nuova dello stesso pagamento:
+    # conservarne i byte, non solo il nome o il risultato dell'estrazione.
+    if existing and pdf_hash not in {existing.get("pdf_hash"), existing.get("source_sha256"), existing.get("file_hash")}:
+        await db["documents_inbox"].update_one({"id": "receipt-copy:" + pdf_hash}, {"$setOnInsert": {
+            "id": "receipt-copy:" + pdf_hash, "sha256": pdf_hash, "file_hash": pdf_hash,
+            "filename": filename, "content_type": "application/pdf",
+            "pdf_data": base64.b64encode(content).decode("ascii"),
+            "ricevuta_pagopa_id": receipt_id, "tipo_documento": "ricevuta_pagopa",
+            "processed": True, "status": "processato", "source": source, "created_at": now,
+        }}, upsert=True)
     try:
         import logging
         from app.services.cartelle_pagamento import chiudi_da_ricevuta
@@ -1273,6 +1486,15 @@ async def import_receipt(
     except Exception as exc:  # la cartella non ferma l'import della ricevuta
         logging.getLogger(__name__).warning("Cartella non aggiornata dalla ricevuta %s (%s): %s",
                        receipt.get("id"), type(exc).__name__, exc)
+    # Un vecchio errore di classificazione non deve lasciare una seconda attesa
+    # da pagare sul PDF che ora e' riconosciuto come ricevuta.
+    await db["documents_inbox"].update_many({"$or": [{"sha256": pdf_hash}, {"file_hash": pdf_hash}]}, {"$set": {
+        "category": "ricevuta_pagopa", "document_type": "ricevuta_pagopa", "tipo_documento": "ricevuta_pagopa",
+        "obligation_status": "NON_APPLICABILE", "evidence_role": "prova_pagamento",
+        "is_payment_evidence": True, "pagato": True,
+        "ricevuta_pagopa_id": receipt_id, "parsed_metadata": parsed,
+    }})
+    receipt["avvisi_collegati"] = await associa_avvisi_a_ricevuta(db, receipt)
     paypal = await collega_ricevuta_a_paypal(db, receipt)
     if paypal.get("collegata"):
         receipt.update(paypal["campi"])
@@ -1282,10 +1504,11 @@ async def import_receipt(
     )
     if verbale_match.get("matched"):
         receipt["verbale_id"] = verbale_match.get("verbale_id")
+        receipt["stato_verbale"] = STATO_RICEVUTA_AGGANCIATA
         receipt["riconciliazione_verbale"] = verbale_match
         await db[COLLECTION_RICEVUTE].update_one(
             {"id": receipt_id}, {"$set": {
-                "verbale_id": receipt["verbale_id"],
+                "verbale_id": receipt["verbale_id"], "stato_verbale": STATO_RICEVUTA_AGGANCIATA, "stato": "associata",
                 "riconciliazione_verbale": verbale_match,
             }},
         )
@@ -1300,6 +1523,8 @@ async def import_receipt(
         source_ref=receipt_id, category="riscossione",
         metadata={"receipt_collection": COLLECTION_RICEVUTE},
     )
+    source_entry = {"sha256": pdf_hash, "filename": filename, "document_id": document.get("document_id"), "version_id": document.get("id")}
+    await db[COLLECTION_RICEVUTE].update_one({"id": receipt_id}, {"$addToSet": {"document_sources": source_entry}})
     source_type = {
         "RICEVUTA_CBILL": "RICEVUTA_CBILL",
         "RICEVUTA_MAV": "RICEVUTA_MAV",
@@ -1322,6 +1547,6 @@ async def import_receipt(
         }
         receipt.update(patch)
         await db[COLLECTION_RICEVUTE].update_one({"id": receipt_id}, {"$set": patch})
-    return {"success": True, "duplicate": False, "receipt": receipt,
+    return {"success": True, "duplicate": duplicate, "duplicate_motivo": "stesso_iuv_importo_data" if duplicate else None, "receipt": receipt,
             "riconciliazione_fiscale": fiscal_match,
             "riconciliazione_verbale": verbale_match}

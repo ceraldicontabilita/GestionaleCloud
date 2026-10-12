@@ -102,7 +102,7 @@ async def _duplicate_sources(
         ("invoices", (("file_hash", sha256), ("content_hash", sha256), *_impronte_fattura(content))),
         ("f24_unificato", (("pdf_hash", sha256), ("sha256", sha256))),
         ("quietanze_f24", (("pdf_hash", sha256), ("sha256", sha256))),
-        ("ricevute_pagopa", (("pdf_hash", sha256), ("sha256", sha256))),
+        ("ricevute_pagopa", (("pdf_hash", sha256), ("sha256", sha256), ("source_sha256", sha256))),
     )
     found: list[dict[str, Any]] = []
     for collection, candidates in checks:

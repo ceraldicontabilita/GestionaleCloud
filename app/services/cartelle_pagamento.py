@@ -257,17 +257,28 @@ def _stesso_importo(totale: Optional[str], importo: Any) -> bool:
         return False
 
 
-async def _applica_ricevuta(db, cartella: Dict[str, Any], ricevuta: Dict[str, Any]) -> str:
-    importo = ricevuta.get("operation_amount")
+async def _applica_ricevuta(db, cartella: Dict[str, Any], ricevuta: Dict[str, Any], quota=None) -> str:
+    importo = quota if quota is not None else ricevuta.get("operation_amount", ricevuta.get("importo"))
     if importo is None:
-        importo = ricevuta.get("importo")
-    torna = _stesso_importo(cartella.get("totale"), importo)
-    campi = expectation_evidence_fields(satisfied=torna, evidence_ids=[str(ricevuta.get("id") or "")])
+        return cartella.get("expectation_status")
+    key = ":".join((str(ricevuta.get("identificativo_bolletta") or ricevuta.get("iuv") or ricevuta["id"]),
+                    str(ricevuta.get("data_pagamento") or "")))
+    pagamenti = [r for r in cartella.get("pagamenti_documentati", [])
+                 if r.get("payment_key") != key and r.get("ricevuta_id") != ricevuta["id"]]
+    pagamenti.append({"payment_key": key, "ricevuta_id": ricevuta["id"],
+                      "importo": str(importo), "data_pagamento": ricevuta.get("data_pagamento")})
+    versato = sum((Decimal(str(r["importo"])) for r in pagamenti), Decimal("0"))
+    torna = _stesso_importo(cartella.get("totale"), versato)
+    ids = [r["ricevuta_id"] for r in pagamenti]
+    campi = expectation_evidence_fields(satisfied=torna, evidence_ids=ids)
     await db[COLL].update_one({"id": cartella["id"]}, {"$set": {
-        **campi, "ricevuta_id": ricevuta.get("id"),
+        **campi, "ricevuta_id": ricevuta.get("id"), "pagamenti_documentati": pagamenti,
+        "importo_pagato_documentale": str(versato),
         "data_pagamento": ricevuta.get("data_pagamento"),
         "updated_at": datetime.now(timezone.utc).isoformat(),
     }})
+    await db["ricevute_pagopa"].update_one({"id": ricevuta["id"]},
+        {"$addToSet": {"cartelle_collegate": cartella["id"]}})
     return campi["expectation_status"]
 
 
@@ -289,28 +300,55 @@ def _forme_del_codice(codice: Any) -> List[str]:
 
 
 async def chiudi_da_ricevuta(db, ricevuta: Dict[str, Any]) -> Optional[str]:
-    """Arriva una ricevuta: se cita lo IUV di una cartella aperta, la chiude (importo uguale) o la segnala."""
+    """IUV oppure numero cartella esplicito e quota documentata; nessuna ripartizione stimata."""
+    if ricevuta.get("duplicate_of") or ricevuta.get("is_payment_receipt") is False:
+        return None
+    documenti = ricevuta.get("documenti") or []
+    if documenti and ricevuta.get("importi_quadrano") is not True:
+        return None
+    linked = set()
+    result = None
+    for doc in documenti:
+        if not doc.get("numero") or doc.get("totale") is None or doc.get("quadra") is not True:
+            continue
+        ident = "cartella:" + re.sub(r"\W+", "", doc["numero"])
+        cartella = await db[COLL].find_one({"id": ident}, {"_id": 0})
+        if not cartella:
+            continue
+        debtor = ricevuta.get("codice_fiscale_debitore")
+        if debtor and cartella.get("codice_fiscale_destinatario") and debtor != cartella["codice_fiscale_destinatario"]:
+            continue
+        result = await _applica_ricevuta(db, cartella, ricevuta, doc["totale"])
+        linked.add(cartella["id"])
+    # Se il PDF contiene piu' quote non usare il totale dell'intera ricevuta
+    # contro una singola cartella: fanno fede i dettagli sopra.
+    if documenti:
+        return result
     forme = _forme_del_codice(ricevuta.get("identificativo_bolletta") or ricevuta.get("iuv"))
     if not forme:
         return None
-    cartella = await db[COLL].find_one(
-        {"$or": [{"iuv": {"$in": forme}}, {"codice_avviso": {"$in": forme}}]}, {"_id": 0})
-    if not cartella:
+    cartelle = await db[COLL].find(
+        {"$or": [{"iuv": {"$in": forme}}, {"codice_avviso": {"$in": forme}}]}, {"_id": 0}).to_list(10)
+    if len(cartelle) != 1:
         return None
-    return await _applica_ricevuta(db, cartella, ricevuta)
+    return await _applica_ricevuta(db, cartelle[0], ricevuta)
 
 
 async def chiudi_da_ricevuta_esistente(db, cartella_id: str) -> Optional[str]:
-    """Arriva la cartella: se la ricevuta con il suo IUV c'e' gia', l'attesa nasce gia' chiusa."""
+    """Cerca anche le attestazioni arrivate prima della cartella originale."""
     cartella = await db[COLL].find_one({"id": cartella_id}, {"_id": 0})
-    if not cartella or not cartella.get("iuv"):
+    if not cartella:
         return None
-    forme = list(dict.fromkeys(
-        _forme_del_codice(cartella["iuv"]) + _forme_del_codice(cartella.get("codice_avviso"))))
-    ricevuta = await db["ricevute_pagopa"].find_one(
-        {"identificativo_bolletta": {"$in": forme}}, {"_id": 0, "pdf_data": 0},
-    )
-    return await _applica_ricevuta(db, cartella, ricevuta) if ricevuta else None
+    forme = list(dict.fromkeys(_forme_del_codice(cartella.get("iuv")) + _forme_del_codice(cartella.get("codice_avviso"))))
+    numero = re.sub(r"\W+", "", cartella.get("numero_cartella") or cartella_id.removeprefix("cartella:"))
+    rows = await db["ricevute_pagopa"].find({"duplicate_of": {"$exists": False}, "$or": [
+        {"identificativo_bolletta": {"$in": forme}}, {"iuv": {"$in": forme}},
+        {"documenti.numero": numero},
+    ]}, {"_id": 0, "pdf_data": 0}).to_list(100)
+    result = None
+    for row in rows:
+        result = await chiudi_da_ricevuta(db, row) or result
+    return result
 
 
 async def contenuto(db, cartella_id: str) -> Optional[Tuple[bytes, str]]:

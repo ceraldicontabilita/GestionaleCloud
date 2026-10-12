@@ -462,7 +462,9 @@ async def applica_pagamento_a_verbale(db, verbale_id, match):
         verbale.get("importo") or verbale.get("importo_addebitato_fornitore")
     )
     if not amounts_equal_to_cent(verbale_amount, match.get("importo")):
-        return False
+        from app.services.pagopa_receipts import importo_ricevuta_compatibile
+        if not (match.get("ricevuta_pagopa_id") and importo_ricevuta_compatibile(verbale, match, match.get("importo"))):
+            return False
 
     incoming_documentary_id = _documentary_evidence_id(match)
     incoming_bank_id = str(match.get("movimento_id") or "").strip() or None
@@ -506,7 +508,7 @@ async def applica_pagamento_a_verbale(db, verbale_id, match):
             match.get("fonte") if incoming_documentary_id
             else verbale.get("fonte_pagamento")
         ),
-        "importo": match.get("importo") or None,
+        "importo_pagato": match.get("importo"),
         "metodo_pagamento": match.get("metodo_pagamento"),
         "psp": match.get("psp"),
         "data_pagamento": (match.get("data_pagamento") if incoming_documentary_id else verbale.get("data_pagamento") if documentary_verified else None),
@@ -567,7 +569,7 @@ async def applica_pagamento_a_verbale(db, verbale_id, match):
             except Exception as exc:  # noqa: BLE001 - il pagamento e' gia' scritto
                 logger.warning("Proposta di trattenuta non creata per il verbale %s: %s: %s",
                                verbale.get("id"), type(exc).__name__, exc)
-    return res.modified_count > 0
+    return bool(res.modified_count > 0 or incoming_documentary_id == _documentary_evidence_id(verbale))
 
 
 async def normalizza_attese_quietanza(db) -> int:
