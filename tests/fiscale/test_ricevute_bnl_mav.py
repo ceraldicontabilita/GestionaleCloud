@@ -65,6 +65,13 @@ def test_due_contabili_nello_stesso_pdf_restano_distinte_e_deduplicate():
         assert sorted(r['importo'] for r in rows)==[123.45,223.45]
         assert {r['source_context']['source_page'] for r in rows}=={1,2}
         assert all(r['source_context']['original_document_id'] for r in rows)
+        import base64
+        originals=await db['documents_inbox'].find({'document_type':'fascicolo_contabili_bnl'}).to_list(None)
+        assert len(originals)==1
+        assert base64.b64decode(originals[0]['pdf_data'])==data
+        assert originals[0]['fiscal_document_id']==first['original_document_id']
+        version=await db['fiscal_document_versions'].find_one({'document_id':first['original_document_id']})
+        assert version['page_count']==2
     asyncio.run(run())
 
 
