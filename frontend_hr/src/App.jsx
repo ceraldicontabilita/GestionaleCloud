@@ -5472,6 +5472,9 @@ function PagheBonificiPage({ dipendenti = [] }) {
   const [dipendentiSelezionati, setDipendentiSelezionati] = useState([]);
   const [schedaContabile, setSchedaContabile] = useState(null);
   const [schedaBusy, setSchedaBusy] = useState(false);
+  const [inserimentoManuale, setInserimentoManuale] = useState(null);
+  const [manualeBusy, setManualeBusy] = useState(false);
+  const filtroDipendentiRef = useRef(null);
   const griglia = Boolean(importSession.state.griglia);
   const setGriglia = value => importSession.setField("griglia", value);
   // Import (ex pagina Buste Paga)
@@ -5550,6 +5553,17 @@ function PagheBonificiPage({ dipendenti = [] }) {
       setEditPag(null);
       await load();
     } catch (e) { toast(e?.response?.data?.detail || "Errore nello spostamento del pagamento", "err"); }
+    finally { setBusy(null); }
+  };
+
+  const eliminaPagamentoManuale = async (key) => {
+    if (!window.confirm("Eliminare questo pagamento inserito a mano? I documenti bancari non vengono toccati.")) return;
+    setBusy(key);
+    try {
+      await axios.delete(`${API}/paghe/pagamento-esito/${encodeURIComponent(key)}`);
+      toast("Pagamento manuale eliminato");
+      await load();
+    } catch (e) { toast(e?.response?.data?.detail || "Impossibile eliminare il pagamento", "err"); }
     finally { setBusy(null); }
   };
 
@@ -5641,6 +5655,16 @@ function PagheBonificiPage({ dipendenti = [] }) {
       setTimeout(() => URL.revokeObjectURL(url), 60000);
     } catch (e) {
       if (nuovaFinestra) nuovaFinestra.close();
+      if (e?.response?.status === 404 && riga?.cedolino_id) {
+        setData(precedenti => ({
+          ...precedenti,
+          righe: (precedenti.righe || []).map(r => ({
+            ...r,
+            cedolino_pdf: r.cedolino_id === riga.cedolino_id ? false : r.cedolino_pdf,
+            cedolini: (r.cedolini || []).map(c => c.cedolino_id === riga.cedolino_id ? { ...c, cedolino_pdf: false } : c),
+          })),
+        }));
+      }
       toast(e?.response?.data?.detail || "PDF del cedolino non disponibile", "err");
     } finally {
       setBusy(null);
@@ -5799,17 +5823,12 @@ function PagheBonificiPage({ dipendenti = [] }) {
   const apriSchedaContabile = async () => {
     setSchedaBusy(true);
     try {
-      const params = new URLSearchParams();
-      dipendentiSelezionati.forEach(id => params.append("dipendente_id", id));
-      const r = await axios.get(`${API}/paghe/prospetto-contabile?${params.toString()}`);
-      const meseContabile = mese === 13 ? 12 : mese === 14 ? 7 : mese;
-      const mensili = (r.data?.righe || []).filter(x => (!anno || x.anno === anno) && (!meseContabile || x.mese === meseContabile));
       const selezionati = dipendentiSelezionati.length;
       setSchedaContabile({
-        mensili,
-        righe: r.data?.movimenti || [],
-        saldo_finale: mensili.length ? mensili[mensili.length - 1].saldo_progressivo : r.data?.saldo_finale,
-        perDipendente: r.data?.per_dipendente || [],
+        mensili: contabilitaVista.righe,
+        righe: data.contabilita?.movimenti || [],
+        saldo_finale: contabilitaVista.saldo_finale,
+        perDipendente: contabilitaVista.per_dipendente,
         titolo: selezionati === 1
           ? (dipendenti.find(d => d.id === dipendentiSelezionati[0])?.nome_completo || "Dipendente")
           : selezionati > 1 ? `${selezionati} dipendenti selezionati` : "Tutti i dipendenti",
@@ -5817,6 +5836,24 @@ function PagheBonificiPage({ dipendenti = [] }) {
     } catch (e) {
       toast(e?.response?.data?.detail || "Impossibile caricare la scheda contabile", "err");
     } finally { setSchedaBusy(false); }
+  };
+
+  const apriInserimentoManuale = () => setInserimentoManuale({
+    dipendente_id: dipendentiSelezionati.length === 1 ? dipendentiSelezionati[0] : "",
+    tipo: "dovuto", anno: anno || annoCorr, mese: mese || new Date().getMonth() + 1,
+    importo: "", data: new Date().toISOString().slice(0, 10), nota: "",
+  });
+  const salvaInserimentoManuale = async () => {
+    if (!inserimentoManuale) return;
+    setManualeBusy(true);
+    try {
+      await axios.post(`${API}/paghe/inserimento-manuale`, inserimentoManuale);
+      toast(inserimentoManuale.tipo === "dovuto" ? "Importo dovuto registrato" : "Pagamento manuale registrato");
+      setInserimentoManuale(null);
+      await load();
+    } catch (e) {
+      toast(e?.response?.data?.detail || "Impossibile registrare l'importo manuale", "err");
+    } finally { setManualeBusy(false); }
   };
   const apriPrimaNota = async (dipId, nome) => {
     setPnDett({ nome, loading: true });
@@ -5829,12 +5866,51 @@ function PagheBonificiPage({ dipendenti = [] }) {
     } catch { setPnDett({ nome, righe: [], errore: true }); }
   };
 
-  const t = data.totali || {};
+  const meseContabile = mese === 13 ? 12 : mese === 14 ? 7 : mese;
+  const filtraRigheContabili = righe => (righe || []).filter(x =>
+    (!anno || Number(x.anno) === Number(anno)) && (!meseContabile || Number(x.mese) === Number(meseContabile)));
+  const righeContabili = filtraRigheContabili(data.contabilita?.righe);
+  const mensiliDipendente = filtraRigheContabili(data.contabilita?.mensili_per_dipendente);
+  const somma = (righe, campo) => Math.round(righe.reduce((totale, r) => totale + Number(r?.[campo] || 0), 0) * 100) / 100;
+  const perDipendenteContabile = Object.values(mensiliDipendente.reduce((acc, r) => {
+    const id = r.dipendente_id;
+    acc[id] ||= { dipendente_id: id, dipendente: r.dipendente, dovuto: 0, pagato: 0, saldo: 0 };
+    acc[id].dovuto += Number(r.dovuto || 0);
+    acc[id].pagato += Number(r.erogato || 0);
+    acc[id].saldo = Number(r.saldo_progressivo || 0);
+    return acc;
+  }, {})).sort((a, b) => a.dipendente.localeCompare(b.dipendente, "it"));
+  const contabilitaVista = {
+    righe: righeContabili,
+    mensili_per_dipendente: mensiliDipendente,
+    per_dipendente: perDipendenteContabile,
+    cedolini: somma(righeContabili, "cedolini"),
+    altri_dovuti: somma(righeContabili, "altri_dovuti"),
+    dovuto: somma(righeContabili, "dovuto"),
+    bonifico: somma(righeContabili, "bonifico"),
+    acconti: somma(righeContabili, "acconti"),
+    erogato: somma(righeContabili, "erogato"),
+    saldo_periodo: somma(righeContabili, "dovuto") - somma(righeContabili, "erogato"),
+    saldo_finale: righeContabili.length ? righeContabili[righeContabili.length - 1].saldo_progressivo : 0,
+  };
+  const tArchivio = data.totali || {};
+  const t = !data.contabilita ? tArchivio : {
+    ...tArchivio,
+    buste: contabilitaVista.dovuto,
+    bonifici: contabilitaVista.bonifico,
+    acconti: contabilitaVista.acconti,
+    saldo: contabilitaVista.saldo_periodo,
+  };
   const dipendentiOrdinati = [...dipendenti].sort((a, b) =>
     (a.nome_completo || `${a.cognome || ""} ${a.nome || ""}`).localeCompare(
       b.nome_completo || `${b.cognome || ""} ${b.nome || ""}`, "it"));
-  const cambiaDipendente = id => setDipendentiSelezionati(attuali =>
-    attuali.includes(id) ? attuali.filter(x => x !== id) : [...attuali, id]);
+  const chiudiFiltroDipendenti = () => {
+    if (filtroDipendentiRef.current) filtroDipendentiRef.current.open = false;
+  };
+  const cambiaDipendente = id => {
+    setDipendentiSelezionati(attuali => attuali.includes(id) ? attuali.filter(x => x !== id) : [...attuali, id]);
+    requestAnimationFrame(chiudiFiltroDipendenti);
+  };
   const STATI = {
     vuoto: { label: "Nessun importo da pagare", variant: "default" },
     pagato: { label: "✓ Pagato", variant: "success" },
@@ -6015,14 +6091,14 @@ function PagheBonificiPage({ dipendenti = [] }) {
       {/* Filtri */}
 
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", marginBottom: 16 }}>
-        <details style={{ position: "relative" }}>
+        <details ref={filtroDipendentiRef} style={{ position: "relative" }}>
           <summary className="dc-btn" style={{ ...sel, listStyle: "none", cursor: "pointer" }}>
             {dipendentiSelezionati.length === 0 ? "Tutti i dipendenti" : dipendentiSelezionati.length === 1
               ? (dipendentiOrdinati.find(d => d.id === dipendentiSelezionati[0])?.nome_completo || "1 dipendente")
               : `${dipendentiSelezionati.length} dipendenti selezionati`}
           </summary>
           <div style={{ position: "absolute", top: "calc(100% + 6px)", left: 0, zIndex: 40, width: 320, maxWidth: "85vw", maxHeight: 360, overflowY: "auto", background: "#fffefb", border: "1px solid #e6e0d4", borderRadius: 10, padding: 10, boxShadow: "0 8px 24px rgba(0,0,0,.14)" }}>
-            <button type="button" className="dc-btn" style={{ width: "100%", marginBottom: 8 }} onClick={() => setDipendentiSelezionati([])}>Mostra tutti</button>
+            <button type="button" className="dc-btn" style={{ width: "100%", marginBottom: 8 }} onClick={() => { setDipendentiSelezionati([]); chiudiFiltroDipendenti(); }}>Mostra tutti</button>
             {dipendentiOrdinati.map(d => <label key={d.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 4px", cursor: "pointer" }}>
               <input type="checkbox" checked={dipendentiSelezionati.includes(d.id)} onChange={() => cambiaDipendente(d.id)} />
               <span>{d.nome_completo || `${d.cognome || ""} ${d.nome || ""}`.trim()}{d.stato === "cessato" ? " (cessato)" : ""}</span>
@@ -6054,10 +6130,11 @@ function PagheBonificiPage({ dipendenti = [] }) {
         <button className="dc-btn dc-btn-primary" disabled={schedaBusy} onClick={apriSchedaContabile}>
           {schedaBusy ? "Carico scheda…" : "📒 Scheda contabile"}
         </button>
+        <button className="dc-btn" onClick={apriInserimentoManuale}>＋ Importo manuale</button>
       </div>
 
       <p className="dc-muted" style={{ margin: "-8px 0 14px", fontSize: 12.5 }}>
-        La selezione aggiorna tabella, totali ed Excel. “Scheda contabile” mostra i totali mensili dei cedolini e dei pagamenti con il saldo progressivo, per uno, più dipendenti o tutti.
+        La selezione aggiorna tabella, totali ed Excel. I riepiloghi usano lo stesso registro contabile: cedolini per competenza e pagamenti alla data effettiva. Gli importi senza cedolino restano visibili, non vengono nascosti.
       </p>
 
       {loadError && <div role="alert" className="dc-card" style={{ color: "#b04a3a" }}>{loadError}</div>}
@@ -6071,8 +6148,8 @@ function PagheBonificiPage({ dipendenti = [] }) {
       </details>}
       {/* Riepilogo */}
       <div style={cardWrap}>
-        <div style={card}><div style={lbl}>Dovuto cedolini</div><div style={val}>€ {eur(t.buste)}</div></div>
-        <div style={card}><div style={lbl}>Bonifici attribuiti</div><div style={{ ...val, color: "#3d8168" }}>€ {eur(t.bonifici)}</div></div>
+        <div style={card}><div style={lbl}>Dovuto contabile</div><div style={val}>€ {eur(t.buste)}</div><div className="dc-muted" style={{ fontSize: 10 }}>cedolini + altri dovuti</div></div>
+        <div style={card}><div style={lbl}>Bonifici alla data effettiva</div><div style={{ ...val, color: "#3d8168" }}>€ {eur(t.bonifici)}</div></div>
         <div style={card}><div style={lbl}>Acconti registrati</div><div style={val}>€ {eur(t.acconti)}</div></div>
         <div style={card}><div style={lbl}>Residuo in registro</div><div style={{ ...val, color: (t.saldo > 0 ? "#b04a3a" : "#3d8168") }}>€ {eur(t.saldo)}</div></div>
         <div style={card}><div style={lbl}>Pagati</div><div style={{ ...val, color: "#3d8168" }}>{t.pagati || 0}</div></div>
@@ -6081,6 +6158,7 @@ function PagheBonificiPage({ dipendenti = [] }) {
       </div>
 
       {griglia && <GrigliaPaghe righe={data.righe} daLeggere={data.cedolini_da_verificare}
+        contabili={contabilitaVista.mensili_per_dipendente}
         loading={loading} onDipendente={apriPrimaNota} />}
 
       {/* Tabella */}
@@ -6208,7 +6286,7 @@ function PagheBonificiPage({ dipendenti = [] }) {
                             <div style={{ fontSize: 12, color: "#7a8576", marginBottom: 6 }}>
                               Un bonifico arrivato nel mese sbagliato (es. il 1° gennaio per la busta di dicembre) si sposta con <b>Sposta / modifica</b>: il sistema ricalcola entrambi i mesi.
                             </div>
-                            <div style={{ fontSize: 11, color: "#7a8576", fontWeight: 700, textTransform: "uppercase", marginBottom: 6 }}>Bonifici realmente pagati</div>
+                            <div style={{ fontSize: 11, color: "#7a8576", fontWeight: 700, textTransform: "uppercase", marginBottom: 6 }}>Pagamenti registrati</div>
                             <table style={{ width: "100%", borderCollapse: "collapse" }}>
                               <thead>
                                 <tr>
@@ -6253,9 +6331,10 @@ function PagheBonificiPage({ dipendenti = [] }) {
                                         </div>
                                       ) : (
                                         b.key
-                                          ? <button className="dc-btn" title="Sposta questo pagamento a un altro mese (es. bonifico del 1° gennaio → dicembre) o correggi l'importo"
+                                          ? <span style={{ display: "inline-flex", gap: 4 }}><button className="dc-btn" title="Sposta questo pagamento a un altro mese (es. bonifico del 1° gennaio → dicembre) o correggi l'importo"
                                               onClick={() => setEditPag({ key: b.key, mese: r.mese, anno: r.anno, importo: b.importo, nota: "" })}
                                               style={{ fontSize: 12, padding: "3px 8px" }}>Sposta / modifica</button>
+                                              {b.origine === "manuale" && <button className="dc-btn" disabled={busy === b.key} onClick={() => eliminaPagamentoManuale(b.key)} style={{ fontSize: 12, padding: "3px 8px", color: "#b04a3a" }}>Elimina</button>}</span>
                                           : <span style={{ color: "#9aa295" }}>—</span>
                                       )}
                                     </td>
@@ -6327,9 +6406,44 @@ function PagheBonificiPage({ dipendenti = [] }) {
           <div className="dc-modal-body">
             <p className="dc-muted">
               {anno ? `Periodo visualizzato: ${mese ? `${mesi[mese - 1] || mese} ` : ""}${anno}. ` : "Intero archivio. "}
-              I saldi per dipendente comprendono l’intero archivio; il saldo progressivo mensile conserva il riporto precedente.
+              I totali rispettano lo stesso periodo della griglia; il saldo progressivo conserva il riporto precedente.
             </p>
             <PrimaNotaPaghe prospetto={schedaContabile} />
+          </div>
+        </Modal>
+      )}
+      {inserimentoManuale && (
+        <Modal title="Inserisci importo manuale" onClose={() => !manualeBusy && setInserimentoManuale(null)} maxWidth={620}>
+          <div className="dc-modal-body">
+            <p className="dc-muted">Usalo solo per una differenza verificata. La motivazione resta registrata; un pagamento manuale non viene presentato come prova bancaria.</p>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))", gap: 12 }}>
+              <label><span className="dc-label">Dipendente</span>
+                <select className="dc-input" value={inserimentoManuale.dipendente_id} onChange={e => setInserimentoManuale(v => ({ ...v, dipendente_id: e.target.value }))}>
+                  <option value="">Seleziona dipendente</option>
+                  {dipendentiOrdinati.map(d => <option key={d.id} value={d.id}>{d.nome_completo || `${d.cognome || ""} ${d.nome || ""}`.trim()}</option>)}
+                </select>
+              </label>
+              <label><span className="dc-label">Tipo di importo</span>
+                <select className="dc-input" value={inserimentoManuale.tipo} onChange={e => setInserimentoManuale(v => ({ ...v, tipo: e.target.value }))}>
+                  <option value="dovuto">Dovuto del cedolino</option>
+                  <option value="pagamento">Pagamento effettuato</option>
+                </select>
+              </label>
+              <label><span className="dc-label">Anno</span><input className="dc-input" type="number" min="2000" max="2100" value={inserimentoManuale.anno} onChange={e => setInserimentoManuale(v => ({ ...v, anno: Number(e.target.value) }))} /></label>
+              <label><span className="dc-label">Competenza</span>
+                <select className="dc-input" value={inserimentoManuale.mese} onChange={e => setInserimentoManuale(v => ({ ...v, mese: Number(e.target.value) }))}>
+                  {mesi.map((nome, i) => <option key={i + 1} value={i + 1}>{nome}</option>)}
+                  <option value={13}>Tredicesima</option><option value={14}>Quattordicesima</option>
+                </select>
+              </label>
+              <label><span className="dc-label">Importo €</span><input className="dc-input" inputMode="decimal" value={inserimentoManuale.importo} onChange={e => setInserimentoManuale(v => ({ ...v, importo: e.target.value }))} placeholder="0,00" /></label>
+              {inserimentoManuale.tipo === "pagamento" && <label><span className="dc-label">Data effettiva pagamento</span><input className="dc-input" type="date" value={inserimentoManuale.data} onChange={e => setInserimentoManuale(v => ({ ...v, data: e.target.value }))} /></label>}
+            </div>
+            <label style={{ display: "block", marginTop: 12 }}><span className="dc-label">Motivazione obbligatoria</span><textarea className="dc-input" rows={3} value={inserimentoManuale.nota} onChange={e => setInserimentoManuale(v => ({ ...v, nota: e.target.value }))} placeholder="Indica il documento o il motivo della correzione" /></label>
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 16 }}>
+              <button className="dc-btn" disabled={manualeBusy} onClick={() => setInserimentoManuale(null)}>Annulla</button>
+              <button className="dc-btn dc-btn-primary" disabled={manualeBusy || !inserimentoManuale.dipendente_id || !inserimentoManuale.importo || !inserimentoManuale.nota.trim()} onClick={salvaInserimentoManuale}>{manualeBusy ? "Salvo…" : "Registra importo"}</button>
+            </div>
           </div>
         </Modal>
       )}

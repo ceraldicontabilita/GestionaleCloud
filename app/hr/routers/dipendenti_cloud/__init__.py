@@ -496,6 +496,25 @@ async def modifica_pagamento_esito(key: str, data: dict = Body(...)):
             "importo": importo, "stati": stati}
 
 
+@router.delete("/paghe/pagamento-esito/{key}")
+async def elimina_pagamento_manuale(key: str):
+    """Elimina soltanto un pagamento creato a mano e ricalcola il periodo.
+
+    I movimenti bancari e i documenti importati non sono cancellabili da qui:
+    una rettifica dell'operatore non deve poter distruggere la prova originale.
+    """
+    db = get_db()
+    esito = await db.pagamenti_esiti.find_one({"key": key}, {"_id": 0, "pdf_data": 0})
+    if not esito:
+        raise HTTPException(status_code=404, detail="Pagamento non trovato")
+    if esito.get("origine") != "manuale":
+        raise HTTPException(status_code=409, detail="Si possono eliminare solo gli importi inseriti a mano")
+    await db.pagamenti_esiti.delete_one({"key": key})
+    dip, anno, mese = esito.get("dipendente_id"), esito.get("anno"), esito.get("mese")
+    stato = await _ricalcola_bonifico_periodo(db, dip, int(anno), int(mese))
+    return {"ok": True, "key": key, "stato": stato}
+
+
 @router.put("/paghe/importo-busta")
 async def modifica_importo_busta(data: dict = Body(...)):
     """Corregge l'importo della busta di un mese quando non torna col cedolino
@@ -527,6 +546,65 @@ async def modifica_importo_busta(data: dict = Body(...)):
     return {"ok": True, "dipendente_id": dip, "anno": anno, "mese": mese,
             "importo_busta": importo, "importo_busta_originale": set_doc.get("importo_busta_originale", paga.get("importo_busta_originale")),
             "stato": stato}
+
+
+@router.post("/paghe/inserimento-manuale")
+async def inserimento_manuale_paghe(data: dict = Body(...)):
+    """Registra una correzione esplicita senza confonderla con la banca.
+
+    ``dovuto`` usa l'override tracciato del cedolino; ``pagamento`` crea un
+    esito manuale autonomo, reversibile, confermato dal titolare ma privo di
+    falso riscontro bancario. Entrambi alimentano lo stesso motore contabile.
+    """
+    tipo = str(data.get("tipo") or "").strip().lower()
+    dip = str(data.get("dipendente_id") or "").strip()
+    nota = str(data.get("nota") or "").strip()
+    try:
+        anno, mese = int(data.get("anno")), int(data.get("mese"))
+        valore = round(float(str(data.get("importo")).replace(",", ".")), 2)
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail="Anno, mese o importo non validi") from exc
+    if tipo not in {"dovuto", "pagamento"}:
+        raise HTTPException(status_code=400, detail="Tipo manuale non valido")
+    if not dip or not (2000 <= anno <= 2100) or not (1 <= mese <= 14) or valore < 0:
+        raise HTTPException(status_code=400, detail="Dipendente, periodo o importo non validi")
+    if not nota:
+        raise HTTPException(status_code=400, detail="La motivazione della rettifica è obbligatoria")
+    db = get_db()
+    persona = await db.dipendenti.find_one(
+        {"id": dip}, {"_id": 0, "nome": 1, "cognome": 1, "nome_completo": 1})
+    if not persona:
+        raise HTTPException(status_code=404, detail="Dipendente non trovato")
+    if tipo == "dovuto":
+        risultato = await modifica_importo_busta({
+            "dipendente_id": dip, "anno": anno, "mese": mese,
+            "importo_busta": valore, "nota": nota,
+        })
+        return {**risultato, "tipo": tipo}
+    if valore <= 0:
+        raise HTTPException(status_code=400, detail="Il pagamento deve essere maggiore di zero")
+    data_pagamento = str(data.get("data") or "").strip()
+    try:
+        datetime.strptime(data_pagamento, "%Y-%m-%d")
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail="Data pagamento non valida") from exc
+    key = f"manuale:{uuid.uuid4()}"
+    nome = (persona.get("nome_completo")
+            or f"{persona.get('cognome', '')} {persona.get('nome', '')}".strip())
+    from app.services.conferma_bonifico import campi_conferma
+    esito = {
+        "key": key, "dipendente_id": dip, "beneficiario": nome,
+        "anno": anno, "mese": mese, "data": data_pagamento, "importo": valore,
+        "causale": nota, "nota_modifica": nota, "origine": "manuale",
+        "associazione_certa": True, "competenza_confermata": True,
+        "modificato_manualmente": True, "created_at": now_iso(), "updated_at": now_iso(),
+        **campi_conferma("Amministratore"),
+    }
+    await db.pagamenti_esiti.insert_one(esito)
+    stato = await _ricalcola_bonifico_periodo(db, dip, anno, mese)
+    return {"ok": True, "tipo": tipo, "key": key, "dipendente_id": dip,
+            "anno": anno, "mese": mese, "data": data_pagamento,
+            "importo": valore, "stato": stato}
 
 
 @router.post("/paghe/sincronizza")
@@ -4108,7 +4186,10 @@ async def _calcola_associazioni_bonifici(db, anno: Optional[int] = None, mese: O
     from app.hr.services.sincronizza_paghe_mensili import deduplica_pagamenti
 
     if isinstance(db, SupabaseDatabase):
-        await db.refresh_collections("cedolini", "paghe_mensili", "dipendenti", "pagamenti_esiti")
+        await db.refresh_collections(
+            "cedolini", "paghe_mensili", "dipendenti", "pagamenti_esiti",
+            "acconti_dipendenti", "bonifici_da_associare", "conciliazioni", "eccedenze_pagamenti",
+        )
     q = {}
     if anno:
         q["anno"] = int(anno)
@@ -4158,7 +4239,10 @@ async def _calcola_associazioni_bonifici(db, anno: Optional[int] = None, mese: O
         {"pdf_data": {"$exists": True}}, {"_id": 0, "pdf_data": 0})}
 
     def ha_originale(c):
-        return bool(c and (c.get("blob_key") or c.get("drive_file_id") or c.get("ha_pdf")
+        # ``ha_pdf`` era un flag storico e poteva sopravvivere anche quando il
+        # payload non esisteva più. Mostriamo Apri/Scarica solo con un riferimento
+        # effettivamente risolvibile; il download controllerà poi che i byte siano validi.
+        return bool(c and (c.get("blob_key") or c.get("drive_file_id")
                           or ((c.get("_drive_payloads") or {}).get("pdf_data") or {}).get("drive_file_id")
                           or c.get("id") in pdf_incorporati))
     cedolini_lista: List[Dict[str, Any]] = []
@@ -4203,20 +4287,29 @@ async def _calcola_associazioni_bonifici(db, anno: Optional[int] = None, mese: O
     from app.services.ripartizione_salari import indice_quote
     tutte_paghe = await db.paghe_mensili.find({}, {"_id": 0}).to_list(None)
     tutti_acconti = await db.acconti_dipendenti.find({}, {"_id": 0}).to_list(None)
+    tutte_conciliazioni = await db.conciliazioni.find({}, {"_id": 0, "file_data": 0}).to_list(None)
+    tutte_eccedenze = await db.eccedenze_pagamenti.find({}, {"_id": 0}).to_list(None)
     code_certe = await db.bonifici_da_associare.find(
         {"stato": "da_associare", "associazione_certa": True}, {"_id": 0, "pdf_data": 0}).to_list(None)
-    gruppi = {nome: defaultdict(list) for nome in ("paghe", "esiti", "cedolini", "acconti", "code")}
+    gruppi = {nome: defaultdict(list) for nome in
+              ("paghe", "esiti", "cedolini", "acconti", "code", "conciliazioni", "eccedenze")}
     for nome, dati in (("paghe", tutte_paghe), ("esiti", tutte_prove), ("cedolini", cedolini_lista),
-                       ("acconti", tutti_acconti), ("code", code_certe)):
+                       ("acconti", tutti_acconti), ("code", code_certe),
+                       ("conciliazioni", tutte_conciliazioni), ("eccedenze", tutte_eccedenze)):
         for r in dati:
             gruppi[nome][r.get("dipendente_id")].append(r)
     esiti_idx = {}
     acconti_idx = {}
+    movimenti_per_dipendente = {}
     for dip_id, dip in dip_map.items():
-        registro = componi_movimenti(
+        movimenti = componi_movimenti(
             paghe=gruppi["paghe"][dip_id], esiti=gruppi["esiti"][dip_id],
             cedolini=gruppi["cedolini"][dip_id], acconti=gruppi["acconti"][dip_id],
-            pagamenti_senza_competenza=gruppi["code"][dip_id], conciliazioni=[], rapporto=dip)["registro"]
+            pagamenti_senza_competenza=gruppi["code"][dip_id],
+            conciliazioni=gruppi["conciliazioni"][dip_id], eccedenze=gruppi["eccedenze"][dip_id],
+            rapporto=dip)
+        movimenti_per_dipendente[dip_id] = movimenti
+        registro = movimenti["registro"]
         for (a, m), quote in indice_quote(registro, gruppi["esiti"][dip_id]).items():
             esiti_idx[(dip_id, m, a)] = [e for e in quote if e["quota_tipo"] == "bonifico"]
             acconti_idx[(dip_id, m, a)] = [e for e in quote if e["quota_tipo"] == "acconto"]
@@ -4260,6 +4353,7 @@ async def _calcola_associazioni_bonifici(db, anno: Optional[int] = None, mese: O
             "data": e.get("data"),
             "importo": round(float(e.get("importo") or 0), 2),
             "modificato": bool(e.get("modificato_manualmente")),
+            "origine": e.get("origine"),
             "causale": e.get("causale") or "",
             "beneficiario": e.get("beneficiario") or "",
             "riferimento": e.get("cro") or e.get("key") or "",
@@ -4433,7 +4527,16 @@ async def _calcola_associazioni_bonifici(db, anno: Optional[int] = None, mese: O
                 or c.get("nome_dipendente") or "Dipendente da associare",
             "anno": c.get("anno"), "mese": mese_cedolino,
         })
-    return {"righe": righe, "totali": tot, "count": len(righe), "cedolini_da_verificare": da_leggere}
+    from app.services.posizione_dipendente import riepilogo_prima_nota_selezione
+    nomi_contabili = {
+        dip_id: (dip.get("nome_completo")
+                 or f"{dip.get('cognome', '')} {dip.get('nome', '')}".strip()
+                 or dip_id)
+        for dip_id, dip in dip_map.items()
+    }
+    contabilita = riepilogo_prima_nota_selezione(movimenti_per_dipendente, nomi_contabili)
+    return {"righe": righe, "totali": tot, "count": len(righe),
+            "cedolini_da_verificare": da_leggere, "contabilita": contabilita}
 
 
 @router.get("/paghe/associazioni-bonifici/export-excel")
