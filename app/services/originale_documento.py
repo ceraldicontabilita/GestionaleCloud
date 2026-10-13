@@ -260,6 +260,8 @@ async def _f24(db, ident: str, indice: int) -> Originale:
     for collezione, tipo in ((COLL_F24, "f24"), (COLL_QUIETANZE, "quietanza")):
         doc = await db[collezione].find_one({"id": ident})
         if doc:
+            if tipo == "quietanza":
+                return await _quietanza(db, ident, indice)
             return await _f24_da_record(doc, tipo, ident, carica_originale)
     raise DocumentoNonTrovato("F24 non trovato", {"id": ident})
 
@@ -271,7 +273,15 @@ async def _quietanza(db, ident: str, indice: int) -> Originale:
     doc = await db[COLL_QUIETANZE].find_one({"id": ident})
     if not doc:
         raise DocumentoNonTrovato("Quietanza non trovata", {"id": ident})
-    return await _f24_da_record(doc, "quietanza", ident, carica_originale)
+    try:
+        return await _f24_da_record(doc, "quietanza", ident, carica_originale)
+    except OriginaleNonDisponibile:
+        from app.services.f24_originale import recupera_copia_quietanza
+        copia = await recupera_copia_quietanza(db, doc)
+        if not copia:
+            raise
+        return Originale(copia["contenuto"], _nome_pulito(copia.get("nome"), f"Quietanza_{ident[-12:]}.pdf"),
+                         "application/pdf", "copia_quietanza_verificata")
 
 
 async def _f24_da_record(doc, tipo, ident, carica_originale) -> Originale:

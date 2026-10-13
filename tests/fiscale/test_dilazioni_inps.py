@@ -398,6 +398,25 @@ def test_la_rata_scaduta_apre_un_alert_che_si_chiude_quando_arriva_la_quietanza(
     assert esito["scritti"]["alert_chiusi"] == 1
 
 
+def test_la_chiusura_in_blocco_lascia_aperti_gli_alert_delle_rate_non_pagate(monkeypatch):
+    from app.constants.canale_documento import STATO_ALERT_APERTO
+    db = _db([])
+    _run(di.collega_dilazioni(db, oggi="2026-10-13"))
+    for quietanza in QUIETANZE[:3]:
+        _run(db[COLL_QUIETANZE_F24].insert_one(dict(quietanza)))
+    chiamate = []
+    update = db["alerts"].update_many
+    async def registra(selector, patch):
+        chiamate.append(selector)
+        return await update(selector, patch)
+    monkeypatch.setattr(db["alerts"], "update_many", registra)
+    esito = _run(di.collega_dilazioni(db, oggi="2026-10-13"))
+    assert esito["scritti"]["alert_chiusi"] == 3
+    assert len(chiamate) == 1
+    aperti = _run(db["alerts"].find({"stato": STATO_ALERT_APERTO}).to_list(10))
+    assert len(aperti) == 1 and "rata 4/4" in aperti[0]["dettaglio"]
+
+
 def test_il_pdf_arrivato_viene_conservato_depositato_e_abbinato_subito():
     db = ClientArchivioMemoria()["gestionale_test"]
     _run(db[COLL_QUIETANZE_F24].insert_one(dict(QUIETANZE[0])))

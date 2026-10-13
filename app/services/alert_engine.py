@@ -784,10 +784,19 @@ async def risolvi_alert(
 
     Returns: numero di alert chiusi.
     """
+    return await risolvi_alert_entita(codice, [entita_id], db, resolved_by=resolved_by)
+
+
+async def risolvi_alert_entita(
+    codice: str, entita_ids: List[str], db, resolved_by: str = "sistema",
+) -> int:
+    """Chiude in un'unica scrittura gli alert del codice per le entita' risolte."""
+    if not entita_ids:
+        return 0
     result = await db[COLL_ALERTS].update_many(
         {
             "codice": codice,
-            "entita_id": entita_id,
+            "entita_id": {"$in": list(set(entita_ids))},
             "stato": STATO_ALERT_APERTO
         },
         {
@@ -803,7 +812,7 @@ async def risolvi_alert(
     if result.modified_count > 0:
         logger.info(
             f"Alert risolti: {result.modified_count}x {codice} "
-            f"per {entita_id} (da {resolved_by})"
+            f"per {len(set(entita_ids))} entita' (da {resolved_by})"
         )
 
     return result.modified_count
