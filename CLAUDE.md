@@ -4983,6 +4983,19 @@ La scadenza dipende dalla notifica reale.
 
 Non inventare data notifica dal PDF.
 
+La cartella originale e l'analitica corrente di Agenzia delle entrate-Riscossione
+sono due prove distinte della stessa posizione. L'originale conserva importo e
+composizione iniziali; l'analitica conserva il residuo alla propria data. Un
+residuo corrente pari a zero rende superata l'attesa del debito originario, ma
+non prova da solo quando, come o da chi sia stato pagato: senza quietanza o altra
+prova ammessa lo stato resta `PORTAL_CLOSED_PENDING_EVIDENCE`, mai `PAGATO`.
+
+Un riepilogo inviato dal contribuente tramite «Contattaci» e' corrispondenza in
+uscita. Le affermazioni contenute (piano saldato, ultima rata, importo contestato)
+restano dichiarazioni del richiedente finche' non arrivano la risposta dell'ente
+e le prove pertinenti. Il collegamento a un piano e' automatico solo se protocollo
+e data individuano un'unica entita'; negli altri casi resta da verificare.
+
 ---
 
 # 94. Sicurezza

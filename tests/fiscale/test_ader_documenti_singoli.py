@@ -99,11 +99,36 @@ ACCOGLIMENTO = (
 
 CARTELLA_VERA = "AGENZIA DELLE ENTRATE-RISCOSSIONE CARTELLA DI PAGAMENTO N. 071 2025 00137550 92 /000 RUOLO N. 2025/1"
 
+NUMERO_ANALITICA = "07120240101365555000"
+NOME_ANALITICA = f"2026-08-10_{SOCIETA}_{NUMERO_ANALITICA}_Analitica_Saldati.pdf"
+ANALITICA_SALDATA = (
+    f"DETTAGLIO DELLA CARTELLA N. {NUMERO_ANALITICA}\n"
+    "I dati sotto riportati corrispondono a quelli risultanti dai sistemi informatici di "
+    "Agenzia delle entrate-Riscossione al 10-08-2026. "
+    "Questo documento riveste carattere meramente informativo. "
+    "Ambito prov.le Ente Creditore Data di notifica Carico affidato Importo oggetto di sgravio "
+    "Importo gia pagato Importo oggetto di stralcio e/o di definizione agevolata Residuo carico\n"
+    "NA INAIL - INAIL SEDE DI NAPOLI 19-07-2024 11,23 0,00 11,23 0,00 0,00 Ente/Ufficio:\n"
+    "Ruolo: 2024/106 - ORDINARIO\n"
+)
+
+RICHIESTA_CONTATTACI = (
+    "Richiesta di informazioni tramite il canale Contattaci sull'Area riservata del sito "
+    "Agenzia delle entrate-Riscossione. Anagrafica e recapiti richiedente "
+    "Codice fiscale PNAGPP58D48F839K Tipo richiedente PER CONTO DI SOCIETA' "
+    f"Denominazione PROVA SRL Codice fiscale {SOCIETA}. Motivazione della richiesta Rateizzazione. "
+    "Da un estratto conto si rileva un debito per EUR 1.052,52 mentre si riferisce ad una dilazione "
+    "con istanza di protocollo n. 80122 del 26/06/2009 che, secondo il richiedente, fu saldata con "
+    "l'ultima rata in data 03/08/2012. Allegati Non presenti."
+)
+
 
 def test_il_tipo_si_riconosce_dal_contenuto_non_dal_nome():
     assert ader.riconosci(_dettaglio().replace("\n", " ").upper()) == ader.TIPO_DETTAGLIO
     assert ader.riconosci(ACCOGLIMENTO.replace("\n", " ").upper()) == ader.TIPO_PIANO
     assert ader.riconosci(CARTELLA_VERA) is None
+    assert ader.riconosci(ANALITICA_SALDATA.upper()) == ader.TIPO_ANALITICA
+    assert ader.riconosci(RICHIESTA_CONTATTACI.upper()) == ader.TIPO_RICHIESTA_INFORMAZIONI
 
 
 def test_il_dettaglio_tributi_e_una_fotografia_con_le_righe_a_ruolo():
@@ -154,6 +179,67 @@ def test_lo_smistatore_li_riconosce_prima_della_cartella(monkeypatch):
     assert documenti.detect_document_type("file qualunque.pdf", b"%PDF-1.4 finto") == ader.TIPO_PIANO
     monkeypatch.setattr(documenti, "_pdf_text_for_detection", lambda *_a, **_k: _dettaglio().upper())
     assert documenti.detect_document_type("stampa.pdf", b"%PDF-1.4 finto") == ader.TIPO_DETTAGLIO
+    monkeypatch.setattr(documenti, "_pdf_text_for_detection", lambda *_a, **_k: ANALITICA_SALDATA.upper())
+    assert documenti.detect_document_type(NOME_ANALITICA, b"%PDF-1.4 finto") == ader.TIPO_ANALITICA
+    monkeypatch.setattr(documenti, "_pdf_text_for_detection", lambda *_a, **_k: RICHIESTA_CONTATTACI.upper())
+    assert documenti.detect_document_type("Riepilogo_segnalazione.pdf", b"%PDF-1.4 finto") == ader.TIPO_RICHIESTA_INFORMAZIONI
+
+
+def test_analitica_saldati_azzera_il_residuo_ma_non_inventa_un_pagamento(monkeypatch):
+    from app.config import settings
+    from app.db_collections import COLL_ADER_POSITION_SNAPSHOTS, COLL_TAX_COLLECTION_CLAIMS
+    from app.services import cartelle_pagamento
+
+    monkeypatch.setattr(settings, "FISCAL_COMPANY_ID", SOCIETA)
+    db = ClientArchivioMemoria()["ader_analitica_singola"]
+    legacy_id = f"cartella:{NUMERO_ANALITICA}"
+    asyncio.run(db[cartelle_pagamento.COLL].insert_one({
+        "id": legacy_id, "expectation_status": "ATTESO", "totale": "17.11",
+    }))
+
+    result = asyncio.run(ader.archivia_documento_ader(
+        db, filename=NOME_ANALITICA, content=_pdf(ANALITICA_SALDATA), testo=ANALITICA_SALDATA,
+    ))
+    claim = asyncio.run(db[COLL_TAX_COLLECTION_CLAIMS].find_one(
+        {"collection_number": NUMERO_ANALITICA}, {"_id": 0},
+    ))
+    snapshot = asyncio.run(db[COLL_ADER_POSITION_SNAPSHOTS].find_one({}, {"_id": 0}))
+    legacy = asyncio.run(db[cartelle_pagamento.COLL].find_one({"id": legacy_id}, {"_id": 0}))
+
+    assert result["tipo"] == ader.TIPO_ANALITICA and not result["duplicate"]
+    assert claim["residual_cents"] == 0
+    assert claim["business_status"] == "PORTAL_CLOSED_PENDING_EVIDENCE"
+    assert snapshot["payment_evidence"] is False and snapshot["paid_amount"] == 11.23
+    assert legacy["expectation_status"] == "SUPERATO"
+    assert legacy["expectation_resolution"] == "ADER_CURRENT_RESIDUAL_ZERO_WITHOUT_PAYMENT_EVIDENCE"
+    assert not legacy.get("data_pagamento") and not legacy.get("expectation_evidence_ids")
+
+
+def test_richiesta_contattaci_resta_corrispondenza_senza_prova(monkeypatch):
+    from app.config import settings
+    from app.db_collections import COLL_TAX_COLLECTION_DOCUMENTS, COLL_TAX_RATE_PLANS
+
+    monkeypatch.setattr(settings, "FISCAL_COMPANY_ID", SOCIETA)
+    db = ClientArchivioMemoria()["ader_richiesta_contattaci"]
+    asyncio.run(db[COLL_TAX_RATE_PLANS].insert_one({
+        "id": "rateplan:test:80122", "company_id": SOCIETA,
+        "plan_reference": "AR07180122", "application_date": "2009-06-26",
+    }))
+
+    result = asyncio.run(ader.archivia_documento_ader(
+        db, filename="Riepilogo_segnalazione.pdf", content=_pdf(RICHIESTA_CONTATTACI),
+        testo=RICHIESTA_CONTATTACI,
+    ))
+    record = asyncio.run(db[COLL_TAX_COLLECTION_DOCUMENTS].find_one({}, {"_id": 0}))
+
+    assert result["tipo"] == ader.TIPO_RICHIESTA_INFORMAZIONI
+    assert record["plan_reference"] == "80122" and record["plan_application_date"] == "2009-06-26"
+    assert record["asserted_debt_cents"] == 105252
+    assert record["asserted_last_installment_date"] == "2012-08-03"
+    assert record["linked_rate_plan_id"] == "rateplan:test:80122" and record["link_status"] == "CONFIRMED"
+    assert record["status"] == "REQUEST_RECORDED_RESPONSE_NOT_FOUND"
+    assert record["payment_evidence"] is False
+    assert record["acceptance_evidence"] is False and record["response_evidence"] is False
 
 
 def test_dettaglio_e_piano_entrano_nelle_entita_canoniche_una_volta_sola(monkeypatch):

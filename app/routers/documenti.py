@@ -3480,7 +3480,10 @@ async def upload_documento_automatico(
                 else "Dichiarazione fiscale archiviata e agganciata a F24/quietanze"
             )
 
-        elif tipo_rilevato in ('ader_piano_rateizzazione', 'ader_dettaglio_tributi'):
+        elif tipo_rilevato in (
+            'ader_piano_rateizzazione', 'ader_dettaglio_tributi',
+            'ader_analitica_posizione', 'ader_richiesta_informazioni',
+        ):
             from app.config import settings
             from app.services.ader_snapshot_import import archivia_documento_ader
 

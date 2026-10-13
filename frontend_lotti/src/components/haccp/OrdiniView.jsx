@@ -96,6 +96,24 @@ export function fornitoreUnicoOrdine(righe) {
   return perChiave.size === 1 ? [...perChiave.values()][0] : "";
 }
 
+export function primoGruppoFornitoreOrdine(righe) {
+  const selezionate = righe || [];
+  const prima = selezionate.find(riga => {
+    const chiave = chiaveFornitoreOrdine(riga?.fornitore);
+    return chiave && chiave !== "daassegnare";
+  });
+  if (!prima) return { fornitore: "", righe: [], escluse: selezionate };
+  const fornitore = String(prima.fornitore).trim();
+  const chiave = chiaveFornitoreOrdine(fornitore);
+  const delFornitore = selezionate.filter(riga => chiaveFornitoreOrdine(riga?.fornitore) === chiave);
+  const ids = new Set(delFornitore.map(riga => String(riga.prodotto_id)));
+  return {
+    fornitore,
+    righe: delFornitore,
+    escluse: selezionate.filter(riga => !ids.has(String(riga.prodotto_id))),
+  };
+}
+
 export default function OrdiniView({ initialTab = "riordini" }) {
   const [tab, setTab] = useState(() => sessionStorage.getItem("ordini_apri_tab") || initialTab); // riordini | catalogo | confronto | carrello | giacenze | invio
   useEffect(() => { sessionStorage.removeItem("ordini_apri_tab"); }, []);
@@ -948,11 +966,23 @@ function DaInviare({ onModifica }) {
     const ids=[...(sel[o.id]||[])];
     if(!ids.length){ toast("Spunta almeno una riga"); return; }
     try {
-      const confermaRighe = await axios.put(`${API}/ordini-fornitori/${o.id}/conferma-righe`, { prodotto_ids: ids });
-      const righe = (o.prodotti || []).filter(p => ids.includes(String(p.prodotto_id)));
-      const fornitore = confermaRighe.data?.fornitore || fornitoreUnicoOrdine(righe);
+      const selezionate = (o.prodotti || []).filter(p => ids.includes(String(p.prodotto_id)));
+      // Una vecchia bozza puo' contenere righe di fornitori diversi dopo
+      // "Modifica". Prepara il primo fornitore visibile e lascia le altre
+      // righe nella bozza: l'invio backend genera poi la bozza residua.
+      const gruppo = primoGruppoFornitoreOrdine(selezionate);
+      const idsFornitore = gruppo.righe.map(p => String(p.prodotto_id));
+      if (!gruppo.fornitore || !idsFornitore.length) {
+        toast.error("Seleziona righe con un fornitore assegnato"); return;
+      }
+      const confermaRighe = await axios.put(`${API}/ordini-fornitori/${o.id}/conferma-righe`, { prodotto_ids: idsFornitore });
+      const righe = gruppo.righe;
+      const fornitore = confermaRighe.data?.fornitore || gruppo.fornitore;
       if (!fornitore) {
         toast.error("Seleziona righe di un solo fornitore assegnato"); return;
+      }
+      if (gruppo.escluse.length) {
+        toast.info(`${gruppo.escluse.length} riga/e di altri fornitori resteranno nella bozza per il prossimo invio`);
       }
       const risposta = await axios.get(`${API}/ordini-fornitori/${o.id}/suppliers-email`);
       const chiaveFornitore = chiaveFornitoreOrdine(fornitore);
@@ -1030,6 +1060,11 @@ function DaInviare({ onModifica }) {
             Annulla
           </button>
         </div>
+        {new Set((o.prodotti || []).map(p => chiaveFornitoreOrdine(p.fornitore)).filter(Boolean)).size > 1 && (
+          <div style={{ marginTop:8, padding:"7px 9px", borderRadius:10, background:"#fff7ed", color:"#9a3412", fontSize:12, fontWeight:800 }}>
+            Questa bozza contiene più fornitori: la conferma li prepara uno alla volta senza perdere le altre righe.
+          </div>
+        )}
         {o.prodotti.map((p,i)=>{
           const przR = Number(p.prezzo_ultimo)||0, qtaR = Number(p.quantita)||0, impR = przR*qtaR;
           const confezioneCatalogo = String(p.prodotto_id || "").startsWith("cat_");
@@ -1042,6 +1077,7 @@ function DaInviare({ onModifica }) {
             <span style={{ flex:1, minWidth:140, fontWeight:700, fontSize:14 }}>{p.nome}
               <span style={{ display:"block", fontSize:11, color:C.muted, fontWeight:400 }}>
                 {[przR>0?`${descrizionePrezzo}${p.iva_pct?` · IVA ${p.iva_pct}%`:""}`:"prezzo n/d",
+                  p.fornitore?`fornitore ${p.fornitore}`:"fornitore da assegnare",
                   p.richiesto_da?`inserito da ${p.richiesto_da}`:"", p.note||""].filter(Boolean).join(" · ")}
               </span>
             </span>
