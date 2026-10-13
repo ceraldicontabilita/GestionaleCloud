@@ -949,12 +949,85 @@ def _riga_con_prezzo_fattura(riga: dict, articolo: dict, now: str) -> tuple[dict
     return aggiornato, True
 
 
+def _prodotto_listino_acquaviva_per_riga(riga: dict, prodotti: list):
+    """Abbina solo identificativi/codici esatti, senza deduzioni dal nome."""
+    from app.lotti.routers.utils import _norm_codice_articolo
+    pid = _norm_codice_articolo(str(riga.get("prodotto_id") or "").replace("cat_", ""))
+    if not pid:
+        return None
+    candidati = []
+    for prodotto in prodotti:
+        codici = [
+            prodotto.get("id"), prodotto.get("codice"),
+            prodotto.get("codice_aqv_2025"), prodotto.get("codice_aqv_2026"),
+        ]
+        if any(_norm_codice_articolo(codice) == pid for codice in codici if codice):
+            candidati.append(prodotto)
+    return candidati[0] if len(candidati) == 1 else None
+
+
+def _riga_con_prezzo_listino_acquaviva(
+    riga: dict, prodotto: dict, now: str
+) -> tuple[dict, bool]:
+    try:
+        unitario = float(prodotto.get("prezzo_listino_riferimento") or 0)
+        pezzi = float(prodotto.get("qty_cartone") or prodotto.get("pz_confezione") or 0)
+    except (TypeError, ValueError):
+        return riga, False
+    if unitario <= 0 or pezzi <= 0:
+        return riga, False
+    nuovo = round(unitario * pezzi, 4)
+    vecchio = float(riga.get("prezzo_ultimo") or riga.get("prezzo") or 0)
+    iva = float(prodotto.get("iva_pct") or 0)
+    unita_catalogo = str(prodotto.get("unita_misura") or "PZ").strip().lower()
+    pezzi_label = int(pezzi) if pezzi.is_integer() else pezzi
+    unita_ordine = f"ct {pezzi_label} {unita_catalogo}"
+    invariato = (
+        abs(vecchio - nuovo) < 0.0001
+        and float(riga.get("iva_pct") or 0) == iva
+        and riga.get("prezzo_fonte") == "listino_fornitore"
+        and riga.get("unita") == unita_ordine
+    )
+    if invariato:
+        return riga, False
+    storico = list(riga.get("storico_prezzi") or [])
+    if abs(vecchio - nuovo) >= 0.0001:
+        storico.append({
+            "da": vecchio, "a": nuovo, "aggiornato_il": now,
+            "fonte": "listino_acquaviva_2026",
+        })
+    aggiornato = {
+        **riga,
+        "prezzo_ultimo": nuovo,
+        "prezzo": nuovo,
+        "prezzo_precedente": vecchio,
+        "prezzo_unitario_listino": unitario,
+        "prezzo_confezione_calcolato": True,
+        "pezzi_confezione": pezzi,
+        "prezzo_fonte": "listino_fornitore",
+        "iva_pct": iva,
+        "unita": unita_ordine,
+        "prezzo_aggiornato_il": now,
+        "storico_prezzi": storico[-20:],
+    }
+    return aggiornato, True
+
+
 @router.post("/aggiorna-prezzi-aperti")
 async def aggiorna_prezzi_ordini_aperti(fonte: str = Query(...), _admin=Depends(require_admin)):
     """Aggiorna carrello e bozze/confermati con l'ultima fattura; gli inviati
     sono immutabili e restano nello storico con i prezzi effettivamente spediti."""
     from app.lotti.servizi.preferiti_cataloghi import fatture_catalogo, articoli_acquistati
     articoli = articoli_acquistati(await fatture_catalogo(db, fonte))
+    prodotti_listino_acquaviva = []
+    if fonte.lower() in {"acquaviva", "vandemoortele"}:
+        prodotti_listino_acquaviva = await db.acquaviva_prodotti.find(
+            {"fonte": {"$in": ["acquaviva", "vandemoortele"]}},
+            {"_id": 0, "id": 1, "codice": 1, "codice_aqv_2025": 1,
+             "codice_aqv_2026": 1, "prezzo_listino_riferimento": 1,
+             "qty_cartone": 1, "pz_confezione": 1, "unita_misura": 1,
+             "iva_pct": 1},
+        ).to_list(5000)
     now = datetime.now(timezone.utc).isoformat()
     ordini_aggiornati = righe_aggiornate = 0
     async for ordine in db.ordini_fornitori.find(
@@ -963,7 +1036,14 @@ async def aggiorna_prezzi_ordini_aperti(fonte: str = Query(...), _admin=Depends(
         nuove, cambiate = [], 0
         for riga in ordine.get("prodotti") or []:
             articolo = _articolo_fattura_per_riga(riga, articoli)
-            nuova, cambiata = _riga_con_prezzo_fattura(riga, articolo, now) if articolo else (riga, False)
+            if articolo:
+                nuova, cambiata = _riga_con_prezzo_fattura(riga, articolo, now)
+            else:
+                prodotto = _prodotto_listino_acquaviva_per_riga(riga, prodotti_listino_acquaviva)
+                nuova, cambiata = (
+                    _riga_con_prezzo_listino_acquaviva(riga, prodotto, now)
+                    if prodotto else (riga, False)
+                )
             nuove.append(nuova); cambiate += int(cambiata)
         if cambiate:
             await db.ordini_fornitori.update_one({"id": ordine["id"]}, {"$set": {
@@ -975,7 +1055,14 @@ async def aggiorna_prezzi_ordini_aperti(fonte: str = Query(...), _admin=Depends(
     nuove_righe, carrello_aggiornate = [], 0
     for riga in carrello.get("righe") or []:
         articolo = _articolo_fattura_per_riga(riga, articoli)
-        nuova, cambiata = _riga_con_prezzo_fattura(riga, articolo, now) if articolo else (riga, False)
+        if articolo:
+            nuova, cambiata = _riga_con_prezzo_fattura(riga, articolo, now)
+        else:
+            prodotto = _prodotto_listino_acquaviva_per_riga(riga, prodotti_listino_acquaviva)
+            nuova, cambiata = (
+                _riga_con_prezzo_listino_acquaviva(riga, prodotto, now)
+                if prodotto else (riga, False)
+            )
         if "prezzo_ultimo" in nuova:
             nuova["prezzo"] = nuova["prezzo_ultimo"]
         nuove_righe.append(nuova); carrello_aggiornate += int(cambiata)
