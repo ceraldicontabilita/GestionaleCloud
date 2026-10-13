@@ -115,7 +115,9 @@ def test_inserimento_pagamento_manuale_e_reversibile(hr):
     assert salvato["importo"] == 300.5 and salvato["causale"] == "differenza verificata dal titolare"
 
     eliminato = _run(mod.elimina_pagamento_manuale(creato["key"]))
-    assert eliminato["ok"] and eliminato["stato"] == "in_attesa_pagamento"
+    # Il movimento bancario del 01/01 resta nel registro storico e può ancora
+    # coprire in parte dicembre: eliminare la rettifica non cancella la banca.
+    assert eliminato["ok"] and eliminato["stato"] == "parziale"
     assert _run(hr.pagamenti_esiti.find_one({"key": creato["key"]})) is None
 
 

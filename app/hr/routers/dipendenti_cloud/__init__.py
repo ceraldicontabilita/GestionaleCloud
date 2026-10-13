@@ -4287,8 +4287,15 @@ async def _calcola_associazioni_bonifici(db, anno: Optional[int] = None, mese: O
     from app.services.ripartizione_salari import indice_quote
     tutte_paghe = await db.paghe_mensili.find({}, {"_id": 0}).to_list(None)
     tutti_acconti = await db.acconti_dipendenti.find({}, {"_id": 0}).to_list(None)
-    tutte_conciliazioni = await db.conciliazioni.find({}, {"_id": 0, "file_data": 0}).to_list(None)
-    tutte_eccedenze = await db.eccedenze_pagamenti.find({}, {"_id": 0}).to_list(None)
+    # Alcuni adapter minimali (e i test dei filtri probatori) espongono solo
+    # le collezioni necessarie alla pagina. Le fonti contabili aggiuntive sono
+    # opzionali: se assenti equivalgono a un insieme vuoto, non a un errore.
+    conciliazioni_coll = getattr(db, "conciliazioni", None)
+    eccedenze_coll = getattr(db, "eccedenze_pagamenti", None)
+    tutte_conciliazioni = (await conciliazioni_coll.find(
+        {}, {"_id": 0, "file_data": 0}).to_list(None)) if conciliazioni_coll is not None else []
+    tutte_eccedenze = (await eccedenze_coll.find(
+        {}, {"_id": 0}).to_list(None)) if eccedenze_coll is not None else []
     code_certe = await db.bonifici_da_associare.find(
         {"stato": "da_associare", "associazione_certa": True}, {"_id": 0, "pdf_data": 0}).to_list(None)
     gruppi = {nome: defaultdict(list) for nome in
