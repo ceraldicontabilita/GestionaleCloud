@@ -1119,7 +1119,7 @@ async def _associate_receipt_to_verbale(
     numero = str(parsed.get("numero_verbale") or "").strip().upper()
     references = []
     if iuv:
-        references.extend(({"iuv": iuv}, {"codice_avviso": f"3{iuv}"}))
+        references.extend(({"iuv": iuv}, {"codice_avviso": f"3{iuv}"}, {"payment_modules.code": iuv}))
     if numero:
         references.append({"numero_verbale": numero})
     if not references or amount in (None, ""):
@@ -1254,21 +1254,46 @@ async def aggancia_ricevute_in_attesa(db, verbale: dict[str, Any]) -> dict[str, 
 async def associa_avvisi_a_ricevuta(db, receipt: dict[str, Any]) -> list[str]:
     """Prova documentale su un avviso gia' acquisito, per IUV e quota ente esatti."""
     code = str(receipt.get("identificativo_bolletta") or receipt.get("iuv") or "")
-    if not code or receipt.get("duplicate_of"):
+    if not code or receipt.get("duplicate_of") or receipt.get("is_payment_receipt") is False:
         return []
     forms = [code]
-    if len(code) == 18:
+    if len(code) == 18 and code.startswith(("1", "3")):
         forms.append(code[1:])
     elif len(code) == 17:
         forms.extend(["1" + code, "3" + code])
     rows = await db["documents_inbox"].find({"$or": [
-        {key: {"$in": forms}} for key in ("parsed_metadata.identificativo_bolletta", "parsed_metadata.codice_avviso", "iuv_estratto")
+        {key: {"$in": forms}} for key in ("parsed_metadata.identificativo_bolletta", "parsed_metadata.codice_avviso", "iuv_estratto", "parsed_metadata.payment_modules.code")
     ]}, {"_id": 0, "pdf_data": 0}).to_list(500)
     linked = []
     for row in rows:
         meta = row.get("parsed_metadata") or {}
         kind = row.get("document_type") or row.get("tipo_documento") or row.get("category")
-        if kind != "avviso_pagopa" or meta.get("is_payment_receipt"):
+        if kind not in {"avviso_pagopa", "ader_definizione_agevolata"} or meta.get("is_payment_receipt"):
+            continue
+        modules = meta.get("payment_modules") or []
+        if modules:
+            matched = [m for m in modules if m.get("code") in forms
+                       and amounts_equal_to_cent(m.get("amount"), receipt.get("importo"))]
+            if len(matched) != 1:
+                continue
+            module = matched[0]
+            key = f"{module['code']}:{module['amount_cents']}"
+            # Un modulo puo' essere una rata: collegarlo non chiude l'intera bolletta.
+            await db["documents_inbox"].update_one({"id": row["id"]}, {"$set": {
+                f"pagamenti_moduli.{key}": {"ricevuta_id": receipt["id"],
+                    "importo": receipt["importo"], "data_pagamento": receipt.get("data_pagamento"),
+                    "page_number": module.get("page_number"), "pagato_documentalmente": True},
+            }})
+            # Anche un solo modulo riconosciuto potrebbe essere una rata di un
+            # avviso piu' ampio: serve il totale indipendente dell'obbligazione.
+            if len(modules) == 1 and amounts_equal_to_cent(meta.get("importo"), receipt.get("importo")):
+                await db["documents_inbox"].update_one({"id": row["id"]}, {"$set": {
+                    "obligation_status": "PAGATO_DOCUMENTALE", "pagato_documentalmente": True,
+                    "pagato": True, "chiuso": True, "processed": True, "status": "processato",
+                    "ricevuta_pagopa_id": receipt["id"], "importo_pagato": receipt["importo"],
+                    "data_pagamento": receipt.get("data_pagamento"),
+                }})
+            linked.append(row["id"])
             continue
         if not amounts_equal_to_cent(meta.get("importo"), receipt.get("importo")):
             continue
