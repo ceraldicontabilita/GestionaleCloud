@@ -44,6 +44,9 @@ LEGACY_SUMMARY_ROW = re.compile(
 MAX_ARCHIVE_FILES = 1_000
 MAX_ARCHIVE_UNCOMPRESSED = 300 * 1024 * 1024
 
+TIPO_ANALITICA = "ader_analitica_posizione"
+TIPO_RICHIESTA_INFORMAZIONI = "ader_richiesta_informazioni"
+
 
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
@@ -71,6 +74,54 @@ def _cents(value: Decimal) -> int:
 
 def _pdf_text(content: bytes) -> str:
     return "\n".join(page["text"] for page in extract_pdf_pages(content))
+
+
+def parse_information_request(*, content: bytes, filename: str, company_id: str) -> dict[str, Any]:
+    """Legge un riepilogo «Contattaci» senza trasformare le affermazioni in fatti.
+
+    Il mittente può dichiarare che un piano è saldato: resta una richiesta in
+    attesa di risposta, non una prova di accoglimento o pagamento.
+    """
+    text = re.sub(r"\s+", " ", _pdf_text(content))
+    upper = text.upper()
+    if not (
+        "RICHIESTA DI INFORMAZIONI TRAMITE IL CANALE CONTATTACI" in upper
+        and "AGENZIA DELLE ENTRATE-RISCOSSIONE" in upper
+    ):
+        raise ValueError(f"Richiesta AdeR non riconosciuta: {filename}")
+    tax_ids = re.findall(r"Codice\s+fiscale\s+([A-Z0-9]{11,16})\b", text, re.IGNORECASE)
+    if company_id not in tax_ids:
+        raise ValueError("Richiesta AdeR riferita a un altro contribuente")
+    plan = re.search(
+        r"istanza\s+di\s+protocollo\s+n\W*(?P<reference>\d{3,12})\s+del\s+"
+        r"(?P<date>\d{2}/\d{2}/\d{4})",
+        text, re.IGNORECASE,
+    )
+    if not plan:
+        raise ValueError("Protocollo della rateizzazione non leggibile")
+    debt = re.search(r"debito\s+per\s+\D{0,12}(?P<amount>[\d.]+,\d{2})", text, re.IGNORECASE)
+    last = re.search(r"ultima\s+rata\s+in\s+data\s+(?P<date>\d{2}/\d{2}/\d{4})", text, re.IGNORECASE)
+    sha256 = hashlib.sha256(content).hexdigest()
+    return {
+        "id": stable_id("adercorrespondence", company_id, sha256),
+        "company_id": company_id,
+        "document_kind": "ADER_INFORMATION_REQUEST",
+        "channel": "ADER_CONTACT_US",
+        "direction": "OUTBOUND",
+        "plan_reference": plan.group("reference"),
+        "plan_application_date": datetime.strptime(plan.group("date"), "%d/%m/%Y").date().isoformat(),
+        "asserted_debt_cents": _cents(_decimal(debt.group("amount"))) if debt else None,
+        "asserted_last_installment_date": (
+            datetime.strptime(last.group("date"), "%d/%m/%Y").date().isoformat() if last else None
+        ),
+        "status": "REQUEST_RECORDED_RESPONSE_NOT_FOUND",
+        "payment_evidence": False,
+        "acceptance_evidence": False,
+        "response_evidence": False,
+        "requires_review": True,
+        "source_filename": PurePosixPath(filename).name,
+        "sha256": sha256,
+    }
 
 
 def _safe_zip(data: bytes) -> zipfile.ZipFile:
@@ -598,6 +649,21 @@ async def apply_ader_archive_plan(*, db, plan: dict[str, Any], actor: str | None
                           source_filename=row["source_filename"])
         await link_source(entity_type="tax_collection_claim", entity_id=claim_id,
                           source_filename=row["source_filename"], relation_type="ader_snapshot_source")
+        if row["amounts_cents"]["net"] == 0:
+            # Lo snapshot corrente rende superata l'attesa del documento
+            # originario, senza dichiarare un pagamento privo di quietanza.
+            from app.services.cartelle_pagamento import COLL as LEGACY_CARTELLE
+
+            await db[LEGACY_CARTELLE].update_one(
+                {"id": "cartella:" + re.sub(r"\D", "", row["document_number"]),
+                 "expectation_status": {"$ne": "SODDISFATTO"}},
+                {"$set": {
+                    "expectation_status": "SUPERATO",
+                    "expectation_resolution": "ADER_CURRENT_RESIDUAL_ZERO_WITHOUT_PAYMENT_EVIDENCE",
+                    "tax_collection_claim_id": claim_id,
+                    "updated_at": now,
+                }},
+            )
 
     modules_by_plan: dict[str, list[dict[str, Any]]] = {}
     for original in plan["payment_modules"]:
@@ -707,12 +773,113 @@ _RE_NUMERO_DOCUMENTO = re.compile(r"Dati documento\s+(\d{20})", re.IGNORECASE)
 def riconosci(testo_compatto: str) -> str | None:
     """Il tipo AdeR dal testo (maiuscolo, spazi normalizzati), o None."""
     t = (testo_compatto or "").upper()
+    if (
+        "RICHIESTA DI INFORMAZIONI TRAMITE IL CANALE CONTATTACI" in t
+        and "AGENZIA DELLE ENTRATE-RISCOSSIONE" in t
+    ):
+        return TIPO_RICHIESTA_INFORMAZIONI
+    if (
+        ("DETTAGLIO DELLA CARTELLA N." in t or "DETTAGLIO DELL'AVVISO" in t)
+        and "CARICO AFFIDATO" in t and "RESIDUO CARICO" in t
+        and "CARATTERE MERAMENTE INFORMATIVO" in t
+    ):
+        return TIPO_ANALITICA
     if "ACCOGLIMENTO DELL'ISTANZA DI RATEIZZAZIONE" in t.replace("’", "'") and (
             "AGENZIA DELLE ENTRATE-RISCOSSIONE" in t or "AGENZIA DELLE ENTRATE RISCOSSIONE" in t):
         return TIPO_PIANO
     if "AREA RISERVATA - CITTADINI E IMPRESE" in t and "DETTAGLIO TRIBUTI" in t and "DATI DOCUMENTO" in t:
         return TIPO_DETTAGLIO
     return None
+
+
+async def archivia_richiesta_informazioni(
+    db, *, filename: str, content: bytes, source_context: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Archivia la corrispondenza e collega solo un piano già identificato in modo univoco."""
+    from app.config import settings
+    from app.db_collections import (
+        COLL_FISCAL_DOCUMENTS, COLL_TAX_COLLECTION_DOCUMENTS, COLL_TAX_RATE_PLANS,
+    )
+    from app.services.pdf_drive_only import verified_drive_source
+
+    company_id = settings.FISCAL_COMPANY_ID
+    parsed = parse_information_request(
+        content=content, filename=filename, company_id=company_id,
+    )
+    source_metadata = verified_drive_source(content, source_context)
+    reference = await FiscalDocumentIngestionService(db, company_id).ingest(
+        content=content, filename=filename, source="ader_information_request",
+        source_metadata=source_metadata, expected_sha256=parsed["sha256"],
+        category_hint="riscossione",
+    )
+    await db[COLL_FISCAL_DOCUMENTS].update_one(
+        {"company_id": company_id, "id": reference["document_id"]},
+        {"$set": {
+            "document_type": "CORRISPONDENZA_ADE_R",
+            "review_status": "TO_VERIFY",
+            "classification": {
+                "document_type": "CORRISPONDENZA_ADE_R", "confidence": 1.0,
+                "reasons": ["struttura_richiesta_contattaci_ader"], "requires_review": True,
+            },
+        }},
+    )
+    candidates = []
+    plans = await db[COLL_TAX_RATE_PLANS].find(
+        {"company_id": company_id}, {"_id": 0, "id": 1, "plan_reference": 1, "application_date": 1},
+    ).to_list(1000)
+    wanted = re.sub(r"\D", "", parsed["plan_reference"])
+    for plan in plans:
+        known = re.sub(r"\D", "", str(plan.get("plan_reference") or ""))
+        if known.endswith(wanted) and (
+            not plan.get("application_date") or plan.get("application_date") == parsed["plan_application_date"]
+        ):
+            candidates.append(plan)
+    record = {
+        **parsed,
+        "source_document_id": reference["document_id"],
+        "source_version_id": reference["version_id"],
+        "candidate_rate_plan_ids": [plan["id"] for plan in candidates],
+        "linked_rate_plan_id": candidates[0]["id"] if len(candidates) == 1 else None,
+        "link_status": "CONFIRMED" if len(candidates) == 1 else "UNRESOLVED_REFERENCE",
+        "created_at": _now_iso(),
+    }
+    result = await db[COLL_TAX_COLLECTION_DOCUMENTS].update_one(
+        {"company_id": company_id, "id": record["id"]},
+        {"$setOnInsert": record}, upsert=True,
+    )
+    evidence = normalize_evidence(
+        document_id=reference["document_id"], version_id=reference["version_id"],
+        page_number=1, field="plan_reference", raw_value=parsed["plan_reference"],
+        normalized_value=wanted, parser_version="ader-information-request-v1",
+        reason="outbound_information_request",
+    )
+    await link_evidence(
+        db, company_id=company_id, entity_type="tax_collection_document",
+        entity_id=record["id"], relation_type="source_document", evidence=[evidence],
+        actor="smistatore_documenti", status="confirmed",
+    )
+    if len(candidates) == 1:
+        await link_evidence(
+            db, company_id=company_id, entity_type="tax_rate_plan",
+            entity_id=candidates[0]["id"], relation_type="information_request",
+            evidence=[evidence], actor="smistatore_documenti", status="confirmed",
+        )
+    return {
+        "success": True,
+        "workflow": "ADER_INFORMATION_REQUEST",
+        "tipo": TIPO_RICHIESTA_INFORMAZIONI,
+        "duplicate": getattr(result, "upserted_id", None) is None,
+        "fiscal_document_id": reference["document_id"],
+        "data": {key: record[key] for key in (
+            "id", "plan_reference", "plan_application_date", "asserted_debt_cents",
+            "asserted_last_installment_date", "status", "payment_evidence",
+            "linked_rate_plan_id", "link_status",
+        )},
+        "message": (
+            f"Richiesta AdeR sul piano {parsed['plan_reference']} archiviata: "
+            "risposta e prova del pagamento non presenti"
+        ),
+    }
 
 
 _RE_TESTATA_DETTAGLIO = re.compile(
@@ -896,6 +1063,10 @@ async def archivia_documento_ader(db, *, filename: str, content: bytes, testo: s
     tipo = riconosci(compatto)
     if not tipo:
         raise ValueError("Documento Agenzia delle entrate-Riscossione non riconosciuto dal contenuto")
+    if tipo == TIPO_RICHIESTA_INFORMAZIONI:
+        return await archivia_richiesta_informazioni(
+            db, filename=filename, content=content, source_context=source_context,
+        )
     company_id = settings.FISCAL_COMPANY_ID
     plan: dict[str, Any] = {
         "id": stable_id("aderdoc", company_id, sha), "company_id": company_id,
@@ -905,7 +1076,17 @@ async def archivia_documento_ader(db, *, filename: str, content: bytes, testo: s
         "counts": {}, "pdf_count": 1, "analytic_count": 0, "requires_review": False,
         "source_kind": "documento_singolo", "source_context": source_context or {},
     }
-    if tipo == TIPO_DETTAGLIO:
+    if tipo == TIPO_ANALITICA:
+        riga = parse_analytic_pdf(
+            content=content, filename=filename, source_archive_id=plan["source_archive_id"],
+            dataset_sha256=sha, threshold_cents=threshold_cents,
+        )
+        if riga["company_id"] != company_id:
+            raise ValueError(f"Analitica AdeR di un altro contribuente ({riga['company_id']})")
+        plan.update({"analytics": [riga], "analytic_count": 1,
+                     "snapshot_date": riga["snapshot_date"],
+                     "counts": {riga["calculated_business_status"]: 1}})
+    elif tipo == TIPO_DETTAGLIO:
         riga = parse_dettaglio_tributi(content=content, filename=filename, dataset_sha256=sha,
                                        threshold_cents=threshold_cents)
         if riga["company_id"] != company_id:
@@ -923,21 +1104,29 @@ async def archivia_documento_ader(db, *, filename: str, content: bytes, testo: s
     documento = esito.get("documents", {}).get(filename) or {}
     risultato: dict[str, Any] = {
         "success": True, "workflow": "ADER_DOCUMENTO", "tipo": tipo, "sha256": sha,
-        "duplicate": bool(esito.get("existing_snapshots")) if tipo == TIPO_DETTAGLIO else bool(esito.get("existing_rate_plans")),
+        "duplicate": (
+            bool(esito.get("existing_snapshots"))
+            if tipo in {TIPO_ANALITICA, TIPO_DETTAGLIO}
+            else bool(esito.get("existing_rate_plans"))
+        ),
         "fiscal_document_id": documento.get("document_id"),
     }
-    if tipo == TIPO_DETTAGLIO:
+    if tipo in {TIPO_ANALITICA, TIPO_DETTAGLIO}:
         riga = plan["analytics"][0]
-        risultato["piani_collegati"] = await _risolvi_piani_in_attesa(db, company_id, riga["document_number"], now=now)
+        risultato["piani_collegati"] = await _risolvi_piani_in_attesa(
+            db, company_id, riga["document_number"], now=now,
+        )
         risultato["message"] = (
-            f"AdeR dettaglio tributi {riga['document_label'].lower()} {riga['document_number']} di {riga['creditor']}: "
+            f"AdeR posizione {riga['document_number']} di {riga['creditor']}: "
             f"da pagare {riga['net_payable_amount']:.2f} EUR al {riga['snapshot_date']}, "
-            f"{len(riga['lines'])} tributi"
-            + ("" if riga["lines_quadrano"] else " (righe e totale non coincidono: oneri accessori esclusi)")
+            f"{len(riga.get('lines') or [])} tributi"
+            + ("" if riga.get("lines_quadrano") is not False else " (righe e totale non coincidono: oneri accessori esclusi)")
             + (" (fotografia gia' presente)" if risultato["duplicate"] else "")
         )
-        risultato["data"] = {k: riga[k] for k in ("document_number", "document_type", "creditor", "notification_date",
-                                                   "net_payable_amount", "calculated_business_status", "snapshot_date")}
+        risultato["data"] = {k: riga.get(k) for k in (
+            "document_number", "document_type", "creditor", "notification_date",
+            "net_payable_amount", "calculated_business_status", "snapshot_date",
+        )}
     else:
         piano = plan["rate_plans"][0]
         risultato["message"] = (
