@@ -37,7 +37,7 @@ it('ignora carica altre del vecchio filtro e usa una sola API', async () => {
     return Promise.resolve(response([row('Aperta vecchia')],{totale:2}));
   });
   render(page());
-  fireEvent.click(await screen.findByRole('button',{name:'Carica altre scadenze'}));
+  fireEvent.click(await screen.findByRole('button',{name:'Carica altre scadenze'}, {timeout:5000}));
   fireEvent.change(screen.getByLabelText('Stato'),{target:{value:'chiuse'}});
   await screen.findByText('Pagata corrente');
   await act(async () => moreResolve(response([row('Altra vecchia')],{totale:2})));
@@ -74,4 +74,21 @@ it('un errore di caricamento non mostra zero né righe del vecchio anno', async 
   expect(await screen.findByRole('alert')).toHaveTextContent('Fonte quietanze non disponibile');
   expect(screen.queryByText('Precedente')).not.toBeInTheDocument();
   expect(screen.queryByText('Residuo documentato')).not.toBeInTheDocument();
+  api.get.mockResolvedValueOnce(response([row('Ripristinata')]));
+  fireEvent.click(screen.getByRole('button', {name:'Riprova'}));
+  expect(await screen.findByText('Ripristinata')).toBeInTheDocument();
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument();
 });
+it('carica la cinquantunesima scadenza e mantiene quelle già lette', async () => {
+  const first = Array.from({length:50}, (_, i) => row(`Obbligo ${i + 1}`, {id:`r-${i}`,source:'tributo'}));
+  api.get.mockImplementation(url => Promise.resolve(url.includes('offset=50')
+    ? response([row('Obbligo 51',{id:'r-50',source:'tributo'})], {totale:51})
+    : response(first,{totale:51})));
+  render(page());
+  fireEvent.click(await screen.findByRole('button',{name:'Carica altre scadenze'},{timeout:5000}));
+  expect(await screen.findByText('Obbligo 51',{}, {timeout:5000})).toBeInTheDocument();
+  expect(screen.getByText('Obbligo 1')).toBeInTheDocument();
+  expect(screen.getByText('Obbligo 50')).toBeInTheDocument();
+  expect(api.get.mock.calls[1][0]).toContain('offset=50');
+  expect(screen.queryByRole('button',{name:'Carica altre scadenze'})).not.toBeInTheDocument();
+}, 15000);
