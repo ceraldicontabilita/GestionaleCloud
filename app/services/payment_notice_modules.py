@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import re
+import hashlib
 from decimal import Decimal
 
 POSTAL = re.compile(r"\b18(\d{18})12(\d{12})10(\d{10})3(896|674)\b")
@@ -57,3 +58,39 @@ def parse_notice_modules(content: bytes) -> list[dict]:
                     "is_payment_receipt": False, "parser_version": "notice-modules-v1",
                 })
     return list(modules.values())
+
+
+async def collega_moduli_verbale(db, document_id: str, content: bytes) -> dict:
+    """Recupera i bollettini dell'originale senza alterare i campi corretti a mano."""
+    modules = parse_notice_modules(content)
+    if not modules:
+        return {"collegati": 0}
+    digest = hashlib.sha256(content).hexdigest()
+    candidates = await db["verbali_noleggio"].find({"$or": [
+        {"source_document_id": document_id}, {"document_ids": document_id},
+        {"pdf_hash": digest}, {"source_sha256": digest},
+    ]}, {"_id": 0, "pdf_data": 0}).to_list(20)
+    if len(candidates) != 1:
+        return {"collegati": 0, "motivo": "originale_non_univoco"}
+    verbale = candidates[0]
+    await db["verbali_noleggio"].update_one({"id": verbale["id"]}, {"$set": {
+        "payment_modules": modules, "payment_modules_source_sha256": digest,
+    }})
+    codes = list({m["code"] for m in modules})
+    receipts = await db["ricevute_pagopa"].find({"$or": [
+        {"identificativo_bolletta": {"$in": codes}}, {"iuv": {"$in": codes}},
+    ], "duplicate_of": {"$exists": False}}, {"_id": 0, "pdf_data": 0}).to_list(100)
+    from app.services.pagopa_receipts import _associate_receipt_to_verbale
+    linked = 0
+    for receipt in receipts:
+        if receipt.get("is_payment_receipt") is False or receipt.get("verbale_id") not in (None, verbale["id"]):
+            continue
+        result = await _associate_receipt_to_verbale(
+            db, receipt_id=receipt["id"], parsed=receipt, amount=receipt.get("importo"))
+        if result.get("matched"):
+            await db["ricevute_pagopa"].update_one({"id": receipt["id"]}, {"$set": {
+                "verbale_id": result["verbale_id"], "stato_verbale": "agganciata", "stato": "associata",
+                "riconciliazione_verbale": result,
+            }})
+            linked += 1
+    return {"collegati": linked}

@@ -3659,6 +3659,9 @@ async def upload_documento_automatico(
                 source_context=source_context,
             )
             if archived.get("duplicate") and not (campi_confermati and archived.get("doc_id")):
+                from app.services.payment_notice_modules import collega_moduli_verbale
+                if archived.get("doc_id"):
+                    archived["moduli_pagamento"] = await collega_moduli_verbale(db, archived["doc_id"], content)
                 return archived
 
             association = await process_verbale_document(
@@ -3667,6 +3670,8 @@ async def upload_documento_automatico(
                 parsed_metadata=campi_confermati or None,
             )
             archived["association"] = association
+            from app.services.payment_notice_modules import collega_moduli_verbale
+            archived["moduli_pagamento"] = await collega_moduli_verbale(db, archived["doc_id"], content)
             archived["workflow"] = "VERBALE_DOCUMENTALE"
             archived["message"] = "Verbale archiviato e associato per numero/IUV"
             return archived

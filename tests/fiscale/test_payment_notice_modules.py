@@ -86,3 +86,38 @@ def test_ricevuta_con_iuv_17_collega_rottamazione_senza_creare_pagamenti():
         assert next(iter(row["pagamenti_moduli"].values()))["pagato_documentalmente"]
         assert await db.ricevute_pagopa.count_documents({}) == 0
     asyncio.run(scenario())
+
+
+def test_bollettino_postale_ricollega_verbale_pagato_entro_termine_pec():
+    from app.services.payment_notice_modules import collega_moduli_verbale
+    async def scenario():
+        db = AsyncMongoMockClient()["verbale_moduli"]
+        content = pdf("BOLLO DELL'UFFICIO POSTALE\ncodice cliente\n"
+                      + postal("660002023077708027", 3490) + postal("660002023077708027", 4750))
+        await db.verbali_noleggio.insert_one({"id": "v", "source_document_id": "originale", "numero_verbale": "B23123017923",
+            "importo": 47.50, "importo_ordinario": 47.50, "importo_ridotto": 34.90,
+            "data_notifica": "2023-12-05", "data_notifica_fonte": "pec", "stato": "aperto"})
+        receipt = {"id": "r", "identificativo_bolletta": "660002023077708027", "importo": 34.90,
+                   "data_pagamento": "2023-12-05", "is_payment_receipt": True}
+        await db.ricevute_pagopa.insert_one(receipt)
+        assert (await collega_moduli_verbale(db, "originale", content))["collegati"] == 1
+        verbale = await db.verbali_noleggio.find_one({"id": "v"})
+        assert verbale["pagato_documentalmente"] and verbale["importo_pagato"] == 34.90
+        assert verbale["importo"] == 47.50 and not verbale["banca_verificata"]
+        assert (await db.ricevute_pagopa.find_one({"id": "r"}))["verbale_id"] == "v"
+        assert await db.ricevute_pagopa.count_documents({}) == 1
+    asyncio.run(scenario())
+
+
+def test_bollettino_ridotto_tardivo_resta_da_verificare():
+    from app.services.payment_notice_modules import collega_moduli_verbale
+    async def scenario():
+        db = AsyncMongoMockClient()["verbale_tardivo"]
+        content = pdf("BOLLO DELL'UFFICIO POSTALE\ncodice cliente\n" + postal("660002023077708027", 3490))
+        await db.verbali_noleggio.insert_one({"id": "v", "source_document_id": "originale", "importo": 47.50,
+            "importo_ridotto": 34.90, "data_notifica": "2023-12-05", "data_notifica_fonte": "pec", "stato": "aperto"})
+        await db.ricevute_pagopa.insert_one({"id": "r", "identificativo_bolletta": "660002023077708027",
+            "importo": 34.90, "data_pagamento": "2023-12-20", "is_payment_receipt": True})
+        assert (await collega_moduli_verbale(db, "originale", content))["collegati"] == 0
+        assert (await db.verbali_noleggio.find_one({"id": "v"}))["stato"] == "aperto"
+    asyncio.run(scenario())

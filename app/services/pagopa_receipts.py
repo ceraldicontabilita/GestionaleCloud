@@ -1119,7 +1119,7 @@ async def _associate_receipt_to_verbale(
     numero = str(parsed.get("numero_verbale") or "").strip().upper()
     references = []
     if iuv:
-        references.extend(({"iuv": iuv}, {"codice_avviso": f"3{iuv}"}))
+        references.extend(({"iuv": iuv}, {"codice_avviso": f"3{iuv}"}, {"payment_modules.code": iuv}))
     if numero:
         references.append({"numero_verbale": numero})
     if not references or amount in (None, ""):
