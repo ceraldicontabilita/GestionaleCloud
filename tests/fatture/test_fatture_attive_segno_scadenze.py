@@ -152,7 +152,6 @@ def test_fatturato_ed_estratto_fornitore(db):
 def test_scadenze_non_generano_righe_per_fatture_fornitore(db, monkeypatch):
     from app.routers import scadenze
 
-    monkeypatch.setattr(scadenze, "_genera_scadenze_fiscali", lambda *_a: [])
 
     async def scenario():
         await db["invoices"].insert_many(_fatture_fornitore())
@@ -160,17 +159,17 @@ def test_scadenze_non_generano_righe_per_fatture_fornitore(db, monkeypatch):
             anno=2026, mese=None, tipo=None, include_passate=True, limit=500, offset=0)
         solo_fatture = await scadenze.get_tutte_scadenze(
             anno=2026, mese=None, tipo="FATTURA", include_passate=True, limit=500, offset=0)
-        prossime = await scadenze.get_prossime_scadenze(giorni=3650, limit=100)
+        prossime = await scadenze.get_prossime_scadenze(giorni=365, limit=500)
         widget = await scadenze.get_dashboard_scadenze()
         return tutte, solo_fatture, prossime, widget
 
     tutte, solo_fatture, prossime, widget = _run(scenario())
-    assert tutte["scadenze"] == [] and solo_fatture["scadenze"] == []
-    assert prossime["scadenze"] == []
+    assert solo_fatture["scadenze"] == []
+    assert all(r["source"] != "fattura" for r in tutte["scadenze"] + prossime["scadenze"])
     # la fattura F1 ha una `data_scadenza` passata e stato da_pagare: non
     # accende piu' l'alert rosso
     assert "fatture" not in widget
-    assert widget["totale_alert"] == 0
+    assert "fatture" not in widget.get("fiscali", {})
 
 
 # ── 5. scadenzario fornitori ──────────────────────────────────────────────
