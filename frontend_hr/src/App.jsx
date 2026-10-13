@@ -5861,6 +5861,7 @@ function PagheBonificiPage({ dipendenti = [] }) {
         righe: data.contabilita?.movimenti || [],
         saldo_finale: contabilitaVista.saldo_finale,
         perDipendente: contabilitaVista.per_dipendente,
+        dal_anno: data.contabilita?.dal_anno,
         titolo: selezionati === 1
           ? (dipendenti.find(d => d.id === dipendentiSelezionati[0])?.nome_completo || "Dipendente")
           : selezionati > 1 ? `${selezionati} dipendenti selezionati` : "Tutti i dipendenti",
@@ -5900,7 +5901,7 @@ function PagheBonificiPage({ dipendenti = [] }) {
         axios.get(`${API}/paghe/prima-nota?dipendente_id=${dipId}`),
         axios.get(`${API}/paghe/storico-pagamenti?dipendente_id=${dipId}`).catch(() => ({ data: { righe: [] } })),
       ]);
-      setPnDett({ nome, mensili: r.data.righe || [], competenze: r.data.competenze || [], righe: r.data.movimenti || [], saldo_finale: r.data.saldo_finale, storico: st.data.righe || [] });
+      setPnDett({ nome, mensili: r.data.righe || [], competenze: r.data.competenze || [], righe: r.data.movimenti || [], saldo_finale: r.data.saldo_finale, dal_anno: r.data.dal_anno, storico: st.data.righe || [] });
     } catch { setPnDett({ nome, righe: [], errore: true }); }
   };
 
@@ -6238,7 +6239,7 @@ function PagheBonificiPage({ dipendenti = [] }) {
                 <th style={th}>Dipendente</th>
                 <th style={th}>Periodo</th>
                 <th style={{ ...th, textAlign: "right" }}>Dovuto cedolino</th>
-                <th style={{ ...th, textAlign: "right" }}>Bonifico</th>
+                <th style={{ ...th, textAlign: "right" }} title="Pagamenti attribuiti al cedolino, anche se eseguiti in un mese successivo">Pagamenti attribuiti</th>
                 <th style={{ ...th, textAlign: "right" }}>Acconti</th>
                 <th style={{ ...th, textAlign: "right" }}>Saldo periodo</th>
                 <th style={{ ...th, textAlign: "right" }}>Saldo progressivo</th>
@@ -6258,6 +6259,11 @@ function PagheBonificiPage({ dipendenti = [] }) {
                 const qInfo = r.qualita ? QUALITA[r.qualita] : null;
                 const periodoLbl = (r.mese >= 1 && r.mese <= 12) ? `${mesi[r.mese - 1]} ${r.anno}` : r.mese === 13 ? `13ª ${r.anno}` : r.mese === 14 ? `14ª ${r.anno}` : `${r.mese}/${r.anno}`;
                 const contantiAmmessi = r.anno < 2018 || (r.anno === 2018 && r.mese < 7) || Boolean(r.data_cessazione_rapporto);
+                const meseCompetenza = r.mese === 13 ? 12 : r.mese === 14 ? 7 : r.mese;
+                const includePagamentiSuccessivi = (r.bonifici || []).some(p => {
+                  const [annoPagamento, mesePagamento] = String(p.data || "").split("-").map(Number);
+                  return annoPagamento > r.anno || (annoPagamento === r.anno && mesePagamento > meseCompetenza);
+                });
                 return (
                   <Fragment key={k}>
                     <tr style={{ background: exp ? "#f7f4ec" : "transparent" }}>
@@ -6293,6 +6299,7 @@ function PagheBonificiPage({ dipendenti = [] }) {
                       <td style={{ ...td, textAlign: "right", color: r.bonifico > 0 ? "#3d8168" : "#9aa295", fontWeight: 600 }}>
                         {r.bonifico > 0 ? `€ ${eur(r.bonifico)}` : "—"}
                         {r.fonte && <div style={{ fontSize: 10, color: "#9aa295", fontWeight: 400 }}>{FONTI[r.fonte] || r.fonte}</div>}
+                        {includePagamentiSuccessivi && <div title="Il saldo progressivo li conteggia solo alla data effettiva" style={{ fontSize: 10, color: "#8a6f47", fontWeight: 400 }}>include date successive</div>}
                       </td>
                       <td style={{ ...td, textAlign: "right" }}>{r.acconti > 0 ? `€ ${eur(r.acconti)}` : "—"}</td>
                       <td style={{ ...td, textAlign: "right", color: r.saldo > 0 ? "#b04a3a" : "#3d8168" }}>

@@ -30,6 +30,30 @@ class SaldoDipendenteTests(unittest.TestCase):
         righe = prima_nota_mensile(m)["movimenti"]
         self.assertEqual([(r["data"], r["saldo"]) for r in righe], [("2025-12-20", -400), ("2026-01-31", 600)])
 
+    def test_saldo_parte_dal_primo_anno_con_cedolini_senza_falso_riporto(self):
+        m = componi_movimenti(
+            paghe=[
+                {"anno": 2019, "mese": 12, "importo_busta": 1642},
+                {"anno": 2019, "mese": 13, "importo_busta": 985},
+            ],
+            esiti=[
+                {"data": "2018-08-07", "importo": 375, "anno": 2018, "mese": 6},
+                {"data": "2018-09-17", "importo": 770, "anno": 2018, "mese": 8},
+                {"data": "2019-12-12", "importo": 1031, "anno": 2019, "mese": 10},
+                {"data": "2019-12-12", "importo": 435, "anno": 2019, "mese": 14},
+                {"data": "2019-12-19", "importo": 985, "anno": 2019, "mese": 13},
+            ], cedolini=[], acconti=[], conciliazioni=[])
+
+        vista = prima_nota_mensile(m)
+
+        self.assertEqual(vista["dal_anno"], 2019)
+        self.assertEqual([(r["anno"], r["mese"]) for r in vista["righe"]], [(2019, 12)])
+        self.assertEqual(vista["righe"][0]["dovuto"], 2627)
+        self.assertEqual(vista["righe"][0]["erogato"], 2451)
+        self.assertEqual(vista["saldo_finale"], 176)
+        # Le fonti restano conservate: cambia solo il perimetro del saldo.
+        self.assertEqual(len(m["registro"]), 7)
+
     def test_cedolino_e_pagamento_successivo_sulla_stessa_riga(self):
         m = componi_movimenti(paghe=[{"anno": 2021, "mese": 11, "importo_busta": 878}],
                               esiti=[{"data": "2021-12-03", "importo": 863, "anno": 2021, "mese": 11}],
