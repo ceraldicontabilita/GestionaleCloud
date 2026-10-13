@@ -38,6 +38,19 @@ def test_mav_prestampato_non_e_f24_anche_se_scrive_quietanza():
     assert detect_document_type("mav.pdf", content) == "avviso_pagopa"
 
 
+def test_bolletta_con_quietanza_nelle_voci_e_moduli_dopo_la_quinta_pagina():
+    # ABC cita il bollo quietanza nelle voci; i bollettini arrivano a pagina 7.
+    with fitz.open() as doc:
+        for _ in range(6):
+            doc.new_page().insert_text((30, 30), "Bolletta acquedotto - Componente bollo quietanza")
+        doc.new_page().insert_text((30, 30), "BOLLO DELL'UFFICIO POSTALE\ncodice cliente\n"
+                                  + postal("888888000433211148", 43453), fontsize=8)
+        content = doc.tobytes()
+    from app.routers.documenti import detect_document_type
+    assert detect_document_type("bolletta.pdf", content) == "avviso_pagopa"
+    assert parse_notice_modules(content)[0]["page_number"] == 7
+
+
 def test_mav_ambiguo_e_barcode_senza_conferma_non_creano_importi():
     assert parse_notice_modules(pdf("Codice identificativo MAV\nTimbro datario\n"
                                    "06230000000000001\n14,79\n20,00\n")) == []

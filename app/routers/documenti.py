@@ -2125,7 +2125,7 @@ def detect_document_type(filename: str, file_content: bytes) -> str:
         return "quietanza_f24"
     # I moduli postali/MAV prestampati citano "quietanza" ma non sono F24 pagati.
     if lower.endswith(".pdf") and any(marker in marker_pdf_text for marker in (
-        "CODICEIDENTIFICATIVOMAV", "BOLLODELLUFFICIOPOSTALE",
+        "CODICEIDENTIFICATIVOMAV", "BOLLODELLUFFICIOPOSTALE", "QUIETANZA",
     )) and "VERBALE" not in compact_pdf_text:
         from app.services.payment_notice_modules import parse_notice_modules
         if parse_notice_modules(file_content):
