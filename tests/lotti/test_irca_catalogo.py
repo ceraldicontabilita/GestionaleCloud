@@ -222,6 +222,46 @@ def test_distinta_distingue_acquistati_da_mancanti_usando_solo_fatture(monkeypat
     }
 
 
+def test_reno_senza_link_irca_viene_riconosciuto_e_ordinato_da_nome_esatto(monkeypatch):
+    database = AsyncMongoMockClient()["Irca_Reno_Test"]
+    monkeypatch.setattr(mod, "db", database)
+
+    async def scenario():
+        await database.irca_ricette.insert_one({
+            "slug": "cornetto-bicolore", "nome": "CORNETTO BICOLORE", "ingredienti": [
+                {"nome": "RENO CONCERTO FONDENTE 72%", "dose": "75g", "prodotto_irca_url": ""},
+                {"nome": "CACAO IN POLVERE", "dose": "15g", "prodotto_irca_url": ""},
+            ],
+        })
+        await database.dizionario_ingredienti.insert_one({
+            "fonte": "mepa",
+            "nome": "IRCA RENO CONCERTO CIOCCOLATO EXTRA FONDENTE 72%",
+            "nome_display": "IRCA RENO CONCERTO CIOCCOLATO EXTRA FONDENTE 72%",
+            "codice_articolo": "01011792",
+            "gia_acquistato": False,
+        })
+        distinta = await mod._genera_distinta(DistintaPayload(
+            ricette=[RicettaSelezionata(slug="cornetto-bicolore")]
+        ))
+        carrello = await mod.aggiungi_distinta_carrello(
+            DistintaPayload(ricette=[RicettaSelezionata(slug="cornetto-bicolore")]), _admin={}
+        )
+        return distinta, carrello
+
+    distinta, carrello = asyncio.run(scenario())
+    reno = next(r for r in distinta["righe"] if r["ingrediente"].startswith("RENO CONCERTO"))
+    cacao = next(r for r in distinta["righe"] if r["ingrediente"] == "CACAO IN POLVERE")
+    assert reno["prodotto_irca_slug"] == ""
+    assert reno["fornitore"]["codice"] == "01011792"
+    assert reno["fornitore"]["associazione"] == "nome_irca_esatto_univoco"
+    assert reno["stato"] == "da_acquistare"
+    assert cacao["stato"] == "DA_VERIFICARE"
+    assert carrello["aggiunti"] == 2
+    assert {r["nome"] for r in carrello["righe"]} == {
+        "IRCA RENO CONCERTO CIOCCOLATO EXTRA FONDENTE 72%", "CACAO IN POLVERE",
+    }
+
+
 def test_preferito_ricetta_persiste_e_viene_ordinato_prima(monkeypatch):
     database = AsyncMongoMockClient()["Irca_Preferiti_Test"]
     monkeypatch.setattr(mod, "db", database)

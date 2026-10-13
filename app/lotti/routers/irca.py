@@ -79,7 +79,17 @@ def _normalizza_nome_associazione(value: str) -> str:
     nome = normalizza_nome_irca(value)
     # Nel catalogo ufficiale il prodotto e' "TRIAL THERMOTECH", mentre nel
     # catalogo MePA importato compare come "IRCA TRIAL TERMOTECH".
-    return re.sub(r"\bTHERMOTECH\b", "TERMOTECH", nome)
+    nome = re.sub(r"\bTHERMOTECH\b", "TERMOTECH", nome)
+    # La ricetta ufficiale usa "RENO CONCERTO FONDENTE 72%", mentre catalogo
+    # e scheda tecnica IRCA riportano anche la denominazione estesa
+    # "RENO CONCERTO CIOCCOLATO EXTRA FONDENTE 72%". Sono la stessa referenza
+    # documentata, non una somiglianza dedotta.
+    nome = re.sub(
+        r"\bRENO CONCERTO CIOCCOLATO EXTRA FONDENTE\b",
+        "RENO CONCERTO FONDENTE",
+        nome,
+    )
+    return nome
 
 
 def _candidati_nome_mepa(value: str) -> list[str]:
@@ -959,21 +969,37 @@ async def _genera_distinta(payload: DistintaPayload) -> dict:
         {"fornitore": "irca", "slug": {"$in": slugs}}, {"_id": 0}
     ).to_list(None) if slugs else []
     per_slug = {p["slug"]: p for p in prodotti}
+    # Carichiamo l'indice MePA anche per le righe senza hyperlink IRCA. Alcune
+    # ricette ufficiali (es. RENO CONCERTO FONDENTE 72%) mostrano infatti il
+    # prodotto nell'impasto ma non gli assegnano un link /it/prodotti/. In tal
+    # caso e' ammesso soltanto il nome IRCA esplicito, esatto e univoco.
     mepa = await db.dizionario_ingredienti.find(
-        {"fonte": "mepa", "irca_slug": {"$in": slugs}}, {"_id": 0}
-    ).to_list(None) if slugs else []
+        {"fonte": "mepa"}, {"_id": 0}
+    ).to_list(None)
     # Lo stato "gia' acquistato" e' la proiezione delle fatture XML MEPA
     # materializzata nel catalogo dal comando Sync Fatture. La consultazione
     # della ricetta resta quindi una lettura veloce del solo database.
     mepa_per_slug: dict[str, list[dict]] = defaultdict(list)
+    mepa_per_nome_irca: dict[str, list[dict]] = defaultdict(list)
     for prodotto in mepa:
-        mepa_per_slug[prodotto.get("irca_slug", "")].append(prodotto)
+        if prodotto.get("irca_slug"):
+            mepa_per_slug[prodotto["irca_slug"]].append(prodotto)
+        for nome_irca in _candidati_nome_mepa(
+            prodotto.get("nome_display") or prodotto.get("nome")
+        ):
+            mepa_per_nome_irca[nome_irca].append(prodotto)
 
     righe = []
     for riga in aggregati.values():
         slug = riga["prodotto_irca_slug"]
         irca = per_slug.get(slug, {})
-        fornitori = mepa_per_slug.get(slug, [])
+        fornitori = mepa_per_slug.get(slug, []) if slug else []
+        associazione = "slug_irca_esatto_univoco"
+        if len(fornitori) != 1:
+            fornitori = mepa_per_nome_irca.get(
+                _normalizza_nome_associazione(riga["ingrediente"]), []
+            )
+            associazione = "nome_irca_esatto_univoco"
         fornitore = None
         if len(fornitori) == 1:
             p = fornitori[0]
@@ -990,7 +1016,7 @@ async def _genera_distinta(payload: DistintaPayload) -> dict:
                 "prezzo_fattura_data": p.get("prezzo_fattura_data") or "",
                 "iva_pct": p.get("iva_pct") or 0,
                 "gia_acquistato": gia_acquistato,
-                "associazione": "nome_esatto_univoco",
+                "associazione": associazione,
             }
         stato = "DA_VERIFICARE"
         if fornitore:

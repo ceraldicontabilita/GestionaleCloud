@@ -25,8 +25,11 @@ const ricetta = {
 };
 
 const distinta = {
-  righe: [{ ingrediente: "TRIAL THERMOTECH", prodotto_irca_slug: "trial-thermotech", stato: "da_acquistare", quantita_min: 50, quantita_max: 50, unita: "g", dosi_originali: ["50g"], codici_irca: ["01090613"], fornitore: { nome: "MEPA", prodotto_nome: "IRCA TRIAL THERMOTECH", codice: "MEPA-1" } }],
-  totali: { pronti: 1, gia_acquistati: 0, da_acquistare: 1, da_verificare: 0 },
+  righe: [
+    { ingrediente: "TRIAL THERMOTECH", prodotto_irca_slug: "trial-thermotech", stato: "da_acquistare", quantita_min: 50, quantita_max: 50, unita: "g", dosi_originali: ["50g"], codici_irca: ["01090613"], fornitore: { nome: "MEPA", prodotto_nome: "IRCA TRIAL THERMOTECH", codice: "MEPA-1" } },
+    { ingrediente: "RENO CONCERTO FONDENTE 72%", prodotto_irca_slug: "", stato: "DA_VERIFICARE", quantita_min: 75, quantita_max: 75, unita: "g", dosi_originali: ["75g"], codici_irca: [], fornitore: null, motivo: "Prodotto e fornitore da associare." },
+  ],
+  totali: { pronti: 1, gia_acquistati: 0, da_acquistare: 1, da_verificare: 1 },
 };
 
 describe("sezione Ricette IRCA", () => {
@@ -76,6 +79,8 @@ describe("sezione Ricette IRCA", () => {
 
     expect(container.textContent).toContain("Prodotti richiesti e stato ordine");
     expect(container.textContent).toContain("IRCA TRIAL THERMOTECH · MEPA-1");
+    expect(container.textContent).toContain("RENO CONCERTO FONDENTE 72%");
+    expect(container.textContent).toContain("Da associare");
     expect(container.textContent).toContain("Da acquistare");
     expect(container.textContent).toContain("Composizione finale");
     expect(container.textContent).toContain("Avvertenze");
