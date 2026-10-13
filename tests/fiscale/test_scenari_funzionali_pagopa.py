@@ -9,6 +9,7 @@ Scenari dell'utente (CLAUDE.md, «Ricevute di pagamento pagoPA» e «Cartella di
 """
 import asyncio
 import fitz
+import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
@@ -19,6 +20,13 @@ from app.services.pagopa_receipts import import_receipt, parse_receipt_pdf
 
 def _run(coro):
     return asyncio.run(coro)
+
+
+@pytest.fixture(autouse=True)
+def _azienda_di_prova(monkeypatch):
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "FISCAL_COMPANY_ID", "00000000000")
 
 
 def _pdf(righe) -> bytes:

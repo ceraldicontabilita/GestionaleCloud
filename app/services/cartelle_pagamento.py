@@ -65,6 +65,10 @@ def _importo(valore: str) -> Decimal:
     return Decimal(valore.replace(".", "").replace(",", "."))
 
 
+def _centesimi(valore: Decimal) -> int:
+    return int(valore.quantize(Decimal("0.01")) * 100)
+
+
 def _testo(contenuto: bytes) -> str:
     try:
         import fitz
@@ -78,6 +82,102 @@ def _testo(contenuto: bytes) -> str:
 
 def _normalizza_numero(numero: str) -> str:
     return re.sub(r"\s+", " ", numero.replace(" /", "/").replace("/ ", "/")).strip()
+
+
+def _numero_fiscale(numero: str) -> str:
+    """Numero canonico AdeR a 20 cifre, senza cambiare quello stampato."""
+    return re.sub(r"\D", "", numero or "")
+
+
+async def _deposita_posizione_fiscale(
+    db, *, nome: str, contenuto: bytes, dati: Dict[str, Any], drive_file_id: str | None,
+    drive_md5: str | None,
+) -> Dict[str, Any]:
+    """Collega l'originale alla posizione fiscale senza sovrascrivere lo snapshot AdeR.
+
+    La cartella prova il debito originario. Uno snapshot successivo del portale
+    può dire che il residuo è zero, ma non diventa per questo una quietanza.
+    """
+    from app.config import settings
+    from app.db_collections import COLL_TAX_COLLECTION_CLAIMS
+    from app.services.fiscal_document_ingestion import FiscalDocumentIngestionService
+    from app.services.fiscal_evidence import link_evidence, normalize_evidence, stable_id
+
+    company_id = str(dati.get("codice_fiscale_destinatario") or settings.FISCAL_COMPANY_ID or "")
+    if not company_id or company_id != str(settings.FISCAL_COMPANY_ID or company_id):
+        raise ValueError("Cartella riferita a un contribuente diverso")
+    numero = _numero_fiscale(dati["numero_cartella"])
+    if len(numero) != 20:
+        raise ValueError("Numero cartella AdeR non normalizzabile")
+    sha256 = hashlib.sha256(contenuto).hexdigest()
+    source_metadata = {"source_sha256": sha256}
+    if drive_file_id:
+        source_metadata["drive_file_id"] = drive_file_id
+    if drive_md5:
+        source_metadata["drive_md5"] = drive_md5
+    reference = await FiscalDocumentIngestionService(db, company_id).ingest(
+        content=contenuto, filename=nome, source="cartella_pagamento",
+        source_metadata=source_metadata, expected_sha256=sha256,
+        category_hint="riscossione",
+    )
+    claim_id = stable_id("taxclaim", company_id, numero)
+    # ``leggi_cartella`` restituisce già importi normalizzati con il punto
+    # decimale (es. ``118.88``): non ripassarli dal lettore del formato
+    # italiano, che scambierebbe il punto per un separatore delle migliaia.
+    totale_cents = _centesimi(Decimal(str(dati["totale"]))) if dati.get("totale") is not None else None
+    now = datetime.now(timezone.utc).isoformat()
+    initial_state = {
+        "business_status": "PAYABLE" if dati.get("importi_quadrano") else "REVIEW_REQUIRED",
+        "residual_cents": totale_cents,
+    }
+    await db[COLL_TAX_COLLECTION_CLAIMS].update_one(
+        {"company_id": company_id, "id": claim_id},
+        {"$setOnInsert": {
+            "id": claim_id, "company_id": company_id, "collection_number": numero,
+            "created_at": now, **initial_state,
+        }, "$set": {
+            "original_document_id": reference["document_id"],
+            "original_version_id": reference["version_id"],
+            "original_sha256": sha256,
+            "original_filename": nome,
+            "original_total_cents": totale_cents,
+            "original_creditor": dati.get("ente_creditore"),
+            "original_role": dati.get("ruolo"),
+            "original_tax_lines": dati.get("righe") or [],
+            "original_notification_cost_cents": (
+                _centesimi(Decimal(str(dati["diritti_notifica"])))
+                if dati.get("diritti_notifica") is not None else None
+            ),
+            "updated_at": now,
+        }},
+        upsert=True,
+    )
+    evidence = normalize_evidence(
+        document_id=reference["document_id"], version_id=reference["version_id"],
+        page_number=1, field="collection_number", raw_value=dati["numero_cartella"],
+        normalized_value=numero, parser_version="cartella-riepilogo-v2",
+        reason="original_collection_notice",
+    )
+    await link_evidence(
+        db, company_id=company_id, entity_type="tax_collection_claim", entity_id=claim_id,
+        relation_type="original_collection_notice", evidence=[evidence],
+        actor="cartella_pagamento_import",
+    )
+    claim = await db[COLL_TAX_COLLECTION_CLAIMS].find_one(
+        {"company_id": company_id, "id": claim_id}, {"_id": 0},
+    )
+    return {
+        "claim_id": claim_id,
+        "document_id": reference["document_id"],
+        "version_id": reference["version_id"],
+        "business_status": (claim or {}).get("business_status"),
+        "residual_cents": (claim or {}).get("residual_cents"),
+    }
+
+
+def _snapshot_supera_attesa(fiscal: Dict[str, Any] | None) -> bool:
+    """Residuo AdeR zero chiude l'attesa corrente, ma non prova il pagamento."""
+    return bool(fiscal and fiscal.get("residual_cents") == 0)
 
 
 def _riepilogo_importi(testo: str):
@@ -249,9 +349,23 @@ async def registra_cartella(
             aggiornati = bool(result.matched_count)
         else:
             await db[COLL].update_one({"id": id_cartella}, {"$set": {"ultimo_caricamento": ora}})
+        fiscal = await _deposita_posizione_fiscale(
+            db, nome=nome, contenuto=contenuto, dati=dati,
+            drive_file_id=esistente.get("drive_file_id"), drive_md5=esistente.get("drive_md5"),
+        )
         ricevuta = await chiudi_da_ricevuta_esistente(db, id_cartella)
+        if not ricevuta and _snapshot_supera_attesa(fiscal):
+            await db[COLL].update_one(
+                {"id": id_cartella, "expectation_status": {"$ne": ExpectationStatus.SODDISFATTO.value}},
+                {"$set": {
+                    "expectation_status": ExpectationStatus.SUPERATO.value,
+                    "expectation_resolution": "ADER_CURRENT_RESIDUAL_ZERO_WITHOUT_PAYMENT_EVIDENCE",
+                    "tax_collection_claim_id": fiscal["claim_id"], "updated_at": ora,
+                }},
+            )
         return {"success": True, "duplicate": True, "id": id_cartella, **dati,
-                "metadati_aggiornati": aggiornati, "ricevuta": ricevuta}
+                "metadati_aggiornati": aggiornati, "ricevuta": ricevuta,
+                "fiscal": fiscal}
     documento: Dict[str, Any] = {
         "id": id_cartella, "sha256": impronta, "nome": nome, "dimensione": len(contenuto),
         "mime": "application/pdf", "caricato_il": ora, "ultimo_caricamento": ora,
@@ -265,6 +379,7 @@ async def registra_cartella(
         # Le somme non tornano: si conserva, ma non si dichiara un dovuto certo.
         documento["expectation_status"] = ExpectationStatus.DA_VERIFICARE.value
     archivio = _archivio()
+    drive_md5 = None
     if getattr(archivio, "persistent", False):
         if not drive_file_id:
             from app.services.email_drive_archive import archive_binary_copy
@@ -276,11 +391,21 @@ async def registra_cartella(
             if esito.get("status") not in {"archived", "duplicate"}:
                 raise RuntimeError("Cartella non verificata su Drive")
             drive_file_id = esito["drive_file_id"]
-            documento["drive_md5"] = esito.get("md5")
+            drive_md5 = esito.get("md5")
+            documento["drive_md5"] = drive_md5
         documento["drive_file_id"] = drive_file_id
         documento["drive_archive_status"] = "verified"
     else:
         documento["contenuto_b64"] = base64.b64encode(contenuto).decode("ascii")
+    fiscal = await _deposita_posizione_fiscale(
+        db, nome=nome, contenuto=contenuto, dati=dati,
+        drive_file_id=drive_file_id, drive_md5=drive_md5,
+    )
+    documento["tax_collection_claim_id"] = fiscal["claim_id"]
+    documento["fiscal_document_id"] = fiscal["document_id"]
+    if _snapshot_supera_attesa(fiscal):
+        documento["expectation_status"] = ExpectationStatus.SUPERATO.value
+        documento["expectation_resolution"] = "ADER_CURRENT_RESIDUAL_ZERO_WITHOUT_PAYMENT_EVIDENCE"
     await db[COLL].insert_one(documento)
     verbali = await collega_verbali(db, id_cartella)
     ricevuta = await chiudi_da_ricevuta_esistente(db, id_cartella)
@@ -289,7 +414,8 @@ async def registra_cartella(
 
     notifica = await applica_notifiche_in_attesa(db, id_cartella)
     return {"success": True, "duplicate": False, "id": id_cartella, **dati,
-            "verbali": verbali, "ricevuta": ricevuta, "notifica_pec": notifica}
+            "verbali": verbali, "ricevuta": ricevuta, "notifica_pec": notifica,
+            "fiscal": fiscal}
 
 
 async def imposta_notifica(db, cartella_id: str, data_notifica: str) -> Dict[str, Any]:

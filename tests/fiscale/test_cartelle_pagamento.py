@@ -1,6 +1,7 @@
 """Cartella di pagamento: lettura, attesa «da pagare», verbale e ricevuta con lo stesso IUV (dati inventati)."""
 import asyncio
 import fitz
+import pytest
 from mongomock_motor import AsyncMongoMockClient
 
 from app.services import cartelle_pagamento as cp
@@ -43,6 +44,13 @@ def _pdf(righe=RIGHE) -> bytes:
 
 def _run(coro):
     return asyncio.run(coro)
+
+
+@pytest.fixture(autouse=True)
+def _azienda_di_prova(monkeypatch):
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "FISCAL_COMPANY_ID", "00000000000")
 
 
 def test_legge_numero_ente_righe_verbale_e_iuv_e_i_conti_tornano():
@@ -143,6 +151,32 @@ def test_registra_apre_l_attesa_senza_scadenza_e_il_secondo_file_non_duplica():
     assert doc["source_fact_id"] == primo["id"]
     # La notifica non e' nel PDF: nessuna scadenza inventata.
     assert doc["data_notifica"] is None and doc["scadenza"] is None
+
+
+def test_snapshot_ader_a_residuo_zero_supera_l_attesa_senza_inventare_pagamento(monkeypatch):
+    from app.config import settings
+    from app.db_collections import COLL_TAX_COLLECTION_CLAIMS
+    from app.services.fiscal_evidence import stable_id
+
+    monkeypatch.setattr(settings, "FISCAL_COMPANY_ID", "00000000000")
+    db = AsyncMongoMockClient()["cartelle-snapshot-zero"]
+    numero = "07120260000000111000"
+    claim_id = stable_id("taxclaim", "00000000000", numero)
+    _run(db[COLL_TAX_COLLECTION_CLAIMS].insert_one({
+        "id": claim_id, "company_id": "00000000000", "collection_number": numero,
+        "business_status": "PORTAL_CLOSED_PENDING_EVIDENCE", "residual_cents": 0,
+    }))
+
+    result = _run(cp.registra_cartella(db, "cartella.pdf", _pdf()))
+    doc = _run(db[cp.COLL].find_one({"id": result["id"]}, {"_id": 0}))
+    claim = _run(db[COLL_TAX_COLLECTION_CLAIMS].find_one({"id": claim_id}, {"_id": 0}))
+
+    assert doc["expectation_status"] == "SUPERATO"
+    assert doc["expectation_resolution"] == "ADER_CURRENT_RESIDUAL_ZERO_WITHOUT_PAYMENT_EVIDENCE"
+    assert not doc.get("expectation_evidence_ids") and not doc.get("data_pagamento")
+    assert claim["business_status"] == "PORTAL_CLOSED_PENDING_EVIDENCE" and claim["residual_cents"] == 0
+    assert claim["original_document_id"] == result["fiscal"]["document_id"]
+    assert claim["original_total_cents"] == 11888
 
 
 def test_la_notifica_dice_il_termine_di_60_giorni_e_salta_il_fine_settimana():
