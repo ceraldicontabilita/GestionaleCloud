@@ -763,15 +763,111 @@ def _peso_kg_da_riga_ordine(riga: dict) -> float:
     if peso > 0:
         return peso
     for valore in (riga.get("unita"), riga.get("unita_misura"), riga.get("nome")):
-        m = re.search(r"(\d+(?:[.,]\d+)?)\s*kg\b", str(valore or ""), re.I)
+        testo = str(valore or "")
+        multiplo = re.search(
+            r"(\d+(?:[.,]\d+)?)\s*[x×]\s*(\d+(?:[.,]\d+)?)\s*kg\b",
+            testo,
+            re.I,
+        )
+        if multiplo:
+            colli = float(multiplo.group(1).replace(",", "."))
+            kg = float(multiplo.group(2).replace(",", "."))
+            return colli * kg
+        m = re.search(r"(\d+(?:[.,]\d+)?)\s*kg\b", testo, re.I)
         if m:
             return float(m.group(1).replace(",", "."))
     return 0.0
 
 
+_PAROLE_GENERICHE_PRODOTTO = {
+    "a", "al", "alla", "alle", "con", "da", "dal", "dalla", "de", "del", "della",
+    "di", "e", "ed", "il", "in", "la", "le", "lo", "per", "un", "una",
+    "cf", "confezione", "ct", "cartone", "gr", "kg", "pz", "pezzi", "cm", "mm",
+    "irca", "mepa", "saima", "srl", "spa",
+}
+
+
+def _parole_prodotto(valore: str) -> set[str]:
+    """Parole distintive per collegare una riga catalogo alla fattura.
+
+    Non basta un termine isolato: il collegamento fuzzy viene accettato solo
+    quando almeno due parole distintive coincidono e il candidato e' unico.
+    """
+    import unicodedata
+
+    testo = unicodedata.normalize("NFKD", str(valore or "")).encode("ascii", "ignore").decode()
+    parole = set()
+    for parola in re.findall(r"[a-z0-9]+", testo.casefold()):
+        if parola in _PAROLE_GENERICHE_PRODOTTO or parola.isdigit() or len(parola) < 3:
+            continue
+        if len(parola) > 4 and parola[-1] in "aeiou":
+            parola = parola[:-1]
+        parole.add(parola)
+    return parole
+
+
+def _numeri_prodotto(valore: str) -> set[float]:
+    return {
+        float(numero.replace(",", "."))
+        for numero in re.findall(r"\d+(?:[.,]\d+)?", str(valore or ""))
+    }
+
+
+def _dimensioni_prodotto(valore: str) -> tuple[float, float] | None:
+    match = re.search(r"(\d+(?:[.,]\d+)?)\s*[x×]\s*(\d+(?:[.,]\d+)?)", str(valore or ""), re.I)
+    if not match:
+        return None
+    dimensioni = sorted(float(v.replace(",", ".")) for v in match.groups())
+    return dimensioni[0], dimensioni[1]
+
+
+def _candidato_fattura_per_nome(riga: dict, articoli: list):
+    """Restituisce solo un collegamento testuale forte, univoco e compatibile.
+
+    Serve per nomi catalogo piu' brevi di quelli XML (es. "Farina di mandorle
+    pelate" vs "Farina da kg 1 di mandorle pelate"). Ambiguita', misure
+    incompatibili o una sola parola in comune lasciano il prezzo non definito.
+    """
+    testo_riga = " ".join(str(riga.get(k) or "") for k in ("nome", "unita", "unita_misura"))
+    parole_riga = _parole_prodotto(testo_riga)
+    if len(parole_riga) < 2:
+        return None
+    numeri_riga = _numeri_prodotto(testo_riga)
+    dimensioni_riga = _dimensioni_prodotto(testo_riga)
+    candidati = []
+    for articolo in articoli:
+        testo_articolo = " ".join(str(articolo.get(k) or "") for k in ("nome", "unita_confezione"))
+        parole_articolo = _parole_prodotto(
+            testo_articolo + " " + str(articolo.get("codice_articolo") or "")
+        )
+        comuni = parole_riga & parole_articolo
+        if len(comuni) < 2:
+            continue
+        copertura = len(comuni) / min(len(parole_riga), len(parole_articolo))
+        if copertura < 0.66:
+            continue
+        dimensioni_articolo = _dimensioni_prodotto(testo_articolo)
+        if dimensioni_riga and dimensioni_articolo and dimensioni_riga != dimensioni_articolo:
+            continue
+        numeri_articolo = _numeri_prodotto(testo_articolo)
+        if numeri_riga and numeri_articolo and not (numeri_riga & numeri_articolo):
+            continue
+        jaccard = len(comuni) / len(parole_riga | parole_articolo)
+        candidati.append((copertura + jaccard, articolo))
+    candidati.sort(key=lambda voce: voce[0], reverse=True)
+    if not candidati:
+        return None
+    if len(candidati) > 1 and candidati[0][0] - candidati[1][0] < 0.15:
+        return None
+    return candidati[0][1]
+
+
 def _articolo_fattura_per_riga(riga: dict, articoli: list):
     from app.lotti.routers.utils import _norm, _norm_codice_articolo
     pid = _norm_codice_articolo(str(riga.get("prodotto_id") or "").replace("cat_", ""))
+    per_id = [a for a in articoli if _norm_codice_articolo(a.get("id")) == pid]
+    if len(per_id) == 1:
+        return per_id[0]
     per_codice = []
     for articolo in articoli:
         for codice in articolo.get("codici_alias") or [articolo.get("codice_articolo")]:
@@ -782,7 +878,9 @@ def _articolo_fattura_per_riga(riga: dict, articoli: list):
         return per_codice[0]
     nome = _norm(riga.get("nome") or "")
     per_nome = [a for a in articoli if _norm(a.get("nome") or "") == nome]
-    return per_nome[0] if len(per_nome) == 1 else None
+    if len(per_nome) == 1:
+        return per_nome[0]
+    return _candidato_fattura_per_nome(riga, articoli)
 
 
 def _riga_con_prezzo_fattura(riga: dict, articolo: dict, now: str) -> tuple[dict, bool]:
