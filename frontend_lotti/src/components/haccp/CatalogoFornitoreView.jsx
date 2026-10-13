@@ -60,20 +60,99 @@ export function aggiornaPrezzoNelCarrello(prodotto, prezzo, prezzoFonte = "comun
 }
 
 export function prezzoFatturaProdotto(p) {
-  if (!p?.gia_acquistato) return 0;
+  if (!(p?.gia_acquistato || p?.giaAcquistato)) return 0;
   return Number(
-    p.prezzo_fattura || p.prezzo_listino || p.prezzo_acquisto_confezione || p.prezzo_singolo || 0
+    p.prezzoFattura || p.prezzo_fattura || p.prezzo_listino || p.prezzo_acquisto_confezione || p.prezzo_singolo || 0
   ) || 0;
 }
 
-// Regola acquisti: dopo una fattura XML prevale l'ultimo prezzo realmente
-// pagato; prima dell'acquisto si usa il prezzo netto comunicato dal fornitore.
-export function prezzoProdotto(p) {
+const numeroPositivo = (v) => {
+  const n = Number(String(v ?? "").replace(",", "."));
+  return Number.isFinite(n) && n > 0 ? n : 0;
+};
+
+export function pesoConfezioneKg(p) {
+  const testi = [p?.unitaVendita, p?.unita_confezione, p?.confezione,
+    p?.raw?.unita_vendita, p?.raw?.unita_confezione].filter(Boolean);
+  for (const testo of testi) {
+    const m = String(testo).match(/(\d+(?:[.,]\d+)?)\s*(kg|g)\b/i);
+    if (m) return numeroPositivo(m[1]) / (m[2].toLowerCase() === "g" ? 1000 : 1);
+  }
+  const pesoTotaleG = numeroPositivo(p?.peso_totale_cartone_g || p?.raw?.peso_totale_cartone_g);
+  if (pesoTotaleG) return pesoTotaleG / 1000;
+  const unitaCatalogo = String(p?.unita_misura || p?.raw?.unita_misura || "").toUpperCase();
+  const quantitaCartone = numeroPositivo(p?.pezziCartone || p?.qty_cartone || p?.pz_confezione || p?.raw?.qty_cartone);
+  if (unitaCatalogo === "KG" && quantitaCartone) return quantitaCartone;
+  const grammi = numeroPositivo(p?.grammi || p?.peso_g || p?.raw?.grammi || p?.raw?.peso_g);
+  return grammi && quantitaCartone ? grammi * quantitaCartone / 1000 : 0;
+}
+
+// Unica lettura del prezzo usata sia dalla card sia dal carrello. Per le righe
+// fattura espresse in KG trasforma il prezzo unitario nel netto della confezione
+// usando esclusivamente il peso dichiarato nel catalogo; l'IVA resta separata.
+export function datiPrezzoProdotto(p) {
+  const prezzoListino = Number(p?.prezzoListino || p?.prezzo_listino_fornitore || 0) || 0;
   const prezzoFattura = prezzoFatturaProdotto(p);
-  if (prezzoFattura > 0) return prezzoFattura;
-  return Number(
-    p.prezzo_fornitore || p.prezzoFornitore || p.prezzo_kg || p.prezzo || 0
-  ) || 0;
+  const prezzoFornitore = Number(p?.prezzo_fornitore || p?.prezzoFornitore || 0) || 0;
+  const prezzoCatalogo = Number(p?.prezzo_kg || p?.prezzo || 0) || 0;
+  const fonte = prezzoListino > 0 ? "listino_fornitore" : prezzoFattura > 0 ? "fattura_xml"
+    : prezzoFornitore > 0 ? "comunicato_dal_fornitore" : prezzoCatalogo > 0 ? "catalogo" : "non_disponibile";
+  const unitario = prezzoListino || prezzoFattura || prezzoFornitore || prezzoCatalogo;
+  const unitaFattura = String(p?.unitaFattura || p?.unita_ultima_fattura || p?.raw?.unita_ultima_fattura || "").toUpperCase();
+  const pesoKg = fonte === "fattura_xml" && /^KG\b/.test(unitaFattura) ? pesoConfezioneKg(p) : 0;
+  const moltiplicatore = pesoKg > 0 ? pesoKg : 1;
+  const prezzo = Math.round(unitario * moltiplicatore * 10000) / 10000;
+  const ivaPct = numeroPositivo(p?.ivaPct || p?.iva_pct || p?.aliquota_iva || p?.raw?.iva_pct || p?.raw?.aliquota_iva);
+  const iva = Math.round(prezzo * ivaPct) / 100;
+  return {
+    prezzo, fonte, prezzoUnitario: unitario, moltiplicatore, pesoKg,
+    prezzoPerKgNonConvertito: fonte === "fattura_xml" && /^KG\b/.test(unitaFattura) && !pesoKg,
+    ivaPct, iva, prezzoIvato: Math.round((prezzo + iva) * 100) / 100,
+  };
+}
+
+export function prezzoProdotto(p) {
+  return datiPrezzoProdotto(p).prezzo;
+}
+
+export function presentazionePrezzoProdotto(p) {
+  const d = datiPrezzoProdotto(p);
+  if (!(d.prezzo > 0)) return { prezzo: "", nota: "", dati: d };
+  const fonte = d.fonte === "fattura_xml" ? "ultima fattura" : d.fonte === "listino_fornitore" ? "listino"
+    : d.fonte === "comunicato_dal_fornitore" ? "netto fornitore" : "catalogo";
+  const calcolo = d.moltiplicatore > 1 ? `${euro(d.prezzoUnitario)}/kg × ${d.pesoKg.toLocaleString("it-IT")} kg`
+    : d.fonte === "listino_fornitore" && p?.unitaVendita ? `× ${p.unitaVendita}`
+    : d.prezzoPerKgNonConvertito ? `${euro(d.prezzoUnitario)}/kg · peso confezione da verificare` : "";
+  const iva = d.ivaPct > 0 ? `IVA ${d.ivaPct.toLocaleString("it-IT")}% · netto ${euro(d.prezzo)}` : "IVA da verificare";
+  return { prezzo: euro(d.ivaPct > 0 ? d.prezzoIvato : d.prezzo), nota: [fonte, calcolo, iva].filter(Boolean).join(" · "), dati: d };
+}
+
+// Ripara le righe create prima della correzione: aggiorna soltanto prezzi
+// mancanti, senza sostituire prezzi validi o una scelta del comparatore.
+export function riconciliaPrezziCarrello(prodotti, persistente = true) {
+  const perId = new Map((prodotti || []).map(p => [p?.id, p]));
+  const corrente = leggiCarrello();
+  let modificato = false;
+  const aggiornato = corrente.map(item => {
+    if (item?.fornitore_scelto_da === "miglior_prezzo") return item;
+    const prodotto = perId.get(item?.id);
+    if (!prodotto) return item;
+    const dati = datiPrezzoProdotto(prodotto);
+    if (!(dati.prezzo > 0)) return item;
+    const prezzoAttuale = Number(item?.prezzo) || 0;
+    const eraUnitarioKg = dati.moltiplicatore > 1 && Math.abs(prezzoAttuale - dati.prezzoUnitario) < 0.0001;
+    const prezzoDaAggiornare = prezzoAttuale <= 0 || eraUnitarioKg;
+    const ivaDaAggiornare = dati.ivaPct > 0 && Number(item?.iva_pct || 0) !== dati.ivaPct;
+    if (!prezzoDaAggiornare && !ivaDaAggiornare) return item;
+    modificato = true;
+    return { ...item,
+      ...(prezzoDaAggiornare ? { prezzo: dati.prezzo, prezzo_unitario_fattura: dati.prezzoUnitario,
+        prezzo_confezione_calcolato: dati.moltiplicatore > 1, peso_confezione_kg: dati.pesoKg } : {}),
+      prezzo_fonte: dati.fonte, prezzo_iva_esclusa: true, iva_pct: dati.ivaPct,
+    };
+  });
+  if (modificato) salvaCarrello(aggiornato, persistente);
+  return aggiornato;
 }
 
 export function useCart(fornitoreNome) {
@@ -87,7 +166,11 @@ export function useCart(fornitoreNome) {
     axios.get(`${API}/ordini-fornitori/carrello-sospesi`).then((response) => {
       const remoti = response.data?.righe || [];
       const locali = leggiCarrello();
-      const uniti = Array.from(new Map([...remoti, ...locali].map(item => [item.id, item])).values());
+      const remotiById = new Map(remoti.map(item => [item.id, item]));
+      const uniti = Array.from(new Map([...remoti, ...locali].map(item => [item.id, item])).values()).map(item => {
+        const remoto = remotiById.get(item.id);
+        return remoto?.prezzo_aggiornato_il ? { ...item, ...remoto, quantita: item.quantita ?? remoto.quantita } : item;
+      });
       salvaCarrello(uniti, JSON.stringify(remoti) !== JSON.stringify(uniti));
       setCart(uniti);
     }).catch(() => {});
@@ -95,17 +178,29 @@ export function useCart(fornitoreNome) {
   const aggiungi = useCallback(async (p) => {
     const current = leggiCarrello();
     const id = p.id || `ext_${(p.nome || "").toLowerCase().replace(/\s+/g, "_").slice(0, 40)}`;
-    if (current.some(c => c.id === id)) { toast("Già nel carrello ordini"); return; }
-    const prezzoListino = Number(p.prezzoListino || p.prezzo_listino_fornitore || 0) || 0;
+    const datiPrezzo = datiPrezzoProdotto(p);
+    const esistente = current.find(c => c.id === id);
+    if (esistente) {
+      const updated = riconciliaPrezziCarrello([p]);
+      if (JSON.stringify(updated) !== JSON.stringify(current)) {
+        setCart(updated);
+        toast.success(`Totale confezione e IVA di "${(p.nome || p.nome_display || "prodotto").slice(0, 28)}" aggiornati`);
+      } else toast("Già nel carrello ordini");
+      return;
+    }
     // Formato compatibile con OrdiniSmartView (id, nome, fornitore, prezzo, quantita, ...)
     let item = {
       id,
       nome:            p.nome_display || p.nome || id,
       codici:          p.codice_articolo ? [p.codice_articolo] : [],
       fornitore:       fornitoreNome,
-      prezzo:          prezzoProdotto(p) || prezzoListino,   // 0 se mai acquistato → ordinabile lo stesso
-      prezzo_fonte:    prezzoFatturaProdotto(p) > 0 ? "fattura_xml" : Number(p.prezzo_fornitore || p.prezzoFornitore || 0) > 0 ? "comunicato_dal_fornitore" : prezzoListino > 0 ? "listino_fornitore" : "non_disponibile",
+      prezzo:          datiPrezzo.prezzo,   // 0 se mai acquistato → ordinabile lo stesso
+      prezzo_fonte:    datiPrezzo.fonte,
       prezzo_iva_esclusa: true,
+      prezzo_unitario_fattura: datiPrezzo.prezzoUnitario,
+      prezzo_confezione_calcolato: datiPrezzo.moltiplicatore > 1,
+      peso_confezione_kg: datiPrezzo.pesoKg,
+      iva_pct:         datiPrezzo.ivaPct,
       unita_misura:    (p.unitaVendita || p.unita_confezione || "pz").toLowerCase(),
       quantita:        1,
       note:            "",
@@ -206,6 +301,7 @@ const ModalDettaglioProdotto = ({ prodotto, fornitore, onClose, onImporta, onRim
   const codice = dettaglio?.codice_verificato || dettaglio?.codice_articolo || prodotto.codice_articolo || "";
   const linkProd = prodotto.link_prodotto || dettaglio?.link_prodotto || "";
   const tecnici = datiTecnici(prodotto, dettaglio);
+  const prezzoPresentato = presentazionePrezzoProdotto({ ...prodotto, ...dettaglio });
 
   const handleImporta = async () => {
     setImportando(true);
@@ -322,11 +418,9 @@ const ModalDettaglioProdotto = ({ prodotto, fornitore, onClose, onImporta, onRim
           </div>
 
           {/* Riga prezzo / stato acquisto: comunica se è già stato comprato */}
-          <div className={`rounded-xl px-3 py-2 text-xs font-medium ${prezzoProdotto(prodotto) > 0 ? "bg-green-50 text-green-700" : "bg-amber-50 text-amber-700"}`}>
-            {Number(prodotto.prezzo_fornitore || 0) > 0
-              ? `Prezzo comunicato dal fornitore · €${prezzoProdotto(prodotto).toFixed(2)}`
-              : prezzoProdotto(prodotto) > 0
-              ? `Già acquistato · ultimo prezzo €${prezzoProdotto(prodotto).toFixed(2)} (da fattura)`
+          <div className={`rounded-xl px-3 py-2 text-xs font-medium ${prezzoPresentato.prezzo ? "bg-green-50 text-green-700" : "bg-amber-50 text-amber-700"}`}>
+            {prezzoPresentato.prezzo
+              ? `Totale prodotto ${prezzoPresentato.prezzo} · ${prezzoPresentato.nota}`
               : "Mai acquistato · puoi ordinarlo lo stesso (prodotto nuovo)"}
           </div>
 
@@ -395,7 +489,7 @@ const CardCategoria = ({ cat, onClick, colore }) => {
 // CardCatalogo, la stessa di tutti i cataloghi; codice, descrizione, prezzo netto
 // da scrivere e scheda tecnica stanno nel dettaglio.
 const CardProdotto = ({ prodotto, colore, onDettaglio, giaNelDizionario, onCarrello, inCart, onToggleRicette, preferito, preferitoInSalvataggio, onPreferito }) => {
-  const prezzo = prezzoProdotto(prodotto);
+  const prezzoCard = presentazionePrezzoProdotto(prodotto);
   return (
     <CardCatalogo
       testId={`cart-btn-${prodotto.id || prodotto.nome?.slice(0, 10)}`}
@@ -408,8 +502,8 @@ const CardProdotto = ({ prodotto, colore, onDettaglio, giaNelDizionario, onCarre
       giaAcquistato={!!prodotto.gia_acquistato}
       preferito={preferito}
       preferitoInSalvataggio={preferitoInSalvataggio}
-      prezzo={prezzo > 0 ? euro(prezzo) : ""}
-      notaPrezzo={prezzo > 0 ? (prezzoFatturaProdotto(prodotto) > 0 ? "ultima fattura" : "netto fornitore") : ""}
+      prezzo={prezzoCard.prezzo}
+      notaPrezzo={prezzoCard.nota}
       colore={colore}
       inCart={inCart}
       ricettaDisponibile={!prodotto.da_fattura_senza_catalogo}
@@ -462,8 +556,8 @@ const RigaProdotto = ({ prodotto, colore, fornitore, onDettaglio, giaNelDizionar
           <Heart size={13} fill={preferito ? "currentColor" : "none"}/> {preferito ? "Preferito" : "Aggiungi ai preferiti"}
         </button>}
         {!prodotto.da_fattura_senza_catalogo && <button onClick={() => onToggleRicette(prodotto, giaNelDizionario)} className={`px-2 py-1 rounded-lg text-[10px] font-bold ${giaNelDizionario ? "bg-green-100 text-green-700" : "bg-[#edf4ef] text-[#4c6b5c]"}`}>{giaNelDizionario ? "✓ Ricette" : "+ Ricette"}</button>}
-        {(prezzoProdotto(prodotto) > 0) && (
-          <span className="text-xs font-bold text-gray-600">€{prezzoProdotto(prodotto).toFixed(2)}</span>
+        {(presentazionePrezzoProdotto(prodotto).prezzo) && (
+          <span className="text-xs font-bold text-gray-600">{presentazionePrezzoProdotto(prodotto).prezzo}</span>
         )}
         <button
           data-testid={`cart-btn-lista-${prodotto.id || prodotto.nome?.slice(0,10)}`}
@@ -525,6 +619,10 @@ export const CatalogoFornitoreView = ({ fornitore, nome, logoUrl }) => {
   const { aggiungi: aggiungiCarrello, isInCart } = useCart(nome);
   const [dizionarioIds, setDizionarioIds] = useState(new Set());
   const [prodottoSelezionato, setProdottoSelezionato] = useState(null);
+  useEffect(() => {
+    const disponibili = [...prodotti, ...preferitiAcquisti.prodotti];
+    if (disponibili.length) riconciliaPrezziCarrello(disponibili);
+  }, [prodotti, preferitiAcquisti.prodotti]);
   const autoAvvioTentato = useRef(false);
 
   /** Wrapper: aggiorna stato + URL */

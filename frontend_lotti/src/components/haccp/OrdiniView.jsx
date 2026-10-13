@@ -69,7 +69,8 @@ function svuotaCarrelloCataloghi() {
 }
 
 export default function OrdiniView({ initialTab = "riordini" }) {
-  const [tab, setTab] = useState(initialTab);          // riordini | catalogo | confronto | carrello | giacenze | invio
+  const [tab, setTab] = useState(() => sessionStorage.getItem("ordini_apri_tab") || initialTab); // riordini | catalogo | confronto | carrello | giacenze | invio
+  useEffect(() => { sessionStorage.removeItem("ordini_apri_tab"); }, []);
   const [richieste, setRichieste] = useState([]);      // lavagna magazzino (stato=aperta)
   const [richiesteAcquisto, setRichiesteAcquisto] = useState([]);
   const [modificheRichieste, setModificheRichieste] = useState({});
@@ -159,9 +160,14 @@ export default function OrdiniView({ initialTab = "riordini" }) {
         if (!nc[id]) nc[id] = {
           id, idCatalogo: e.id, nome: e.nome, conf: e.unita_misura || "pz",
           fornitore: e.fornitore || "DA ASSEGNARE", prezzo: Number(e.prezzo) || 0,
+          iva_pct: Number(e.iva_pct) || 0, prezzo_fonte: e.prezzo_fonte || "",
           fornitori60: [], qty: Number(e.quantita) || 1, stock_iniziale: 0, soglia: 0,
           richiesto_da: getOperatoreNome() || "Catalogo fornitori", da_catalogo: true,
         };
+        else if (!(Number(nc[id].prezzo) > 0) && Number(e.prezzo) > 0) {
+          nc[id] = { ...nc[id], prezzo: Number(e.prezzo), iva_pct: Number(e.iva_pct) || nc[id].iva_pct || 0,
+            fornitore: e.fornitore || nc[id].fornitore, conf: e.unita_misura || nc[id].conf };
+        }
       });
       return nc;
     });
@@ -174,7 +180,11 @@ export default function OrdiniView({ initialTab = "riordini" }) {
       richiesteViste.current = new Set((response.data?.richieste || []).map(r => r.id));
       const remoti = response.data?.righe || [];
       const locali = leggiCarrelloCataloghi();
-      const uniti = Array.from(new Map([...remoti, ...locali].map(item => [item.id, item])).values());
+      const remotiById = new Map(remoti.map(item => [item.id, item]));
+      const uniti = Array.from(new Map([...remoti, ...locali].map(item => [item.id, item])).values()).map(item => {
+        const remoto = remotiById.get(item.id);
+        return remoto?.prezzo_aggiornato_il ? { ...item, ...remoto, quantita: item.quantita ?? remoto.quantita } : item;
+      });
       localStorage.setItem(CART_LS_KEY, JSON.stringify(uniti));
       mergeCarrelloCataloghi();
     }).catch(() => {});
@@ -281,7 +291,7 @@ export default function OrdiniView({ initialTab = "riordini" }) {
     da_reparto:true, prodottoId:r.prodotto_id,
   }));
   const cartRows = [...Object.values(cart), ...richiesteRows];
-  const cartTot = cartRows.reduce((s,r)=>s+(r.prezzo||0)*r.qty, 0);
+  const cartTot = cartRows.reduce((s,r)=>s+(r.prezzo||0)*r.qty*(1+(Number(r.iva_pct)||0)/100), 0);
   const cambiaQuantitaCarrello = (r, delta) => {
     if (!r.da_reparto) { inc(r, delta); return; }
     setModificheRichieste(c => ({...c, [r.richiestaId]: {
@@ -340,6 +350,19 @@ export default function OrdiniView({ initialTab = "riordini" }) {
     creazioneBozzeInCorso.current = true;
     setCreandoBozze(true);
     try {
+    const ordineInModifica = sessionStorage.getItem("ordine_modifica_id");
+    if (ordineInModifica) {
+      const prodotti = rows.map(r => ({ prodotto_id:String(r.prodottoId || r.id), nome:r.nome,
+        fornitore:r.fornitore, quantita:Number(r.qty), unita:r.conf||"pz", prezzo_ultimo:r.prezzo||0,
+        iva_pct:Number(r.iva_pct)||0, prezzo_fonte:r.prezzo_fonte||"", note:"",
+        richiesto_da:r.richiesto_da||getOperatoreNome()||"Ordini app" }));
+      await axios.put(`${API}/ordini-fornitori/${ordineInModifica}/sostituisci-prodotti`, { prodotti });
+      sessionStorage.removeItem("ordine_modifica_id");
+      setCart({}); svuotaCarrelloCataloghi();
+      toast.success("Ordine aggiornato: prodotti e prezzi salvati nella bozza");
+      setTab("invio");
+      return;
+    }
     const by = {}; rows.forEach(r=>{ const f=r.fornitore||"DA ASSEGNARE"; (by[f]=by[f]||[]).push(r); });
     let ok=0;
     const completate = [];
@@ -355,6 +378,7 @@ export default function OrdiniView({ initialTab = "riordini" }) {
         } else {
           unite.set(chiave, {prodotto_id:String(r.prodottoId || r.id),nome:r.nome,fornitore:f,
             quantita:Number(r.qty),unita:r.conf||"pz",prezzo_ultimo:r.prezzo||0,note:"",
+            iva_pct:Number(r.iva_pct)||0, prezzo_fonte:r.prezzo_fonte||"",
             richiesto_da:r.richiesto_da||getOperatoreNome()||"Ordini app"});
         }
       });
@@ -511,7 +535,7 @@ export default function OrdiniView({ initialTab = "riordini" }) {
         {tab==="confronto" && <ConfrontoProdottoView />}
         {tab==="giacenze" && <Giacenze giacBy={giacBy} onReload={carica} />}
         {tab==="carrello" && <Carrello rows={cartRows} tot={cartTot} inc={cambiaQuantitaCarrello} onSetFornitore={setFornitore} onCrea={creaBozze} onRemove={rimuoviCarrello} creando={creandoBozze} />}
-        {tab==="invio" && <DaInviare />}
+        {tab==="invio" && <DaInviare onModifica={()=>{ mergeCarrelloCataloghi(); setTab("carrello"); }} />}
       </div>
 
       {/* barra inferiore */}
@@ -762,6 +786,7 @@ function Carrello({ rows, tot, inc, onSetFornitore, onCrea, onRemove, creando })
       Richieste dai reparti: controlla quantità e fornitore. “Crea bozze ordine” le raggruppa per fornitore; l'invio richiede la tua conferma.
     </div>}
     {rows.map(r=>{ const fut=(Number(r.stock_iniziale)||0)+(Number(r.qty)||0);
+      const nettoRiga=(Number(r.prezzo)||0)*(Number(r.qty)||0), ivaRiga=nettoRiga*(Number(r.iva_pct)||0)/100;
       return (<div key={r.id} style={{ border:`1px solid ${C.line}`, borderRadius:14, padding:12, marginBottom:10 }}>
         <div style={{ display:"flex", gap:10 }}>
           <div style={{ flex:1, minWidth:0, fontWeight:800 }}>{r.nome}{r.da_reparto && <span style={{display:"block",fontSize:11,color:C.amber}}>Richiesta del reparto da valutare</span>}
@@ -800,12 +825,14 @@ function Carrello({ rows, tot, inc, onSetFornitore, onCrea, onRemove, creando })
           <button onClick={()=>inc(r,-1)} style={qtybtn}><Minus size={18}/></button>
           <b>{r.qty}</b>
           <button onClick={()=>inc(r,1)} style={qtybtn}><Plus size={18}/></button>
-          <span style={{ marginLeft:"auto", fontWeight:800 }}>€ {((r.prezzo||0)*r.qty).toFixed(2)}</span>
+          <span style={{ marginLeft:"auto", textAlign:"right", fontWeight:800 }}>€ {(nettoRiga+ivaRiga).toFixed(2)}
+            <small style={{display:"block",fontWeight:600,color:C.muted}}>netto € {nettoRiga.toFixed(2)}{r.iva_pct?` + IVA ${r.iva_pct}%`:" · IVA da verificare"}</small>
+          </span>
         </div>
       </div>);
     })}
     <button onClick={onCrea} disabled={creando} style={{ width:"100%", border:"none", borderRadius:16, background:`linear-gradient(135deg,${C.brand},#6f9180)`, color:"#fff", padding:15, fontWeight:800, fontSize:15, cursor:creando?"wait":"pointer", marginTop:8 }}>
-      {creando ? "Creo le bozze…" : `Crea bozze ordine · € ${tot.toFixed(2)}`}
+      {creando ? "Creo le bozze…" : `Crea bozze ordine · totale c/IVA € ${tot.toFixed(2)}`}
     </button>
   </>);
 }
@@ -831,20 +858,27 @@ function TotaliOrdine({ prodotti }) {
   );
 }
 
-function DaInviare() {
+function DaInviare({ onModifica }) {
   const { conferma, dialogConferma } = useConferma();
   const [ordini, setOrdini] = useState(null);
+  const [storico, setStorico] = useState([]);
   const [busy, setBusy] = useState(false);
   const [preparazione, setPreparazione] = useState(null);
   const [invioBusy, setInvioBusy] = useState(false);
   const carica = useCallback(async () => {
     try {
-      const [r1,r2] = await Promise.all([
+      const [r1,r2,r3,s1,s2,s3] = await Promise.all([
         axios.get(`${API}/ordini-fornitori?stato=bozza&limit=100`),
         axios.get(`${API}/ordini-fornitori?stato=confermato&limit=100`),
+        axios.get(`${API}/ordini-fornitori?stato=in_modifica&limit=100`),
+        axios.get(`${API}/ordini-fornitori?stato=inviato_fornitori&limit=100`),
+        axios.get(`${API}/ordini-fornitori?stato=inviato&limit=100`),
+        axios.get(`${API}/ordini-fornitori?stato=inviato_manualmente&limit=100`),
       ]);
-      const lista = [...(r1.data||[]),...(r2.data||[])].filter(o=>(o.prodotti||[]).length);
+      const lista = [...(r1.data||[]),...(r2.data||[]),...(r3.data||[])].filter(o=>(o.prodotti||[]).length);
       setOrdini(lista);
+      setStorico([...(s1.data||[]),...(s2.data||[]),...(s3.data||[])].filter(o=>(o.prodotti||[]).length)
+        .sort((a,b)=>String(b.inviato_at||b.created_at||"").localeCompare(String(a.inviato_at||a.created_at||""))));
       // Righe TUTTE pre-spuntate (richiesta Enzo 04/07/2026: "se le ho già
       // aggiunte io, perché devo rispuntarle?"): togli solo quelle che NON vuoi.
       setSel(Object.fromEntries(lista.map(o => [o.id, new Set((o.prodotti||[]).map(p => String(p.prodotto_id)))])));
@@ -869,6 +903,17 @@ function DaInviare() {
     if (!(await conferma(`Annullare l'ordine ${o.prodotti[0]?.fornitore||""}?`, { dettaglio: `${o.prodotti.length} righe` }))) return;
     try { await axios.delete(`${API}/ordini-fornitori/${o.id}`); toast.success("Ordine annullato"); carica(); }
     catch(e){ toast.error(e.response?.data?.detail || "Annullamento non riuscito"); }
+  };
+
+  const modifica = async (o) => {
+    try {
+      const r = await axios.post(`${API}/ordini-fornitori/${o.id}/riporta-al-carrello`);
+      localStorage.setItem(CART_LS_KEY, JSON.stringify(r.data?.righe || []));
+      sessionStorage.setItem("ordine_modifica_id", o.id);
+      window.dispatchEvent(new Event("ordini_smart_cart_update"));
+      toast.success("Ordine recuperato nel carrello: puoi aggiungere altri prodotti");
+      onModifica?.(o);
+    } catch(e) { toast.error(e.response?.data?.detail || "Impossibile modificare l'ordine"); }
   };
 
   const preparaInvio = async (o) => {
@@ -945,6 +990,10 @@ function DaInviare() {
           <div style={{ flex:1, minWidth:0, fontWeight:800 }}>{o.prodotti[0]?.fornitore||"Fornitore"} <Badge tone={o.stato==="confermato"?"giac":undefined}>{o.stato}</Badge>
             <div style={{ fontSize:12, color:C.muted }}>{o.source==="riordino_auto"?"riordino automatico":o.source||""} · {o.data_ordine||""}</div>
           </div>
+          <button onClick={()=>modifica(o)} title="Recupera nel carrello e aggiungi prodotti"
+            style={{ border:`1px solid ${C.brand}`, borderRadius:12, background:C.soft, color:C.brand, padding:"8px 12px", fontWeight:800, cursor:"pointer", fontSize:12 }}>
+            Modifica
+          </button>
           <button onClick={()=>annulla(o)} title="Annulla ordine"
             style={{ border:"none", borderRadius:12, background:"#fee2e2", color:"#b91c1c", padding:"8px 12px", fontWeight:800, cursor:"pointer", fontSize:12 }}>
             Annulla
@@ -997,5 +1046,17 @@ function DaInviare() {
         )}
       </div>
     ))}
+    <div style={{marginTop:24,borderTop:`2px solid ${C.line}`,paddingTop:14}}>
+      <h3 style={{margin:"0 0 4px",fontSize:18}}>Storico ordini inviati</h3>
+      <p style={{margin:"0 0 12px",fontSize:12,color:C.muted}}>Gli ordini inviati restano immutabili con prezzi, IVA, data e destinatario usati al momento dell'invio.</p>
+      {!storico.length && <div style={{color:C.muted,padding:"18px 0"}}>Nessun ordine inviato nello storico.</div>}
+      {storico.map(o => <div key={`storico-${o.id}`} style={{border:`1px solid ${C.line}`,borderRadius:14,padding:12,marginBottom:8,background:"#f8faf8"}}>
+        <div style={{display:"flex",justifyContent:"space-between",gap:10,alignItems:"start"}}>
+          <div><b>{o.prodotti?.[0]?.fornitore || "Fornitore"}</b><div style={{fontSize:12,color:C.muted}}>{o.inviato_at || o.data_ordine || ""} · {o.invio_canale || "invio registrato"}{o.invio_destinatario?` · ${o.invio_destinatario}`:""}</div></div>
+          <b style={{color:C.brand}}>€ {Number(o.totali?.totale || 0).toFixed(2)}</b>
+        </div>
+        <div style={{fontSize:12,color:C.muted,marginTop:6}}>{(o.prodotti||[]).map(p=>`${p.nome} × ${p.quantita}`).join(" · ")}</div>
+      </div>)}
+    </div>
   </>);
 }

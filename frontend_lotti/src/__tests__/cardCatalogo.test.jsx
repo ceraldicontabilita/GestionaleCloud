@@ -3,6 +3,7 @@ import { act } from "react";
 import { createRoot } from "react-dom/client";
 import CardCatalogo, { rigaConfronto, GRIGLIA_CARD } from "../components/haccp/CardCatalogo";
 import { prezzoDaMostrare } from "../components/haccp/CatalogoGenericoView";
+import { datiPrezzoProdotto, riconciliaPrezziCarrello } from "../components/haccp/CatalogoFornitoreView";
 
 global.IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -35,9 +36,27 @@ describe("card unica dei cataloghi", () => {
 
   it("prezzo: il listino prevale, poi fattura, netto fornitore, catalogo", () => {
     expect(prezzoDaMostrare({ prezzoListino: 12, unitaVendita: "12 PZ" }).nota).toContain("12 PZ");
-    expect(prezzoDaMostrare({ giaAcquistato: true, prezzoFattura: 3 }).nota).toBe("ultima fattura");
-    expect(prezzoDaMostrare({ prezzoFornitore: 2 }).nota).toBe("netto fornitore");
+    expect(prezzoDaMostrare({ giaAcquistato: true, prezzoFattura: 3 }).nota).toContain("ultima fattura");
+    expect(prezzoDaMostrare({ prezzoFornitore: 2 }).nota).toContain("netto fornitore");
     expect(prezzoDaMostrare({}).prezzo).toBe("");
+  });
+
+  it("salva nel carrello lo stesso prezzo mostrato anche con i campi camelCase", () => {
+    const prodotto = { id: "glf-002", nome: "Crema Rio", giaAcquistato: true, prezzoFattura: 4.23 };
+    expect(datiPrezzoProdotto(prodotto)).toEqual(expect.objectContaining({ prezzo: 4.23, fonte: "fattura_xml" }));
+    localStorage.setItem("ordini_smart_carrello", JSON.stringify([{ id: "glf-002", nome: "Crema Rio", prezzo: 0 }]));
+    riconciliaPrezziCarrello([prodotto], false);
+    expect(JSON.parse(localStorage.getItem("ordini_smart_carrello"))[0]).toEqual(expect.objectContaining({
+      prezzo: 4.23, prezzo_fonte: "fattura_xml",
+    }));
+  });
+
+  it("trasforma il prezzo al kg nel totale confezione e aggiunge l'IVA reale", () => {
+    const prodotto = { id: "n031", giaAcquistato: true, prezzoFattura: 4.11,
+      unitaFattura: "KG", unita_confezione: "13 KG", ivaPct: 10 };
+    const dati = datiPrezzoProdotto(prodotto);
+    expect(dati).toEqual(expect.objectContaining({ prezzoUnitario: 4.11, pesoKg: 13, prezzo: 53.43, ivaPct: 10, prezzoIvato: 58.77 }));
+    expect(prezzoDaMostrare(prodotto).nota).toContain("€ 4,11/kg × 13 kg");
   });
 
   it("mostra dati utili reali, confronto e i gesti rapidi", () => {
