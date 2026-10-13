@@ -23,6 +23,8 @@ import TabFornitori from "./backoffice/TabFornitori";
 import { toast } from "./backoffice/toastBackoffice";
 import GruppiProduzioneRicette, { GRUPPI_PRODUZIONE, categorieConGruppo } from "./GruppiProduzioneRicette";
 import MenuVetrinaView from "./MenuVetrinaView";
+import IrcaSpuntiView from "./IrcaSpuntiView";
+import SaimaRicettariView from "./SaimaRicettariView";
 
 const API = process.env.REACT_APP_LOTTI_BACKEND_URL + "/api";
 const BACKEND = process.env.REACT_APP_LOTTI_BACKEND_URL || "";
@@ -53,8 +55,12 @@ const TAB_CATEGORIE_RAPIDE = [
 
 function TabRicette({ solaLetturaOperatore = false }) {
   const [mostraPrezzi, setMostraPrezzi] = useState(() => ["#in_menu", "#ricette/prezzi"].includes(window.location.hash));
+  const [mostraFornitori, setMostraFornitori] = useState(() => window.location.hash.startsWith("#ricette/fornitori"));
   useEffect(() => {
-    const cambia = () => setMostraPrezzi(window.location.hash === "#ricette/prezzi");
+    const cambia = () => {
+      setMostraPrezzi(window.location.hash === "#ricette/prezzi");
+      setMostraFornitori(window.location.hash.startsWith("#ricette/fornitori"));
+    };
     window.addEventListener("hashchange", cambia);
     return () => window.removeEventListener("hashchange", cambia);
   }, []);
@@ -96,7 +102,7 @@ function TabRicette({ solaLetturaOperatore = false }) {
 
   // Apertura diretta di una ricetta nell'editor (es. dal pulsante Modifica del tablet).
   useEffect(() => {
-    if (solaLetturaOperatore || mostraPrezzi) return;
+    if (solaLetturaOperatore || mostraPrezzi || mostraFornitori) return;
     let id;
     const daHash = window.location.hash.match(/^#ricette\/([^/]+)$/);
     try { id = daHash ? decodeURIComponent(daHash[1]) : sessionStorage.getItem("apri_ricetta_id"); } catch (_) { id = null; }
@@ -108,7 +114,7 @@ function TabRicette({ solaLetturaOperatore = false }) {
         if (r.data) setDettaglioR(r.data);
       } catch { /* ignora */ }
     })();
-  }, [solaLetturaOperatore, mostraPrezzi]);
+  }, [solaLetturaOperatore, mostraPrezzi, mostraFornitori]);
 
   const impostaVisibilita = async (ricetta, visibile) => {
     if (!ricetta?.id || cambiandoVisibilita) return false;
@@ -234,11 +240,18 @@ function TabRicette({ solaLetturaOperatore = false }) {
   return (
     <div>
       {!solaLetturaOperatore && <div role="tablist" aria-label="Gestione unica ricette" style={{display:"flex", gap:8, flexWrap:"wrap", marginBottom:16}}>
-        {[{prezzi:false,label:"Ricette e categorie"},{prezzi:true,label:"Menu e prezzi"}].map(tab=><button key={tab.label} role="tab" aria-selected={mostraPrezzi===tab.prezzi}
-          onClick={()=>{window.location.hash=tab.prezzi?"ricette/prezzi":"ricette";setMostraPrezzi(tab.prezzi);}}
-          style={{minHeight:44,padding:"10px 16px",borderRadius:10,border:"1px solid var(--border)",background:mostraPrezzi===tab.prezzi?"var(--primary)":"var(--card)",color:mostraPrezzi===tab.prezzi?"#fff":"var(--text)",fontWeight:700}}>{tab.label}</button>)}
+        {[
+          {id:"ricette",label:"Ricette e categorie",hash:"ricette"},
+          {id:"fornitori",label:"📚 Ricettari fornitori",hash:"ricette/fornitori"},
+          {id:"prezzi",label:"Menu e prezzi",hash:"ricette/prezzi"},
+        ].map(item => {
+          const attivo = item.id === "prezzi" ? mostraPrezzi : item.id === "fornitori" ? mostraFornitori : !mostraPrezzi && !mostraFornitori;
+          return <button key={item.id} role="tab" aria-selected={attivo}
+            onClick={()=>{window.location.hash=item.hash;setMostraPrezzi(item.id==="prezzi");setMostraFornitori(item.id==="fornitori");}}
+            style={{minHeight:44,padding:"10px 16px",borderRadius:10,border:item.id==="fornitori"?"2px solid #b98b31":"1px solid var(--border)",background:attivo?"var(--primary)":item.id==="fornitori"?"#fff4d8":"var(--card)",color:attivo?"#fff":item.id==="fornitori"?"#7a4d09":"var(--text)",fontWeight:800,boxShadow:item.id==="fornitori"&&!attivo?"0 4px 12px rgba(185,139,49,.18)":"none"}}>{item.label}</button>;
+        })}
       </div>}
-      {mostraPrezzi && !solaLetturaOperatore ? <MenuVetrinaView /> : <>
+      {mostraPrezzi && !solaLetturaOperatore ? <MenuVetrinaView /> : mostraFornitori && !solaLetturaOperatore ? <RicettariFornitori /> : <>
       {/* Header */}
       <div style={{display:"flex",gap:10,marginBottom:16,alignItems:"center",flexWrap:"wrap"}}>
         <input value={search} onChange={e=>setSearch(e.target.value)}
@@ -442,6 +455,36 @@ function TabRicette({ solaLetturaOperatore = false }) {
       )}
     </div>
   );
+}
+
+function RicettariFornitori() {
+  const [fornitore, setFornitore] = useState(() => window.location.hash.endsWith("/saima") ? "saima" : "irca");
+  useEffect(() => {
+    const cambia = () => setFornitore(window.location.hash.endsWith("/saima") ? "saima" : "irca");
+    window.addEventListener("hashchange", cambia);
+    return () => window.removeEventListener("hashchange", cambia);
+  }, []);
+  const scegli = (valore) => {
+    setFornitore(valore);
+    window.location.hash = `ricette/fornitori/${valore}`;
+  };
+  return <section aria-label="Ricettari fornitori">
+    <div style={{padding:"18px 20px",marginBottom:16,borderRadius:18,background:"linear-gradient(135deg,#3f5a4e,#708e7d)",color:"#fff",boxShadow:"0 12px 28px rgba(49,72,62,.22)"}}>
+      <div style={{fontSize:11,fontWeight:900,letterSpacing:".12em",textTransform:"uppercase",opacity:.8}}>Biblioteca professionale</div>
+      <h2 style={{margin:"4px 0 5px",fontSize:24,fontWeight:900}}>Ricettari fornitori</h2>
+      <p style={{margin:0,maxWidth:720,fontSize:14,lineHeight:1.55,opacity:.9}}>Consulta ricettari, cataloghi e ricette ufficiali. I prodotti collegati confluiscono nel catalogo acquisti e, quando mancano, possono essere aggiunti all’ordine.</p>
+    </div>
+    <div role="tablist" aria-label="Scegli ricettario fornitore" style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(220px,1fr))",gap:12,marginBottom:18}}>
+      {[
+        {id:"irca",titolo:"Ricettario IRCA",nota:"Cataloghi ufficiali, ricette e distinta MEPA",icona:"🥐"},
+        {id:"saima",titolo:"Ricettari SAIMA",nota:"Ricette e prodotti del catalogo SAIMA",icona:"🍰"},
+      ].map(item => <button key={item.id} role="tab" aria-selected={fornitore===item.id} onClick={() => scegli(item.id)}
+        style={{display:"flex",alignItems:"center",gap:12,minHeight:76,padding:"12px 16px",textAlign:"left",borderRadius:14,border:`2px solid ${fornitore===item.id?"#3f5a4e":"#d7e2dc"}`,background:fornitore===item.id?"#edf4ef":"#fff",color:"#263a31",cursor:"pointer",boxShadow:fornitore===item.id?"0 7px 18px rgba(63,90,78,.16)":"none"}}>
+        <span style={{fontSize:30}}>{item.icona}</span><span><strong style={{display:"block",fontSize:16}}>{item.titolo}</strong><small style={{display:"block",marginTop:3,color:"#637269",fontSize:12}}>{item.nota}</small></span>
+      </button>)}
+    </div>
+    {fornitore === "irca" ? <IrcaSpuntiView /> : <SaimaRicettariView />}
+  </section>;
 }
 
 function TabAttivita() {

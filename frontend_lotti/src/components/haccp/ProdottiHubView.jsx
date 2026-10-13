@@ -17,6 +17,15 @@ export default function ProdottiHubView({ initialSub = "listino" }) {
 
   useEffect(() => {
     const sincronizzaHash = () => {
+      const legacy = window.location.hash.replace(/^#/, "");
+      if (legacy === "prodotti/irca_spunti") {
+        window.location.hash = "ricette/fornitori/irca";
+        return;
+      }
+      if (legacy === "prodotti/saima_ricettari") {
+        window.location.hash = "ricette/fornitori/saima";
+        return;
+      }
       setSub(risolviSottoTabProdotti(window.location.hash, initialSub));
     };
     sincronizzaHash();

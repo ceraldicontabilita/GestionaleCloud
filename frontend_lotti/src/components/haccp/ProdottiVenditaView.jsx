@@ -11,8 +11,6 @@ import { toast } from "sonner";
 import BulkPrezziView from "./BulkPrezziView";
 import CatalogoFornitoreView from "./CatalogoFornitoreView";
 import CatalogoGenericoView from "./CatalogoGenericoView";
-import SaimaRicettariView from "./SaimaRicettariView";
-import IrcaSpuntiView from "./IrcaSpuntiView";
 import CartelliIngredientiBarView from "./CartelliIngredientiBarView";
 import ModalProdotto from "./prodotti/ModalProdotto";
 import ProdottoCard from "./prodotti/ProdottoCard";
@@ -219,7 +217,7 @@ export default function ProdottiVenditaView({ defaultTab = "acquaviva" }) {
       // un fuorviante "0 nuovi, 0 aggiornati" senza rileggere il catalogo.
       const fonte = paginaTab === "alfa"
         ? "alpha"
-        : paginaTab === "saima_ricettari" ? "saima" : paginaTab;
+        : paginaTab;
       const r = await axios.post(`${API}/cataloghi/sincronizza-fatture/${encodeURIComponent(fonte)}`);
       const aggiornati = await axios.post(`${API}/ordini-fornitori/aggiorna-prezzi-aperti`, null, { params: { fonte } });
       const carrello = await axios.get(`${API}/ordini-fornitori/carrello-sospesi`);
@@ -284,7 +282,7 @@ export default function ProdottiVenditaView({ defaultTab = "acquaviva" }) {
   };
 
   const prodottiFiltrati = useMemo(() => {
-    if (["saima", "mepa", "saima_ricettari", "irca", "irca_spunti", "pasticcere", "tremarie", "alfa", "sammontana", "bindi"].includes(paginaTab)
+    if (["saima", "mepa", "irca", "pasticcere", "tremarie", "alfa", "sammontana", "bindi"].includes(paginaTab)
         || fontiEsterne.some(f => f.fornitore_key === paginaTab)) return [];
     let ps = prodotti;
     if (paginaTab === "miei") ps = ps.filter(p => p.fonte !== "acquaviva");
@@ -361,10 +359,8 @@ export default function ProdottiVenditaView({ defaultTab = "acquaviva" }) {
           { id: "acquaviva", label: "Acquaviva catalogo", count: null },
           { id: "cartelli_bar", label: "Cartelli ingredienti bar", count: null },
           { id: "saima", label: "SAIMA S.p.a.", count: null },
-          { id: "saima_ricettari", label: "Ricettari SAIMA", count: null },
           { id: "mepa", label: "MEPA Alimentari", count: null },
           { id: "irca", label: "IRCA prodotti", count: null },
-          { id: "irca_spunti", label: "Ricettario IRCA", count: null },
           { id: "pasticcere", label: "Il Pasticcere", count: null },
           { id: "tremarie", label: "Tre Marie", count: null },
           { id: "alfa", label: "Alfa (senza glutine)", count: null },
@@ -390,7 +386,6 @@ export default function ProdottiVenditaView({ defaultTab = "acquaviva" }) {
       {paginaTab === "acquaviva" && <CatalogoFornitoreView fornitore="acquaviva" nome="Dolciaria Acquaviva" />}
       {paginaTab === "cartelli_bar" && <CartelliIngredientiBarView />}
       {paginaTab === "saima" && <CatalogoFornitoreView fornitore="saima" nome="SAIMA S.p.a." />}
-      {paginaTab === "saima_ricettari" && <SaimaRicettariView />}
       {paginaTab === "mepa" && <CatalogoFornitoreView fornitore="mepa" nome="MEPA Alimentari" />}
       {paginaTab === "irca" && (
         <CatalogoGenericoView titolo="IRCA prodotti ufficiali" sourceKey="irca"
@@ -398,7 +393,6 @@ export default function ProdottiVenditaView({ defaultTab = "acquaviva" }) {
           emojiVuoto="🥐" messaggioVuoto="Archivio IRCA non ancora sincronizzato: apri Ricettario IRCA e premi Aggiorna tutte."
           coloreAccento="sage" />
       )}
-      {paginaTab === "irca_spunti" && <IrcaSpuntiView />}
 
       {/* Catalogo esterno (Il Pasticcere / Tre Marie / Alfa / Sammontana) — stesso asterisco preferito colazione + carrello ordini di SAIMA/MEPA */}
       {paginaTab === "pasticcere" && (
