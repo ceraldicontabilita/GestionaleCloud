@@ -277,6 +277,23 @@ def test_documenti_import_riconosce_la_cartella_di_pagamento():
     assert detect_document_type("cartella.pdf", _pdf()) == "cartella_pagamento"
 
 
+def test_feedback_import_non_dichiara_da_pagare_se_ader_ha_residuo_zero():
+    """Il riepilogo di upload deve rispettare lo snapshot AdeR gia' presente."""
+    from app.routers.documenti import _stato_cartella_importata
+
+    stato = _stato_cartella_importata({"fiscal": {"residual_cents": 0}})
+    assert "posizione corrente AdeR ha residuo 0,00 EUR" in stato
+    assert "pagamento non e' provato" in stato
+    assert "da pagare entro" not in stato
+
+
+def test_feedback_import_cartella_distingue_duplicato_e_dovuto():
+    from app.routers.documenti import _stato_cartella_importata
+
+    assert _stato_cartella_importata({"duplicate": True}) == " già presente"
+    assert "da pagare entro 60 giorni" in _stato_cartella_importata({"fiscal": {"residual_cents": 1711}})
+
+
 def test_lipe_che_cita_versamenti_auto_f24_non_e_un_modello_f24():
     """Il campo VP «VERSAMENTI AUTO F24» faceva classificare la LIPE come F24 (import bloccato)."""
     from app.routers.documenti import detect_document_type
