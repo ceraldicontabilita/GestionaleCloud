@@ -184,3 +184,20 @@ def test_upload_zip_preserva_percorso_e_gruppo_per_associare_allegati(monkeypatc
     saved = asyncio.run(db["documents_inbox"].find_one({"document_type": "tari_avviso"}))
     assert saved["source_context"]["archive_group"] == "raccolta/email-2026-01"
     assert saved["source_context"]["archive_filename"] == "raccolta.zip"
+
+
+def test_comunicazione_somme_dovute_ha_rate_ma_non_e_domanda_o_pagamento():
+    parsed = parse_ader('''07190201701984807000 Documento rif. AP - 07190201701984807301
+        Codice fiscale 04523831214 Comunicazione delle somme dovute
+        Data scadenza Importo debito da pagare Interessi di dilazione Totale da pagare
+        31/07/2017 17.789,12 0,00 17.789,12
+        30/11/2017 17.566,57 222,36 17.788,93
+        Totale complessivo 35.355,69 222,36 35.578,05
+        Cartella 07120090103949214000''', 'ader_definizione_agevolata')
+    assert parsed['contribuente_cf'] == '04523831214'
+    assert parsed['numeri_cartella'] == ['07120090103949214000']
+    assert parsed['sottotipo'] == 'comunicazione_somme_dovute'
+    assert parsed['obligation_status'] == 'APERTO' and not parsed['is_payment_evidence']
+    assert parsed['piano_quadra'] and parsed['totale_dovuto_cents'] == 3557805
+    assert [r['importo_cents'] for r in parsed['rate']] == [1778912, 1778893]
+    assert [e['expectation_type'] for e in parsed['workflow_expectations']] == ['PAGAMENTO_CARTELLA']

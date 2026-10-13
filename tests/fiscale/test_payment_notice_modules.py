@@ -134,3 +134,20 @@ def test_bollettino_ridotto_tardivo_resta_da_verificare():
         assert (await collega_moduli_verbale(db, "originale", content))["collegati"] == 0
         assert (await db.verbali_noleggio.find_one({"id": "v"}))["stato"] == "aperto"
     asyncio.run(scenario())
+
+
+def test_due_rav_nella_stessa_pagina_non_scambiano_gli_importi():
+    with fitz.open() as doc:
+        page = doc.new_page()
+        for x, code, amount, encoded in [(30, '81010494404909929', '17.789,12', '00017789+12>'),
+                                         (330, '81010494404910737', '17.788,93', '00017788+93>')]:
+            page.insert_text((x, 30), f'RAV\n{code}\n<0{code}>\n{amount}\n{encoded}', fontsize=8)
+        result = parse_notice_modules(doc.tobytes())
+    assert {(m['code'], m['amount_cents']) for m in result} == {
+        ('81010494404909929', 1778912), ('81010494404910737', 1778893)}
+    assert all(not m['is_payment_receipt'] for m in result)
+
+
+def test_rav_importo_codificato_diverso_dal_leggibile_non_si_associa():
+    content = pdf('RAV\n81010494404909929\n<081010494404909929>\n17.789,12\n00017789+13>')
+    assert parse_notice_modules(content) == []
