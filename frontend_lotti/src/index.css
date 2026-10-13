@@ -607,6 +607,21 @@ h1, .g-page-title { font-weight: 800; }
     color: #fff;
     box-shadow: 0 3px 10px rgba(91,122,107,.25);
   }
+  .g-tabs-compact {
+    width: 100%;
+    max-width: 100%;
+    flex-wrap: nowrap;
+    gap: 1px;
+    padding: 2px;
+    overflow-x: auto;
+    scrollbar-width: thin;
+  }
+  .g-tabs-compact .g-tab {
+    min-height: 32px;
+    padding: 5px 9px;
+    font-size: 12px;
+    gap: 4px;
+  }
 
   /* ── ICON WRAP ── */
   .g-icon-wrap {

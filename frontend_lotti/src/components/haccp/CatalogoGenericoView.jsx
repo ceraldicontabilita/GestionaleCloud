@@ -27,7 +27,7 @@ import { toast } from "sonner";
 import { Package, RefreshCw, Check, Plus, ExternalLink, X } from "lucide-react";
 import { API, fotoSrc } from "../../utils/constants";
 import { dataIt, euro, euroPezzo } from "../../utils/confrontoFornitori";
-import { aggiornaPrezzoNelCarrello, useCart } from "./CatalogoFornitoreView";
+import { aggiornaPrezzoNelCarrello, presentazionePrezzoProdotto, riconciliaPrezziCarrello, useCart } from "./CatalogoFornitoreView";
 import usePreferitiAcquisti, { useStatoCatalogo } from "../../hooks/usePreferitiAcquisti";
 import RicercaCatalogo from "./shared/RicercaCatalogo";
 import FiltroPreferitiAcquisti from "./shared/FiltroPreferitiAcquisti";
@@ -45,13 +45,7 @@ const COLORI = {
 // Un prezzo solo per card: il listino se c'e', altrimenti l'ultima fattura XML,
 // il netto comunicato dal fornitore o il prezzo di catalogo.
 export function prezzoDaMostrare(p) {
-  if (p.prezzoListino > 0) {
-    return { prezzo: euro(p.prezzoListino), nota: p.unitaVendita ? `× ${p.unitaVendita} · listino` : "listino" };
-  }
-  if (p.giaAcquistato && p.prezzoFattura > 0) return { prezzo: euro(p.prezzoFattura), nota: "ultima fattura" };
-  if (p.prezzoFornitore > 0) return { prezzo: euro(p.prezzoFornitore), nota: "netto fornitore" };
-  if (p.prezzo > 0) return { prezzo: euro(p.prezzo), nota: p.giaAcquistato ? "già comprato" : "" };
-  return { prezzo: "", nota: "" };
+  return presentazionePrezzoProdotto(p);
 }
 
 export function categoriaCatalogo(p) {
@@ -117,6 +111,9 @@ export default function CatalogoGenericoView({
   }, [fetchUrl, mapItem, titolo]);
 
   useEffect(() => { carica(); }, [carica]);
+  useEffect(() => {
+    if (prodotti.length) riconciliaPrezziCarrello(prodotti);
+  }, [prodotti]);
 
   useEffect(() => {
     if (!confrontoPrezzi || !sourceKey) return;

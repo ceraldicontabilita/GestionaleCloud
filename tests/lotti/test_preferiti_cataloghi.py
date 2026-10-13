@@ -126,6 +126,17 @@ def test_ultima_data_reale_omaggi_e_righe_servizio():
     assert len(out) == 2 and next(p for p in out if p["codice_articolo"])["prezzo"] == 60
 
 
+def test_unita_e_iva_della_fattura_arrivano_al_catalogo():
+    doc = fattura(linee=[{"descrizione": "Crema nocciola 13 KG", "codice_articolo": "N031",
+                          "quantita": "13", "prezzo_unitario": "4.11", "unita_misura": "KG",
+                          "aliquota_iva": "10"}])
+    articolo = articoli_acquistati([doc])[0]
+    assert articolo["unita_confezione"] == "KG" and articolo["iva_pct"] == 10
+    prodotto = collega_preferiti([articolo], [{"id": "n031", "codice_articolo": "N031", "nome": "Crema", "unita_confezione": "13 KG"}], "saima")[0]
+    assert prodotto["prezzo_fattura"] == 4.11
+    assert prodotto["unita_ultima_fattura"] == "KG" and prodotto["iva_pct"] == 10
+
+
 def test_listino_reale_non_viene_azzerato_ne_sostituito_da_fattura():
     for prezzi in ({}, {"caffe": {"prezzo": 10}}):
         p = applica_prezzo_da_fatture([{"nome": "Caffe", "prezzo_listino": 12, "fonte_catalogo": "listino"}], prezzi)[0]

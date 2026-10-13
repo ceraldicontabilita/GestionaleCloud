@@ -6,7 +6,7 @@
  */
 import React, { useState, useEffect, useMemo, useCallback } from "react";
 import axios from "axios";
-import { Package, Plus, Search, RefreshCw, AlertTriangle, Calculator, Zap, DollarSign } from "lucide-react";
+import { Package, Plus, Search, RefreshCw, AlertTriangle, Calculator, Zap, DollarSign, ShoppingCart } from "lucide-react";
 import { toast } from "sonner";
 import BulkPrezziView from "./BulkPrezziView";
 import CatalogoFornitoreView from "./CatalogoFornitoreView";
@@ -48,6 +48,8 @@ function mapItemCatalogoForno(p) {
     descrizione: p.descrizione || "",
     giaAcquistato: !!p.gia_acquistato,
     quantitaFattura: p.quantita_ultima_fattura || 0,
+    unitaFattura: p.unita_ultima_fattura || "",
+    ivaPct: Number(p.iva_pct || p.aliquota_iva || 0) || 0,
     grammi: p.grammi || "",
     pezziCartone: p.pezzi_cartone || "",
     inRicette: !!p.in_ricette,
@@ -83,6 +85,8 @@ function mapItemAlfa(p) {
     descrizione: p.descrizione || "",
     giaAcquistato: !!p.gia_acquistato,
     quantitaFattura: p.quantita_ultima_fattura || 0,
+    unitaFattura: p.unita_ultima_fattura || "",
+    ivaPct: Number(p.iva_pct || p.aliquota_iva || 0) || 0,
     inRicette: !!p.in_ricette,
     grammi: p.peso_g || p.grammi || "",
     pezziCartone: p.pz_confezione || p.qty_cartone || "",
@@ -101,6 +105,17 @@ function setHashTab(tab) {
 }
 
 export default function ProdottiVenditaView({ defaultTab = "acquaviva" }) {
+  const [righeCarrello, setRigheCarrello] = useState(() => {
+    try { return JSON.parse(localStorage.getItem("ordini_smart_carrello") || "[]").length; } catch { return 0; }
+  });
+  useEffect(() => {
+    const aggiorna = () => {
+      try { setRigheCarrello(JSON.parse(localStorage.getItem("ordini_smart_carrello") || "[]").length); } catch { setRigheCarrello(0); }
+    };
+    window.addEventListener("ordini_smart_cart_update", aggiorna);
+    window.addEventListener("storage", aggiorna);
+    return () => { window.removeEventListener("ordini_smart_cart_update", aggiorna); window.removeEventListener("storage", aggiorna); };
+  }, []);
   const [paginaTab, setPaginaTabState] = useState(() =>
     risolviCatalogoProdotti(window.location.hash, [], defaultTab)
   );
@@ -189,7 +204,11 @@ export default function ProdottiVenditaView({ defaultTab = "acquaviva" }) {
       setLoading(true);
       if (paginaTab === "miei") {
         const r = await axios.post(`${API}/prodotti-vendita/sync-acquaviva`);
-        toast.success(`Prodotti Acquaviva: ${r.data.creati} nuovi, ${r.data.aggiornati} aggiornati`);
+        const ao = await axios.post(`${API}/ordini-fornitori/aggiorna-prezzi-aperti`, null, { params: { fonte: "acquaviva" } });
+        const carrello = await axios.get(`${API}/ordini-fornitori/carrello-sospesi`);
+        localStorage.setItem("ordini_smart_carrello", JSON.stringify(carrello.data?.righe || []));
+        window.dispatchEvent(new Event("ordini_smart_cart_update"));
+        toast.success(`Prodotti Acquaviva: ${r.data.creati} nuovi, ${r.data.aggiornati} aggiornati · ${ao.data.righe_aggiornate || 0} prezzi bozze aggiornati`);
         await load();
         return;
       }
@@ -202,6 +221,10 @@ export default function ProdottiVenditaView({ defaultTab = "acquaviva" }) {
         ? "alpha"
         : paginaTab === "saima_ricettari" ? "saima" : paginaTab;
       const r = await axios.get(`${API}/cataloghi/preferiti/${encodeURIComponent(fonte)}`);
+      const aggiornati = await axios.post(`${API}/ordini-fornitori/aggiorna-prezzi-aperti`, null, { params: { fonte } });
+      const carrello = await axios.get(`${API}/ordini-fornitori/carrello-sospesi`);
+      localStorage.setItem("ordini_smart_carrello", JSON.stringify(carrello.data?.righe || []));
+      window.dispatchEvent(new Event("ordini_smart_cart_update"));
       const dati = r.data || {};
       const acquistati = (dati.prodotti || []).filter(p => p.gia_acquistato);
       const conPrezzo = acquistati.filter(p => Number(p.prezzo_fattura) > 0).length;
@@ -212,7 +235,8 @@ export default function ProdottiVenditaView({ defaultTab = "acquaviva" }) {
       }));
       toast.success(
         `Fatture lette: ${dati.fatture || 0} · ${acquistati.length} prodotti · ${conPrezzo} ${conPrezzo === 1 ? "prezzo" : "prezzi"}` +
-        (senzaPrezzo ? ` · ${senzaPrezzo} senza prezzo in fattura` : "")
+        (senzaPrezzo ? ` · ${senzaPrezzo} senza prezzo in fattura` : "") +
+        ` · ${aggiornati.data?.righe_aggiornate || 0} prezzi in bozze aggiornati`
       );
     } catch { toast.error("Errore sincronizzazione"); }
     finally { setLoading(false); }
@@ -331,7 +355,7 @@ export default function ProdottiVenditaView({ defaultTab = "acquaviva" }) {
       </div>
 
       {/* Tab pagina */}
-      <div role="tablist" aria-label="Prodotti e cataloghi fornitori" className="g-tabs mb-5">
+      <div role="tablist" aria-label="Prodotti e cataloghi fornitori" className="g-tabs g-tabs-compact mb-3">
         {[
           { id: "miei", label: "Miei Prodotti", count: prodotti.filter(p => p.fonte !== "acquaviva").length },
           { id: "acquaviva", label: "Acquaviva catalogo", count: null },
@@ -356,6 +380,11 @@ export default function ProdottiVenditaView({ defaultTab = "acquaviva" }) {
           </button>
         ))}
       </div>
+      <button type="button" aria-label={`Apri carrello ordini${righeCarrello ? `, ${righeCarrello} prodotti` : ""}`}
+        onClick={() => { sessionStorage.setItem("ordini_apri_tab", "carrello"); window.location.hash = "ordini"; }}
+        className="fixed bottom-5 right-5 z-[200] flex min-h-[54px] items-center gap-2 rounded-full bg-[#3f5a4e] px-4 text-sm font-black text-white shadow-2xl hover:bg-[#31483e]">
+        <ShoppingCart size={21}/><span>Carrello</span>{righeCarrello > 0 && <span className="rounded-full bg-white px-2 py-0.5 text-xs text-[#3f5a4e]">{righeCarrello}</span>}
+      </button>
 
       {/* Catalogo esterno (SAIMA / MEPA) */}
       {paginaTab === "acquaviva" && <CatalogoFornitoreView fornitore="acquaviva" nome="Dolciaria Acquaviva" />}
