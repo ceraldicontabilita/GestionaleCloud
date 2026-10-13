@@ -184,6 +184,11 @@ services:
         value: "false"
       - key: RUN_STARTUP_SEED_DATA
         value: "false"
+      # Il gestionale non deve ripopolare automaticamente l'archivio HR con
+      # cedolini, bonifici o movimenti bancari. Gli inserimenti espliciti
+      # eseguiti direttamente nell'app HR restano disponibili.
+      - key: HR_AUTOMATIC_DEPOSITS_ENABLED
+        value: "false"
       - key: GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON
         sync: false
       - key: CREDENTIALS_ENCRYPTION_KEY

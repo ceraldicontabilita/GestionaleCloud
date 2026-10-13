@@ -85,6 +85,18 @@ TIMEOUT_COMANDO = 60
 
 _avviso_non_configurato_emesso = False
 
+
+def deposito_automatico_abilitato() -> bool:
+    """Interruttore operativo unico per il ponte gestionale -> archivio HR.
+
+    Quando e' spento, import e rielaborazioni del gestionale continuano, ma
+    non possono creare o aggiornare cedolini nell'archivio HR. Gli inserimenti
+    espliciti eseguiti direttamente dall'app HR restano disponibili.
+    """
+    return os.environ.get("HR_AUTOMATIC_DEPOSITS_ENABLED", "false").strip().lower() in {
+        "1", "true", "yes", "on",
+    }
+
 _SQL_DIPENDENTE = (
     "SELECT doc FROM " + TABELLA_DIPENDENTI +
     " WHERE upper(doc->>'codice_fiscale') = $1"
@@ -427,6 +439,10 @@ async def deposita_cedolino_in_hr(
     il suo netto e conserva il vecchio in ``storico_netto``).
     ``con`` permette al backfill di riusare una sola connessione.
     """
+    if not deposito_automatico_abilitato():
+        logger.info("[HR deposito] cedolino non depositato: automatismi HR disabilitati")
+        return {"esito": "automatico_disabilitato", "id": None}
+
     from app.services.cedolini_versioni import STATUS_SOSTITUITO
 
     if str(cedolino.get("status") or "").lower() == STATUS_SOSTITUITO:
@@ -510,6 +526,12 @@ async def deposita_tutti_i_cedolini(db, *, dry_run: bool = False) -> Dict[str, A
     Una sola connessione per l'intero giro. Ritorna i conteggi per esito;
     ``dettagli`` elenca i primi errori con l'identita' del cedolino.
     """
+    if not deposito_automatico_abilitato():
+        return {
+            "status": "automatico_disabilitato", "dry_run": dry_run,
+            "totale": 0, "conteggi": {"automatico_disabilitato": 1}, "dettagli": [],
+        }
+
     conteggi = {
         "totale": 0, "inseriti": 0, "gia_presenti": 0, "da_inserire": 0,
         "saltati": 0, "errori": 0,

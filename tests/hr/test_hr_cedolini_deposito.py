@@ -119,6 +119,14 @@ DIPENDENTE_HR = {
 
 # ── mapping ──────────────────────────────────────────────────────────────────
 
+def test_deposito_automatico_puo_essere_disabilitato(monkeypatch):
+    monkeypatch.setenv("HR_AUTOMATIC_DEPOSITS_ENABLED", "false")
+
+    esito = _run(modulo.deposita_cedolino_in_hr(_cedolino_erp()))
+
+    assert esito == {"esito": "automatico_disabilitato", "id": None}
+
+
 def test_deposito_scrive_il_cedolino_nella_forma_dell_app_hr(monkeypatch):
     con = ConnessioneFinta(dipendenti=[DIPENDENTE_HR])
     aperture = _configura(monkeypatch, con)

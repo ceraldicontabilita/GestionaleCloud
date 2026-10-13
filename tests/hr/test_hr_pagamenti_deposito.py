@@ -28,6 +28,14 @@ def _run(coro):
     return asyncio.run(coro)
 
 
+def test_deposito_pagamenti_automatico_puo_essere_disabilitato(monkeypatch):
+    monkeypatch.setenv("HR_AUTOMATIC_DEPOSITS_ENABLED", "false")
+
+    esito = _run(ponte.deposita_bonifico_transfer_in_hr(None, _transfer()))
+
+    assert esito["esito"] == "automatico_disabilitato"
+
+
 @pytest.fixture
 def basi(monkeypatch):
     from app.hr.database import Database as DatabaseHR
