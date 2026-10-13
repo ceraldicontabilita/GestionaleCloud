@@ -280,9 +280,49 @@ def _piano_periodo_ridotto(riga: Dict[str, Any], data: str, piani: Iterable[Dict
     return candidati[0] if len(candidati) == 1 else None
 
 
+def _firma_delega_pagata(q: Dict[str, Any]) -> Optional[tuple]:
+    """Stampa Cassetto e quietanza possono provare lo stesso versamento.
+
+    Servono contribuente, data, saldo e tutte le righe fiscali; per INPS
+    anche l'intervallo completo. Un protocollo diverso resta un altro
+    pagamento. Se mancano dati non si accorpano documenti per solo importo.
+    """
+    from app.services.f24_doppioni import identita_f24
+
+    data = q.get("data_pagamento")
+    saldo = q.get("saldo")
+    if not data or saldo is None:
+        return None
+    # L'identita' dei modelli non copre le coordinate INAIL/altri enti:
+    # con quelle sezioni presenti non basta per accorpare due quietanze.
+    if q.get("sezione_inail") or q.get("sezione_altri_enti"):
+        return None
+    firma = identita_f24({**q, "dati_generali": {
+        **(q.get("dati_generali") or {}), "data_versamento": data, "saldo_delega": saldo,
+    }})
+    if not firma:
+        return None
+    periodi = []
+    for riga in q.get("sezione_inps") or []:
+        da, a = _periodo_riga(riga)
+        if not da or not a or not riga.get("matricola") or not riga.get("codice_sede"):
+            return None
+        periodi.append((str(riga["codice_sede"]), str(riga["matricola"]),
+                        str(riga.get("causale") or ""), da, a, _cents_riga(riga)))
+    return firma, tuple(sorted(periodi))
+
+
 def pagamenti_della_dilazione(piano: Dict[str, Any], quietanze: Iterable[Dict[str, Any]],
                              *, piani: Iterable[Dict[str, Any]] = ()) -> List[Dict[str, Any]]:
     """I versamenti della dilazione, uno per pagamento (le copie si uniscono)."""
+    quietanze = [q for q in quietanze if q.get("entity_status") != "deleted" and q.get("status") != "eliminato"]
+    firme = {str(q.get("id")): _firma_delega_pagata(q) for q in quietanze}
+    protocolli: Dict[tuple, set] = {}
+    for q in quietanze:
+        protocollo = q.get("protocollo_telematico") or (q.get("dati_generali") or {}).get("protocollo_telematico")
+        firma = firme[str(q.get("id"))]
+        if firma and protocollo:
+            protocolli.setdefault(firma, set()).add(protocollo)
     gruppi: Dict[str, Dict[str, Any]] = {}
     for q in quietanze:
         if q.get("entity_status") == "deleted" or q.get("status") == "eliminato":
@@ -298,11 +338,18 @@ def pagamenti_della_dilazione(piano: Dict[str, Any], quietanze: Iterable[Dict[st
             continue  # due righe della stessa dilazione nella stessa delega: da guardare a mano
         cents = _cents_riga(righe[0])
         protocollo = q.get("protocollo_telematico") or (q.get("dati_generali") or {}).get("protocollo_telematico")
+        firma = firme[str(q.get("id"))]
+        candidati = protocolli.get(firma, set())
+        ambigua = not protocollo and len(candidati) > 1
+        if not protocollo and len(candidati) == 1:
+            protocollo = next(iter(candidati))
         chiave = f"{protocollo}|{data}|{cents}" if protocollo else f"id:{q.get('id')}"
         p = gruppi.setdefault(chiave, {
             "chiave": chiave, "data": data, "protocollo": protocollo, "importo_cents": cents,
             "quietanza_ids": [], "movimento_id": None,
         })
+        if ambigua:
+            p["da_verificare"] = "Copia senza protocollo compatibile con piu' pagamenti: non conteggiata nuovamente"
         if not _riga_della_dilazione(righe[0], piano):
             p["periodo_ridotto"] = {"periodo_originale": list(_periodo_riga(righe[0])),
                                      "motivo": "Coordinate e importo rata: unico piano compatibile"}
@@ -324,6 +371,7 @@ def abbina_rate(piano: Dict[str, Any], quietanze: Iterable[Dict[str, Any]], oggi
     rate = []
     for rata in sorted(piano.get("rate") or [], key=lambda r: r["numero"]):
         scelto = next((p for p in pagamenti if p["chiave"] not in usati
+                       and not p.get("da_verificare")
                        and p["importo_cents"] == rata["importo_cents"]), None)
         esito = {**rata, "quietanza_ids": [], "movimento_id": None, "data_pagamento": None}
         if scelto:
@@ -339,7 +387,7 @@ def abbina_rate(piano: Dict[str, Any], quietanze: Iterable[Dict[str, Any]], oggi
         rate.append(esito)
     # I versamenti della dilazione rimasti senza rata si affiancano, in ordine,
     # alle rate senza pagamento: e' un fatto da verificare, non un pagamento.
-    restanti = [p for p in pagamenti if p["chiave"] not in usati]
+    restanti = [p for p in pagamenti if p["chiave"] not in usati and not p.get("da_verificare")]
     aperte = [r for r in rate if r["stato"] != RATA_PAGATA]
     for rata, p in zip(aperte, restanti):
         rata.update(stato=RATA_IMPORTO_DIVERSO, versamento_diverso={

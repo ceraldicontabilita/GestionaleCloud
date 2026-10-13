@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import hashlib
 import io
+import logging
 import re
 from typing import Any
 
@@ -19,6 +20,17 @@ def _pdf_text(content: bytes) -> tuple[str, bool]:
         text = "\n".join(page.extract_text() or "" for page in PdfReader(io.BytesIO(content)).pages)
     except Exception:
         pass
+    # Alcuni PDF Equitalia estraggono tutte le parole attaccate con pypdf.
+    # Recupera gli spazi dalle coordinate prima di interpretare CF e riferimenti.
+    if text and len(text.split()) < len(text) / 30:
+        try:
+            import fitz
+            with fitz.open(stream=content, filetype="pdf") as pdf:
+                positioned = "\n".join(page.get_text(sort=True) for page in pdf)
+            if len(positioned.split()) > len(text.split()):
+                text = positioned
+        except Exception as exc:
+            logging.getLogger(__name__).warning("Lettura PDF per coordinate non disponibile (%s)", type(exc).__name__)
     if len(text.strip()) >= 80:
         return text, False
     try:
@@ -87,6 +99,7 @@ def parse_dimissioni(text: str) -> dict[str, Any]:
 
 def parse_ader(text: str, document_type: str) -> dict[str, Any]:
     compact = re.sub(r"\s+", " ", text)
+    comunicazione = bool(re.search(r"Comunicazione delle somme dovute", compact, re.I))
     applicant_cf = _match(r"sottoscritto/a\s+([A-Z0-9]{16})", compact)
     company_cf = _match(
         r"del/della\s+.+?\s+codice\s+fiscale\s+(\d{11})", compact,
@@ -99,6 +112,11 @@ def parse_ader(text: str, document_type: str) -> dict[str, Any]:
     )
     tax_codes = list(dict.fromkeys(re.findall(r"\b(?:\d{11}|[A-Z]{6}\d{2}[A-Z]\d{2}[A-Z]\d{3}[A-Z])\b", compact, re.I)))
     claims = list(dict.fromkeys(re.findall(r"\b\d{20}\b", compact)))
+    riferimento = _match(r"Documento\s+(?:rif\.|n\.)\s*[A-Z]{2}\s*-\s*(\d{20})", compact)
+    if comunicazione:
+        company_cf = company_cf or _match(r"Codice\s+fiscale\s+(\d{11})\b", compact)
+        if riferimento:
+            claims = [c for c in claims if c not in {riferimento, riferimento[:17] + "000"}]
     notification_dates = [
         _iso_date(value)
         for value in re.findall(r"\b\d{2}/\d{2}/\d{4}\b", compact)
@@ -143,6 +161,27 @@ def parse_ader(text: str, document_type: str) -> dict[str, Any]:
                 "requires_financial_confirmation": True,
             },
         ]
+    dati_comunicazione = {}
+    if comunicazione:
+        from decimal import Decimal
+        def cents(value):
+            return int(Decimal(value.replace('.', '').replace(',', '.')) * 100)
+        money = r"([\d.]+,\d{2})"
+        tabella = re.search(r"Data scadenza(.*?)Totale complessivo", compact, re.I)
+        rate = []
+        if tabella:
+            for n, r in enumerate(re.finditer(r"(\d{2}/\d{2}/\d{4})\s+" + money + r"\s+" + money + r"\s+" + money, tabella[1]), 1):
+                capitale, interessi, totale = (cents(r[i]) for i in (2, 3, 4))
+                if capitale + interessi == totale:
+                    rate.append({"numero": n, "scadenza": _iso_date(r[1]), "capitale_cents": capitale,
+                                 "interessi_cents": interessi, "importo_cents": totale})
+        totale = re.search(r"Totale complessivo\s+" + money + r"\s+" + money + r"\s+" + money, compact, re.I)
+        quadra = bool(totale and rate and sum(r['importo_cents'] for r in rate) == cents(totale[3]))
+        dati_comunicazione = {"numero_comunicazione": riferimento, "rate": rate,
+                              "totale_dovuto_cents": cents(totale[3]) if totale else None,
+                              "piano_quadra": quadra}
+        subtype = "comunicazione_somme_dovute"
+        expectations = [e for e in expectations if e['expectation_type'] == 'PAGAMENTO_CARTELLA']
     return {
         "tipo_documento": document_type,
         "sottotipo": subtype,
@@ -161,9 +200,10 @@ def parse_ader(text: str, document_type: str) -> dict[str, Any]:
         "association_keys": claims,
         "relation_keys": relation_keys,
         "workflow_expectations": expectations,
-        "obligation_status": "IN_ATTESA_ESITO" if expectations else "APERTO",
-        "requires_review": not bool(claims and (company_cf or tax_codes)),
+        "obligation_status": "IN_ATTESA_ESITO" if expectations and not comunicazione else "APERTO",
+        "requires_review": not bool(claims and (company_cf or tax_codes)) or (comunicazione and not dati_comunicazione['piano_quadra']),
         "is_payment_evidence": False,
+        **dati_comunicazione,
     }
 
 

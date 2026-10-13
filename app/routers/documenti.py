@@ -2682,7 +2682,8 @@ async def _archive_non_payment_document(
         "file_size": len(content), "category": document_type,
         "category_label": labels.get(document_type, document_type),
         "document_type": document_type,
-        "evidence_role": evidence_roles.get(document_type, "obbligazione"),
+        "evidence_role": ("obbligazione" if parsed_metadata.get("sottotipo") == "comunicazione_somme_dovute"
+                          else evidence_roles.get(document_type, "obbligazione")),
         "is_payment_evidence": False, "pagato": False, "chiuso": False,
         "status": "pagamento_non_eseguito" if negative_outcome else "da_verificare",
         "processed": negative_outcome,
@@ -3641,9 +3642,13 @@ async def upload_documento_automatico(
                 codes.update(c[1:] for c in list(codes) if len(c) == 18 and c.startswith(("1", "3")))
                 if codes:
                     if archived.get("duplicate") and (metadata or {}).get("payment_modules"):
-                        await db["documents_inbox"].update_one({"id": archived["doc_id"]}, {"$set": {
+                        patch = {
                             "parsed_metadata.payment_modules": metadata["payment_modules"],
-                        }})
+                        }
+                        if metadata.get("sottotipo") == "comunicazione_somme_dovute" and metadata.get("piano_quadra"):
+                            patch.update({f"parsed_metadata.{k}": v for k, v in metadata.items()})
+                            patch.update({"evidence_role": "obbligazione", "relation_keys": metadata["relation_keys"]})
+                        await db["documents_inbox"].update_one({"id": archived["doc_id"]}, {"$set": patch})
                     receipts = await db["ricevute_pagopa"].find({"$or": [
                         {"identificativo_bolletta": {"$in": list(codes)}}, {"iuv": {"$in": list(codes)}}
                     ], "duplicate_of": {"$exists": False}}, {"_id": 0, "pdf_data": 0}).to_list(100)
