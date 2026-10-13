@@ -61,6 +61,12 @@ def test_conferma_non_segna_inviato_e_invio_registra_canale_e_destinatario(monke
     assert ordine["invio_canale"] == "email"
     assert ordine["invio_destinatario"] == "fornitore@example.com"
     assert ordine["inviato_da_dipendente_id"] == "hr-admin"
+    assert ordine["numero_ordine"].startswith("ORD-")
+    assert ordine["archivio_invio_immutabile"] is True
+    assert ordine["prodotti"][0]["prezzo_ordinato"] == 0
+    assert ordine["snapshot_invio"]["numero_ordine"] == ordine["numero_ordine"]
+    assert ordine["snapshot_invio"]["fornitore"] == "Fornitore Uno"
+    assert ordine["snapshot_invio"]["prodotti"][0]["prodotto_id"] == "p-1"
     assert len(residui) == 1 and residui[0]["prodotti"][0]["prodotto_id"] == "p-2"
     assert secondo["gia_inviato"] is True
 

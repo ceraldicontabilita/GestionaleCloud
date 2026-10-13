@@ -82,11 +82,23 @@ function TabRicette({ solaLetturaOperatore = false }) {
   // Frigoriferi/congelatori REALI configurati (Attrezzature), non la lista
   // generica di fallback — richiesta Enzo 20/07/2026.
   const [attrezzature, setAttrezzature] = useState({ frigoriferi: [], congelatori: [] });
-  useEffect(() => {
-    axios.get(`${API}/attrezzature/`)
-      .then(r => setAttrezzature(r.data || { frigoriferi: [], congelatori: [] }))
-      .catch(() => {});
+  const caricaDestinazioni = useCallback(async (mostraErrore = false) => {
+    try {
+      const r = await axios.get(`${API}/attrezzature/destinazioni`, { timeout: 15000 });
+      setAttrezzature({
+        frigoriferi: Array.isArray(r.data?.frigoriferi) ? r.data.frigoriferi.filter(a => !a.fuori_servizio) : [],
+        congelatori: Array.isArray(r.data?.congelatori) ? r.data.congelatori.filter(a => !a.fuori_servizio) : [],
+      });
+    } catch {
+      if (mostraErrore) toast("Frigoriferi e congelatori non caricati: premi Riprova nel modale", "err");
+    }
   }, []);
+  useEffect(() => { caricaDestinazioni(false); }, [caricaDestinazioni]);
+  useEffect(() => {
+    if (produciR && attrezzature.frigoriferi.length === 0 && attrezzature.congelatori.length === 0) {
+      caricaDestinazioni(true);
+    }
+  }, [produciR, attrezzature.frigoriferi.length, attrezzature.congelatori.length, caricaDestinazioni]);
 
   const carica = useCallback(async () => {
     setLoading(true);

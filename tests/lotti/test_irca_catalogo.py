@@ -5,6 +5,7 @@ from mongomock_motor import AsyncMongoMockClient
 from app.lotti.routers import irca as mod
 from app.lotti.routers.irca import (
     DistintaPayload,
+    PreferitoRicettaPayload,
     RicettaSelezionata,
     _candidati_nome_mepa,
     _numero_dose,
@@ -54,6 +55,7 @@ RICETTA = """
   <a href="/it/pdf/recipe/42">PDF</a>
   <section class="all-ingredients"><div class="paragraph--ingredients"><h4>Farina</h4><p class="dose">1000g</p></div></section>
   <section class="paragraph--steps"><h2>IMPASTO</h2><div class="paragraph--ingredients"><h4><a href="/it/prodotti/trial-thermotech">TRIAL THERMOTECH</a></h4><p class="dose">10g</p></div><div class="preparation--container"><p>Impastare bene.</p></div></section>
+  <section class="paragraph--steps"><h2>Composizione finale</h2><div class="preparation--container"><p>Cuocere per 15 minuti.</p><p>AVVERTENZE: lasciare spazio tra i biscotti.</p></div></section>
   <div class="recipe-product-wrapper"><div class="views-row"><h4 class="badge">PANIFICAZIONE</h4><h3>TRIAL THERMOTECH</h3><a href="/it/prodotti/trial-thermotech">Read more</a></div></div>
 </article>
 """
@@ -75,6 +77,8 @@ def test_estrae_ricetta_irca_senza_confonderla_con_ricetta_operativa():
     assert r["nome"] == "CROISSANT"
     assert r["ingredienti"] == [{"nome": "Farina", "dose": "1000g", "prodotto_irca_url": ""}]
     assert r["fasi"][0]["preparazione"] == "Impastare bene."
+    assert r["fasi"][1]["nome"] == "Composizione finale"
+    assert "AVVERTENZE" in r["fasi"][1]["preparazione"]
     assert r["prodotti_irca"][0]["slug"] == "trial-thermotech"
     assert r["pdf_url"].endswith("/it/pdf/recipe/42")
 
@@ -187,6 +191,7 @@ def test_distinta_distingue_acquistati_da_mancanti_usando_solo_fatture(monkeypat
             "slug": "r1", "nome": "Ricetta", "ingredienti": [
                 {"nome": "COMPRATO", "dose": "100g", "prodotto_irca_url": "https://www.ircagroup.com/it/prodotti/comprato"},
                 {"nome": "MANCANTE", "dose": "50g", "prodotto_irca_url": "https://www.ircagroup.com/it/prodotti/mancante"},
+                {"nome": "DA ASSOCIARE", "dose": "25g", "prodotto_irca_url": "https://www.ircagroup.com/it/prodotti/da-associare"},
             ],
         })
         await database.catalogo_forno_prodotti.insert_many([
@@ -206,9 +211,32 @@ def test_distinta_distingue_acquistati_da_mancanti_usando_solo_fatture(monkeypat
 
     distinta, carrello = asyncio.run(scenario())
     stati = {r["ingrediente"]: r["stato"] for r in distinta["righe"]}
-    assert stati == {"COMPRATO": "gia_acquistato", "MANCANTE": "da_acquistare"}
+    assert stati == {"COMPRATO": "gia_acquistato", "MANCANTE": "da_acquistare", "DA ASSOCIARE": "DA_VERIFICARE"}
     assert distinta["totali"]["gia_acquistati"] == 1
     assert distinta["totali"]["da_acquistare"] == 1
-    assert carrello["aggiunti"] == 1
+    assert carrello["aggiunti"] == 2
     assert carrello["gia_acquistati"] == 1
-    assert carrello["righe"][0]["codici"] == ["MANCANTE"]
+    assert carrello["da_verificare_aggiunti"] == 1
+    assert {r["nome"]: r["richiede_associazione"] for r in carrello["righe"]} == {
+        "IRCA MANCANTE": False, "DA ASSOCIARE": True,
+    }
+
+
+def test_preferito_ricetta_persiste_e_viene_ordinato_prima(monkeypatch):
+    database = AsyncMongoMockClient()["Irca_Preferiti_Test"]
+    monkeypatch.setattr(mod, "db", database)
+
+    async def scenario():
+        await database.irca_ricette.insert_many([
+            {"id": "irca-ricetta:zeta", "slug": "zeta", "nome": "Zeta"},
+            {"id": "irca-ricetta:alfa", "slug": "alfa", "nome": "Alfa"},
+        ])
+        await mod.imposta_ricetta_preferita(
+            "zeta", PreferitoRicettaPayload(preferito=True), _admin={},
+        )
+        elenco = await mod.lista_ricette(q="", prodotto="", skip=0, limit=100)
+        return elenco, await database.irca_ricette.find_one({"slug": "zeta"})
+
+    elenco, salvata = asyncio.run(scenario())
+    assert salvata["preferito"] is True
+    assert [r["slug"] for r in elenco["ricette"]] == ["zeta", "alfa"]

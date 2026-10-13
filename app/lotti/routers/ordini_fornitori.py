@@ -383,7 +383,7 @@ async def _prodotti_gia_in_ordine() -> tuple:
         {"stato": {"$in": ["bozza", "confermato", "inviato_fornitori",
                             "inviato_manualmente", "inviato", "ricevuto_parziale"]}},
         {"_id": 0, "prodotti.prodotto_id": 1, "prodotti.nome": 1},
-        sort=[("created_at", -1)],
+        sort=[("inviato_at", -1), ("created_at", -1)],
     ).to_list(1000)
     ids = {pp.get("prodotto_id") for o in aperte for pp in o.get("prodotti", []) if pp.get("prodotto_id")}
     nomi = {normalize_nome(pp.get("nome", "")) for o in aperte for pp in o.get("prodotti", []) if pp.get("nome")}
@@ -1263,7 +1263,16 @@ async def invia_ordine_confermato(ordine_id: str, payload: InvioConfermato, requ
         return {"success": True, "gia_inviato": True}
     ordine.pop("_id", None)
     prodotti = ordine.get("prodotti") or []
-    confermate = [p for p in prodotti if p.get("confermato")]
+    numero_ordine = ordine.get("numero_ordine") or f"ORD-{datetime.now(timezone.utc):%Y%m%d}-{ordine_id[:8].upper()}"
+    confermate = [
+        {
+            **p,
+            "prezzo_ordinato": float(p.get("prezzo_ultimo") or p.get("prezzo") or 0),
+            "quantita_ordinata": p.get("quantita"),
+            "iva_ordinata_pct": float(p.get("iva_pct") or 0),
+        }
+        for p in prodotti if p.get("confermato")
+    ]
     residue = [p for p in prodotti if not p.get("confermato")]
     if not confermate:
         raise HTTPException(400, "Nessuna riga confermata: conferma le righe da inviare")
@@ -1290,7 +1299,15 @@ async def invia_ordine_confermato(ordine_id: str, payload: InvioConfermato, requ
         # ma ricezione merce e riconciliazione fattura cercavano solo
         # "inviato_fornitori" → gli ordini inviati non si chiudevano MAI da soli.
         {"$set": {"prodotti": confermate, "updated_at": now,
-                  "stato": "inviato_fornitori", "inviato_at": now}},
+                  "stato": "inviato_fornitori", "inviato_at": now,
+                  "numero_ordine": numero_ordine, "archivio_invio_immutabile": True,
+                  "snapshot_invio": {"numero_ordine": numero_ordine,
+                                      "inviato_at": now,
+                                      "canale": payload.canale,
+                                      "destinatario": destinatario,
+                                      "fornitore": fornitore,
+                                      "prodotti": confermate,
+                                      "totali": ordine.get("totali") or {}}}},
     )
 
     from app.lotti.eventi import publish
@@ -1400,25 +1417,51 @@ def _normalizza_nome(nome: str) -> str:
     return _re.sub(r"\s+", " ", (nome or "").lower().strip())
 
 
-def _match_prodotto(nome_fattura: str, nome_ordine: str, soglia: float = 0.65) -> bool:
-    """True se i due nomi si riferiscono allo stesso prodotto (match fuzzy semplice)."""
-    nf = _normalizza_nome(nome_fattura)
-    no = _normalizza_nome(nome_ordine)
-    if not nf or not no:
-        return False
-    # Match esatto
-    if nf == no:
-        return True
-    # Containment: uno contiene l'altro
-    if nf in no or no in nf:
-        return True
-    # Parole in comune / Jaccard
-    wf = set(nf.split())
-    wo = set(no.split())
-    if not wf or not wo:
-        return False
-    jaccard = len(wf & wo) / len(wf | wo)
-    return jaccard >= soglia
+def _codici_riconciliazione(riga: dict) -> set[str]:
+    """Identificativi espliciti; nessuna associazione per semplice somiglianza."""
+    from app.lotti.routers.utils import _norm_codice_articolo
+
+    def lista(valore):
+        return valore if isinstance(valore, list) else ([valore] if valore else [])
+
+    valori = [
+        riga.get("codice_articolo"), riga.get("codice"), riga.get("prodotto_id"),
+        *lista(riga.get("codici")), *lista(riga.get("codici_alias")),
+    ]
+    codici = set()
+    for valore in valori:
+        codice = _norm_codice_articolo(str(valore or "").replace("cat_", ""))
+        if codice:
+            codici.add(codice)
+    return codici
+
+
+def _indice_fattura_esatto(prodotto_ordine: dict, prodotti_fattura: list, usati: set[int]) -> int | None:
+    """Abbina solo codice esatto o nome normalizzato esatto e univoco."""
+    codici_ordine = _codici_riconciliazione(prodotto_ordine)
+    per_codice = [
+        i for i, prodotto in enumerate(prodotti_fattura)
+        if i not in usati and codici_ordine & _codici_riconciliazione(prodotto)
+    ]
+    if len(per_codice) == 1:
+        return per_codice[0]
+    nome_ordine = _normalizza_nome(
+        prodotto_ordine.get("nome", "") or prodotto_ordine.get("prodotto_nome", "")
+    )
+    per_nome = [
+        i for i, prodotto in enumerate(prodotti_fattura)
+        if i not in usati and _normalizza_nome(
+            prodotto.get("descrizione", "") or prodotto.get("nome", "")
+        ) == nome_ordine
+    ]
+    return per_nome[0] if nome_ordine and len(per_nome) == 1 else None
+
+
+def _numero_prezzo(valore) -> float:
+    try:
+        return float(str(valore or 0).replace(",", ".").strip())
+    except (TypeError, ValueError):
+        return 0.0
 
 
 async def riconcilia_fattura_con_ordine(
@@ -1447,7 +1490,7 @@ async def riconcilia_fattura_con_ordine(
     # routine; (b) MAI il fallback su ordini di altri fornitori (chiudeva
     # bozze estranee marcandole "ricevuto").
     rx_forn = re.escape(fornitore[:10])
-    ordine = await db.ordini_fornitori.find_one(
+    candidati_ordine = await db.ordini_fornitori.find(
         {
             "stato": {"$in": ["inviato_fornitori", "inviato_manualmente", "inviato"]},
             "$or": [
@@ -1456,25 +1499,51 @@ async def riconcilia_fattura_con_ordine(
             ],
         },
         {"_id": 0},
-        sort=[("created_at", -1)],
-    )
+    ).sort([("inviato_at", -1), ("created_at", -1)]).limit(50).to_list(50)
+    chiave_fornitore = _chiave_fornitore_ordine(fornitore)
+    ordine = next((candidato for candidato in candidati_ordine if chiave_fornitore in {
+        _chiave_fornitore_ordine(candidato.get("fornitore")),
+        *(_chiave_fornitore_ordine(p.get("fornitore")) for p in candidato.get("prodotti") or []),
+    }), None)
     if not ordine:
         return {"riconciliato": False, "motivo": f"nessun ordine inviato per {fornitore}"}
 
     prodotti_ordine = ordine.get("prodotti", [])
-    nomi_fattura = [
-        _normalizza_nome(p.get("descrizione", "") or p.get("nome", "")) for p in prodotti_fattura
-    ]
-
     ricevuti = []
     mancanti = []
+    scostamenti_prezzo = []
+    righe_fattura_usate: set[int] = set()
 
     for prod_ord in prodotti_ordine:
         nome_ord = prod_ord.get("nome", "") or prod_ord.get("prodotto_nome", "")
-        trovato = any(_match_prodotto(nf, nome_ord) for nf in nomi_fattura if nf)
+        indice = _indice_fattura_esatto(prod_ord, prodotti_fattura, righe_fattura_usate)
+        trovato = indice is not None
 
         if trovato:
-            ricevuti.append({**prod_ord, "ricevuto": True, "fattura_id": fattura_id})
+            righe_fattura_usate.add(indice)
+            riga_fattura = prodotti_fattura[indice]
+            prezzo_ordine = _numero_prezzo(
+                prod_ord.get("prezzo_ordinato") or prod_ord.get("prezzo_ultimo") or prod_ord.get("prezzo")
+            )
+            prezzo_fattura = _numero_prezzo(
+                riga_fattura.get("prezzo_unitario") or riga_fattura.get("prezzo")
+            )
+            confronto = {"stato": "non_disponibile", "prezzo_ordine": prezzo_ordine,
+                         "prezzo_fattura": prezzo_fattura, "differenza_euro": 0}
+            if prezzo_ordine > 0 and prezzo_fattura > 0:
+                differenza = round(prezzo_fattura - prezzo_ordine, 4)
+                confronto = {
+                    "stato": "regolare" if abs(differenza) < 0.005 else (
+                        "fattura_maggiore" if differenza > 0 else "fattura_minore"
+                    ),
+                    "prezzo_ordine": prezzo_ordine,
+                    "prezzo_fattura": prezzo_fattura,
+                    "differenza_euro": differenza,
+                }
+                if confronto["stato"] != "regolare":
+                    scostamenti_prezzo.append({"prodotto": nome_ord, **confronto})
+            ricevuti.append({**prod_ord, "ricevuto": True, "fattura_id": fattura_id,
+                             "confronto_prezzo": confronto})
         else:
             # Solo se il prodotto era per questo fornitore
             fornitore_prod = (prod_ord.get("fornitore") or "").lower()
@@ -1498,6 +1567,7 @@ async def riconcilia_fattura_con_ordine(
                     "fornitore": fornitore,
                     "ricevuti": ricevuti,
                     "mancanti": mancanti,
+                    "scostamenti_prezzo": scostamenti_prezzo,
                     "riconciliato_il": datetime.now(timezone.utc).isoformat(),
                 },
                 "updated_at": datetime.now(timezone.utc).isoformat(),
@@ -1527,6 +1597,31 @@ async def riconcilia_fattura_con_ordine(
             }
         )
 
+    for scostamento in scostamenti_prezzo:
+        maggiore = scostamento["differenza_euro"] > 0
+        differenza = abs(scostamento["differenza_euro"])
+        verso = "maggiore" if maggiore else "minore"
+        await db.alert_prezzi.insert_one({
+            "id": str(uuid.uuid4()),
+            "tipo": "SCOSTAMENTO_ORDINE_FATTURA",
+            "titolo": f"Ordine {ordine.get('numero_ordine') or ordine['id']}: prezzo fattura {verso}",
+            "descrizione": (
+                f"Il prodotto '{scostamento['prodotto']}' dell'ordine "
+                f"{ordine.get('numero_ordine') or ordine['id']} del "
+                f"{ordine.get('inviato_at') or ordine.get('data_ordine') or ''} ha un prezzo in fattura "
+                f"{verso} di € {differenza:.2f}: ordinato € {scostamento['prezzo_ordine']:.2f}, "
+                f"fatturato € {scostamento['prezzo_fattura']:.2f}."
+            ),
+            "priorita": "media",
+            "route": "ordini",
+            "ordine_id": ordine["id"],
+            "numero_ordine": ordine.get("numero_ordine") or ordine["id"],
+            "fattura_id": fattura_id,
+            **scostamento,
+            "creato_il": datetime.now(timezone.utc).isoformat(),
+            "letto": False,
+        })
+
     _logger_ord.info(
         f"[RICONCILIAZIONE] {fornitore} — ordine {ordine['id'][:8]}: "
         f"{len(ricevuti)} ricevuti, {len(mancanti)} mancanti → stato={nuovo_stato}"
@@ -1538,7 +1633,8 @@ async def riconcilia_fattura_con_ordine(
         "stato_ordine": nuovo_stato,
         "ricevuti": len(ricevuti),
         "mancanti": len(mancanti),
-        "alert_creato": len(mancanti) > 0,
+        "scostamenti_prezzo": len(scostamenti_prezzo),
+        "alert_creato": bool(mancanti or scostamenti_prezzo),
     }
 
 

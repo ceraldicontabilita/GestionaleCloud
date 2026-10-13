@@ -474,7 +474,8 @@ async def job_sincronizza_operatori_hr():
 
 def setup_scheduler():
     global scheduler_started
-    if not any(scheduler_job_enabled(job_id) for job_id in LOTTI_RETIRED_JOBS):
+    schedulabili = set(LOTTI_RETIRED_JOBS) | {"haccp_daily_generation"}
+    if not any(scheduler_job_enabled(job_id) for job_id in schedulabili):
         logger.info("[Scheduler Lotti] Procedure periodiche disattivate definitivamente")
         return
     if scheduler_started:
@@ -482,88 +483,84 @@ def setup_scheduler():
 
     TZ = "Europe/Rome"
 
-    scheduler.add_job(
+    def aggiungi_se_attivo(job_id, funzione, trigger, nome):
+        if not scheduler_job_enabled(job_id):
+            return False
+        scheduler.add_job(
+            funzione, trigger, id=job_id, name=nome, replace_existing=True,
+        )
+        return True
+
+    aggiungi_se_attivo(
+        "aggiorna_riferimenti_fatture",
         job_aggiorna_riferimenti_fatture,
         CronTrigger(hour=1, minute=0, timezone=TZ),
-        id="aggiorna_riferimenti_fatture",
-        name="Aggiornamento Riferimenti Fatture nei Lotti (>30gg)",
-        replace_existing=True,
+        "Aggiornamento Riferimenti Fatture nei Lotti (>30gg)",
     )
-    scheduler.add_job(
+    aggiungi_se_attivo(
+        "pulizia_lotti_scaduti",
         job_pulisci_lotti_scaduti,
         CronTrigger(hour=1, minute=30, timezone=TZ),
-        id="pulizia_lotti_scaduti",
-        name="Pulizia Lotti Scaduti (>30gg non in ricetta)",
-        replace_existing=True,
+        "Pulizia Lotti Scaduti (>30gg non in ricetta)",
     )
-    scheduler.add_job(
+    aggiungi_se_attivo(
+        "haccp_daily_generation",
         job_genera_haccp_giornaliero,
         CronTrigger(hour=7, minute=0, timezone=TZ),
-        id="haccp_daily_generation",
-        name="Generazione HACCP Giornaliera (07:00)",
-        replace_existing=True,
+        "Generazione HACCP Giornaliera (07:00)",
     )
-    scheduler.add_job(
+    aggiungi_se_attivo(
+        "digest_mattutino",
         job_digest_mattutino,
         CronTrigger(hour=7, minute=30, timezone=TZ),
-        id="digest_mattutino",
-        name="Promemoria mattutino WhatsApp (07:30) — lotti in scadenza/scaduti",
-        replace_existing=True,
+        "Promemoria mattutino WhatsApp (07:30) — lotti in scadenza/scaduti",
     )
-    scheduler.add_job(
+    aggiungi_se_attivo(
+        "backup_notturno",
         job_backup_notturno,
         CronTrigger(hour=2, minute=30, timezone=TZ),
-        id="backup_notturno",
-        name="Backup DB Notturno (rotazione 7 giorni)",
-        replace_existing=True,
+        "Backup DB Notturno (rotazione 7 giorni)",
     )
-    scheduler.add_job(
+    aggiungi_se_attivo(
+        "pipeline_aggiornamento",
         job_pipeline_aggiornamento,
         CronTrigger(hour=4, minute=0, timezone=TZ),
-        id="pipeline_aggiornamento",
-        name="Pipeline Aggiornamento Prezzi e Food Cost",
-        replace_existing=True,
+        "Pipeline Aggiornamento Prezzi e Food Cost",
     )
 
-    scheduler.add_job(
+    aggiungi_se_attivo(
+        "normalizza_nuovi_prodotti",
         job_normalizza_nuovi_prodotti,
         CronTrigger(hour=3, minute=0, timezone=TZ),
-        id="normalizza_nuovi_prodotti",
-        name="Normalizzazione Nuovi Prodotti da Fatture (03:00)",
-        replace_existing=True,
+        "Normalizzazione Nuovi Prodotti da Fatture (03:00)",
     )
 
-    scheduler.add_job(
+    aggiungi_se_attivo(
+        "sincronizza_operatori_hr",
         job_sincronizza_operatori_hr,
         CronTrigger(hour=5, minute=50, timezone=TZ),
-        id="sincronizza_operatori_hr",
-        name="Operatori tablet = anagrafica HR (ogni giorno 5:50)",
-        replace_existing=True,
+        "Operatori tablet = anagrafica HR (ogni giorno 5:50)",
     )
 
-    scheduler.add_job(
+    aggiungi_se_attivo(
+        "sync_gestionale_fatture",
         job_sync_gestionale_fatture,
         CronTrigger(minute="5,35", hour="5-22", timezone=TZ),
-        id="sync_gestionale_fatture",
-        name="Ricezione fatture da GestionaleCloud (ogni 30 min, 05-22)",
-        replace_existing=True,
+        "Ricezione fatture da GestionaleCloud (ogni 30 min, 05-22)",
     )
 
-    scheduler.add_job(
+    aggiungi_se_attivo(
+        "lettura_articoli_ai",
         job_lettura_articoli_ai,
         CronTrigger(minute=40, hour="6-22/3", timezone=TZ),
-        id="lettura_articoli_ai",
-        name="Lettura AI descrizioni articoli per il confronto prezzi (ogni 3 ore, 06-22)",
-        replace_existing=True,
+        "Lettura AI descrizioni articoli per il confronto prezzi (ogni 3 ore, 06-22)",
     )
 
     scheduler.start()
     scheduler_started = True
-    asyncio.create_task(_lettura_articoli_ai_dopo_avvio())
-    print(
-        "[Scheduler] Avviato — 01:00 ref-fatture | 01:30 pulizia-lotti | "
-        "ogni:30 GestionaleCloud-fatture | 02:30 backup | 03:00 normalizza | 04:00 pipeline | 07:00 HACCP+riordino"
-    )
+    if scheduler_job_enabled("lettura_articoli_ai"):
+        asyncio.create_task(_lettura_articoli_ai_dopo_avvio())
+    logger.info("[Scheduler Lotti] Avviati soltanto i job consentiti: %s", ", ".join(job.id for job in scheduler.get_jobs()))
 
     # ── CATCHUP ALL'AVVIO ────────────────────────────────────────────────────
     # Se il backend riparte (deploy/hot-reload) dopo l'orario pianificato di un

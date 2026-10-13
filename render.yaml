@@ -171,11 +171,11 @@ services:
         value: "combined"
       - key: ENABLE_SCHEDULER
         value: "false"
-      # Le altre 69 procedure ritirate sono bloccate nel codice (scheduler_policy.py),
+      # Le altre 68 procedure ritirate sono bloccate nel codice (scheduler_policy.py),
       # anche con ENABLE_SCHEDULER=true o SCHEDULER_JOB_ALLOWLIST vuota.
       # La allowlist include posta attendibile, due import Drive e Banco BPM.
       - key: SCHEDULER_JOB_ALLOWLIST
-        value: "drive_cartella_unica,import_cartelle_drive,enable_banking_giro,gmail_full_scan,mittenti_email_sync"
+        value: "drive_cartella_unica,import_cartelle_drive,enable_banking_giro,gmail_full_scan,mittenti_email_sync,haccp_daily_generation"
       # Nessuna migrazione, semina o riparazione dati implicita al riavvio:
       # il database operativo resta vergine finche' il titolare non importa.
       - key: RUN_STARTUP_DATA_REPAIRS

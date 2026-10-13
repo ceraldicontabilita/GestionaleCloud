@@ -264,15 +264,23 @@ async def _arricchisci_flipsnack(doc: dict, client: httpx.AsyncClient) -> dict:
             return doc
         soup = BeautifulSoup(response.text, "html.parser")
         meta = lambda prop: soup.select_one(f'meta[property="{prop}"]')
+        title = meta("og:title")
         desc = meta("og:description")
         cover = meta("og:image")
         iframe = soup.select_one("iframe[src]")
         hash_match = re.search(r"window\.flipbookHash\s*=\s*['\"]([^'\"]+)", response.text)
         doc["descrizione"] = desc.get("content", "").strip() if desc else ""
+        doc["titolo_originale"] = title.get("content", "").strip() if title else ""
         doc["copertina_flipsnack_url"] = cover.get("content", "").strip() if cover else ""
         doc["player_url"] = iframe.get("src", "").strip() if iframe else ""
         doc["flipbook_hash"] = hash_match.group(1) if hash_match else ""
         doc["sha256_html_flipsnack"] = hashlib.sha256(response.content).hexdigest()
+        testo_lingua = " ".join((
+            doc.get("titolo_originale", ""), doc.get("descrizione", ""), url,
+        )).lower()
+        doc["lingua"] = "en" if any(indizio in testo_lingua for indizio in (
+            "vegan pastry", "catalog by", "recipe book", "-en-", "/en/",
+        )) else "it"
     except httpx.HTTPError:
         pass
     return doc
@@ -354,7 +362,7 @@ async def _bulk_upsert(collection, documents: list[dict], chiave: str = "id") ->
     ]
     # L'adattatore Supabase persiste l'intero lotto con poche chiamate; il mock
     # di test usa la compatibilita' una operazione alla volta.
-    if hasattr(collection, "database") and hasattr(collection.database, "store"):
+    if collection.__class__.__module__ == "app.lotti.supabase_document_store":
         await collection.bulk_write(richieste, ordered=False)
     else:
         from app.lotti.bulk_compat import bulk_write_compat
@@ -366,7 +374,7 @@ async def _bulk_upsert_ricette(documents: list[dict]) -> None:
     if not documents:
         return
     richieste = [UpdateOne({"id": d["id"]}, {"$set": d}, upsert=True) for d in documents]
-    if hasattr(db["irca_ricette"], "database") and hasattr(db["irca_ricette"].database, "store"):
+    if db["irca_ricette"].__class__.__module__ == "app.lotti.supabase_document_store":
         await db["irca_ricette"].bulk_write(richieste, ordered=False)
     else:
         from app.lotti.bulk_compat import bulk_write_compat
@@ -378,7 +386,7 @@ async def _bulk_upsert_cataloghi(documents: list[dict]) -> None:
     if not documents:
         return
     richieste = [UpdateOne({"id": d["id"]}, {"$set": d}, upsert=True) for d in documents]
-    if hasattr(db["irca_cataloghi"], "database") and hasattr(db["irca_cataloghi"].database, "store"):
+    if db["irca_cataloghi"].__class__.__module__ == "app.lotti.supabase_document_store":
         await db["irca_cataloghi"].bulk_write(richieste, ordered=False)
     else:
         from app.lotti.bulk_compat import bulk_write_compat
@@ -439,7 +447,7 @@ async def _collega_ricette_ai_prodotti(ricette: list[dict]) -> None:
         for p in prodotti
     ]
     if updates:
-        if hasattr(db[COLL_PRODOTTI], "database") and hasattr(db[COLL_PRODOTTI].database, "store"):
+        if db[COLL_PRODOTTI].__class__.__module__ == "app.lotti.supabase_document_store":
             await db[COLL_PRODOTTI].bulk_write(updates, ordered=False)
         else:
             from app.lotti.bulk_compat import bulk_write_compat
@@ -478,7 +486,7 @@ async def associa_prodotti_mepa() -> dict:
         elif len(unici) > 1:
             ambigui += 1
     if updates:
-        if hasattr(db.dizionario_ingredienti, "database") and hasattr(db.dizionario_ingredienti.database, "store"):
+        if db.dizionario_ingredienti.__class__.__module__ == "app.lotti.supabase_document_store":
             await db.dizionario_ingredienti.bulk_write(updates, ordered=False)
         else:
             from app.lotti.bulk_compat import bulk_write_compat
@@ -599,6 +607,10 @@ class RicettaSelezionata(BaseModel):
 
 class DistintaPayload(BaseModel):
     ricette: list[RicettaSelezionata] = Field(min_length=1, max_length=100)
+
+
+class PreferitoRicettaPayload(BaseModel):
+    preferito: bool = True
 
 
 class ProgettoDolcePayload(BaseModel):
@@ -1021,25 +1033,35 @@ async def aggiungi_distinta_carrello(
     payload: DistintaPayload, _admin=Depends(require_admin)
 ):
     distinta = await _genera_distinta(payload)
-    da_acquistare = [r for r in distinta["righe"] if r["stato"] == "da_acquistare"]
+    # Tutto cio' che manca deve comparire nell'ordine. Se il collegamento MEPA
+    # non e' ancora univoco lo inseriamo come riga "Da associare", senza
+    # inventare fornitore, codice o prezzo; i gia' acquistati restano esclusi.
+    da_acquistare = [
+        r for r in distinta["righe"]
+        if r["stato"] in {"da_acquistare", "DA_VERIFICARE"}
+    ]
     doc = await db.carrello_sospesi.find_one({"_id": "default"}, {"_id": 0}) or {}
     current = list(doc.get("righe") or [])
     ids = {item.get("id") for item in current}
     aggiunti = []
     for riga in da_acquistare:
-        codice = riga["fornitore"].get("codice", "")
+        fornitore = riga.get("fornitore") or {}
+        da_associare = riga["stato"] == "DA_VERIFICARE"
+        codice = fornitore.get("codice", "")
         item_id = f"irca-ricetta-mepa:{codice or riga['prodotto_irca_slug']}"
+        if not codice and not riga.get("prodotto_irca_slug"):
+            item_id = f"irca-ricetta-da-associare:{normalizza_nome_irca(riga['ingrediente']).lower()}"
         if item_id in ids:
             continue
         quantita = riga.get("quantita_max")
         unita = riga.get("unita") or ""
         item = {
             "id": item_id,
-            "nome": riga["fornitore"]["prodotto_nome"] or riga["ingrediente"],
+            "nome": fornitore.get("prodotto_nome") or riga["ingrediente"],
             "codici": [codice] if codice else [],
-            "fornitore": riga["fornitore"]["nome"],
-            "prezzo": riga["fornitore"].get("prezzo") or 0,
-            "prezzo_fonte": "catalogo_mepa" if riga["fornitore"].get("prezzo") else "non_disponibile",
+            "fornitore": fornitore.get("nome") or "Da assegnare",
+            "prezzo": fornitore.get("prezzo") or 0,
+            "prezzo_fonte": "catalogo_mepa" if fornitore.get("prezzo") else "non_disponibile",
             "prezzo_iva_esclusa": True,
             "quantita": 1,
             "unita_misura": "conf",
@@ -1047,8 +1069,12 @@ async def aggiungi_distinta_carrello(
             "note": (
                 f"Fabbisogno ricette IRCA: {quantita:g}{unita}. " if quantita is not None else
                 "Fabbisogno ricette IRCA: quantità quanto basta. "
+            ) + (
+                "Prodotto da associare a un articolo/fornitore prima dell'invio. "
+                if da_associare else ""
             ) + "Numero confezioni da confermare in base al formato di vendita.",
             "quantita_ordine_da_confermare": True,
+            "richiede_associazione": da_associare,
             "sospeso": False,
         }
         current.append(item)
@@ -1063,6 +1089,7 @@ async def aggiungi_distinta_carrello(
         "gia_presenti": len(da_acquistare) - len(aggiunti),
         "gia_acquistati": distinta["totali"]["gia_acquistati"],
         "da_verificare": distinta["totali"]["da_verificare"],
+        "da_verificare_aggiunti": sum(bool(r.get("richiede_associazione")) for r in aggiunti),
         "righe": aggiunti,
     }
 
@@ -1090,8 +1117,23 @@ async def lista_ricette(
         ]
     if prodotto:
         filtro["prodotti_irca.slug"] = prodotto
-    items = await db[COLL_RICETTE].find(filtro, {"_id": 0}).sort("nome", 1).skip(skip).limit(limit).to_list(limit)
+    items = await db[COLL_RICETTE].find(filtro, {"_id": 0}).sort([
+        ("preferito", -1), ("nome", 1),
+    ]).skip(skip).limit(limit).to_list(limit)
     return {"ricette": items, "totale": await db[COLL_RICETTE].count_documents(filtro)}
+
+
+@router.put("/ricette/{slug}/preferito")
+async def imposta_ricetta_preferita(
+    slug: str, payload: PreferitoRicettaPayload, _admin=Depends(require_admin),
+):
+    risultato = await db[COLL_RICETTE].update_one(
+        {"slug": slug},
+        {"$set": {"preferito": payload.preferito, "preferito_aggiornato_il": _ora()}},
+    )
+    if risultato.matched_count == 0:
+        raise HTTPException(404, "Ricetta IRCA non trovata")
+    return {"slug": slug, "preferito": payload.preferito}
 
 
 @router.get("/ricette/{slug}")

@@ -68,6 +68,11 @@ describe("gruppi di produzione dalla card ricetta", () => {
     expect(node.textContent).toContain("Rosticceria");
     expect(node.textContent).not.toContain("Pasticceria classica");
   });
+  test("la pagina ricette carica le destinazioni operative per il modale etichetta", async () => {
+    await render();
+    expect(axios.get).toHaveBeenCalledWith(expect.stringContaining("/attrezzature/destinazioni"), { timeout: 15000 });
+    expect(axios.get).not.toHaveBeenCalledWith(expect.stringMatching(/\/attrezzature\/$/));
+  });
   test("i gruppi escludono solo le scelte incompatibili e sono reversibili", () => {
     expect(categorieConGruppo(["pasqua","pasticceria_classica","colazioni"],"rosticceria_giorno",true)).toEqual(["pasqua","rosticceria_giorno"]);
     expect(categorieConGruppo(["rosticceria_giorno","pasqua"],"pasticceria_classica",true)).toEqual(["pasqua","pasticceria_classica"]);

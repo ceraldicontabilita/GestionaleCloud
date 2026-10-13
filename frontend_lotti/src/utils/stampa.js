@@ -68,9 +68,29 @@ export async function stampaDoc({ categoria, url, formato = "pdf", titolo = "", 
       return { accodato: false, diretta: false, errore: e.message };
     }
   }
-  if (isStampaAuto()) {
-    await axios.post(`${API}/stampanti/coda`, { categoria, url, formato, titolo, reparto });
-    return { accodato: true };
+  // I documenti A4 (ricette, manuali e report) seguono sempre la stampante
+  // documenti configurata per categoria. La modalita' Epson/RawBT riguarda
+  // soltanto le etichette termiche e non deve deviare una scheda ricetta.
+  if (categoria !== "etichette" || isStampaAuto()) {
+    let data;
+    try {
+      ({ data } = await axios.post(`${API}/stampanti/coda`, { categoria, url, formato, titolo, reparto }));
+    } catch (e) {
+      if (categoria === "etichette") throw e;
+      toast.error("Stampante di rete non raggiungibile: apro la scheda da stampare");
+      apriDocumentoAutenticato(url);
+      return { accodato: false, instradato: false, errore: e.message };
+    }
+    if (data?.instradato) {
+      toast.success(`Documento inviato a ${data.stampante?.nome || "stampante di rete"}`);
+      return { accodato: true, stampante: data.stampante };
+    }
+    if (categoria !== "etichette") {
+      toast.error(`Nessuna stampante configurata per ${categoria}: apro il documento`);
+      apriDocumentoAutenticato(url);
+      return { accodato: false, instradato: false };
+    }
+    return { accodato: true, instradato: false };
   }
   // Modalità classica: la scheda si apre subito, dentro il gesto del clic
   // (niente blocco popup), e il documento arriva con l'header Authorization.

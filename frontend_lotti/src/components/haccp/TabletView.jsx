@@ -91,8 +91,8 @@ export const TabletView = ({ reparto: repartoIniziale = "pasticceria", onBack })
     try {
       const r = await axios.get(`${API}/attrezzature/destinazioni`, { timeout: 15000 });
       setAttrezzature({
-        frigoriferi: Array.isArray(r.data?.frigoriferi) ? r.data.frigoriferi : [],
-        congelatori: Array.isArray(r.data?.congelatori) ? r.data.congelatori : [],
+        frigoriferi: Array.isArray(r.data?.frigoriferi) ? r.data.frigoriferi.filter(a => !a.fuori_servizio) : [],
+        congelatori: Array.isArray(r.data?.congelatori) ? r.data.congelatori.filter(a => !a.fuori_servizio) : [],
       });
     } catch {
       toast.error("Frigoriferi e congelatori non caricati: riprovo quando apri un prodotto.");

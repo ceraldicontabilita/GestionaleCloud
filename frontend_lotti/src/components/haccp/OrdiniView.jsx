@@ -913,17 +913,19 @@ function DaInviare({ onModifica }) {
   const [invioBusy, setInvioBusy] = useState(false);
   const carica = useCallback(async () => {
     try {
-      const [r1,r2,r3,s1,s2,s3] = await Promise.all([
+      const [r1,r2,r3,s1,s2,s3,s4,s5] = await Promise.all([
         axios.get(`${API}/ordini-fornitori?stato=bozza&limit=100`),
         axios.get(`${API}/ordini-fornitori?stato=confermato&limit=100`),
         axios.get(`${API}/ordini-fornitori?stato=in_modifica&limit=100`),
         axios.get(`${API}/ordini-fornitori?stato=inviato_fornitori&limit=100`),
         axios.get(`${API}/ordini-fornitori?stato=inviato&limit=100`),
         axios.get(`${API}/ordini-fornitori?stato=inviato_manualmente&limit=100`),
+        axios.get(`${API}/ordini-fornitori?stato=ricevuto&limit=100`),
+        axios.get(`${API}/ordini-fornitori?stato=ricevuto_parziale&limit=100`),
       ]);
       const lista = [...(r1.data||[]),...(r2.data||[]),...(r3.data||[])].filter(o=>(o.prodotti||[]).length);
       setOrdini(lista);
-      setStorico([...(s1.data||[]),...(s2.data||[]),...(s3.data||[])].filter(o=>(o.prodotti||[]).length)
+      setStorico([...(s1.data||[]),...(s2.data||[]),...(s3.data||[]),...(s4.data||[]),...(s5.data||[])].filter(o=>(o.prodotti||[]).length)
         .sort((a,b)=>String(b.inviato_at||b.created_at||"").localeCompare(String(a.inviato_at||a.created_at||""))));
       // Righe TUTTE pre-spuntate (richiesta Enzo 04/07/2026: "se le ho già
       // aggiunte io, perché devo rispuntarle?"): togli solo quelle che NON vuoi.
@@ -1125,10 +1127,14 @@ function DaInviare({ onModifica }) {
       {!storico.length && <div style={{color:C.muted,padding:"18px 0"}}>Nessun ordine inviato nello storico.</div>}
       {storico.map(o => <div key={`storico-${o.id}`} style={{border:`1px solid ${C.line}`,borderRadius:14,padding:12,marginBottom:8,background:"#f8faf8"}}>
         <div style={{display:"flex",justifyContent:"space-between",gap:10,alignItems:"start"}}>
-          <div><b>{o.prodotti?.[0]?.fornitore || "Fornitore"}</b><div style={{fontSize:12,color:C.muted}}>{o.inviato_at || o.data_ordine || ""} · {o.invio_canale || "invio registrato"}{o.invio_destinatario?` · ${o.invio_destinatario}`:""}</div></div>
+          <div><b>{o.prodotti?.[0]?.fornitore || "Fornitore"}</b><div style={{fontSize:12,color:C.muted}}>{o.numero_ordine || o.id} · {o.inviato_at || o.data_ordine || ""} · {o.invio_canale || "invio registrato"}{o.invio_destinatario?` · ${o.invio_destinatario}`:""}</div></div>
           <b style={{color:C.brand}}>€ {Number(o.totali?.totale || 0).toFixed(2)}</b>
         </div>
         <div style={{fontSize:12,color:C.muted,marginTop:6}}>{(o.prodotti||[]).map(p=>`${p.nome} × ${p.quantita}`).join(" · ")}</div>
+        {!!o.riconciliazione?.scostamenti_prezzo?.length && <div style={{marginTop:8,border:"1px solid #fecaca",background:"#fef2f2",color:"#991b1b",borderRadius:10,padding:9,fontSize:12,fontWeight:700}}>
+          {o.riconciliazione.scostamenti_prezzo.map((s,i)=><div key={i}>{s.prodotto}: fattura {s.differenza_euro>0?"maggiore":"minore"} di € {Math.abs(Number(s.differenza_euro)||0).toFixed(2)} (ordine € {Number(s.prezzo_ordine||0).toFixed(2)} · fattura € {Number(s.prezzo_fattura||0).toFixed(2)})</div>)}
+        </div>}
+        {o.riconciliazione && !o.riconciliazione?.scostamenti_prezzo?.length && <div style={{marginTop:7,fontSize:11,color:C.muted}}>Fattura associata senza scostamenti di prezzo.</div>}
       </div>)}
     </div>
   </>);
