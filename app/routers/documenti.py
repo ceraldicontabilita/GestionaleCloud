@@ -2217,8 +2217,8 @@ def detect_document_type(filename: str, file_content: bytes) -> str:
             return routed_type
         content_str = pdf_text
         if any(marker in content_str for marker in (
-            "QUIETANZA", "RICEVUTA DI VERSAMENTO", "ESITO DEL VERSAMENTO F24",
-        )):
+            "QUIETANZA DI VERSAMENTO", "RICEVUTA DI VERSAMENTO F24", "ESITO DEL VERSAMENTO F24",
+        )) and ("CODICE TRIBUTO" in content_str or "SALDO DELEGA" in content_str):
             return "quietanza_f24"
         # La LIPE ha il campo «VERSAMENTI AUTO F24»: cita F24 ma non e' un modello.
         e_lipe = "LIQUIDAZIONIPERIODICHE" in re.sub(r"[^A-Z]", "", content_str)
@@ -2230,11 +2230,7 @@ def detect_document_type(filename: str, file_content: bytes) -> str:
         # Anche 770, IRAP e Redditi citano «F24» (versamenti, compensazioni): la sola
         # sigla nel testo non basta, se il documento e' una dichiarazione. Sono finite
         # cosi' nel lettore dei modelli, che le bloccava come «F24 non quadrato».
-        if not e_lipe and (
-            f24_forte
-            or (re.search(r"\bF\s*24\b", content_str)
-                and not _tipo_dichiarazione(filename, pdf_text))
-        ):
+        if not e_lipe and f24_forte:
             return "f24"
         if any(marker in content_str for marker in ("CEDOLINO", "BUSTA PAGA", "LIBRO UNICO")):
             return "cedolino"
@@ -2247,7 +2243,10 @@ def detect_document_type(filename: str, file_content: bytes) -> str:
             or ("SALDO INIZIALE" in content_str and "SALDO FINALE" in content_str)
         ):
             return "estratto_conto"
-        if "BONIFICO" in content_str and ("IBAN" in content_str or "CRO" in content_str):
+        if "BONIFICO" in content_str and (
+            "CRO" in content_str or "REGISTRIAMO A VOSTRO DEBITO" in content_str
+            or "RICEVUTA PER ORDINANTE" in content_str or "BONIFICO ESEGUITO" in content_str
+        ):
             return "bonifici"
         return _tipo_dichiarazione(filename, pdf_text) or "auto"
 

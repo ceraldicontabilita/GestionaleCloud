@@ -236,10 +236,15 @@ def parse_rate_plan(*, content: bytes, filename: str, company_id: str,
                     document_numbers: list[str], dataset_sha256: str) -> dict[str, Any]:
     text = re.sub(r"\s+", " ", _pdf_text(content))
     match = re.search(r"identificativo\s+(\d+)\s+del\s+(\d{2}/\d{2}/\d{4})", text, re.IGNORECASE)
+    equitalia = False
+    if not match and "EQUITALIA" in text.upper():
+        match = re.search(r"istanza di rateizzazione protocollo n\.\s*(\d+)\s+del\s+(\d{2}/\d{2}/\d{4})", text, re.I)
+        equitalia = bool(match)
     if not match:
         raise ValueError(f"Identificativo rateizzazione non leggibile: {filename}")
     filename_plan = re.search(r"(AR\d+)", filename, re.IGNORECASE)
-    plan_id = filename_plan.group(1).upper() if filename_plan else f"AR{match.group(1)}"
+    plan_id = (f"EQUITALIA-{match.group(1)}-{match.group(2).replace('/', '')}" if equitalia else
+               filename_plan.group(1).upper() if filename_plan else f"AR{match.group(1)}")
     references = re.findall(r"\b[0137]\d{16,19}\b", text)
     unique_references = list(dict.fromkeys(references))
     resolved = [{"printed_reference": ref, "document_number": _resolve_document_reference(ref, document_numbers)}
@@ -255,7 +260,7 @@ def parse_rate_plan(*, content: bytes, filename: str, company_id: str,
     )
     first_amounts = (re.findall(r"€\s*([\d.'’]+,\d{2})", first_row.group(2))
                      if first_row else [])
-    total_row = re.search(r"Totale piano(.*?)(?=\s+\d+\s+Per i carichi|\s+Per i carichi)",
+    total_row = re.search(r"Totale piano(.*?)(?=\s+\d+\s+Per i carichi|\s+Per i carichi|$)",
                           text, re.IGNORECASE)
     total_amounts = (re.findall(r"€\s*([\d.'’]+,\d{2})", total_row.group(1))
                      if total_row else [])
@@ -317,7 +322,7 @@ def _rate_plan_documents(text: str) -> list[dict[str, Any]]:
     if not segmento:
         return []
     return [{"printed_reference": numero, "amount_cents": _cents(_decimal(importo))}
-            for numero, importo in re.findall(rf"\b(\d{{17,20}})\s+€\s*({_IMPORTO_ADER})", segmento.group(1))]
+            for numero, importo in re.findall(rf"\b(\d{{17,20}})(?:\(\*\))?\s+€\s*({_IMPORTO_ADER})", segmento.group(1))]
 
 
 def _rate_plan_installments(text: str, first_summary) -> list[dict[str, Any]]:
@@ -708,7 +713,8 @@ def riconosci(testo_compatto: str) -> str | None:
     """Il tipo AdeR dal testo (maiuscolo, spazi normalizzati), o None."""
     t = (testo_compatto or "").upper()
     if "ACCOGLIMENTO DELL'ISTANZA DI RATEIZZAZIONE" in t.replace("’", "'") and (
-            "AGENZIA DELLE ENTRATE-RISCOSSIONE" in t or "AGENZIA DELLE ENTRATE RISCOSSIONE" in t):
+            "AGENZIA DELLE ENTRATE-RISCOSSIONE" in t or "AGENZIA DELLE ENTRATE RISCOSSIONE" in t
+            or "EQUITALIA" in t):
         return TIPO_PIANO
     if "AREA RISERVATA - CITTADINI E IMPRESE" in t and "DETTAGLIO TRIBUTI" in t and "DATI DOCUMENTO" in t:
         return TIPO_DETTAGLIO

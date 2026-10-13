@@ -78,10 +78,9 @@ def riconosci(testo: str) -> bool:
 def riconosci_istanza(testo: str) -> bool:
     """Riconosce la domanda, che non prova ne' accoglimento ne' pagamento."""
     t = _testo(testo)
-    return all(m in t for m in (
-        "ISTANZA E ATTO DI IMPEGNO PER IL PAGAMENTO DILAZIONATO",
-        "PROTOCOLLO DOMANDA", "DI VOLERE CHIEDERE LA RATEAZIONE",
-    )) and not riconosci(t)
+    titolo = re.search(r"(?:ISTANZA|DOMANDA) E ATTO DI IMPEGNO PER IL PAGAMENTO DILAZIONATO", t)
+    richiesta = "DI VOLERE CHIEDERE LA RATEAZIONE" in t or "CHE GLI SIA CONCESSO DI REGOLARIZZARE" in t
+    return bool(titolo and richiesta and "PROTOCOLLO DOMANDA" in t and not riconosci(t))
 
 
 def _cents(valore: str) -> int:
@@ -113,6 +112,8 @@ def leggi_istanza(testo: str) -> Dict[str, Any]:
     rate = _RE_RATE_DA_A.search(t)
     totale = _RE_TOTALE_ISTANZA.search(t)
     inizio = t.find("DI VOLERE CHIEDERE LA RATEAZIONE PER I SEGUENTI PERIODI")
+    if inizio < 0:
+        inizio = t.find("NUMERO INADEMPIENZA")
     fine = t.find("TOTALE DA DILAZIONARE", inizio if inizio >= 0 else 0)
     sezione = t[inizio:fine] if inizio >= 0 and fine > inizio else ""
     periodi = []
@@ -130,12 +131,21 @@ def leggi_istanza(testo: str) -> Dict[str, Any]:
         data_domanda = _iso(data_match.group(1)) if data_match else None
     somma = sum(row["totale_cents"] for row in periodi)
     totale_cents = _cents(totale.group(1)) if totale else None
+    # Il modulo «DOMANDA» stampa due totali: contributi e sanzioni. Il
+    # vecchio modulo «ISTANZA» ne stampa uno comprensivo di entrambi.
+    doppio_totale = re.search(
+        rf"TOTALE DA DILAZIONARE\s+TOTALE DA DILAZIONARE\s+EURO\s+({_IMPORTO})\s+EURO\s+({_IMPORTO})", t,
+    )
+    if doppio_totale:
+        totale_cents = _cents(doppio_totale.group(1)) + _cents(doppio_totale.group(2))
+    rate_richieste = re.search(r"FINO A 24:\s*(\d{1,2})\b", t)
     istanza = {
         "rif": protocollo.group(1) if protocollo else None,
         "matricola": matricola.group(1) if matricola else None,
         "data_domanda": data_domanda,
         "rate_min": int(rate.group(1)) if rate else None,
         "rate_max": int(rate.group(2)) if rate else None,
+        "rate_richieste": int(rate_richieste.group(1)) if rate_richieste else None,
         "totale_richiesto_cents": totale_cents,
         "somma_periodi_cents": somma,
         "periodi": periodi,
