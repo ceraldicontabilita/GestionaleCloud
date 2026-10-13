@@ -74,8 +74,16 @@ def normalizza_nome_irca(value: str) -> str:
     return " ".join(testo.split())
 
 
-def _candidati_nome_mepa(value: str) -> list[str]:
+def _normalizza_nome_associazione(value: str) -> str:
+    """Normalizza solo le varianti ortografiche documentate tra IRCA e MePA."""
     nome = normalizza_nome_irca(value)
+    # Nel catalogo ufficiale il prodotto e' "TRIAL THERMOTECH", mentre nel
+    # catalogo MePA importato compare come "IRCA TRIAL TERMOTECH".
+    return re.sub(r"\bTHERMOTECH\b", "TERMOTECH", nome)
+
+
+def _candidati_nome_mepa(value: str) -> list[str]:
+    nome = _normalizza_nome_associazione(value)
     if not nome.startswith("IRCA "):
         return []
     senza_marchio = nome[5:].strip()
@@ -444,7 +452,7 @@ async def associa_prodotti_mepa() -> dict:
     ).to_list(None)
     indice: dict[str, list[dict]] = defaultdict(list)
     for prodotto in prodotti_irca:
-        indice[normalizza_nome_irca(prodotto.get("nome"))].append(prodotto)
+        indice[_normalizza_nome_associazione(prodotto.get("nome"))].append(prodotto)
 
     mepa = await db.dizionario_ingredienti.find(
         {"fonte": "mepa"}, {"_id": 1, "nome": 1, "nome_display": 1}

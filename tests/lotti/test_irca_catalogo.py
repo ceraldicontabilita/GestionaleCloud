@@ -80,9 +80,34 @@ def test_estrae_ricetta_irca_senza_confonderla_con_ricetta_operativa():
 
 
 def test_associazione_mepa_richiede_marchio_irca_esplicito():
-    assert _candidati_nome_mepa("IRCA TRIAL THERMOTECH") == ["TRIAL THERMOTECH"]
+    assert _candidati_nome_mepa("IRCA TRIAL THERMOTECH") == ["TRIAL TERMOTECH"]
+    assert _candidati_nome_mepa("IRCA TRIAL TERMOTECH") == ["TRIAL TERMOTECH"]
     assert _candidati_nome_mepa("IRCA MIX BISCUIMIX") == ["MIX BISCUIMIX", "BISCUIMIX"]
     assert _candidati_nome_mepa("TRIAL THERMOTECH") == []
+
+
+def test_associazione_mepa_accetta_variante_termotech_solo_se_univoca(monkeypatch):
+    database = AsyncMongoMockClient()["Irca_Associazione_Test"]
+    monkeypatch.setattr(mod, "db", database)
+
+    async def scenario():
+        await database.catalogo_forno_prodotti.insert_one({
+            "fornitore": "irca", "slug": "trial-thermotech",
+            "nome": "TRIAL THERMOTECH",
+            "link_prodotto": "https://www.ircagroup.com/it/prodotti/trial-thermotech",
+        })
+        await database.dizionario_ingredienti.insert_one({
+            "fonte": "mepa", "nome": "IRCA TRIAL TERMOTECH",
+        })
+        risultato = await mod.associa_prodotti_mepa()
+        prodotto = await database.dizionario_ingredienti.find_one({"fonte": "mepa"})
+        return risultato, prodotto
+
+    risultato, prodotto = asyncio.run(scenario())
+    assert risultato["associati"] == 1
+    assert risultato["ambigui"] == 0
+    assert prodotto["irca_slug"] == "trial-thermotech"
+    assert prodotto["irca_associazione"] == "nome_esatto_univoco"
 
 
 def test_cataloghi_pubblici_e_premium_restano_distinti():
