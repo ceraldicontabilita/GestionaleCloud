@@ -2123,6 +2123,13 @@ def detect_document_type(filename: str, file_content: bytes) -> str:
         and any(sezione in pdf_text for sezione in ("ERARIO", "INPS", "REGIONI", "TRIB.LOCALI"))
     ):
         return "quietanza_f24"
+    # I moduli postali/MAV prestampati citano "quietanza" ma non sono F24 pagati.
+    if lower.endswith(".pdf") and any(marker in marker_pdf_text for marker in (
+        "CODICEIDENTIFICATIVOMAV", "BOLLODELLUFFICIOPOSTALE",
+    )) and "VERBALE" not in compact_pdf_text:
+        from app.services.payment_notice_modules import parse_notice_modules
+        if parse_notice_modules(file_content):
+            return "avviso_pagopa"
     if (
         ("AVVISO DI PAGAMENTO" in compact_pdf_text and any(p in marker_pdf_text for p in ("PAGOPA", "CBILL", "IUV")))
         or "QUANTO E QUANDO PAGARE" in compact_pdf_text
@@ -3593,22 +3600,42 @@ async def upload_documento_automatico(
                     metadata, document_type="NOTA_RETTIFICA_INPS"
                 )
 
+            if tipo_rilevato in {"avviso_pagopa", "ader_definizione_agevolata"}:
+                from app.services.payment_notice_modules import parse_notice_modules
+                moduli = await asyncio.to_thread(parse_notice_modules, content)
+                if moduli:
+                    if metadata is None and tipo_rilevato == "ader_definizione_agevolata":
+                        from app.services.administrative_document_parser import extract_administrative_metadata
+                        metadata = await asyncio.to_thread(extract_administrative_metadata,
+                            content=content, filename=filename, document_type=tipo_rilevato)
+                    metadata = metadata or {}
+                    metadata.update({"payment_modules": moduli, "is_payment_receipt": False})
+
             archived = await _archive_non_payment_document(
                 db, filename=filename, content=content,
                 document_type=tipo_rilevato,
                 source_context=source_context,
                 metadata=metadata,
             )
-            if tipo_rilevato == "avviso_pagopa" and archived.get("doc_id"):
+            if tipo_rilevato in {"avviso_pagopa", "ader_definizione_agevolata"} and archived.get("doc_id"):
                 from app.services.pagopa_receipts import associa_avvisi_a_ricevuta
                 code = (metadata or {}).get("identificativo_bolletta")
+                codes = {str(m["code"]) for m in (metadata or {}).get("payment_modules", [])}
                 if code:
+                    codes.add(code)
+                codes.update(c[1:] for c in list(codes) if len(c) == 18 and c.startswith(("1", "3")))
+                if codes:
+                    if archived.get("duplicate") and (metadata or {}).get("payment_modules"):
+                        await db["documents_inbox"].update_one({"id": archived["doc_id"]}, {"$set": {
+                            "parsed_metadata.payment_modules": metadata["payment_modules"],
+                        }})
                     receipts = await db["ricevute_pagopa"].find({"$or": [
-                        {"identificativo_bolletta": code}, {"iuv": code}
+                        {"identificativo_bolletta": {"$in": list(codes)}}, {"iuv": {"$in": list(codes)}}
                     ], "duplicate_of": {"$exists": False}}, {"_id": 0, "pdf_data": 0}).to_list(100)
                     for existing_receipt in receipts:
                         await associa_avvisi_a_ricevuta(db, existing_receipt)
-            if tipo_rilevato == "avviso_pagopa" and archived.get("success"):
+            if (tipo_rilevato == "avviso_pagopa" and archived.get("success")
+                    and (not (metadata or {}).get("payment_modules") or (metadata or {}).get("numero_verbale"))):
                 from app.services.verbali_document_import import process_verbale_document
 
                 archived["association"] = await process_verbale_document(

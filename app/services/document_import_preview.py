@@ -169,6 +169,11 @@ def _specialist_preview(content: bytes, filename: str, document_type: str) -> di
         from app.services.fiscal_accounting_policy import build_journal_proposal
 
         parsed = parse_receipt_pdf(content, filename=filename)
+        if document_type == "avviso_pagopa":
+            from app.services.payment_notice_modules import parse_notice_modules
+            modules = parse_notice_modules(content)
+            if modules:
+                parsed.update({"payment_modules": modules, "is_payment_receipt": False})
         return {
             **parsed,
             "journal_proposal": build_journal_proposal(
@@ -218,9 +223,15 @@ def _specialist_preview(content: bytes, filename: str, document_type: str) -> di
     }:
         from app.services.administrative_document_parser import extract_administrative_metadata
 
-        return extract_administrative_metadata(
+        parsed = extract_administrative_metadata(
             content=content, filename=filename, document_type=document_type
         )
+        if document_type == "ader_definizione_agevolata":
+            from app.services.payment_notice_modules import parse_notice_modules
+            modules = parse_notice_modules(content)
+            if modules:
+                parsed.update({"payment_modules": modules, "is_payment_receipt": False})
+        return parsed
     return {}
 
 
