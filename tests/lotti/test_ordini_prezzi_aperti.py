@@ -3,6 +3,7 @@ from mongomock_motor import AsyncMongoMockClient
 from app.lotti.routers import ordini_fornitori as ordini
 from app.lotti.routers.ordini_fornitori import (
     _articolo_fattura_per_riga,
+    _fornitore_unico_righe,
     _peso_kg_da_riga_ordine,
     _quantita_riga_ordine,
     _riga_con_prezzo_fattura,
@@ -80,6 +81,18 @@ def test_prodotti_catalogo_accettano_solo_confezioni_intere():
     with pytest.raises(HTTPException, match="confezioni intere"):
         _quantita_riga_ordine(riga, 2.5)
     assert _quantita_riga_ordine({"prodotto_id": "sfuso", "quantita": 0.5}) == 0.5
+
+
+def test_fornitore_unico_ignora_maiuscole_punti_e_spazi_ma_non_nomi_diversi():
+    assert _fornitore_unico_righe([
+        {"fornitore": "SAIMA S.p.a."},
+        {"fornitore": "SAIMA S.p.A"},
+        {"fornitore": "  saima spa  "},
+    ]) == "SAIMA S.p.a."
+    assert _fornitore_unico_righe([
+        {"fornitore": "SAIMA S.p.a."}, {"fornitore": "MEPA Alimentari"}
+    ]) == ""
+    assert _fornitore_unico_righe([{"fornitore": "DA ASSEGNARE"}]) == ""
 
 
 def test_recupero_bozza_nel_carrello_e_annullamento_conservano_lo_storico(monkeypatch):

@@ -130,6 +130,28 @@ def _quantita_riga_ordine(riga: dict, valore=None) -> float | int:
     return quantita
 
 
+def _chiave_fornitore_ordine(nome: str) -> str:
+    """Identita' stabile per confrontare varianti grafiche dello stesso fornitore.
+
+    Le fatture e i cataloghi possono salvare, per esempio, ``SAIMA S.p.a.`` e
+    ``SAIMA S.p.A.``. Punti, spazi e maiuscole non devono trasformarle in due
+    fornitori diversi; nomi realmente diversi restano invece distinti.
+    """
+    return re.sub(r"[^a-z0-9]+", "", str(nome or "").casefold())
+
+
+def _fornitore_unico_righe(righe: list[dict]) -> str:
+    """Restituisce il nome visuale se tutte le righe hanno lo stesso fornitore."""
+    per_chiave: dict[str, str] = {}
+    for riga in righe or []:
+        nome = str(riga.get("fornitore") or "").strip()
+        chiave = _chiave_fornitore_ordine(nome)
+        if not chiave or chiave == "daassegnare":
+            return ""
+        per_chiave.setdefault(chiave, nome)
+    return next(iter(per_chiave.values())) if len(per_chiave) == 1 else ""
+
+
 @router.post("")
 async def crea_ordine(payload: OrdineCreateFull):
     """Crea un nuovo ordine. source='tracciabilita' (automatico) o 'manuale'."""
@@ -1076,6 +1098,10 @@ async def conferma_righe(ordine_id: str, payload: dict, request: Request = None,
     if not ordine:
         raise HTTPException(404, "Ordine non trovato")
     prodotti = ordine.get("prodotti") or []
+    selezionati = [p for p in prodotti if str(p.get("prodotto_id")) in ids]
+    fornitore = _fornitore_unico_righe(selezionati)
+    if ids and not fornitore:
+        raise HTTPException(409, "Le righe da inviare devono appartenere a un solo fornitore assegnato")
     n_conf = 0
     for p in prodotti:
         p["confermato"] = str(p.get("prodotto_id")) in ids
@@ -1090,7 +1116,8 @@ async def conferma_righe(ordine_id: str, payload: dict, request: Request = None,
             "updated_at": datetime.now(timezone.utc).isoformat(),
         }},
     )
-    return {"ok": True, "stato": nuovo_stato, "righe_confermate": n_conf, "righe_totali": len(prodotti)}
+    return {"ok": True, "stato": nuovo_stato, "righe_confermate": n_conf,
+            "righe_totali": len(prodotti), "fornitore": fornitore}
 
 
 class InvioConfermato(BaseModel):
@@ -1128,8 +1155,10 @@ async def invia_ordine_confermato(ordine_id: str, payload: InvioConfermato, requ
         raise HTTPException(409, "Conferma prima le righe dell'ordine")
     if not any(p.get("confermato") for p in pre.get("prodotti") or []):
         raise HTTPException(400, "Nessuna riga confermata: conferma le righe da inviare")
-    fornitori = {str(p.get("fornitore") or "").strip() for p in pre.get("prodotti") or [] if p.get("confermato")}
-    if len(fornitori) != 1 or not next(iter(fornitori)) or "DA ASSEGNARE" in fornitori:
+    fornitore = _fornitore_unico_righe(
+        [p for p in pre.get("prodotti") or [] if p.get("confermato")]
+    )
+    if not fornitore:
         raise HTTPException(409, "Le righe da inviare devono appartenere a un solo fornitore assegnato")
 
     ordine = await db.ordini_fornitori.find_one_and_update(

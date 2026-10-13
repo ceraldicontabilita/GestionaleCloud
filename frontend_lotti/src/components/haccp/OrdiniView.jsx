@@ -81,6 +81,21 @@ export function quantitaSuccessivaOrdine(prodotto, delta) {
   return Math.max(0.5, corrente + delta);
 }
 
+export function chiaveFornitoreOrdine(nome) {
+  return String(nome || "").toLocaleLowerCase("it-IT").replace(/[^a-z0-9]+/g, "");
+}
+
+export function fornitoreUnicoOrdine(righe) {
+  const perChiave = new Map();
+  for (const riga of righe || []) {
+    const nome = String(riga?.fornitore || "").trim();
+    const chiave = chiaveFornitoreOrdine(nome);
+    if (!chiave || chiave === "daassegnare") return "";
+    if (!perChiave.has(chiave)) perChiave.set(chiave, nome);
+  }
+  return perChiave.size === 1 ? [...perChiave.values()][0] : "";
+}
+
 export default function OrdiniView({ initialTab = "riordini" }) {
   const [tab, setTab] = useState(() => sessionStorage.getItem("ordini_apri_tab") || initialTab); // riordini | catalogo | confronto | carrello | giacenze | invio
   useEffect(() => { sessionStorage.removeItem("ordini_apri_tab"); }, []);
@@ -933,15 +948,18 @@ function DaInviare({ onModifica }) {
     const ids=[...(sel[o.id]||[])];
     if(!ids.length){ toast("Spunta almeno una riga"); return; }
     try {
-      await axios.put(`${API}/ordini-fornitori/${o.id}/conferma-righe`, { prodotto_ids: ids });
+      const confermaRighe = await axios.put(`${API}/ordini-fornitori/${o.id}/conferma-righe`, { prodotto_ids: ids });
       const righe = (o.prodotti || []).filter(p => ids.includes(String(p.prodotto_id)));
-      const fornitori = [...new Set(righe.map(p => p.fornitore).filter(Boolean))];
-      if (fornitori.length !== 1 || fornitori[0] === "DA ASSEGNARE") {
+      const fornitore = confermaRighe.data?.fornitore || fornitoreUnicoOrdine(righe);
+      if (!fornitore) {
         toast.error("Seleziona righe di un solo fornitore assegnato"); return;
       }
       const risposta = await axios.get(`${API}/ordini-fornitori/${o.id}/suppliers-email`);
-      const contatto = (risposta.data?.fornitori || []).find(f => f.nome === fornitori[0]) || {};
-      setPreparazione({ ordine: o, righe, fornitore: fornitori[0],
+      const chiaveFornitore = chiaveFornitoreOrdine(fornitore);
+      const contatto = (risposta.data?.fornitori || []).find(
+        f => chiaveFornitoreOrdine(f.nome) === chiaveFornitore
+      ) || {};
+      setPreparazione({ ordine: o, righe, fornitore,
         email: contatto.email || "", cellulare: contatto.cellulare || "",
         canale: "", destinatario: "", clientAperto: false });
     } catch(e){ toast.error(e.response?.data?.detail || "Preparazione ordine non riuscita"); }
