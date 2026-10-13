@@ -5453,7 +5453,7 @@ function PagheBonificiPage({ dipendenti = [] }) {
   // della banca col motore unico. Resta questa, con dentro tutte le funzioni
   // dell'altra: import (Libro Unico, email, Prima Nota, CSV banca, archivio
   // storico, Drive), acconti in contanti, prima nota per dipendente, ricerca
-  // voci di busta, simulazione F24, griglia annuale.
+  // voci di busta e griglia annuale.
   const mesi = ["Gennaio","Febbraio","Marzo","Aprile","Maggio","Giugno","Luglio","Agosto","Settembre","Ottobre","Novembre","Dicembre"];
   const annoCorr = new Date().getFullYear();
   const importSession = useImportSession('hr-paghe', { importing: false, importMsg: null, pnMsg: null, csvMsg: null, storicoMsg: null, files: [], anno: 0, mese: 0, filtroStato: "", griglia: false });
@@ -5469,8 +5469,9 @@ function PagheBonificiPage({ dipendenti = [] }) {
   const [editBusta, setEditBusta] = useState(null); // { k, dipendente_id, anno, mese, importo, nota }
   const [editAcc, setEditAcc] = useState(null);   // { k, dipendente_id, anno, mese, acconti: [{importo,data}] }
   const [exportBusy, setExportBusy] = useState(false);
-  const [syncBusy, setSyncBusy] = useState(false);
-  const [cedSyncBusy, setCedSyncBusy] = useState(false);
+  const [dipendentiSelezionati, setDipendentiSelezionati] = useState([]);
+  const [schedaContabile, setSchedaContabile] = useState(null);
+  const [schedaBusy, setSchedaBusy] = useState(false);
   const griglia = Boolean(importSession.state.griglia);
   const setGriglia = value => importSession.setField("griglia", value);
   // Import (ex pagina Buste Paga)
@@ -5489,10 +5490,6 @@ function PagheBonificiPage({ dipendenti = [] }) {
   // Strumenti
   const [showStrumenti, setShowStrumenti] = useState(false);
   const [cercaQ, setCercaQ] = useState(""); const [cercaRes, setCercaRes] = useState(null); const [cercaBusy, setCercaBusy] = useState(false);
-  const [rescanMsg, setRescanMsg] = useState("");
-  const [rescanBusy, setRescanBusy] = useState(false);
-  const rescanRunning = useRef(false);
-  const [f24, setF24] = useState(null); const [f24Busy, setF24Busy] = useState(false);
   const [pnDett, setPnDett] = useState(null);
 
   const eur = (n) => (Number(n) || 0).toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -5501,7 +5498,8 @@ function PagheBonificiPage({ dipendenti = [] }) {
   const [loadError, setLoadError] = useState("");
   const requestVersion = useRef(0);
   const activeFilters = useRef("");
-  const filterKey = `${anno}:${mese}:${filtroStato}`;
+  const selezioneKey = [...dipendentiSelezionati].sort().join(",");
+  const filterKey = `${anno}:${mese}:${filtroStato}:${selezioneKey}`;
   activeFilters.current = filterKey;
   useEffect(() => () => { requestVersion.current += 1; }, []);
   const load = async () => {
@@ -5514,6 +5512,7 @@ function PagheBonificiPage({ dipendenti = [] }) {
       if (anno) params.set("anno", anno);
       if (mese) params.set("mese", mese);
       if (filtroStato) params.set("stato", filtroStato);
+      dipendentiSelezionati.forEach(id => params.append("dipendente_id", id));
       const r = await axios.get(`${API}/paghe/associazioni-bonifici?${params.toString()}`);
       if (current()) setData(r.data || { righe: [], totali: {}, count: 0 });
     } catch (e) {
@@ -5523,7 +5522,7 @@ function PagheBonificiPage({ dipendenti = [] }) {
       }
     } finally { if (current()) setLoading(false); }
   };
-  useEffect(() => { load(); }, [anno, mese, filtroStato, importing, importSession.ready]);
+  useEffect(() => { load(); }, [anno, mese, filtroStato, selezioneKey, importing, importSession.ready]);
 
   const conferma = async (r, val) => {
     setBusy(keyOf(r));
@@ -5587,28 +5586,6 @@ function PagheBonificiPage({ dipendenti = [] }) {
     finally { setBusy(null); }
   };
 
-  const recuperaStorici = async () => {
-    setSyncBusy(true);
-    try {
-      const r = await axios.post(`${API}/paghe/sincronizza-bonifici-storici`, {});
-      const d = r.data || {};
-      toast(`Bonifici storici collegati: ${d.importati_in_pagamenti_esiti || 0} su ${d.mesi_aggiornati || 0} mesi aggiornati`);
-      await load();
-    } catch (e) { toast(e?.response?.data?.detail || "Errore sincronizzazione", "err"); }
-    finally { setSyncBusy(false); }
-  };
-
-  const sincronizzaDaCedolini = async () => {
-    setCedSyncBusy(true);
-    try {
-      const r = await axios.post(`${API}/paghe/sincronizza`, {});
-      const d = r.data || {};
-      toast(`Registro paghe popolato dai cedolini: ${d.creati || 0} nuovi, ${d.aggiornati || 0} aggiornati, ${d.saltati_manuali || 0} lasciati (già modificati a mano)`);
-      await load();
-    } catch (e) { toast(e?.response?.data?.detail || "Errore sincronizzazione dai cedolini", "err"); }
-    finally { setCedSyncBusy(false); }
-  };
-
   const esportaExcel = async () => {
     setExportBusy(true);
     try {
@@ -5616,6 +5593,7 @@ function PagheBonificiPage({ dipendenti = [] }) {
       if (anno) params.set("anno", anno);
       if (mese) params.set("mese", mese);
       if (filtroStato) params.set("stato", filtroStato);
+      dipendentiSelezionati.forEach(id => params.append("dipendente_id", id));
       const r = await axios.get(`${API}/paghe/associazioni-bonifici/export-excel?${params.toString()}`, { responseType: "blob" });
       const a = document.createElement("a"); a.href = URL.createObjectURL(r.data);
       a.download = `cedolini_bonifici${anno ? `_${anno}` : ""}${mese ? `_${String(mese).padStart(2, '0')}` : ""}.xlsx`;
@@ -5818,38 +5796,27 @@ function PagheBonificiPage({ dipendenti = [] }) {
     catch (e) { setCercaRes({ risultati: [], totale: 0, errore: e?.response?.data?.detail || "Errore ricerca" }); }
     finally { setCercaBusy(false); }
   };
-  const riscansiona = async () => {
-    if (rescanRunning.current) return;
-    if (!window.confirm("Rileggi 13ª, 14ª e TFR dai PDF originali? Netti e pagamenti restano invariati. Le voci già rilette vengono saltate.")) return;
-    rescanRunning.current = true;
-    setRescanBusy(true);
-    setRescanMsg("Rilettura originali in corso…");
-    let dopoId = "", aggiornati = 0, errori = 0;
+  const apriSchedaContabile = async () => {
+    setSchedaBusy(true);
     try {
-      do {
-        const r = await axios.post(`${API}/cedolini/riscansiona`, null,
-          { params: { ...(anno ? { anno } : {}), dopo_id: dopoId }, timeout: 120000 });
-        aggiornati += r.data.aggiornati;
-        errori += r.data.errori;
-        dopoId = r.data.prossimo_id;
-        setRescanMsg(`Originali riletti: ${aggiornati}. Da verificare: ${errori}.${dopoId ? " Rilettura in corso…" : " Completata."}`);
-      } while (dopoId);
-      await load();
-    } catch (e) { setRescanMsg("⚠ " + (e?.response?.data?.detail || "Rilettura interrotta; puoi riprenderla senza perdere i risultati.")); }
-    finally { rescanRunning.current = false; setRescanBusy(false); }
-  };
-  const correggiAcconti = async () => {
-    if (!window.confirm("Togliere gli 'acconto dal cedolino' implausibili (poche decine di euro, probabile errore di lettura) e ricalcolare il saldo? Non tocca gli acconti registrati a mano.")) return;
-    setRescanMsg("Correzione acconti in corso…");
-    try { const r = await axios.post(`${API}/paghe/correggi-acconti-cedolino`); setRescanMsg(`✓ Corretti ${r.data.corretti} acconti implausibili (rimossi, saldo ricalcolato sul netto pieno).`); await load(); }
-    catch (e) { setRescanMsg("⚠ " + (e?.response?.data?.detail || "Errore correzione acconti")); }
-  };
-  const calcolaF24 = async () => {
-    if (!mese) { toast("Scegli un mese per la simulazione F24", "err"); return; }
-    setF24Busy(true); setF24(null);
-    try { const r = await axios.get(`/hr/api/cedolini/simulazione-f24?anno=${anno}&mese=${mese}`); setF24(r.data); }
-    catch (e) { setF24({ errore: e?.response?.data?.detail || "Errore nel calcolo" }); }
-    finally { setF24Busy(false); }
+      const params = new URLSearchParams();
+      dipendentiSelezionati.forEach(id => params.append("dipendente_id", id));
+      const r = await axios.get(`${API}/paghe/prospetto-contabile?${params.toString()}`);
+      const meseContabile = mese === 13 ? 12 : mese === 14 ? 7 : mese;
+      const mensili = (r.data?.righe || []).filter(x => (!anno || x.anno === anno) && (!meseContabile || x.mese === meseContabile));
+      const selezionati = dipendentiSelezionati.length;
+      setSchedaContabile({
+        mensili,
+        righe: r.data?.movimenti || [],
+        saldo_finale: mensili.length ? mensili[mensili.length - 1].saldo_progressivo : r.data?.saldo_finale,
+        perDipendente: r.data?.per_dipendente || [],
+        titolo: selezionati === 1
+          ? (dipendenti.find(d => d.id === dipendentiSelezionati[0])?.nome_completo || "Dipendente")
+          : selezionati > 1 ? `${selezionati} dipendenti selezionati` : "Tutti i dipendenti",
+      });
+    } catch (e) {
+      toast(e?.response?.data?.detail || "Impossibile caricare la scheda contabile", "err");
+    } finally { setSchedaBusy(false); }
   };
   const apriPrimaNota = async (dipId, nome) => {
     setPnDett({ nome, loading: true });
@@ -5858,11 +5825,16 @@ function PagheBonificiPage({ dipendenti = [] }) {
         axios.get(`${API}/paghe/prima-nota?dipendente_id=${dipId}`),
         axios.get(`${API}/paghe/storico-pagamenti?dipendente_id=${dipId}`).catch(() => ({ data: { righe: [] } })),
       ]);
-      setPnDett({ nome, competenze: r.data.competenze || [], righe: r.data.movimenti || [], saldo_finale: r.data.saldo_finale, storico: st.data.righe || [] });
+      setPnDett({ nome, mensili: r.data.righe || [], competenze: r.data.competenze || [], righe: r.data.movimenti || [], saldo_finale: r.data.saldo_finale, storico: st.data.righe || [] });
     } catch { setPnDett({ nome, righe: [], errore: true }); }
   };
 
   const t = data.totali || {};
+  const dipendentiOrdinati = [...dipendenti].sort((a, b) =>
+    (a.nome_completo || `${a.cognome || ""} ${a.nome || ""}`).localeCompare(
+      b.nome_completo || `${b.cognome || ""} ${b.nome || ""}`, "it"));
+  const cambiaDipendente = id => setDipendentiSelezionati(attuali =>
+    attuali.includes(id) ? attuali.filter(x => x !== id) : [...attuali, id]);
   const STATI = {
     vuoto: { label: "Nessun importo da pagare", variant: "default" },
     pagato: { label: "✓ Pagato", variant: "success" },
@@ -5938,17 +5910,11 @@ function PagheBonificiPage({ dipendenti = [] }) {
               </div>
             )}
           </div>
-          <button className="dc-btn" disabled={cedSyncBusy} onClick={sincronizzaDaCedolini} title="Popola questo registro dai cedolini in archivio">
-            {cedSyncBusy ? "Sincronizzo…" : "🔄 Sincronizza da cedolini"}
-          </button>
-          <button className="dc-btn" disabled={syncBusy} onClick={recuperaStorici} title="Collega alla busta i bonifici storici già archiviati ma non ancora agganciati qui">
-            {syncBusy ? "Collego…" : "🔗 Recupera bonifici storici"}
-          </button>
           <button className="dc-btn" disabled={exportBusy} onClick={esportaExcel}>
             {exportBusy ? "Esporto…" : "📊 Esporta Excel"}
           </button>
           {!importing && importSession.state.files.length > 0 && !importMsg?.success && <button className="dc-btn" onClick={() => handleImportLul(null)}>Riprendi import</button>}
-          <button className="dc-btn" onClick={() => setShowStrumenti(s => !s)}>🔎 Strumenti {showStrumenti ? "▲" : "▼"}</button>
+          <button className="dc-btn" onClick={() => setShowStrumenti(s => !s)}>🔎 Cerca nei cedolini {showStrumenti ? "▲" : "▼"}</button>
         </div>
       </div>
 
@@ -6025,19 +5991,17 @@ function PagheBonificiPage({ dipendenti = [] }) {
 
       {showStrumenti && (
         <div className="dc-card" style={{ marginBottom: 16 }}>
-          <h3 style={{ marginTop: 0 }}>🔎 Cerca nelle buste (qualsiasi voce)</h3>
+          <h3 style={{ marginTop: 0 }}>🔎 Cerca una voce nei cedolini</h3>
+          <p className="dc-muted" style={{ fontSize: 12.5, margin: "0 0 8px" }}>Serve a trovare una dicitura o un codice stampato nei cedolini, per esempio “tredicesima”, “730” o “F09081”. Non calcola imposte e non modifica i dati.</p>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
             <input className="dc-input" style={{ flex: "1 1 240px" }} placeholder="Codice (es. F09081) o testo (es. 730, 13ma, L.207)"
               value={cercaQ} onChange={e => setCercaQ(e.target.value)} onKeyDown={e => e.key === "Enter" && cercaVoce()} />
             <button className="dc-btn-primary" disabled={cercaBusy} onClick={cercaVoce}>{cercaBusy ? "Cerco…" : "Cerca"}</button>
-            <button className="dc-btn" onClick={riscansiona} disabled={rescanBusy} title="Rilegge voci, 13ª, 14ª e TFR dagli originali, senza cambiare netti o pagamenti">Riscansiona storico</button>
-            <button className="dc-btn" onClick={correggiAcconti} title="Toglie gli 'acconto dal cedolino' di poche decine di euro (probabile errore del parser) e ricalcola il saldo">🔧 Correggi acconti cedolino</button>
           </div>
-          {rescanMsg && <div className="dc-muted" style={{ marginTop: 8 }}>{rescanMsg}</div>}
           {cercaRes && (
             <div style={{ marginTop: 10, overflowX: "auto" }}>
               {cercaRes.errore ? <div className="dc-muted">⚠ {cercaRes.errore}</div>
-                : cercaRes.totale === 0 ? <div className="dc-muted">Nessun risultato. Per lo storico premi prima “Riscansiona storico”.</div>
+                : cercaRes.totale === 0 ? <div className="dc-muted">Nessun risultato nei cedolini indicizzati.</div>
                 : <table className="dc-table" style={{ minWidth: 560, whiteSpace: "nowrap" }}>
                     <thead><tr><th>Dipendente</th><th>Periodo</th><th>Codice</th><th>Descrizione</th><th style={{ textAlign: "right" }}>Importo</th></tr></thead>
                     <tbody>{cercaRes.risultati.map((x, i) => <tr key={i}><td>{x.dipendente}</td><td>{mesi[(x.mese || 1) - 1]} {x.anno}</td><td>{x.codice}</td><td>{x.descrizione}</td><td style={{ textAlign: "right" }}>{x.importo || "—"}</td></tr>)}</tbody>
@@ -6045,45 +6009,26 @@ function PagheBonificiPage({ dipendenti = [] }) {
               {cercaRes.totale > 0 && <p className="dc-muted" style={{ fontSize: 12, marginTop: 6 }}>{cercaRes.totale} risultati.</p>}
             </div>
           )}
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap", marginTop: 18 }}>
-            <h3 style={{ margin: 0 }}>🧾 Simulazione F24 e costo mensile — {mese ? `${mesi[mese - 1]} ${anno}` : "scegli un mese nel filtro"}</h3>
-            <button className="dc-btn-primary" disabled={f24Busy || !mese} onClick={calcolaF24}>{f24Busy ? "Calcolo…" : "Calcola F24 del mese"}</button>
-          </div>
-          <p className="dc-muted" style={{ fontSize: 12.5, margin: "6px 0 0" }}>
-            Per ogni dipendente legge il cedolino del mese: IRPEF e INPS reali dalle voci quando ci sono, altrimenti stimati dal netto con le regole CCNL.
-            INPS azienda 30%, quota TFR = lordo ÷ 13,5. È una simulazione: fa fede l'F24 del consulente.
-          </p>
-          {f24?.errore && <div style={{ marginTop: 8, color: "#d35f4e", fontWeight: 600 }}>⚠ {f24.errore}</div>}
-          {f24 && !f24.errore && (f24.righe.length === 0
-            ? <p className="dc-muted" style={{ marginTop: 10 }}>Nessun cedolino trovato per {mesi[mese - 1]} {anno}: importa prima le buste.</p>
-            : <div className="dc-scroll-x" style={{ marginTop: 10 }}>
-                <table className="dc-table" style={{ fontSize: 13 }}>
-                  <thead><tr><th>Dipendente</th><th style={{ textAlign: "right" }}>Lordo €</th><th style={{ textAlign: "right" }}>Netto €</th><th style={{ textAlign: "right" }}>IRPEF €</th><th style={{ textAlign: "right" }}>INPS dip. €</th><th style={{ textAlign: "right" }}>INPS azienda €</th><th style={{ textAlign: "right" }}>TFR mese €</th><th style={{ textAlign: "right" }}>F24 €</th><th style={{ textAlign: "right" }}>Costo azienda €</th><th>Fonte</th></tr></thead>
-                  <tbody>
-                    {f24.righe.map(r => (
-                      <tr key={r.dipendente_id || r.dipendente_nome}>
-                        <td style={{ fontWeight: 600 }}>{r.dipendente_nome}</td>
-                        <td style={{ textAlign: "right" }}>{eur(r.lordo)}</td><td style={{ textAlign: "right" }}>{eur(r.netto)}</td><td style={{ textAlign: "right" }}>{eur(r.irpef)}</td>
-                        <td style={{ textAlign: "right" }}>{eur(r.inps_dipendente)}</td><td style={{ textAlign: "right" }}>{eur(r.inps_azienda)}</td><td style={{ textAlign: "right" }}>{eur(r.tfr_mese)}</td>
-                        <td style={{ textAlign: "right", fontWeight: 700 }}>{eur(r.totale_f24)}</td><td style={{ textAlign: "right", fontWeight: 700 }}>{eur(r.costo_azienda)}</td>
-                        <td className="dc-muted" style={{ fontSize: 11.5 }}>{r.fonte}</td>
-                      </tr>
-                    ))}
-                    <tr style={{ fontWeight: 700, borderTop: "2px solid #e6e0d4", background: "#eef1ea" }}>
-                      <td>TOTALE ({f24.dipendenti} dipendenti)</td>
-                      <td style={{ textAlign: "right" }}>{eur(f24.totali.lordo)}</td><td style={{ textAlign: "right" }}>{eur(f24.totali.netto)}</td><td style={{ textAlign: "right" }}>{eur(f24.totali.irpef)}</td>
-                      <td style={{ textAlign: "right" }}>{eur(f24.totali.inps_dipendente)}</td><td style={{ textAlign: "right" }}>{eur(f24.totali.inps_azienda)}</td><td style={{ textAlign: "right" }}>{eur(f24.totali.tfr_mese)}</td>
-                      <td style={{ textAlign: "right", fontSize: 15 }}>{eur(f24.totali.totale_f24)}</td><td style={{ textAlign: "right", fontSize: 15 }}>{eur(f24.totali.costo_azienda)}</td><td></td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>)}
         </div>
       )}
 
       {/* Filtri */}
 
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", marginBottom: 16 }}>
+        <details style={{ position: "relative" }}>
+          <summary className="dc-btn" style={{ ...sel, listStyle: "none", cursor: "pointer" }}>
+            {dipendentiSelezionati.length === 0 ? "Tutti i dipendenti" : dipendentiSelezionati.length === 1
+              ? (dipendentiOrdinati.find(d => d.id === dipendentiSelezionati[0])?.nome_completo || "1 dipendente")
+              : `${dipendentiSelezionati.length} dipendenti selezionati`}
+          </summary>
+          <div style={{ position: "absolute", top: "calc(100% + 6px)", left: 0, zIndex: 40, width: 320, maxWidth: "85vw", maxHeight: 360, overflowY: "auto", background: "#fffefb", border: "1px solid #e6e0d4", borderRadius: 10, padding: 10, boxShadow: "0 8px 24px rgba(0,0,0,.14)" }}>
+            <button type="button" className="dc-btn" style={{ width: "100%", marginBottom: 8 }} onClick={() => setDipendentiSelezionati([])}>Mostra tutti</button>
+            {dipendentiOrdinati.map(d => <label key={d.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 4px", cursor: "pointer" }}>
+              <input type="checkbox" checked={dipendentiSelezionati.includes(d.id)} onChange={() => cambiaDipendente(d.id)} />
+              <span>{d.nome_completo || `${d.cognome || ""} ${d.nome || ""}`.trim()}{d.stato === "cessato" ? " (cessato)" : ""}</span>
+            </label>)}
+          </div>
+        </details>
         <select style={sel} aria-label="Anno" value={anno} onChange={e => setAnno(Number(e.target.value))}>
           <option value={0}>Tutti gli anni</option>
           {Array.from({ length: annoCorr + 2 - 2017 }, (_, i) => annoCorr + 1 - i).map(a => <option key={a} value={a}>{a}</option>)}
@@ -6106,7 +6051,14 @@ function PagheBonificiPage({ dipendenti = [] }) {
         <button className="dc-btn" onClick={load} style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
           <RefreshCw size={15} /> Aggiorna
         </button>
+        <button className="dc-btn dc-btn-primary" disabled={schedaBusy} onClick={apriSchedaContabile}>
+          {schedaBusy ? "Carico scheda…" : "📒 Scheda contabile"}
+        </button>
       </div>
+
+      <p className="dc-muted" style={{ margin: "-8px 0 14px", fontSize: 12.5 }}>
+        La selezione aggiorna tabella, totali ed Excel. “Scheda contabile” mostra i totali mensili dei cedolini e dei pagamenti con il saldo progressivo, per uno, più dipendenti o tutti.
+      </p>
 
       {loadError && <div role="alert" className="dc-card" style={{ color: "#b04a3a" }}>{loadError}</div>}
       {!loading && data.cedolini_da_verificare?.length > 0 && <details className="dc-card">
@@ -6367,6 +6319,17 @@ function PagheBonificiPage({ dipendenti = [] }) {
                 </div>
               </details>
             )}
+          </div>
+        </Modal>
+      )}
+      {schedaContabile && (
+        <Modal title={`Scheda contabile paghe — ${schedaContabile.titolo}`} onClose={() => setSchedaContabile(null)} maxWidth={1120}>
+          <div className="dc-modal-body">
+            <p className="dc-muted">
+              {anno ? `Periodo visualizzato: ${mese ? `${mesi[mese - 1] || mese} ` : ""}${anno}. ` : "Intero archivio. "}
+              I saldi per dipendente comprendono l’intero archivio; il saldo progressivo mensile conserva il riporto precedente.
+            </p>
+            <PrimaNotaPaghe prospetto={schedaContabile} />
           </div>
         </Modal>
       )}

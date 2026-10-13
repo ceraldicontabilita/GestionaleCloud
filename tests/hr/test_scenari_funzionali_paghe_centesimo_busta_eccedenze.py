@@ -36,6 +36,29 @@ def _archivio_paghe(m, anno=ANNO):
     return {(x["dipendente_id"], x["mese"]): x for x in r.json()["righe"]}
 
 
+def test_archivio_filtra_uno_o_piu_dipendenti_e_offre_scheda_progressiva(mondo):
+    m = mondo
+    m.dipendente("d-rossi", "Mario", "Rossi", CF_ROSSI)
+    m.dipendente("d-bianchi", "Luigi", "Bianchi", "BNCLGU80A01F839Y")
+    m.busta("d-rossi", 3, 1000.0)
+    m.busta("d-bianchi", 3, 800.0)
+
+    filtrato = m.client.get(
+        f"/api/dipendenti-cloud/paghe/associazioni-bonifici?anno={ANNO}&dipendente_id=d-rossi")
+    assert filtrato.status_code == 200, filtrato.text
+    assert {r["dipendente_id"] for r in filtrato.json()["righe"]} == {"d-rossi"}
+    assert filtrato.json()["totali"]["buste"] == 1000.0
+
+    scheda = m.client.get(
+        "/api/dipendenti-cloud/paghe/prospetto-contabile?dipendente_id=d-rossi&dipendente_id=d-bianchi")
+    assert scheda.status_code == 200, scheda.text
+    dati = scheda.json()
+    assert dati["numero_dipendenti"] == 2
+    assert dati["righe"][0]["cedolini"] == 1800.0
+    assert dati["righe"][0]["saldo_progressivo"] == 1800.0
+    assert {r["dipendente_id"] for r in dati["per_dipendente"]} == {"d-rossi", "d-bianchi"}
+
+
 # ── 5. pagato al centesimo ──────────────────────────────────────────────────
 
 def test_5_motore_unico_senza_tolleranza():
