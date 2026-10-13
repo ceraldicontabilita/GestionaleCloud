@@ -175,6 +175,7 @@ def test_duplicato_erp_ripara_comunque_archivio_hr_e_associazione(monkeypatch):
     cedolino = {
         "nome_dipendente": "ROSSI MARIO", "codice_fiscale": CF,
         "anno": 2026, "mese": 7, "tipo_cedolino": "mensile", "netto": 1200.0,
+        "stato_netto": "NETTO_VERIFICATO_DA_CEDOLINO",
         "source_page_start": 1, "source_page_end": 2, "source_document_pages": 4,
     }
 
