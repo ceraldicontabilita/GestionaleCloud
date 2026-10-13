@@ -15,6 +15,7 @@ import PrimaNotaPaghe from "./PrimaNotaPaghe";
 import { sceltaIniziale, sceltaCandidato, propostaIntatta } from "./sceltaBonifico";
 import MissioniPage from "./MissioniPage";
 import { normalizzaEsitoImportPaghe } from "./esitoImportPaghe";
+import { apriFinestraPdfAttesa, mostraPdfNellaFinestra } from "./pdfWindow";
 import { 
   Users, Calendar, Clock, FileText, Briefcase, Home, 
   ChevronRight, Plus, Check, X, Edit2, Trash2, 
@@ -5045,16 +5046,15 @@ const COMPONENTE_CEDOLINO = {
 function ComponentiCedolino({ voci = [] }) {
   const [busy, setBusy] = useState(null);
   const apri = async (voce) => {
-    const finestra = window.open("", "_blank");
-    if (finestra) finestra.opener = null;
+    const finestra = apriFinestraPdfAttesa();
+    if (!finestra) { toast("Consenti l’apertura del PDF nel browser", "err"); return; }
     setBusy(voce.cedolino_id);
     try {
       const r = await axios.get(`/hr/api/cedolini/${encodeURIComponent(voce.cedolino_id)}/download`,
         { responseType: "blob", timeout: 60000 });
       const blob = new Blob([r.data], { type: "application/pdf" });
       const url = URL.createObjectURL(blob);
-      if (finestra) finestra.location.href = `${url}#page=${voce.pagina || 1}`;
-      else toast("Consenti l’apertura del PDF nel browser", "err");
+      mostraPdfNellaFinestra(finestra, url, voce.pagina || 1);
       setTimeout(() => URL.revokeObjectURL(url), 60000);
     } catch (e) { finestra?.close(); toast(erroreApi(e, "PDF non disponibile"), "err"); }
     finally { setBusy(null); }
@@ -5626,12 +5626,12 @@ function PagheBonificiPage({ dipendenti = [] }) {
   };
 
   const apriCopertura = async (prova) => {
-    const finestra = window.open("", "_blank");
-    if (finestra) finestra.opener = null;
+    const finestra = apriFinestraPdfAttesa();
+    if (!finestra) { toast("Consenti l’apertura del PDF nel browser", "err"); return; }
     try {
       const r = await axios.get(`${API}/bonifici-da-associare/${encodeURIComponent(prova.bonifico_da_associare_id)}/pdf`, { responseType: "blob" });
-      const url = URL.createObjectURL(r.data);
-      if (finestra) finestra.location = url;
+      const url = URL.createObjectURL(new Blob([r.data], { type: "application/pdf" }));
+      mostraPdfNellaFinestra(finestra, url);
       setTimeout(() => URL.revokeObjectURL(url), 60000);
     } catch { finestra?.close(); toast("PDF del bonifico non disponibile", "err"); }
   };
@@ -5640,21 +5640,25 @@ function PagheBonificiPage({ dipendenti = [] }) {
     if (!riga?.cedolino_id) return;
     const chiaveBusy = `cedolino_${keyOf(riga)}`;
     // «Scarica» salva il PDF senza aprire schede; «Apri» lo mostra.
-    const nuovaFinestra = scarica ? null : window.open("", "_blank");
+    const nuovaFinestra = scarica ? null : apriFinestraPdfAttesa();
+    if (!scarica && !nuovaFinestra) { toast("Consenti l’apertura del PDF nel browser", "err"); return; }
     setBusy(chiaveBusy);
     try {
       const risposta = await axios.get(
         `/hr/api/cedolini/${encodeURIComponent(riga.cedolino_id)}/download`,
         { responseType: "blob", timeout: 60000 },
       );
-      const url = URL.createObjectURL(risposta.data);
+      const url = URL.createObjectURL(new Blob([risposta.data], { type: "application/pdf" }));
       if (nuovaFinestra) {
-        nuovaFinestra.location = url;
+        mostraPdfNellaFinestra(nuovaFinestra, url);
       } else {
         const link = document.createElement("a");
         link.href = url;
         link.download = `cedolino_${riga.dipendente}_${riga.anno}_${String(riga.mese).padStart(2, "0")}.pdf`;
+        link.hidden = true;
+        document.body.appendChild(link);
         link.click();
+        link.remove();
       }
       setTimeout(() => URL.revokeObjectURL(url), 60000);
     } catch (e) {
