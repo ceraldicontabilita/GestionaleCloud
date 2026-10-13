@@ -38,7 +38,9 @@ export default function IrcaSpuntiView() {
   useEffect(() => {
     const timer = setTimeout(async () => {
       try {
-        const r = await axios.get(`${API}/irca/ricette?limit=500&q=${encodeURIComponent(query.trim())}`);
+        const termine = query.trim();
+        const limit = termine ? 500 : 200;
+        const r = await axios.get(`${API}/irca/ricette?limit=${limit}&q=${encodeURIComponent(termine)}`);
         setRicette(r.data?.ricette || []);
         setTotaleRicette(r.data?.totale || 0);
       } catch { toast.error("Ricerca ricette IRCA non riuscita"); }
