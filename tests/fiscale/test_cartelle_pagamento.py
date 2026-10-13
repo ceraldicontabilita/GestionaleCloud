@@ -64,6 +64,72 @@ def test_somme_che_non_tornano_lasciano_la_cartella_da_verificare():
     assert dati["importi_quadrano"] is False
 
 
+def test_riepilogo_con_oneri_non_scambia_notifica_per_totale():
+    testo = "\n".join(RIGHE[:5] + [
+        "100,00", "13,00", "5,88", "Spett.", "SOMME DA PAGARE",
+        "100,00", "13,00", "5,88", "118,88", "-",
+        "100,00", "26,00", "5,88", "131,88",
+    ])
+    dati = cp.leggi_cartella(testo)
+    assert dati["importo_ente"] == "100.00"
+    assert dati["oneri_riscossione"] == "13.00"
+    assert dati["diritti_notifica"] == "5.88"
+    assert dati["totale"] == "118.88"
+    assert dati["importi_quadrano"] is True
+
+
+def test_piu_enti_prende_somme_da_pagare_non_primi_tre_importi():
+    testo = "\n".join(RIGHE[:5] + [
+        "70,00", "43,00", "5,88", "Spett.", "SOMME DA PAGARE",
+        "113,00", "5,88", "118,88", "Modalita di pagamento",
+    ])
+    dati = cp.leggi_cartella(testo)
+    assert dati["importo_ente"] == "113.00"
+    assert dati["diritti_notifica"] == "5.88"
+    assert dati["totale"] == "118.88"
+    assert dati["importi_quadrano"] is True
+
+
+def test_senza_totale_etichettato_non_usa_cifre_casuali():
+    testo = "\n".join(RIGHE[:3] + ["113,00", "5,88", "118,88"])
+    dati = cp.leggi_cartella(testo)
+    assert dati["totale"] is None
+    assert dati["importi_quadrano"] is False
+
+
+def test_riepilogo_incoerente_conserva_totale_ma_richiede_verifica():
+    testo = "\n".join(RIGHE[:5] + ["SOMME DA PAGARE", "113,00", "6,88", "118,88"])
+    dati = cp.leggi_cartella(testo)
+    assert dati["totale"] == "118.88"
+    assert dati["diritti_notifica"] is None
+    assert dati["importi_quadrano"] is False
+
+
+def test_interessi_mora_espliciti_chiudono_senza_alterare_il_dovuto_originale():
+    db = AsyncMongoMockClient()["cartelle"]
+    cartella = _run(cp.registra_cartella(db, "a.pdf", _pdf()))
+    ricevuta = {"id": "r-mora", "importi_quadrano": True, "importo": 121.38,
+                "documenti": [{"numero": "07120260000000111000", "totale": 121.38,
+                                "quadra": True, "interessi_mora": 2.50}]}
+    for _ in range(2):
+        assert _run(cp.chiudi_da_ricevuta(db, ricevuta)) == "SODDISFATTO"
+    doc = _run(db[cp.COLL].find_one({"id": cartella["id"]}))
+    assert doc["totale"] == "118.88"
+    assert doc["importo_pagato_documentale"] == "121.38"
+    assert doc["interessi_mora_documentati"] == "2.5"
+    assert len(doc["pagamenti_documentati"]) == 1
+
+
+def test_importo_maggiore_senza_prova_interessi_resta_da_verificare():
+    db = AsyncMongoMockClient()["cartelle"]
+    _run(cp.registra_cartella(db, "a.pdf", _pdf()))
+    for extra in ({}, {"interessi_mora": 1.00}):
+        ricevuta = {"id": "r-mora", "importi_quadrano": True,
+                    "documenti": [{"numero": "07120260000000111000", "totale": 121.38,
+                                    "quadra": True, **extra}]}
+        assert _run(cp.chiudi_da_ricevuta(db, ricevuta)) == "DA_VERIFICARE"
+
+
 def test_registra_apre_l_attesa_senza_scadenza_e_il_secondo_file_non_duplica():
     db = AsyncMongoMockClient()["cartelle"]
 
@@ -90,6 +156,29 @@ def test_la_notifica_dice_il_termine_di_60_giorni_e_salta_il_fine_settimana():
     # 28/07 + 60 giorni = sabato 26/09: passa a lunedi' 28/09.
     assert cp.scadenza_da_notifica("2026-07-28") == "2026-09-28"
     assert _run(cp.imposta_notifica(db, cartella["id"], "31/13/2026"))["success"] is False
+
+
+def test_rilettura_stesso_originale_corregge_importi_e_riconcilia_senza_duplicare():
+    db = AsyncMongoMockClient()["cartelle"]
+    primo = _run(cp.registra_cartella(db, "a.pdf", _pdf()))
+    # Rappresenta una scheda storica generata dal vecchio parser.
+    _run(db[cp.COLL].update_one({"id": primo["id"]}, {
+        "$unset": {"parser_version": ""},
+        "$set": {"totale": "5.88", "data_notifica": "2026-07-01"},
+    }))
+    _run(db["ricevute_pagopa"].insert_one({
+        "id": "r-storica", "identificativo_bolletta": IUV, "importo": 118.88,
+    }))
+    # Usa gli stessi byte, non una nuova stampa con metadati PDF differenti.
+    import base64
+    vecchio = _run(db[cp.COLL].find_one({"id": primo["id"]}))
+    result = _run(cp.registra_cartella(db, "altra-copia.pdf", base64.b64decode(vecchio["contenuto_b64"])))
+    doc = _run(db[cp.COLL].find_one({"id": primo["id"]}))
+    assert result["duplicate"] and result["metadati_aggiornati"]
+    assert doc["totale"] == "118.88" and doc["parser_precedente"]["totale"] == "5.88"
+    assert doc["data_notifica"] == "2026-07-01"
+    assert doc["expectation_status"] == "SODDISFATTO"
+    assert _run(db[cp.COLL].count_documents({})) == 1
 
 
 def test_ricevuta_con_lo_stesso_iuv_e_importo_chiude_l_attesa():

@@ -41,8 +41,12 @@ _ENTE = re.compile(r"RUOLO EMESSO DA\s*\n\s*([^\n]+)")
 # Codice avviso pagoPA dell'Agente della riscossione: cifra iniziale + IUV di 17 cifre (800…).
 _AVVISO = re.compile(r"\b(1800\d{14})\b")
 _CBILL = re.compile(r"\b([A-Z0-9]{5})\s*\n\s*1800\d{14}\b")
-_CF = re.compile(r"Destinatario\s+Cod\.\s*Fiscale\s+(\d{11})")
-_SOMME = re.compile(r"\n\s*([\d.]+,\d{2})\s*\n\s*([\d.]+,\d{2})\s*\n\s*([\d.]+,\d{2})\s*\n")
+_CF = re.compile(r"Destinatario\s+Cod\s*\.\s*Fisc(?:ale|\.)\s+([A-Z0-9]{16}|\d{11})\b", re.I)
+_TOTALE = re.compile(
+    r"Totale\s+da\s+pagare\s+entro\s+60\s+giorni\s+dalla\s+data\s+di\s+notifica"
+    r"\s*(?:euro|€)?\s*([\d.]+,\d{2})\b", re.I,
+)
+_IMPORTO_RIGA = re.compile(r"^\s*([\d.]+,\d{2})\s*$")
 _RIGA = re.compile(
     r"^\s*(\d{1,3})\s*\n\s*(\d{4})\s*\n\s*(\d{3,5})\s+([^\n]+)\n\s*([\d.]+,\d{2})\s*\n"
     r"(?:\s*VER\.\s*(\S+)\s+(\d{2}/\d{2}/\d{4})\s+NOT\.\s*IL\s+(\d{2}/\d{2}/\d{4})\s+TG\.\s*([A-Z0-9]+))?",
@@ -76,6 +80,47 @@ def _normalizza_numero(numero: str) -> str:
     return re.sub(r"\s+", " ", numero.replace(" /", "/").replace("/ ", "/")).strip()
 
 
+def _riepilogo_importi(testo: str):
+    """Legge il riepilogo entro 60 giorni, inclusi gli oneri dei modelli precedenti.
+
+    Le prime cifre del PDF possono essere i subtotali di più enti. Il totale è
+    quello etichettato; la tabella SOMME DA PAGARE deve confermarlo, al centesimo.
+    """
+    match = _TOTALE.search(testo)
+    if not match:
+        return None, None, None, None, False
+    totale = _importo(match.group(1))
+    sezione = re.search(r"SOMME\s+DA\s+PAGARE\s*\n", testo[match.end():], re.I)
+    # Alcuni estrattori restituiscono il riepilogo senza il titolo della tabella.
+    blocco = testo[match.end():]
+    if sezione:
+        blocco = blocco[sezione.end():]
+    gruppi, gruppo = [], []
+    for line in blocco.splitlines():
+        m = _IMPORTO_RIGA.fullmatch(line)
+        if m:
+            gruppo.append(_importo(m.group(1)))
+        elif line.strip():
+            if gruppo:
+                gruppi.append(gruppo)
+                gruppo = []
+            if sezione and gruppi:
+                break  # La colonna oltre 60 giorni non è il dovuto iniziale.
+        if not sezione and re.search(r"RUOLO|DETTAGLIO", line, re.I):
+            break
+    if gruppo:
+        gruppi.append(gruppo)
+    for valori in gruppi:
+        if len(valori) not in (3, 4) or valori[-1] != totale:
+            continue
+        if sum(valori[:-1], Decimal("0")) != totale:
+            continue
+        ente, diritti = valori[0], valori[-2]
+        oneri = valori[1] if len(valori) == 4 else Decimal("0.00")
+        return ente, diritti, oneri, totale, True
+    return None, None, None, totale, False
+
+
 def leggi_cartella(testo: str) -> Optional[Dict[str, Any]]:
     """I dati della cartella, o None se non lo e'. Importi in stringa, mai float."""
     if not e_cartella_pagamento(testo):
@@ -98,13 +143,10 @@ def leggi_cartella(testo: str) -> Optional[Dict[str, Any]]:
             riga.update({"numero_verbale": m.group(6).upper(), "data_verbale": m.group(7),
                          "data_notifica_verbale": m.group(8), "targa": m.group(9).upper()})
         righe.append(riga)
-    somme = _SOMME.search(testo)
-    ente_importo = diritti = totale = None
-    if somme:
-        ente_importo, diritti, totale = (_importo(somme.group(i)) for i in (1, 2, 3))
+    ente_importo, diritti, oneri, totale, riepilogo_quadra = _riepilogo_importi(testo)
     somma_righe = sum((Decimal(r["importo"]) for r in righe), Decimal("0"))
     quadra = bool(
-        righe and somme and somma_righe == ente_importo and ente_importo + diritti == totale
+        riepilogo_quadra and (not righe or somma_righe == ente_importo)
     )
     verbali = sorted({(r["numero_verbale"], r["targa"]) for r in righe if r.get("numero_verbale")})
     return {
@@ -115,7 +157,9 @@ def leggi_cartella(testo: str) -> Optional[Dict[str, Any]]:
         "righe": righe,
         "importo_ente": str(ente_importo) if ente_importo is not None else None,
         "diritti_notifica": str(diritti) if diritti is not None else None,
+        "oneri_riscossione": str(oneri) if oneri is not None else None,
         "totale": str(totale) if totale is not None else None,
+        "parser_version": "cartella-riepilogo-v2",
         "importi_quadrano": quadra,
         "codice_avviso": avviso.group(1) if avviso else None,
         # Lo IUV e' il codice avviso senza la cifra iniziale (aux digit).
@@ -188,11 +232,26 @@ async def registra_cartella(
         return {"success": False, "message": "Non e' una cartella di pagamento riconoscibile"}
     ora = datetime.now(timezone.utc).isoformat()
     id_cartella = "cartella:" + re.sub(r"\W+", "", dati["numero_cartella"])
-    esistente = await db[COLL].find_one({"id": id_cartella}, {"_id": 0, "id": 1})
-    if esistente:
-        await db[COLL].update_one({"id": id_cartella}, {"$set": {"ultimo_caricamento": ora}})
-        return {"success": True, "duplicate": True, "id": id_cartella, **dati}
     impronta = hashlib.sha256(contenuto).hexdigest()
+    esistente = await db[COLL].find_one({"id": id_cartella}, {"_id": 0, "contenuto_b64": 0})
+    if esistente:
+        aggiornati = False
+        if (esistente.get("sha256") == impronta and not esistente.get("parser_version")
+                and dati.get("totale") is not None):
+            campi = ("importo_ente", "diritti_notifica", "oneri_riscossione", "totale",
+                     "importi_quadrano", "parser_version", "codice_fiscale_destinatario")
+            result = await db[COLL].update_one(
+                {"id": id_cartella, "sha256": impronta, "parser_version": None},
+                {"$set": {**{k: dati[k] for k in campi}, "ultimo_caricamento": ora,
+                          "parser_precedente": {k: esistente.get(k) for k in campi},
+                          "parser_aggiornato_il": ora}},
+            )
+            aggiornati = bool(result.matched_count)
+        else:
+            await db[COLL].update_one({"id": id_cartella}, {"$set": {"ultimo_caricamento": ora}})
+        ricevuta = await chiudi_da_ricevuta_esistente(db, id_cartella)
+        return {"success": True, "duplicate": True, "id": id_cartella, **dati,
+                "metadati_aggiornati": aggiornati, "ricevuta": ricevuta}
     documento: Dict[str, Any] = {
         "id": id_cartella, "sha256": impronta, "nome": nome, "dimensione": len(contenuto),
         "mime": "application/pdf", "caricato_il": ora, "ultimo_caricamento": ora,
@@ -257,7 +316,7 @@ def _stesso_importo(totale: Optional[str], importo: Any) -> bool:
         return False
 
 
-async def _applica_ricevuta(db, cartella: Dict[str, Any], ricevuta: Dict[str, Any], quota=None) -> str:
+async def _applica_ricevuta(db, cartella: Dict[str, Any], ricevuta: Dict[str, Any], quota=None, dettaglio=None) -> str:
     importo = quota if quota is not None else ricevuta.get("operation_amount", ricevuta.get("importo"))
     if importo is None:
         return cartella.get("expectation_status")
@@ -265,15 +324,28 @@ async def _applica_ricevuta(db, cartella: Dict[str, Any], ricevuta: Dict[str, An
                     str(ricevuta.get("data_pagamento") or "")))
     pagamenti = [r for r in cartella.get("pagamenti_documentati", [])
                  if r.get("payment_key") != key and r.get("ricevuta_id") != ricevuta["id"]]
-    pagamenti.append({"payment_key": key, "ricevuta_id": ricevuta["id"],
-                      "importo": str(importo), "data_pagamento": ricevuta.get("data_pagamento")})
+    pagamento = {"payment_key": key, "ricevuta_id": ricevuta["id"],
+                 "importo": str(importo), "data_pagamento": ricevuta.get("data_pagamento")}
+    # Il totale iniziale e' entro 60 giorni. Gli interessi successivi devono
+    # essere espliciti nella quietanza della stessa cartella, mai dedotti
+    # dalla sola differenza tra pagamento e dovuto.
+    if dettaglio and dettaglio.get("quadra") is True:
+        try:
+            mora = Decimal(str(dettaglio.get("interessi_mora") or "0"))
+            if mora > 0 and _stesso_importo(cartella.get("totale"), Decimal(str(importo)) - mora):
+                pagamento["interessi_mora_documentati"] = str(mora)
+        except (InvalidOperation, ValueError):
+            pass
+    pagamenti.append(pagamento)
     versato = sum((Decimal(str(r["importo"])) for r in pagamenti), Decimal("0"))
-    torna = _stesso_importo(cartella.get("totale"), versato)
+    mora = sum((Decimal(r.get("interessi_mora_documentati", "0")) for r in pagamenti), Decimal("0"))
+    torna = _stesso_importo(cartella.get("totale"), versato - mora)
     ids = [r["ricevuta_id"] for r in pagamenti]
     campi = expectation_evidence_fields(satisfied=torna, evidence_ids=ids)
     await db[COLL].update_one({"id": cartella["id"]}, {"$set": {
         **campi, "ricevuta_id": ricevuta.get("id"), "pagamenti_documentati": pagamenti,
         "importo_pagato_documentale": str(versato),
+        "interessi_mora_documentati": str(mora),
         "data_pagamento": ricevuta.get("data_pagamento"),
         "updated_at": datetime.now(timezone.utc).isoformat(),
     }})
@@ -318,7 +390,7 @@ async def chiudi_da_ricevuta(db, ricevuta: Dict[str, Any]) -> Optional[str]:
         debtor = ricevuta.get("codice_fiscale_debitore")
         if debtor and cartella.get("codice_fiscale_destinatario") and debtor != cartella["codice_fiscale_destinatario"]:
             continue
-        result = await _applica_ricevuta(db, cartella, ricevuta, doc["totale"])
+        result = await _applica_ricevuta(db, cartella, ricevuta, doc["totale"], dettaglio=doc)
         linked.add(cartella["id"])
     # Se il PDF contiene piu' quote non usare il totale dell'intera ricevuta
     # contro una singola cartella: fanno fede i dettagli sopra.
