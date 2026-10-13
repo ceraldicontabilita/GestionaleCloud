@@ -868,6 +868,7 @@ async def archivia_richiesta_informazioni(
         "success": True,
         "workflow": "ADER_INFORMATION_REQUEST",
         "tipo": TIPO_RICHIESTA_INFORMAZIONI,
+        "tipo_rilevato": TIPO_RICHIESTA_INFORMAZIONI,
         "duplicate": getattr(result, "upserted_id", None) is None,
         "fiscal_document_id": reference["document_id"],
         "data": {key: record[key] for key in (
@@ -1103,7 +1104,8 @@ async def archivia_documento_ader(db, *, filename: str, content: bytes, testo: s
     now = _now_iso()
     documento = esito.get("documents", {}).get(filename) or {}
     risultato: dict[str, Any] = {
-        "success": True, "workflow": "ADER_DOCUMENTO", "tipo": tipo, "sha256": sha,
+        "success": True, "workflow": "ADER_DOCUMENTO", "tipo": tipo,
+        "tipo_rilevato": tipo, "sha256": sha,
         "duplicate": (
             bool(esito.get("existing_snapshots"))
             if tipo in {TIPO_ANALITICA, TIPO_DETTAGLIO}

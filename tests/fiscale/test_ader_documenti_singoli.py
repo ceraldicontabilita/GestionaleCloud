@@ -207,6 +207,7 @@ def test_analitica_saldati_azzera_il_residuo_ma_non_inventa_un_pagamento(monkeyp
     legacy = asyncio.run(db[cartelle_pagamento.COLL].find_one({"id": legacy_id}, {"_id": 0}))
 
     assert result["tipo"] == ader.TIPO_ANALITICA and not result["duplicate"]
+    assert result["tipo_rilevato"] == ader.TIPO_ANALITICA
     assert claim["residual_cents"] == 0
     assert claim["business_status"] == "PORTAL_CLOSED_PENDING_EVIDENCE"
     assert snapshot["payment_evidence"] is False and snapshot["paid_amount"] == 11.23
@@ -233,6 +234,7 @@ def test_richiesta_contattaci_resta_corrispondenza_senza_prova(monkeypatch):
     record = asyncio.run(db[COLL_TAX_COLLECTION_DOCUMENTS].find_one({}, {"_id": 0}))
 
     assert result["tipo"] == ader.TIPO_RICHIESTA_INFORMAZIONI
+    assert result["tipo_rilevato"] == ader.TIPO_RICHIESTA_INFORMAZIONI
     assert record["plan_reference"] == "80122" and record["plan_application_date"] == "2009-06-26"
     assert record["asserted_debt_cents"] == 105252
     assert record["asserted_last_installment_date"] == "2012-08-03"

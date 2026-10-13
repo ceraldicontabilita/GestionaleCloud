@@ -2941,6 +2941,17 @@ async def _chiusura_fuori_anno(db, parsed: Dict[str, Any], result: Dict[str, Any
     return True
 
 
+def _stato_cartella_importata(cartella: Dict[str, Any]) -> str:
+    if cartella.get("duplicate"):
+        return " già presente"
+    if (cartella.get("fiscal") or {}).get("residual_cents") == 0:
+        return (
+            " registrata; la posizione corrente AdeR ha residuo 0,00 EUR, "
+            "ma il pagamento non e' provato"
+        )
+    return " registrata: da pagare entro 60 giorni dalla notifica"
+
+
 @router.post("/upload-auto")
 @handle_errors
 async def upload_documento_automatico(
@@ -4043,6 +4054,7 @@ async def upload_documento_automatico(
             if not cartella.get("success"):
                 raise ValueError(cartella.get("message") or "Cartella di pagamento non leggibile")
             result.update({
+                "tipo_rilevato": tipo_rilevato,
                 "workflow": "CARTELLA_PAGAMENTO",
                 "duplicate": bool(cartella.get("duplicate")),
                 "imported": 0 if cartella.get("duplicate") else 1,
@@ -4050,7 +4062,7 @@ async def upload_documento_automatico(
                 "message": (
                     f"Cartella {cartella['numero_cartella']} di {cartella.get('ente_creditore') or 'ente non letto'}"
                     f" da {cartella.get('totale')} EUR"
-                    + (" già presente" if cartella.get("duplicate") else " registrata: da pagare entro 60 giorni dalla notifica")
+                    + _stato_cartella_importata(cartella)
                     + ("" if cartella.get("importi_quadrano") else " (importi da verificare)")
                 ),
             })
