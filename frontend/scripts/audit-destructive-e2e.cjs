@@ -98,11 +98,11 @@ async function run() {
         .filter({ has: page.locator('option[value="CUSTOM"]') }).selectOption('CUSTOM');
       const riga = page.getByTestId('scadenze-table').locator('tbody tr')
         .filter({ hasText: 'COLLAUDO E2E - cancellami' }).first();
-      await riga.getByTitle('Elimina').click();
+      await riga.getByRole('button', { name: 'Elimina promemoria', exact: true }).click();
       await page.getByTestId('confirm-dialog-cancel').click();
       assert((await scadenze()).some(s => s.id === 'e2e-scadenza-da-eliminare'),
         'Annulla ha cancellato la scadenza');
-      await riga.getByTitle('Elimina').click();
+      await riga.getByRole('button', { name: 'Elimina promemoria', exact: true }).click();
       const eliminazione = page.waitForResponse(r => r.request().method() === 'DELETE'
         && r.url().endsWith('/api/scadenze/e2e-scadenza-da-eliminare'));
       await page.getByTestId('confirm-dialog-confirm').click();
