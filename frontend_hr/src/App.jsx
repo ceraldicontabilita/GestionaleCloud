@@ -6284,7 +6284,8 @@ function PagheBonificiPage({ dipendenti = [] }) {
                           </p>}
                           {r.bonifici.length > 0 && (<>
                             <div style={{ fontSize: 12, color: "#7a8576", marginBottom: 6 }}>
-                              Un bonifico arrivato nel mese sbagliato (es. il 1° gennaio per la busta di dicembre) si sposta con <b>Sposta / modifica</b>: il sistema ricalcola entrambi i mesi.
+                              Per correggere la competenza di un pagamento, usa <b>Cambia mese o importo</b>.
+                              Modifichi soltanto la registrazione del pagamento elencato qui sotto: il cedolino e il suo PDF non vengono spostati.
                             </div>
                             <div style={{ fontSize: 11, color: "#7a8576", fontWeight: 700, textTransform: "uppercase", marginBottom: 6 }}>Pagamenti registrati</div>
                             <table style={{ width: "100%", borderCollapse: "collapse" }}>
@@ -6296,7 +6297,7 @@ function PagheBonificiPage({ dipendenti = [] }) {
                                   <th style={{ ...th, borderBottom: "1px solid #e6e0d4" }}>Beneficiario</th>
                                   <th style={{ ...th, borderBottom: "1px solid #e6e0d4" }}>Riferimento</th>
                                   <th style={{ ...th, borderBottom: "1px solid #e6e0d4" }}>PDF</th>
-                                  <th style={{ ...th, borderBottom: "1px solid #e6e0d4" }}>Periodo / importo</th>
+                                  <th style={{ ...th, borderBottom: "1px solid #e6e0d4" }}>Competenza del pagamento</th>
                                 </tr>
                               </thead>
                               <tbody>
@@ -6318,22 +6319,22 @@ function PagheBonificiPage({ dipendenti = [] }) {
                                     <td style={{ ...td, borderBottom: "none", fontSize: 12, whiteSpace: "nowrap" }}>
                                       {editPag && editPag.key === b.key ? (
                                         <div style={{ display: "flex", gap: 4, alignItems: "center", flexWrap: "wrap" }}>
-                                          <select value={editPag.mese} onChange={e => setEditPag({ ...editPag, mese: e.target.value })} style={{ ...sel, padding: "4px 6px", fontSize: 12 }}>
+                                          <select aria-label="Mese di competenza del pagamento" title="Mese di competenza del pagamento" value={editPag.mese} onChange={e => setEditPag({ ...editPag, mese: e.target.value })} style={{ ...sel, padding: "4px 6px", fontSize: 12 }}>
                                             {mesi.map((m, idx) => <option key={idx + 1} value={idx + 1}>{m}</option>)}
                                             <option value={13}>Tredicesima</option>
                                             <option value={14}>Quattordicesima</option>
                                           </select>
-                                          <input type="number" value={editPag.anno} onChange={e => setEditPag({ ...editPag, anno: e.target.value })} style={{ ...sel, width: 70, padding: "4px 6px", fontSize: 12 }} />
-                                          <input type="number" step="0.01" min="0" value={editPag.importo} onChange={e => setEditPag({ ...editPag, importo: e.target.value })} style={{ ...sel, width: 100, padding: "4px 6px", fontSize: 12, textAlign: "right" }} />
-                                          <input type="text" placeholder="nota" value={editPag.nota} onChange={e => setEditPag({ ...editPag, nota: e.target.value })} style={{ ...sel, width: 140, padding: "4px 6px", fontSize: 12 }} />
+                                          <input aria-label="Anno di competenza del pagamento" title="Anno di competenza del pagamento" type="number" value={editPag.anno} onChange={e => setEditPag({ ...editPag, anno: e.target.value })} style={{ ...sel, width: 70, padding: "4px 6px", fontSize: 12 }} />
+                                          <input aria-label="Importo del pagamento" title="Importo del pagamento" type="number" step="0.01" min="0" value={editPag.importo} onChange={e => setEditPag({ ...editPag, importo: e.target.value })} style={{ ...sel, width: 100, padding: "4px 6px", fontSize: 12, textAlign: "right" }} />
+                                          <input aria-label="Motivo della correzione" title="Motivo della correzione" type="text" placeholder="motivo della correzione" value={editPag.nota} onChange={e => setEditPag({ ...editPag, nota: e.target.value })} style={{ ...sel, width: 180, padding: "4px 6px", fontSize: 12 }} />
                                           <button className="dc-btn" disabled={busy === b.key} onClick={salvaPagamento} style={{ fontSize: 12, padding: "3px 8px" }}>Salva</button>
                                           <button className="dc-btn" onClick={() => setEditPag(null)} style={{ fontSize: 12, padding: "3px 8px" }}>Annulla</button>
                                         </div>
                                       ) : (
                                         b.key
-                                          ? <span style={{ display: "inline-flex", gap: 4 }}><button className="dc-btn" title="Sposta questo pagamento a un altro mese (es. bonifico del 1° gennaio → dicembre) o correggi l'importo"
+                                          ? <span style={{ display: "inline-flex", gap: 4 }}><button className="dc-btn" title="Cambia il mese di competenza o l'importo di questo pagamento; il cedolino e il PDF non vengono spostati"
                                               onClick={() => setEditPag({ key: b.key, mese: r.mese, anno: r.anno, importo: b.importo, nota: "" })}
-                                              style={{ fontSize: 12, padding: "3px 8px" }}>Sposta / modifica</button>
+                                              style={{ fontSize: 12, padding: "3px 8px" }}>Cambia mese o importo</button>
                                               {b.origine === "manuale" && <button className="dc-btn" disabled={busy === b.key} onClick={() => eliminaPagamentoManuale(b.key)} style={{ fontSize: 12, padding: "3px 8px", color: "#b04a3a" }}>Elimina</button>}</span>
                                           : <span style={{ color: "#9aa295" }}>—</span>
                                       )}
