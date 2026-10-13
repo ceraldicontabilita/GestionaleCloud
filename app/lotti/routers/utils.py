@@ -121,7 +121,7 @@ async def prezzi_fatture_per_fornitore(db_conn, fornitore_match: str) -> dict:
     prezzi = {}
     articoli = articoli_acquistati(await fatture_catalogo(db_conn, fornitore_match))
     for articolo in sorted(articoli, key=lambda a: a["_data"]):
-        voce = {k: articolo[k] for k in ("prezzo", "quantita", "data", "fattura_id")}
+        voce = {k: articolo.get(k) for k in ("prezzo", "quantita", "data", "fattura_id", "unita_confezione", "iva_pct")}
         prezzi[_norm(articolo["nome"])] = voce
         for codice in articolo["codici_alias"]:
             if _norm_codice_articolo(codice):
@@ -233,6 +233,8 @@ def applica_prezzo_da_fatture(prodotti: list, prezzi: dict) -> list:
             # quantità dell'ultima riga fattura (es. cartoni/pezzi comprati):
             # a colpo d'occhio nei cataloghi si vede anche QUANTO si è comprato
             prod["quantita_ultima_fattura"] = match.get("quantita", 0)
+            prod["unita_ultima_fattura"] = match.get("unita_confezione", "")
+            prod["iva_pct"] = match.get("iva_pct", 0)
         else:
             # non comprato → nessun prezzo (sovrascrive eventuali vecchi prezzi-listino)
             if prod.get("fonte_catalogo") != "listino":

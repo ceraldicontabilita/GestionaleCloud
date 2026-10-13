@@ -27,6 +27,11 @@ class ProdottoOrdine(BaseModel):
     quantita: float = 1.0
     unita: str = "kg"
     prezzo_ultimo: float = 0.0
+    iva_pct: float = 0.0
+    prezzo_fonte: str = ""
+    prezzo_unitario_fattura: float = 0.0
+    prezzo_confezione_calcolato: bool = False
+    peso_confezione_kg: float = 0.0
     note: str = ""
     richiesto_da: str = ""  # chi ha messo il prodotto in ordine (tracciabilità)
 
@@ -753,12 +758,125 @@ async def _task_produzione_oggi_impl():
     return {"tasks": tasks, "totale": len(tasks)}
 
 
+def _peso_kg_da_riga_ordine(riga: dict) -> float:
+    peso = float(riga.get("peso_confezione_kg") or 0)
+    if peso > 0:
+        return peso
+    for valore in (riga.get("unita"), riga.get("unita_misura"), riga.get("nome")):
+        m = re.search(r"(\d+(?:[.,]\d+)?)\s*kg\b", str(valore or ""), re.I)
+        if m:
+            return float(m.group(1).replace(",", "."))
+    return 0.0
+
+
+def _articolo_fattura_per_riga(riga: dict, articoli: list):
+    from app.lotti.routers.utils import _norm, _norm_codice_articolo
+    pid = _norm_codice_articolo(str(riga.get("prodotto_id") or "").replace("cat_", ""))
+    per_codice = []
+    for articolo in articoli:
+        for codice in articolo.get("codici_alias") or [articolo.get("codice_articolo")]:
+            cod = _norm_codice_articolo(codice)
+            if cod and pid and pid.endswith(cod):
+                per_codice.append(articolo)
+    if len({a.get("id") for a in per_codice}) == 1:
+        return per_codice[0]
+    nome = _norm(riga.get("nome") or "")
+    per_nome = [a for a in articoli if _norm(a.get("nome") or "") == nome]
+    return per_nome[0] if len(per_nome) == 1 else None
+
+
+def _riga_con_prezzo_fattura(riga: dict, articolo: dict, now: str) -> tuple[dict, bool]:
+    unitario = float(articolo.get("prezzo") or 0)
+    if unitario <= 0:
+        return riga, False
+    peso = _peso_kg_da_riga_ordine(riga) if str(articolo.get("unita_confezione") or "").upper().startswith("KG") else 0
+    nuovo = round(unitario * (peso if peso > 0 else 1), 4)
+    vecchio = float(riga.get("prezzo_ultimo") or riga.get("prezzo") or 0)
+    iva = float(articolo.get("iva_pct") or 0)
+    if abs(vecchio - nuovo) < 0.0001 and float(riga.get("iva_pct") or 0) == iva:
+        return riga, False
+    storico = list(riga.get("storico_prezzi") or [])
+    if abs(vecchio - nuovo) >= 0.0001:
+        storico.append({"da": vecchio, "a": nuovo, "aggiornato_il": now, "fonte": "ultima_fattura_xml"})
+    aggiornato = {**riga, "prezzo_ultimo": nuovo, "prezzo": nuovo,
+                  "prezzo_precedente": vecchio, "prezzo_unitario_fattura": unitario,
+                  "prezzo_confezione_calcolato": peso > 0, "peso_confezione_kg": peso,
+                  "prezzo_fonte": "fattura_xml", "iva_pct": iva,
+                  "prezzo_aggiornato_il": now, "storico_prezzi": storico[-20:]}
+    return aggiornato, True
+
+
+@router.post("/aggiorna-prezzi-aperti")
+async def aggiorna_prezzi_ordini_aperti(fonte: str = Query(...), _admin=Depends(require_admin)):
+    """Aggiorna carrello e bozze/confermati con l'ultima fattura; gli inviati
+    sono immutabili e restano nello storico con i prezzi effettivamente spediti."""
+    from app.lotti.servizi.preferiti_cataloghi import fatture_catalogo, articoli_acquistati
+    articoli = articoli_acquistati(await fatture_catalogo(db, fonte))
+    now = datetime.now(timezone.utc).isoformat()
+    ordini_aggiornati = righe_aggiornate = 0
+    async for ordine in db.ordini_fornitori.find(
+        {"stato": {"$in": ["bozza", "confermato", "in_modifica"]}}, {"_id": 0}
+    ):
+        nuove, cambiate = [], 0
+        for riga in ordine.get("prodotti") or []:
+            articolo = _articolo_fattura_per_riga(riga, articoli)
+            nuova, cambiata = _riga_con_prezzo_fattura(riga, articolo, now) if articolo else (riga, False)
+            nuove.append(nuova); cambiate += int(cambiata)
+        if cambiate:
+            await db.ordini_fornitori.update_one({"id": ordine["id"]}, {"$set": {
+                "prodotti": nuove, "totali": calcola_totali_ordine(nuove), "updated_at": now,
+                "prezzi_sincronizzati_il": now,
+            }})
+            ordini_aggiornati += 1; righe_aggiornate += cambiate
+    carrello = await db.carrello_sospesi.find_one({"_id": "default"}, {"_id": 0}) or {}
+    nuove_righe, carrello_aggiornate = [], 0
+    for riga in carrello.get("righe") or []:
+        articolo = _articolo_fattura_per_riga(riga, articoli)
+        nuova, cambiata = _riga_con_prezzo_fattura(riga, articolo, now) if articolo else (riga, False)
+        if "prezzo_ultimo" in nuova:
+            nuova["prezzo"] = nuova["prezzo_ultimo"]
+        nuove_righe.append(nuova); carrello_aggiornate += int(cambiata)
+    if carrello_aggiornate:
+        await db.carrello_sospesi.update_one({"_id": "default"}, {"$set": {"righe": nuove_righe, "updated_at": now}}, upsert=True)
+    return {"ok": True, "ordini_aggiornati": ordini_aggiornati,
+            "righe_aggiornate": righe_aggiornate, "carrello_aggiornate": carrello_aggiornate}
+
+
+@router.post("/{ordine_id}/riporta-al-carrello")
+async def riporta_ordine_al_carrello(ordine_id: str, _admin=Depends(require_admin)):
+    ordine = await db.ordini_fornitori.find_one({"id": ordine_id}, {"_id": 0})
+    if not ordine:
+        raise HTTPException(404, "Ordine non trovato")
+    if ordine.get("stato") not in {"bozza", "confermato", "in_modifica"}:
+        raise HTTPException(409, "Un ordine già inviato non può essere riportato nel carrello")
+    righe = []
+    for p in ordine.get("prodotti") or []:
+        pid = str(p.get("prodotto_id") or uuid.uuid4().hex)
+        righe.append({"id": pid[4:] if pid.startswith("cat_") else pid, "nome": p.get("nome") or "Prodotto",
+                      "fornitore": p.get("fornitore") or "DA ASSEGNARE", "prezzo": p.get("prezzo_ultimo") or 0,
+                      "iva_pct": p.get("iva_pct") or 0, "prezzo_fonte": p.get("prezzo_fonte") or "",
+                      "prezzo_unitario_fattura": p.get("prezzo_unitario_fattura") or 0,
+                      "prezzo_confezione_calcolato": bool(p.get("prezzo_confezione_calcolato")),
+                      "peso_confezione_kg": p.get("peso_confezione_kg") or 0,
+                      "unita_misura": p.get("unita") or "pz", "quantita": p.get("quantita") or 1,
+                      "note": p.get("note") or "", "fonte": p.get("prezzo_fonte") or "ordine_salvato"})
+    now = datetime.now(timezone.utc).isoformat()
+    await db.carrello_sospesi.update_one({"_id": "default"}, {"$set": {"righe": righe, "updated_at": now}}, upsert=True)
+    await db.ordini_fornitori.update_one({"id": ordine_id}, {"$set": {"stato": "in_modifica", "modifica_iniziata_il": now, "updated_at": now}})
+    return {"ok": True, "ordine_id": ordine_id, "righe": righe}
+
+
 @router.delete("/{ordine_id}")
 async def elimina_ordine(ordine_id: str, _admin=Depends(require_admin)):
-    res = await db.ordini_fornitori.delete_one({"id": ordine_id})
-    if res.deleted_count == 0:
+    """Annulla senza cancellare: anche gli ordini non inviati restano nello storico."""
+    now = datetime.now(timezone.utc).isoformat()
+    res = await db.ordini_fornitori.update_one(
+        {"id": ordine_id, "stato": {"$nin": ["inviato_fornitori", "ricevuto", "ricevuto_parziale"]}},
+        {"$set": {"stato": "annullato", "annullato_at": now, "updated_at": now}},
+    )
+    if res.matched_count == 0:
         raise HTTPException(404, "Ordine non trovato")
-    return {"ok": True}
+    return {"ok": True, "stato": "annullato"}
 
 
 @router.get("")
@@ -986,6 +1104,8 @@ async def sostituisci_prodotti_ordine(ordine_id: str, payload: dict, _admin=Depe
     ordine = await db.ordini_fornitori.find_one({"id": ordine_id}, {"_id": 0})
     if not ordine:
         raise HTTPException(404, "Ordine non trovato")
+    if ordine.get("stato") not in {"bozza", "confermato", "in_modifica"}:
+        raise HTTPException(409, "Un ordine già inviato non può essere modificato")
 
     nuovi = payload.get("prodotti", [])
     # conserva i campi originali per prodotto_id, sovrascrivendo solo quantità/nome forniti
@@ -995,12 +1115,14 @@ async def sostituisci_prodotti_ordine(ordine_id: str, payload: dict, _admin=Depe
         pid = p.get("prodotto_id", "")
         base = dict(orig_by_id.get(pid, {}))
         base.update({k: v for k, v in p.items() if v is not None})
+        base["confermato"] = False
         prodotti_upd.append(base)
 
     prodotti_upd = await arricchisci_iva_righe(prodotti_upd)
     await db.ordini_fornitori.update_one(
         {"id": ordine_id},
-        {"$set": {"prodotti": prodotti_upd, "totali": calcola_totali_ordine(prodotti_upd),
+        {"$set": {"prodotti": prodotti_upd, "totali": calcola_totali_ordine(prodotti_upd), "stato": "bozza",
+                   "confermato_il": None,
                    "updated_at": datetime.now(timezone.utc).isoformat()}},
     )
     return await db.ordini_fornitori.find_one({"id": ordine_id}, {"_id": 0})

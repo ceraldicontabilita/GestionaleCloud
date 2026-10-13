@@ -23,6 +23,7 @@ beforeEach(() => {
   window.history.replaceState(null, "", "#prodotti/mepa");
   axios.get.mockReset();
   axios.post.mockReset();
+  axios.post.mockResolvedValue({ data: { righe_aggiornate: 2, carrello_aggiornate: 1 } });
   toast.success.mockReset();
   toast.error.mockReset();
   axios.get.mockImplementation(async url => {
@@ -54,5 +55,6 @@ test("Sync Fatture nella scheda MEPA rilegge le fatture canoniche e non Acquaviv
 
   expect(axios.get).toHaveBeenCalledWith(expect.stringContaining("/cataloghi/preferiti/mepa"));
   expect(axios.post).not.toHaveBeenCalledWith(expect.stringContaining("sync-acquaviva"));
-  expect(toast.success).toHaveBeenCalledWith("Fatture lette: 10 · 2 prodotti · 1 prezzo · 1 senza prezzo in fattura");
+  expect(axios.post).toHaveBeenCalledWith(expect.stringContaining("/ordini-fornitori/aggiorna-prezzi-aperti"), null, { params: { fonte: "mepa" } });
+  expect(toast.success).toHaveBeenCalledWith("Fatture lette: 10 · 2 prodotti · 1 prezzo · 1 senza prezzo in fattura · 2 prezzi in bozze aggiornati");
 });

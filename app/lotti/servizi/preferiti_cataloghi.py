@@ -86,6 +86,7 @@ def articoli_acquistati(fatture):
             if re.search(r"\b(trasporto|spese|sconto|abbuono|bollo|contributo conai)\b", nome, re.I):
                 continue
             totale = numero(r.get("prezzo_totale") or r.get("line_total"))
+            aliquota_iva = numero(r.get("aliquota_iva") or r.get("tax_rate") or r.get("iva_pct") or r.get("iva"))
             informativa = nome.casefold() == "riga ausiliaria contenente informazioni tecniche e aggiuntive del documento" or any(
                 str(d.get("tipo_dato") or "").casefold() == "aswtriga"
                 and "#ID#" in str(d.get("riferimento_testo") or "").upper()
@@ -109,6 +110,7 @@ def articoli_acquistati(fatture):
                 "nome": nome, "codice_articolo": codici[0] if codici else "", "codici_alias": codici,
                 "prezzo": float(prezzo), "quantita": float(quantita or 0), "data": str(data), "_data": data_ord,
                 "unita_confezione": r.get("unita_misura") or r.get("unit") or "pz",
+                "iva_pct": float(aliquota_iva) if aliquota_iva is not None else 0,
                 "fattura_id": str(f.get("id") or ""), "fornitore_nome": nome_fornitore(f)}
     return list(articoli.values())
 
@@ -140,6 +142,7 @@ def collega_preferiti(articoli, catalogo, fonte):
         p.update({"fonte": fonte, "fornitore": fonte, "gia_acquistato": True, "preferito_acquisti": True,
                   "prezzo_fattura": a["prezzo"], "prezzo_fattura_data": a["data"],
                   "quantita_ultima_fattura": a["quantita"], "fattura_id": a["fattura_id"],
+                  "unita_ultima_fattura": a["unita_confezione"], "iva_pct": a["iva_pct"],
                   "da_fattura_senza_catalogo": not bool(unici) or len(unici) != 1})
         risultato[p["id"]] = p
     return sorted(risultato.values(), key=lambda p: p["nome"].casefold())
