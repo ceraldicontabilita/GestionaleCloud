@@ -76,3 +76,35 @@ def test_quietanza_senza_nessuna_copia_da_vuoto_e_non_un_errore(monkeypatch):
 
     assert asyncio.run(dd.scarica_originale("cestino", md5="a" * 32)) == b""
     assert asyncio.run(dd.scarica_originale("cestino")) == b""
+
+
+def test_quietanza_recupera_copia_identica_se_primo_drive_non_disponibile(monkeypatch):
+    import asyncio, hashlib
+    from app.services import f24_originale, drive_download
+    content = b'%PDF-originale-identico'
+    sha = hashlib.sha256(content).hexdigest()
+    calls = []
+    async def absent(doc): return b''
+    async def download(ident, **kwargs):
+        calls.append(ident)
+        return content
+    monkeypatch.setattr(f24_originale, '_carica', absent)
+    monkeypatch.setattr(drive_download, 'scarica_originale', download)
+    doc = {'drive_file_id': 'rimosso', 'pdf_hash': sha, 'source_occurrences': [
+        {'drive_file_id': 'altra-versione', 'sha256': 'a' * 64},
+        {'drive_file_id': 'copia-identica', 'sha256': sha}]}
+    assert asyncio.run(f24_originale.carica_originale(doc)) == content
+    assert calls == ['copia-identica']
+
+
+def test_quietanza_non_apre_copia_con_byte_diversi(monkeypatch):
+    import asyncio, hashlib, pytest
+    from app.services import f24_originale, drive_download
+    async def absent(doc): return b''
+    async def download(ident, **kwargs): return b'%PDF-altra-ricevuta'
+    monkeypatch.setattr(f24_originale, '_carica', absent)
+    monkeypatch.setattr(drive_download, 'scarica_originale', download)
+    sha = hashlib.sha256(b'%PDF-originale').hexdigest()
+    with pytest.raises(ValueError, match='impronta'):
+        asyncio.run(f24_originale.carica_originale({'pdf_hash': sha, 'source_occurrences': [
+            {'drive_file_id': 'errato', 'sha256': sha}]}))

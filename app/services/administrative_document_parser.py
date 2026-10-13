@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import hashlib
 import io
+import logging
 import re
 from typing import Any
 
@@ -28,8 +29,8 @@ def _pdf_text(content: bytes) -> tuple[str, bool]:
                 positioned = "\n".join(page.get_text(sort=True) for page in pdf)
             if len(positioned.split()) > len(text.split()):
                 text = positioned
-        except Exception:
-            pass
+        except Exception as exc:
+            logging.getLogger(__name__).warning("Lettura PDF per coordinate non disponibile (%s)", type(exc).__name__)
     if len(text.strip()) >= 80:
         return text, False
     try:
