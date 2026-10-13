@@ -614,14 +614,14 @@ async def _candidati_progetto(descrizione: str) -> tuple[list[dict], list[dict]]
     prodotti.sort(key=lambda d: _punteggio_testo(d, parole_tecniche, ("nome", "categoria", "descrizione", "descrizione_breve", "dettagli_irca")), reverse=True)
     # Manteniamo il contesto abbastanza ricco per comporre base, inserto e
     # copertura, ma abbastanza compatto da non far scadere la chiamata LLM.
-    ricette_scelte = ricette[:10]
+    ricette_scelte = ricette[:6]
     riferiti = {
         p.get("slug") for r in ricette_scelte for p in r.get("prodotti_irca", []) if p.get("slug")
     }
-    prodotti_scelti = prodotti[:30]
+    prodotti_scelti = prodotti[:18]
     presenti = {p.get("slug") for p in prodotti_scelti}
     prodotti_scelti.extend(p for p in prodotti if p.get("slug") in riferiti and p.get("slug") not in presenti)
-    return ricette_scelte, prodotti_scelti[:45]
+    return ricette_scelte, prodotti_scelti[:28]
 
 
 def _json_da_testo(value: str) -> dict:
@@ -660,7 +660,7 @@ async def _immagine_concept(prompt: str, progetto_id: str) -> tuple[str, str]:
 
 
 async def _progetta_dolce(payload: ProgettoDolcePayload) -> dict:
-    from app.services.anthropic_llm_client import LlmChat, UserMessage, chiave_api, document_model_name
+    from app.services.anthropic_llm_client import LlmChat, UserMessage, chiave_api, modello_veloce
     if not chiave_api():
         raise HTTPException(503, "Progettazione non disponibile: ANTHROPIC_API_KEY non configurata")
     ricette, prodotti = await _candidati_progetto(payload.descrizione)
@@ -673,8 +673,8 @@ async def _progetta_dolce(payload: ProgettoDolcePayload) -> dict:
     } for r in ricette]
     prodotti_fonti = [{
         "slug": p.get("slug"), "nome": p.get("nome"), "codici": p.get("codici_irca", []),
-        "descrizione": str(p.get("descrizione") or "")[:1200],
-        "uso": str(p.get("dettagli_irca", {}).get("modalita_d_uso", "") or "")[:800],
+        "descrizione": str(p.get("descrizione") or "")[:700],
+        "uso": str(p.get("dettagli_irca", {}).get("modalita_d_uso", "") or "")[:500],
         "url": p.get("link_prodotto"),
     } for p in prodotti]
     prompt = f"""Sei un tecnologo alimentare e pastry chef. Devi preparare una BOZZA TECNICA tracciabile usando esclusivamente le fonti IRCA fornite.
@@ -695,13 +695,13 @@ Rispondi SOLO JSON con questa forma:
 {{"titolo":"", "descrizione_concept":"", "resa_percentuale":90, "componenti":[{{"nome":"base|inserto|copertura|decorazione", "descrizione":"", "ingredienti":[{{"nome":"", "product_slug":null, "quantita_per_kg_lordo_g":0, "funzione":"", "evidenza":""}}]}}], "ricette_riferimento":[{{"slug":"", "motivo":""}}], "emulsionanti_e_stabilizzanti":[{{"product_slug":"", "motivo":"", "dose_da_validare":true}}], "procedimento":[""], "controlli_e_rischi":[""], "prompt_immagine":""}}
 
 RICETTE IRCA:
-{json.dumps(ricette_fonti, ensure_ascii=False)[:26000]}
+{json.dumps(ricette_fonti, ensure_ascii=False)[:16000]}
 
 PRODOTTI IRCA:
-{json.dumps(prodotti_fonti, ensure_ascii=False)[:20000]}"""
+{json.dumps(prodotti_fonti, ensure_ascii=False)[:12000]}"""
     chat = LlmChat(
-        chiave_api(), model=document_model_name(), timeout_s=90, tentativi=2,
-        max_tokens=5000, scopo="irca_progetto_dolce", db=db,
+        chiave_api(), model=modello_veloce(), timeout_s=60, tentativi=1,
+        max_tokens=3200, scopo="irca_progetto_dolce", db=db,
     )
     proposta = _json_da_testo(await chat.send_message(UserMessage(content=prompt)))
     prodotti_validi = {p["slug"]: p for p in prodotti}
