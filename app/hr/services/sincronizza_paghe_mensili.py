@@ -23,8 +23,9 @@ qui, all'arrivo del cedolino, la riga riceve la busta e i pagamenti gia'
 depositati (`pagamenti_esiti`, acconti) la chiudono da soli: pagato o parziale.
 """
 import asyncio
+from collections import defaultdict
 from datetime import datetime, timezone
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 from app.constants.stati_associazione_bonifico import (
     esiti_riconciliati, esiti_confermati, ha_riscontro_bancario, stato_paga_mese,
@@ -49,6 +50,11 @@ def _stato_e_saldo(busta: Any, erogato: Any, *, bonifico: Any = 0,
     centesimo, nessuna tolleranza (titolare 02/10/2026)."""
     busta_d = importo(busta)
     erogato_d = importo(erogato) or ZERO
+    # Un cedolino a netto zero non puo' essere "chiuso" da un bonifico
+    # positivo. Il pagamento resta visibile, ma richiede una verifica della
+    # competenza (caso reale: trattenute/prestito pari alle competenze).
+    if busta_d == ZERO and erogato_d > ZERO:
+        return {"stato_pagamento": "da_verificare", "saldo": 0.0}
     stato = stato_paga_mese(busta_d, erogato_d)
     if (importo(bonifico) or ZERO) > ZERO and busta_d is not None and not riconciliato:
         stato = "da_verificare"
@@ -64,6 +70,59 @@ def _mese_registro(c: Dict[str, Any]) -> int:
     if tipo == "quattordicesima":
         return 14
     return int(c["mese"])
+
+
+def _origine_pagamento(e: Dict[str, Any]) -> str:
+    return str(e.get("origine") or "manuale").strip().lower()
+
+
+def _chiave_pagamento(e: Dict[str, Any]) -> Optional[Tuple[str, str, float]]:
+    """Identita' prudente di un pagamento fra fonti diverse.
+
+    Non deduplichiamo righe della stessa fonte: due bonifici realmente distinti
+    possono avere stesso beneficiario, giorno e importo. La chiave serve solo
+    quando la medesima evidenza e' arrivata da almeno due canali.
+    """
+    dip, data, valore = e.get("dipendente_id"), e.get("data"), _num(e.get("importo"))
+    if not dip or not data or valore is None:
+        return None
+    return str(dip), str(data), round(valore, 2)
+
+
+def _priorita_pagamento(e: Dict[str, Any]) -> Tuple[int, int, str]:
+    prova_banca = any(
+        e.get(campo) for campo in (
+            "cro", "hash", "gestionale_transfer_id", "gestionale_movimento_id"
+        )
+    )
+    origine = _origine_pagamento(e)
+    ordine_fonte = {
+        "gestionale-bonifico-pdf": 0,
+        "elenco-pagamenti-corretto-titolare": 1,
+        "manuale": 2,
+        "elenco-pagamenti-titolare": 3,
+    }
+    return (
+        0 if prova_banca else 1,
+        ordine_fonte.get(origine, 2),
+        str(e.get("id") or e.get("key") or ""),
+    )
+
+
+def deduplica_pagamenti(esiti: Iterable[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Collassa il doppio caricamento elenco/PDF conservando la prova migliore."""
+    gruppi: Dict[Optional[Tuple[str, str, float]], List[Dict[str, Any]]] = defaultdict(list)
+    for esito in esiti:
+        gruppi[_chiave_pagamento(esito)].append(esito)
+
+    risultato: List[Dict[str, Any]] = []
+    for chiave, gruppo in gruppi.items():
+        origini = {_origine_pagamento(e) for e in gruppo}
+        if chiave is not None and len(origini) >= 2:
+            risultato.append(min(gruppo, key=_priorita_pagamento))
+        else:
+            risultato.extend(gruppo)
+    return risultato
 
 
 _SYNC_LOCK = asyncio.Lock()
@@ -88,7 +147,13 @@ async def _sincronizza(db, anno: int = None) -> Dict[str, Any]:
         filtro_ced["anno"] = anno
     cedolini = await db[Collections.PAYSLIPS].find(filtro_ced, {"_id": 0, "pdf_data": 0}).to_list(None)
     from app.services.cedolini_rapporti import raggruppa_cedolini
-    cedolini = list(raggruppa_cedolini(c for c in cedolini if c.get("dipendente_id")).values())
+    # ``False`` e' un'esclusione esplicita (versione sostituita/duplicata).
+    # Il campo assente resta ammesso per non nascondere un nuovo import prima
+    # che il processo di classificazione gli assegni il flag canonico.
+    cedolini = list(raggruppa_cedolini(
+        c for c in cedolini
+        if c.get("dipendente_id") and c.get("payroll_canonical") is not False
+    ).values())
 
     # pdf_data ESCLUSO (05/09/2026): con la quirk del $ne:None descritta sotto
     # questa query prende quasi tutti gli 887 bonifici, e 805 hanno il PDF
@@ -117,7 +182,10 @@ async def _sincronizza(db, anno: int = None) -> Dict[str, Any]:
     esiti_idx: Dict[tuple, float] = {}
     prove_idx: Dict[tuple, list] = {}
     from app.services.pagamenti_mensilita import indice_coperture, stato_copertura, periodi_saldati
-    tutte_prove = await db["pagamenti_esiti"].find({}, {"_id": 0, "pdf_data": 0, "file_data": 0}).to_list(None)
+    prove_grezze = await db["pagamenti_esiti"].find(
+        {}, {"_id": 0, "pdf_data": 0, "file_data": 0}
+    ).to_list(None)
+    tutte_prove = deduplica_pagamenti(prove_grezze)
     for e in tutte_prove:
         if periodi_saldati(e):
             continue
@@ -159,7 +227,9 @@ async def _sincronizza(db, anno: int = None) -> Dict[str, Any]:
         mese_c = _mese_registro(c)
         esistente = esistenti_idx.get((dip, anno_c, mese_c))
         netto_confermato = (esistente or {}).get("netto_confermato")
-        if esistente and esistente.get("origine") not in (None, "cedolino") and netto_confermato is None:
+        if (esistente
+                and esistente.get("origine") not in (None, "cedolino", "cedolino_canonico")
+                and netto_confermato is None):
             saltati_manuali += 1
             continue
 
@@ -207,10 +277,14 @@ async def _sincronizza(db, anno: int = None) -> Dict[str, Any]:
         acconti_pagati = (sum(_num(a.get("importo")) or 0 for a in in_busta)
                           + float(acconti_registro_del_mese(acconti_per_dip.get(dip, []), anno_c, mese_c, in_busta)))
         doc.update(_stato_e_saldo(importo_dovuto, round(bonifico_importo + acconti_pagati, 2),
-                                 bonifico=bonifico_importo, riconciliato=riconciliato))
+                                  bonifico=bonifico_importo, riconciliato=riconciliato))
         if prove := coperture.get((dip, anno_c, mese_c)):
             doc.update(stato_copertura(prove))
-        doc = {k: v for k, v in doc.items() if v is not None or k in ("acconti", "importo_busta", "netto_stampato", "dovuto_periodo", "saldo", "bonifico_importo", "bonifico_data")}
+        campi_null_ammessi = {
+            "acconti", "importo_busta", "netto_stampato", "dovuto_periodo",
+            "saldo", "bonifico_importo", "bonifico_data",
+        }
+        doc = {k: v for k, v in doc.items() if v is not None or k in campi_null_ammessi}
 
         if esistente and all(esistente.get(k) == v for k, v in doc.items() if k != "updated_at"):
             invariati += 1
