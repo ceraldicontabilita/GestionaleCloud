@@ -110,11 +110,35 @@ class OrdineCreateFull(OrdineCreate):
     idempotency_key: str = ""
 
 
+def _quantita_riga_ordine(riga: dict, valore=None) -> float | int:
+    """Valida l'unita' commerciale della riga.
+
+    I prodotti ``cat_`` sono confezioni del catalogo: la quantita' indica il
+    numero di secchielli/cartoni/confezioni e deve essere intera. Le righe non
+    catalogo possono invece conservare mezze unita' quando previsto.
+    """
+    try:
+        quantita = float(riga.get("quantita") if valore is None else valore)
+    except (TypeError, ValueError):
+        raise HTTPException(422, "Quantità non valida")
+    if quantita <= 0:
+        raise HTTPException(422, "La quantità deve essere maggiore di zero")
+    if str(riga.get("prodotto_id") or "").startswith("cat_"):
+        if not quantita.is_integer():
+            raise HTTPException(422, "I prodotti da catalogo si ordinano in confezioni intere")
+        return int(quantita)
+    return quantita
+
+
 @router.post("")
 async def crea_ordine(payload: OrdineCreateFull):
     """Crea un nuovo ordine. source='tracciabilita' (automatico) o 'manuale'."""
     if not payload.prodotti:
         raise HTTPException(status_code=400, detail="Nessun prodotto selezionato")
+
+    righe_payload = [p.model_dump() for p in payload.prodotti]
+    for riga in righe_payload:
+        riga["quantita"] = _quantita_riga_ordine(riga)
 
     if payload.idempotency_key:
         esistente = await db.ordini_fornitori.find_one(
@@ -133,8 +157,7 @@ async def crea_ordine(payload: OrdineCreateFull):
             {"source": payload.source, "data_ordine": oggi, "stato": "bozza"})
         if esistente:
             righe = esistente.get("prodotti", [])
-            for p in payload.prodotti:
-                riga = p.model_dump()
+            for riga in righe_payload:
                 stessa = next((r for r in righe if r.get("prodotto_id") == riga.get("prodotto_id")), None)
                 if stessa:
                     stessa["quantita"] = float(stessa.get("quantita", 0)) + float(riga.get("quantita", 0))
@@ -155,7 +178,7 @@ async def crea_ordine(payload: OrdineCreateFull):
         "idempotency_key": payload.idempotency_key,
         "reparto": payload.reparto,
         "operatore": payload.operatore,
-        "prodotti": await arricchisci_iva_righe([p.model_dump() for p in payload.prodotti]),
+        "prodotti": await arricchisci_iva_righe(righe_payload),
         "ricette_da_produrre": [r.model_dump() for r in payload.ricette_da_produrre],
         "note_operatore": payload.note_operatore,
         "created_at": now,
@@ -1175,7 +1198,7 @@ async def modifica_quantita_ordine(ordine_id: str, payload: dict, _admin=Depends
     for p in ordine.get("prodotti", []):
         pid = p.get("prodotto_id", "")
         if pid in nuove_qty:
-            prodotti_upd.append({**p, "quantita": nuove_qty[pid]})
+            prodotti_upd.append({**p, "quantita": _quantita_riga_ordine(p, nuove_qty[pid])})
         else:
             prodotti_upd.append(p)
 
@@ -1213,6 +1236,7 @@ async def sostituisci_prodotti_ordine(ordine_id: str, payload: dict, _admin=Depe
         pid = p.get("prodotto_id", "")
         base = dict(orig_by_id.get(pid, {}))
         base.update({k: v for k, v in p.items() if v is not None})
+        base["quantita"] = _quantita_riga_ordine(base)
         base["confermato"] = False
         prodotti_upd.append(base)
 
