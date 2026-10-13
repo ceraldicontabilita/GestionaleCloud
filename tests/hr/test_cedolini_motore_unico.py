@@ -151,6 +151,46 @@ def test_la_busta_col_netto_va_in_contabilita_quella_senza_solo_in_hr(scrittore,
     assert [c["mese"] for c in scrittore["hr"]] == [4] and scrittore["hr"][0]["pdf_data"] == "b"
 
 
+def test_duplicato_erp_ripara_comunque_archivio_hr_e_associazione(monkeypatch):
+    db = AsyncMongoMockClient()["t"]
+    depositati = []
+
+    async def gia_in_archivio(_db, _ced):
+        return {"id": "ced-erp-esistente"}
+
+    async def deposita(record, **_):
+        depositati.append(record)
+        return {"esito": "inserito", "id": "ced-hr-nuovo"}
+
+    async def niente_tfr(_db, _ced):
+        return None
+
+    import app.services.hr_cedolini_deposito as deposito
+    import app.services.tfr_anticipo_busta as tfr
+
+    monkeypatch.setattr(cedolini_manager, "_busta_gia_in_archivio", gia_in_archivio)
+    monkeypatch.setattr(deposito, "deposita_cedolino_in_hr", deposita)
+    monkeypatch.setattr(tfr, "registra_dalla_busta", niente_tfr)
+    risultati = {"errori": [], "gia_presenti": 0, "depositi_hr_riparati": 0}
+    cedolino = {
+        "nome_dipendente": "ROSSI MARIO", "codice_fiscale": CF,
+        "anno": 2026, "mese": 7, "tipo_cedolino": "mensile", "netto": 1200.0,
+        "source_page_start": 1, "source_page_end": 2, "source_document_pages": 4,
+    }
+
+    run(cedolini_manager.registra_busta(
+        db, cedolino, filename="luglio.pdf", pdf_data="cGRmLWRlbGxhLWJ1c3Rh",
+        pdf_text="cedolino", results=risultati,
+    ))
+
+    assert risultati["gia_presenti"] == 1
+    assert risultati["depositi_hr_riparati"] == 1
+    assert risultati["dettaglio"][0]["deposito_hr"] == "inserito"
+    assert depositati[0]["id"] == "ced-erp-esistente"
+    assert depositati[0]["pdf_data"] == "cGRmLWRlbGxhLWJ1c3Rh"
+    assert (depositati[0]["source_page_start"], depositati[0]["source_page_end"]) == (1, 2)
+
+
 def test_presenze_e_illeggibili_non_scrivono_nulla(scrittore, monkeypatch):
     monkeypatch.setattr(cedolini_motore, "leggi_pdf", _lettura("presenze", presenze=[{}]))
     esito = run(cedolini_manager.processa_tutti_cedolini_pdf(AsyncMongoMockClient()["t"], base64.b64encode(b"%PDF").decode(), "p.pdf"))

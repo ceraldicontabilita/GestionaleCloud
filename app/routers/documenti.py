@@ -3759,12 +3759,18 @@ async def upload_documento_automatico(
             result["workflow"] = "MOTORE_UNICO_CEDOLINI"
             result["data"] = {k: esito.get(k) for k in (
                 "esito", "cedolini_processati", "buste_senza_netto", "fogli_presenze",
-                "prima_nota_create", "gia_presenti", "errori",
+                "prima_nota_create", "gia_presenti", "depositi_hr_riparati", "errori",
             )}
             scritte = (esito.get("cedolini_processati") or 0) + (esito.get("buste_senza_netto") or 0)
-            if scritte:
+            riparate = esito.get("depositi_hr_riparati") or 0
+            if scritte or riparate:
                 result["imported"] = 1
-                result["message"] = f"Cedolino: {scritte} buste registrate"
+                parti = []
+                if scritte:
+                    parti.append(f"{scritte} buste registrate")
+                if riparate:
+                    parti.append(f"{riparate} buste collegate all'archivio dipendenti")
+                result["message"] = "Cedolino: " + ", ".join(parti)
             elif esito.get("gia_presenti"):
                 result["imported"] = 0
                 result["duplicate"] = True

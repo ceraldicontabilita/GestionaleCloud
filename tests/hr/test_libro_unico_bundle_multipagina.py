@@ -92,3 +92,33 @@ def test_endpoint_libro_unico_canonico_sincronizza_attese_14a(monkeypatch):
     assert esito["associati"][0]["mese"] == 14
     assert esito["associati"][0]["mese_competenza"] == 7
     assert esito["sincronizzazione_paghe"]["creati"] == 1
+
+
+def test_un_duplicato_erp_riparato_in_hr_risulta_associato(monkeypatch):
+    from app.database import Database
+    from app.hr.services import libro_unico_bundle
+    from app.services import cedolini_manager
+
+    pdf = fitz.open()
+    pdf.new_page().insert_text((72, 72), "CEDOLINO")
+    pdf_bytes = pdf.tobytes()
+    pdf.close()
+
+    async def scrittore(*_args, **_kwargs):
+        return {"dettaglio": [{
+            "dipendente": "ROSSI MARIO", "codice_fiscale": "RSSMRA80A01H501U",
+            "anno": 2026, "mese": 7, "tipo_cedolino": "mensile", "netto": 1200.0,
+            "esito": "gia_presente", "deposito_hr": "inserito",
+        }], "errori": []}
+
+    monkeypatch.setattr(cedolini_manager, "processa_tutti_cedolini_pdf", scrittore)
+    monkeypatch.setattr(Database, "get_db", staticmethod(lambda: object()))
+
+    esito = _run(libro_unico_bundle.dividi_e_registra(object(), pdf_bytes, "luglio.pdf"))
+
+    assert esito["gia_presenti"] == []
+    assert esito["inseriti"] == [{
+        "dipendente": "ROSSI MARIO", "competenza": "2026-07",
+        "tipo_cedolino": "ordinario", "netto": 1200.0,
+        "archivio_hr_riparato": True,
+    }]
