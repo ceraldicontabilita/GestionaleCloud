@@ -8,6 +8,7 @@ from app.lotti.routers.irca import (
     RicettaSelezionata,
     _candidati_nome_mepa,
     _numero_dose,
+    _proposta_catalogo_fallback,
     estrai_cataloghi_irca,
     estrai_prodotto_irca,
     estrai_ricetta_irca,
@@ -97,6 +98,22 @@ def test_quantita_irca_supporta_migliaia_intervalli_e_qb():
     assert _numero_dose("1.000g") == (1000, 1000, "g")
     assert _numero_dose("1300-1500g") == (1300, 1500, "g")
     assert _numero_dose("qb") == (None, None, "qb")
+
+
+def test_fallback_concept_usa_solo_prodotti_irca_e_formula_1000g():
+    prodotti = [
+        {"slug": "biscuimix", "nome": "BISCUIMIX", "descrizione": "Mix per pan di Spagna soffice"},
+        {"slug": "chococream", "nome": "CHOCOCREAM", "descrizione": "Crema al cioccolato per farcitura"},
+        {"slug": "cover", "nome": "COVER", "descrizione": "Glassa di copertura al cioccolato"},
+        {"slug": "emul", "nome": "EMUL", "descrizione": "Emulsionante per masse montate"},
+    ]
+    ricette = [{"slug": "pan-di-spagna", "nome": "PAN DI SPAGNA"}]
+    proposta = _proposta_catalogo_fallback("Dolce soffice con crema, glassa e riso soffiato", ricette, prodotti)
+    ingredienti = [i for c in proposta["componenti"] for i in c["ingredienti"]]
+    assert sum(i["quantita_per_kg_lordo_g"] for i in ingredienti) == 1000
+    assert {i["product_slug"] for i in ingredienti if i["product_slug"]} <= {p["slug"] for p in prodotti}
+    assert proposta["emulsionanti_e_stabilizzanti"][0]["product_slug"] == "emul"
+    assert proposta["origine_formula"] == "fallback_catalogo_irca"
 
 
 def test_distinta_somma_quantita_e_ordina_solo_associazione_esatta(monkeypatch):
