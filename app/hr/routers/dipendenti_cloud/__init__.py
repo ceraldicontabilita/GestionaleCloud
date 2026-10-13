@@ -4087,6 +4087,7 @@ async def bonifica_regole_pagamento(dry_run: bool = True, force: bool = False):
 async def _calcola_associazioni_bonifici(db, anno: Optional[int] = None, mese: Optional[int] = None,
                                          stato: Optional[str] = None):
     from app.hr.db_supabase import SupabaseDatabase
+    from app.hr.services.sincronizza_paghe_mensili import deduplica_pagamenti
 
     if isinstance(db, SupabaseDatabase):
         await db.refresh_collections("cedolini", "paghe_mensili", "dipendenti", "pagamenti_esiti")
@@ -4116,9 +4117,11 @@ async def _calcola_associazioni_bonifici(db, anno: Optional[int] = None, mese: O
     # allegato, un'inclusione lo trasferirebbe comunque per intero per ogni riga.
     esiti_idx: Dict[tuple, List[Dict[str, Any]]] = {}
     from app.services.pagamenti_mensilita import indice_coperture, periodi_saldati
-    tutte_prove = []
+    prove_grezze = []
     async for e in db.pagamenti_esiti.find({}, {"_id": 0, "pdf_data": 0}):
-        tutte_prove.append(e)
+        prove_grezze.append(e)
+    tutte_prove = deduplica_pagamenti(prove_grezze)
+    for e in tutte_prove:
         if periodi_saldati(e):
             continue
         esiti_idx.setdefault((e.get("dipendente_id"), e.get("mese"), e.get("anno")), []).append(e)
@@ -4144,6 +4147,9 @@ async def _calcola_associazioni_bonifici(db, anno: Optional[int] = None, mese: O
     from app.hr.services.sincronizza_paghe_mensili import _mese_registro
     from app.services.cedolini_rapporti import raggruppa_cedolini
     cedolini_lista = await db.cedolini.find({}, {"_id": 0, "pdf_data": 0}).to_list(None)
+    cedolini_lista = [
+        c for c in cedolini_lista if c.get("payroll_canonical") is not False
+    ]
     for c in raggruppa_cedolini(cedolini_lista).values():
         ced_by_id[c.get("id")] = c
         try:
@@ -4368,6 +4374,9 @@ async def _calcola_associazioni_bonifici(db, anno: Optional[int] = None, mese: O
             "cedolini": [{"cedolino_id": c.get("id"), "cedolino_pdf": ha_originale(c),
                           "netto": c.get("netto"), "rapporto": c.get("rapporto_lavoro") or {}}
                          for c in ((ced or {}).get("cedolini_componenti") or ([ced] if ced else []))],
+            "tipo_cedolino": (p.get("tipo_cedolino")
+                               or (ced or {}).get("tipo_cedolino") or "ordinario"),
+            "mese_competenza": p.get("mese_competenza") or (ced or {}).get("mese"),
         })
 
     # La prova di un pagamento cumulativo compare su ogni mese, il denaro una volta sola.
