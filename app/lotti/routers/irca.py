@@ -631,6 +631,94 @@ def _json_da_testo(value: str) -> dict:
     return json.loads(match.group(0))
 
 
+def _proposta_catalogo_fallback(descrizione: str, ricette: list[dict], prodotti: list[dict]) -> dict:
+    """Bozza minima e tracciabile quando il modello esterno non risponde.
+
+    Le identita' dei prodotti arrivano esclusivamente dal catalogo importato;
+    dosi e procedimento restano esplicitamente una prova tecnica da validare.
+    """
+    usati: set[str] = set()
+
+    def scegli(termini: tuple[str, ...]) -> dict | None:
+        migliore, punteggio = None, 0
+        for prodotto in prodotti:
+            slug = prodotto.get("slug") or ""
+            if not slug or slug in usati:
+                continue
+            testo = normalizza_nome_irca(" ".join((
+                str(prodotto.get("nome") or ""), str(prodotto.get("categoria") or ""),
+                str(prodotto.get("descrizione") or ""),
+                str(prodotto.get("dettagli_irca", {}).get("modalita_d_uso") or ""),
+            ))).lower()
+            valore = sum(3 if termine in normalizza_nome_irca(prodotto.get("nome") or "").lower() else 1
+                         for termine in termini if termine in testo)
+            if valore > punteggio:
+                migliore, punteggio = prodotto, valore
+        if migliore:
+            usati.add(migliore["slug"])
+        return migliore
+
+    base = scegli(("pan di spagna", "biscuimix", "paradiso", "cake", "soffice"))
+    inserto = scegli(("chococream", "crema", "farcitura", "cioccolato", "chocolate"))
+    copertura = scegli(("glassa", "cover", "copertura", "cioccolato", "chocolate"))
+    # Solo prodotti la cui scheda importata documenta davvero la funzione.
+    emulsionante = next((p for p in prodotti if "emulsion" in normalizza_nome_irca(" ".join((
+        str(p.get("descrizione") or ""),
+        str(p.get("dettagli_irca", {}).get("modalita_d_uso") or ""),
+    ))).lower()), None)
+
+    def ingrediente(nome: str, prodotto: dict | None, grammi: float, funzione: str) -> dict:
+        return {
+            "nome": prodotto.get("nome") if prodotto else nome,
+            "product_slug": prodotto.get("slug") if prodotto else None,
+            "quantita_per_kg_lordo_g": grammi,
+            "funzione": funzione,
+            "evidenza": "Bozza proporzionale da validare con la ricetta e la scheda tecnica IRCA.",
+        }
+
+    riferimenti = [{"slug": r.get("slug"), "motivo": "Affinita' con struttura, gusto o consistenza richiesti."}
+                   for r in ricette[:3] if r.get("slug")]
+    return {
+        "titolo": "Concept IRCA su misura",
+        "descrizione_concept": descrizione,
+        "resa_percentuale": 90,
+        "componenti": [
+            {"nome": "base", "descrizione": "Base soffice da verificare sulla ricetta IRCA di riferimento.", "ingredienti": [
+                ingrediente("Miscela base da validare", base, 300, "struttura soffice"),
+                ingrediente("Uova intere", None, 120, "montata e struttura"),
+                ingrediente("Acqua", None, 60, "idratazione"),
+            ]},
+            {"nome": "inserto", "descrizione": "Cuore cremoso.", "ingredienti": [
+                ingrediente("Crema da validare", inserto, 260, "farcitura morbida"),
+            ]},
+            {"nome": "copertura", "descrizione": "Copertura al cioccolato.", "ingredienti": [
+                ingrediente("Copertura da validare", copertura, 200, "rivestimento"),
+            ]},
+            {"nome": "decorazione", "descrizione": "Elemento croccante richiesto.", "ingredienti": [
+                ingrediente("Riso soffiato", None, 60, "croccantezza"),
+            ]},
+        ],
+        "ricette_riferimento": riferimenti,
+        "emulsionanti_e_stabilizzanti": ([{
+            "product_slug": emulsionante["slug"],
+            "motivo": "La funzione emulsionante e' documentata nella scheda IRCA importata.",
+            "dose_da_validare": True,
+        }] if emulsionante else []),
+        "procedimento": [
+            "Verificare dosi e modalita' della base sulla ricetta e sulla scheda tecnica IRCA collegate.",
+            "Preparare e raffreddare la base, quindi inserire la crema rispettando temperature e conservazione previste.",
+            "Applicare la copertura e completare con il riso soffiato; eseguire una prova pilota prima della produzione.",
+        ],
+        "controlli_e_rischi": [
+            "Formula proporzionale non ufficiale: validare resa, consistenza e stabilita' in laboratorio.",
+            "Verificare allergeni e modalita' d'uso sulle schede ufficiali dei prodotti selezionati.",
+            "Non attribuire una shelf-life senza prova e procedura HACCP documentata.",
+        ],
+        "prompt_immagine": descrizione,
+        "origine_formula": "fallback_catalogo_irca",
+    }
+
+
 async def _immagine_concept(prompt: str, progetto_id: str) -> tuple[str, str]:
     key = os.getenv("OPENAI_API_KEY", "").strip()
     if not key:
@@ -700,10 +788,14 @@ RICETTE IRCA:
 PRODOTTI IRCA:
 {json.dumps(prodotti_fonti, ensure_ascii=False)[:12000]}"""
     chat = LlmChat(
-        chiave_api(), model=modello_veloce(), timeout_s=60, tentativi=1,
+        chiave_api(), model=modello_veloce(), timeout_s=20, tentativi=1,
         max_tokens=3200, scopo="irca_progetto_dolce", db=db,
     )
-    proposta = _json_da_testo(await chat.send_message(UserMessage(content=prompt)))
+    try:
+        proposta = _json_da_testo(await chat.send_message(UserMessage(content=prompt)))
+        proposta["origine_formula"] = "modello_ai_con_fonti_irca"
+    except Exception:
+        proposta = _proposta_catalogo_fallback(payload.descrizione, ricette, prodotti)
     prodotti_validi = {p["slug"]: p for p in prodotti}
     ricette_valide = {r["slug"]: r for r in ricette}
     ingredienti = []
