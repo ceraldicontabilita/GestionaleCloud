@@ -148,5 +148,42 @@ def test_distinta_somma_quantita_e_ordina_solo_associazione_esatta(monkeypatch):
     acqua = next(r for r in out["righe"] if r["ingrediente"] == "Acqua")
     assert trial["quantita_min"] == 250
     assert trial["fornitore"]["codice"] == "MEPA-1"
-    assert trial["stato"] == "pronto"
+    assert trial["stato_associazione"] == "pronto"
+    assert trial["stato"] == "da_acquistare"
     assert acqua["stato"] == "DA_VERIFICARE"
+
+
+def test_distinta_distingue_acquistati_da_mancanti_usando_solo_fatture(monkeypatch):
+    database = AsyncMongoMockClient()["Irca_Acquisti_Test"]
+    monkeypatch.setattr(mod, "db", database)
+
+    async def scenario():
+        await database.irca_ricette.insert_one({
+            "slug": "r1", "nome": "Ricetta", "ingredienti": [
+                {"nome": "COMPRATO", "dose": "100g", "prodotto_irca_url": "https://www.ircagroup.com/it/prodotti/comprato"},
+                {"nome": "MANCANTE", "dose": "50g", "prodotto_irca_url": "https://www.ircagroup.com/it/prodotti/mancante"},
+            ],
+        })
+        await database.catalogo_forno_prodotti.insert_many([
+            {"fornitore": "irca", "slug": "comprato"},
+            {"fornitore": "irca", "slug": "mancante"},
+        ])
+        await database.dizionario_ingredienti.insert_many([
+            {"fonte": "mepa", "irca_slug": "comprato", "nome": "IRCA COMPRATO", "codice_articolo": "COMPRATO",
+             "gia_acquistato": True, "prezzo_fattura": 12.5, "prezzo_fattura_data": "2026-10-01", "iva_pct": 10},
+            {"fonte": "mepa", "irca_slug": "mancante", "nome": "IRCA MANCANTE", "codice_articolo": "MANCANTE"},
+        ])
+        distinta = await mod._genera_distinta(DistintaPayload(ricette=[RicettaSelezionata(slug="r1")]))
+        carrello = await mod.aggiungi_distinta_carrello(
+            DistintaPayload(ricette=[RicettaSelezionata(slug="r1")]), _admin={}
+        )
+        return distinta, carrello
+
+    distinta, carrello = asyncio.run(scenario())
+    stati = {r["ingrediente"]: r["stato"] for r in distinta["righe"]}
+    assert stati == {"COMPRATO": "gia_acquistato", "MANCANTE": "da_acquistare"}
+    assert distinta["totali"]["gia_acquistati"] == 1
+    assert distinta["totali"]["da_acquistare"] == 1
+    assert carrello["aggiunti"] == 1
+    assert carrello["gia_acquistati"] == 1
+    assert carrello["righe"][0]["codici"] == ["MANCANTE"]

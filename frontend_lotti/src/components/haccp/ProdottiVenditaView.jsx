@@ -220,7 +220,7 @@ export default function ProdottiVenditaView({ defaultTab = "acquaviva" }) {
       const fonte = paginaTab === "alfa"
         ? "alpha"
         : paginaTab === "saima_ricettari" ? "saima" : paginaTab;
-      const r = await axios.get(`${API}/cataloghi/preferiti/${encodeURIComponent(fonte)}`);
+      const r = await axios.post(`${API}/cataloghi/sincronizza-fatture/${encodeURIComponent(fonte)}`);
       const aggiornati = await axios.post(`${API}/ordini-fornitori/aggiorna-prezzi-aperti`, null, { params: { fonte } });
       const carrello = await axios.get(`${API}/ordini-fornitori/carrello-sospesi`);
       localStorage.setItem("ordini_smart_carrello", JSON.stringify(carrello.data?.righe || []));
@@ -364,7 +364,7 @@ export default function ProdottiVenditaView({ defaultTab = "acquaviva" }) {
           { id: "saima_ricettari", label: "Ricettari SAIMA", count: null },
           { id: "mepa", label: "MEPA Alimentari", count: null },
           { id: "irca", label: "IRCA prodotti", count: null },
-          { id: "irca_spunti", label: "Spunti IRCA", count: null },
+          { id: "irca_spunti", label: "Ricettario IRCA", count: null },
           { id: "pasticcere", label: "Il Pasticcere", count: null },
           { id: "tremarie", label: "Tre Marie", count: null },
           { id: "alfa", label: "Alfa (senza glutine)", count: null },
@@ -395,7 +395,7 @@ export default function ProdottiVenditaView({ defaultTab = "acquaviva" }) {
       {paginaTab === "irca" && (
         <CatalogoGenericoView titolo="IRCA prodotti ufficiali" sourceKey="irca"
           fetchUrl="/catalogo-forno/prodotti?fornitore=irca" mapItem={mapItemCatalogoForno}
-          emojiVuoto="🥐" messaggioVuoto="Archivio IRCA non ancora sincronizzato: apri Spunti IRCA e premi Aggiorna archivio."
+          emojiVuoto="🥐" messaggioVuoto="Archivio IRCA non ancora sincronizzato: apri Ricettario IRCA e premi Aggiorna tutte."
           coloreAccento="sage" />
       )}
       {paginaTab === "irca_spunti" && <IrcaSpuntiView />}

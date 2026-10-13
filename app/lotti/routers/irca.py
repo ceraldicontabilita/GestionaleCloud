@@ -235,6 +235,11 @@ def estrai_cataloghi_irca(html: str, pagina: int = 0) -> list[dict]:
             "stato_accesso": "accesso_riservato" if premium and not url else "pubblico",
             "pagina_elenco": pagina,
             "fonte_url": PUBBLICAZIONI_URL,
+            # Copia locale del riferimento, della copertina e dei metadati. Il
+            # file integrale e' marcato separatamente: molti viewer Flipsnack
+            # non pubblicano un PDF scaricabile e non vanno aggirati.
+            "archiviato_nel_database": True,
+            "download_stato": "accesso_riservato" if premium and not url else "collegamento_pubblico_archiviato",
         })
     return out
 
@@ -937,6 +942,9 @@ async def _genera_distinta(payload: DistintaPayload) -> dict:
     mepa = await db.dizionario_ingredienti.find(
         {"fonte": "mepa", "irca_slug": {"$in": slugs}}, {"_id": 0}
     ).to_list(None) if slugs else []
+    # Lo stato "gia' acquistato" e' la proiezione delle fatture XML MEPA
+    # materializzata nel catalogo dal comando Sync Fatture. La consultazione
+    # della ricetta resta quindi una lettura veloce del solo database.
     mepa_per_slug: dict[str, list[dict]] = defaultdict(list)
     for prodotto in mepa:
         mepa_per_slug[prodotto.get("irca_slug", "")].append(prodotto)
@@ -949,34 +957,48 @@ async def _genera_distinta(payload: DistintaPayload) -> dict:
         fornitore = None
         if len(fornitori) == 1:
             p = fornitori[0]
+            gia_acquistato = bool(p.get("gia_acquistato"))
+            prezzo_fattura = p.get("prezzo_fattura") or 0
+            prezzo_catalogo = p.get("prezzo_fornitore") or p.get("prezzo") or 0
             fornitore = {
                 "nome": "MEPA Alimentari",
                 "fonte": "mepa",
                 "codice": p.get("codice_articolo") or p.get("codice") or "",
                 "prodotto_nome": p.get("nome_display") or p.get("nome") or "",
-                "prezzo": p.get("prezzo_fornitore") or p.get("prezzo") or 0,
+                "prezzo": prezzo_fattura or prezzo_catalogo,
+                "prezzo_fattura": prezzo_fattura,
+                "prezzo_fattura_data": p.get("prezzo_fattura_data") or "",
+                "iva_pct": p.get("iva_pct") or 0,
+                "gia_acquistato": gia_acquistato,
                 "associazione": "nome_esatto_univoco",
             }
+        stato = "DA_VERIFICARE"
+        if fornitore:
+            stato = "gia_acquistato" if fornitore["gia_acquistato"] else "da_acquistare"
         riga.update({
             "codici_irca": irca.get("codici_irca", []),
             "descrizione": irca.get("descrizione", ""),
             "immagine_url": irca.get("immagine_url", ""),
             "fornitore": fornitore,
-            "stato": "pronto" if fornitore else "DA_VERIFICARE",
+            "stato_associazione": "pronto" if fornitore else "DA_VERIFICARE",
+            "stato": stato,
             "motivo": "" if fornitore else (
                 "Nessun prodotto MePA associato in modo esatto e univoco."
                 if slug else "Ingrediente generico: prodotto e fornitore da scegliere."
             ),
         })
         righe.append(riga)
-    righe.sort(key=lambda x: (x["stato"] != "pronto", x["ingrediente"].lower()))
+    ordine_stati = {"da_acquistare": 0, "gia_acquistato": 1, "DA_VERIFICARE": 2}
+    righe.sort(key=lambda x: (ordine_stati.get(x["stato"], 3), x["ingrediente"].lower()))
     return {
         "ricette": [{"slug": r["slug"], "nome": r["nome"], "moltiplicatore": richiesti[r["slug"]]} for r in ricette],
         "righe": righe,
         "totali": {
             "ingredienti": len(righe),
-            "pronti": sum(r["stato"] == "pronto" for r in righe),
-            "da_verificare": sum(r["stato"] != "pronto" for r in righe),
+            "pronti": sum(r["stato_associazione"] == "pronto" for r in righe),
+            "gia_acquistati": sum(r["stato"] == "gia_acquistato" for r in righe),
+            "da_acquistare": sum(r["stato"] == "da_acquistare" for r in righe),
+            "da_verificare": sum(r["stato"] == "DA_VERIFICARE" for r in righe),
         },
     }
 
@@ -991,12 +1013,12 @@ async def aggiungi_distinta_carrello(
     payload: DistintaPayload, _admin=Depends(require_admin)
 ):
     distinta = await _genera_distinta(payload)
-    pronti = [r for r in distinta["righe"] if r["stato"] == "pronto"]
+    da_acquistare = [r for r in distinta["righe"] if r["stato"] == "da_acquistare"]
     doc = await db.carrello_sospesi.find_one({"_id": "default"}, {"_id": 0}) or {}
     current = list(doc.get("righe") or [])
     ids = {item.get("id") for item in current}
     aggiunti = []
-    for riga in pronti:
+    for riga in da_acquistare:
         codice = riga["fornitore"].get("codice", "")
         item_id = f"irca-ricetta-mepa:{codice or riga['prodotto_irca_slug']}"
         if item_id in ids:
@@ -1030,7 +1052,8 @@ async def aggiungi_distinta_carrello(
     return {
         "success": True,
         "aggiunti": len(aggiunti),
-        "gia_presenti": len(pronti) - len(aggiunti),
+        "gia_presenti": len(da_acquistare) - len(aggiunti),
+        "gia_acquistati": distinta["totali"]["gia_acquistati"],
         "da_verificare": distinta["totali"]["da_verificare"],
         "righe": aggiunti,
     }

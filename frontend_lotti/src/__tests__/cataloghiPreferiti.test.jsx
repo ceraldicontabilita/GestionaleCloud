@@ -42,7 +42,7 @@ afterEach(async () => { await act(async () => root.unmount()); node.remove(); je
 test("scraping e tastiera non cancellano ricerca o carrello; ripristino dopo cambio pagina", async () => {
   localStorage.setItem("ordini_smart_carrello", JSON.stringify([{ id: "ordine", nome: "Riga in corso", quantita: 2 }]));
   await act(async () => root.render(mepa()));
-  expect(button("Acquistati e preferiti (1)").getAttribute("aria-pressed")).toBe("true");
+  expect(button("Tutto il catalogo").getAttribute("aria-pressed")).toBe("true");
   expect(node.textContent).not.toContain("Preferito colazione");
   expect(node.textContent).not.toContain("Segna come preferito colazione");
   await digita("mozzarella"); await clock(15000);
@@ -52,6 +52,7 @@ test("scraping e tastiera non cancellano ricerca o carrello; ripristino dopo cam
   expect(document.activeElement).not.toBe(input()); expect(input().value).toBe("mozzarella");
   expect(JSON.parse(localStorage.getItem("ordini_smart_carrello"))[0].quantita).toBe(2);
   await act(async () => root.render(null)); await act(async () => root.render(mepa()));
+  await clock(450);
   expect(input().value).toBe("mozzarella"); expect(node.textContent).toContain(p.nome);
 });
 
@@ -97,6 +98,7 @@ test("articolo originale fattura è ordinabile anche quando manca dal catalogo",
   axios.get.mockImplementation((url, cfg) => url.includes("cataloghi/preferiti/")
     ? Promise.resolve({ data: { prodotti: [{ ...p, id: "acquisto_1", da_fattura_senza_catalogo: true }] } }) : standard(url, cfg));
   await act(async () => root.render(mepa()));
+  await act(async () => button("Acquistati e preferiti").click());
   expect(button("Acquista")).toBeTruthy(); expect(button("Al ricettario")).toBeUndefined();
 });
 
@@ -122,7 +124,7 @@ test.each(["mepa", "saima", "acquaviva"])("%s non usa più i preferiti delle qua
   await act(async () => root.render(catalogoFornitore(sourceKey)));
   expect(axios.get).not.toHaveBeenCalledWith(expect.stringContaining("colazione-acquaviva/preferiti"));
   expect([...node.querySelectorAll("button")].some(b => /preferito colazione/i.test(b.getAttribute("aria-label") || b.textContent))).toBe(false);
-  expect(node.textContent).toContain("prodotti già acquistati dalle fatture");
+  expect(node.textContent).toContain("Catalogo salvato nel database");
 });
 
 test("il sync fatture aggiorna subito i prodotti del catalogo aperto", async () => {
@@ -133,6 +135,7 @@ test("il sync fatture aggiorna subito i prodotti del catalogo aperto", async () 
   await act(async () => window.dispatchEvent(new CustomEvent("cataloghi-preferiti-sincronizzati", {
     detail: { fonte: "mepa", prodotti: [aggiornato] },
   })));
+  await act(async () => button("Acquistati e preferiti").click());
 
   expect(node.textContent).toContain("Mandorle da fattura");
   expect(node.textContent).toContain("€ 10,13");

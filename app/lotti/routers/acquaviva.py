@@ -672,14 +672,8 @@ async def get_acquaviva_prodotti(
         pid = str(prodotto.get("id") or "")
         prodotto["in_ricette"] = pid in usati_ids
         prodotto["disponibile_ricette"] = pid in disponibili_ids
-    # Prezzo e flag "già acquistato" SOLO dalle fatture reali (match per nome ufficiale),
-    # stesso meccanismo di SAIMA/MEPA. I prodotti mai comprati restano senza prezzo.
-    try:
-        from app.lotti.routers.utils import prezzi_fatture_per_fornitore, applica_prezzo_da_fatture
-        prezzi = await prezzi_fatture_per_fornitore(db, "acquaviva|vandemoortele|alpha")
-        items = applica_prezzo_da_fatture(items, prezzi)
-    except Exception:
-        logger.debug("[acquaviva] errore non bloccante ignorato")
+    # Prezzo e flag "già acquistato" sono materializzati dal comando Sync
+    # Fatture; consultazione e ricerca non rileggono l'archivio XML.
     # Se non esiste ancora una fattura, usa il listino ufficiale come fallback.
     # Il valore esposto e' sempre quello dell'intero cartone ordinabile.
     items = [_applica_prezzo_listino_confezione(prodotto) for prodotto in items]

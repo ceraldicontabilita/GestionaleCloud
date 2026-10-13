@@ -399,13 +399,8 @@ async def get_prodotti_mepa(
         .limit(limit)
         .to_list(limit)
     )
-    # Aggancia il prezzo realmente pagato dalle fatture MEPA (match per nome ufficiale).
-    try:
-        from app.lotti.routers.utils import prezzi_fatture_per_fornitore, applica_prezzo_da_fatture
-        prezzi = await prezzi_fatture_per_fornitore(db, "mepa")
-        prodotti = applica_prezzo_da_fatture(prodotti, prezzi)
-    except Exception:
-        _LOG_INIT.debug("[mepa] errore non bloccante ignorato")
+    # Prezzo e stato d'acquisto sono una proiezione persistita dal comando
+    # Sync Fatture: la ricerca resta una lettura veloce del solo catalogo DB.
     total = await db.dizionario_ingredienti.count_documents(query)
     return {"prodotti": prodotti, "total": total}
 

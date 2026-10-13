@@ -254,7 +254,10 @@ const datiTecnici = (prodotto, dettaglio) => {
 // Modal dettaglio prodotto
 const ModalDettaglioProdotto = ({ prodotto, fornitore, onClose, onImporta, onRimuovi, giaNelDizionario, onCarrello, inCart, onPrezzoSalvato }) => {
   const colore = fornitore === "saima" ? "saima" : fornitore === "acquaviva" ? "acquaviva" : "mepa";
-  const [dettaglio, setDettaglio] = useState(null);
+  // La scheda usa esclusivamente la fotografia persistita del catalogo. Il
+  // sito del fornitore viene interrogato dal solo comando "Aggiorna", mai
+  // durante apertura, ricerca o consultazione del prodotto.
+  const [dettaglio] = useState(prodotto);
   const [dettaglioIrca, setDettaglioIrca] = useState(null);
   const [loadingDet, setLoadingDet] = useState(false);
   const [imgErr, setImgErr] = useState(false);
@@ -263,25 +266,8 @@ const ModalDettaglioProdotto = ({ prodotto, fornitore, onClose, onImporta, onRim
 
   useEffect(() => {
     const caricaDettaglio = async () => {
-      setLoadingDet(true);
-      try {
-        let res;
-        if (fornitore === "saima" && prodotto.codice_articolo) {
-          res = await axios.get(`${API}/saima/dettaglio-prodotto`, {
-            params: { codice: prodotto.codice_articolo }, timeout: 5000,
-          });
-        } else if (fornitore === "mepa" && prodotto.link_prodotto) {
-          res = await axios.get(`${API}/mepa/dettaglio-prodotto`, {
-            params: { url: prodotto.link_prodotto }, timeout: 5000,
-          });
-        } else if (fornitore === "acquaviva" && prodotto.link_prodotto) {
-          res = await axios.get(`${API}/acquaviva/dettaglio-prodotto`, {
-            params: { url: prodotto.link_prodotto }, timeout: 5000,
-          });
-        }
-        if (res?.data) setDettaglio(res.data);
-      } catch { /* silenzioso, mostra dati base */ }
       if (fornitore === "mepa" && prodotto.irca_slug) {
+        setLoadingDet(true);
         try {
           const irca = await axios.get(`${API}/irca/prodotti/${encodeURIComponent(prodotto.irca_slug)}`, { timeout: 5000 });
           if (irca?.data) setDettaglioIrca(irca.data);
@@ -289,7 +275,7 @@ const ModalDettaglioProdotto = ({ prodotto, fornitore, onClose, onImporta, onRim
       }
       setLoadingDet(false);
     };
-    if (!prodotto.da_fattura_senza_catalogo) caricaDettaglio();
+    if (!prodotto.da_fattura_senza_catalogo && fornitore === "mepa" && prodotto.irca_slug) caricaDettaglio();
   }, [prodotto, fornitore]);
 
   // Immagine migliore disponibile: immagine specifica prodotto > immagine URL scraper > categoria
@@ -357,7 +343,7 @@ const ModalDettaglioProdotto = ({ prodotto, fornitore, onClose, onImporta, onRim
           {loadingDet && (
             <div className="flex items-center gap-2 text-xs text-gray-400" aria-live="polite">
               <RefreshCw size={13} className="animate-spin" />
-              Aggiornamento dettagli dal sito del fornitore…
+              Caricamento dettagli IRCA dal database…
             </div>
           )}
 
@@ -603,7 +589,9 @@ export const CatalogoFornitoreView = ({ fornitore, nome, logoUrl }) => {
   const [statoScraping, setStatoScraping] = useState(null);
   const [scrapingInCorso, setScrapingInCorso] = useState(false);
   const [search, setSearch] = useStatoCatalogo(fornitore, "ricerca", "");
-  const [soloPreferiti, setSoloPreferiti] = useStatoCatalogo(fornitore, "preferiti", true);
+  // Ogni ingresso nel catalogo parte sempre dall'elenco completo persistito.
+  // I preferiti sono una vista volontaria, non uno stato da ricordare.
+  const [soloPreferiti, setSoloPreferiti] = useState(false);
   const preferitiAcquisti = usePreferitiAcquisti(fornitore);
   const togglePreferito = async (prodotto) => {
     try {
@@ -623,7 +611,6 @@ export const CatalogoFornitoreView = ({ fornitore, nome, logoUrl }) => {
     const disponibili = [...prodotti, ...preferitiAcquisti.prodotti];
     if (disponibili.length) riconciliaPrezziCarrello(disponibili);
   }, [prodotti, preferitiAcquisti.prodotti]);
-  const autoAvvioTentato = useRef(false);
 
   /** Wrapper: aggiorna stato + URL */
   const setCategoriaAttiva = useCallback((catNome) => {
@@ -703,21 +690,6 @@ export const CatalogoFornitoreView = ({ fornitore, nome, logoUrl }) => {
     caricaDizionario();
   }, [caricaCategorie, caricaStato, caricaDizionario]);
 
-  // Se il DB e' nuovo, l'amministratore non deve prima trovare e premere un
-  // pulsante: avvia una sola volta il popolamento. Durante lo scraping vengono
-  // mostrati subito i prodotti gia' persistiti e lo stato si aggiorna da solo.
-  useEffect(() => {
-    if (!statoScraping || autoAvvioTentato.current) return;
-    if (Number(statoScraping.prodotti_nel_db || 0) === 0 && statoScraping.stato !== "in_corso") {
-      autoAvvioTentato.current = true;
-      axios.post(`${API}/${fornitore}/scraping/avvia`, null, {
-        params: fornitore === "acquaviva" ? { con_dettagli: true } : undefined,
-      }).then(() => {
-        setStatoScraping(prev => ({ ...(prev || {}), stato: "in_corso" }));
-      }).catch(() => {});
-    }
-  }, [statoScraping, fornitore]);
-
   useEffect(() => {
     if (statoScraping?.stato !== "in_corso") return undefined;
     const timer = window.setInterval(async () => {
@@ -728,10 +700,14 @@ export const CatalogoFornitoreView = ({ fornitore, nome, logoUrl }) => {
   }, [statoScraping?.stato, caricaStato, caricaCategorie]);
 
   useEffect(() => {
-    if (soloPreferiti || (!search && !categoriaAttiva)) {
+    if (soloPreferiti) {
       richiestaProdotti.current++;
       setLoadingProd(false);
       return;
+    }
+    if (!search) {
+      caricaProdotti(categoriaAttiva, "");
+      return () => { richiestaProdotti.current++; };
     }
     const t = setTimeout(() => caricaProdotti(categoriaAttiva, search), 400);
     return () => { clearTimeout(t); richiestaProdotti.current++; };
@@ -922,33 +898,8 @@ export const CatalogoFornitoreView = ({ fornitore, nome, logoUrl }) => {
 
       {/* Contenuto */}
       <div className="flex-1 min-w-0">
-        {/* Vista categorie */}
-        {!soloPreferiti && !categoriaAttiva && !search && (
-          loading ? (
-            <div className="flex items-center justify-center py-16 text-gray-400">
-              <RefreshCw className="animate-spin mr-2" size={18} /> Caricamento categorie...
-            </div>
-          ) : categorie.length === 0 ? (
-            <div className="text-center py-16 text-gray-400">
-              <Package size={48} className="mx-auto mb-3 opacity-20" />
-              <p className="font-medium">Catalogo in preparazione automatica</p>
-              <p className="text-sm mt-1">Puoi continuare a usare l'app: i prodotti compariranno automaticamente.</p>
-              <button onClick={handleAvviaScraping} disabled={scrapingInCorso}
-                className={`mt-4 px-6 py-2.5 ${COLORI[colore].bg} text-white rounded-xl text-sm font-semibold hover:opacity-90 flex items-center gap-2 mx-auto`}>
-                <Download size={16} /> Riprova ora
-              </button>
-            </div>
-          ) : (
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
-              {categorie.map(cat => (
-                <CardCategoria key={cat.nome} cat={cat} onClick={() => handleSelectCategoria(cat)} colore={colore} />
-              ))}
-            </div>
-          )
-        )}
-
         {/* Vista prodotti */}
-        {(soloPreferiti || categoriaAttiva || search) && (
+        {(
           (soloPreferiti ? preferitiAcquisti.loading && !preferitiAcquisti.prodotti.length : loadingProd && !prodotti.length) ? (
             <div className="flex items-center justify-center py-16 text-gray-400">
               <RefreshCw className="animate-spin mr-2" size={18} /> Caricamento...

@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
 import axios from "axios";
-import { BookOpen, ExternalLink, RefreshCw, Search, ShoppingCart } from "lucide-react";
+import { BookOpen, CheckCircle2, ChefHat, CircleAlert, ExternalLink, PackageCheck, RefreshCw, Search, ShoppingCart, X } from "lucide-react";
 import { toast } from "sonner";
 import { API } from "../../utils/constants";
 
 export default function IrcaSpuntiView() {
-  const [sezione, setSezione] = useState("ricette");
+  const [sezione, setSezione] = useState("cataloghi");
   const [ricette, setRicette] = useState([]);
   const [totaleRicette, setTotaleRicette] = useState(0);
   const [cataloghi, setCataloghi] = useState([]);
@@ -19,21 +19,44 @@ export default function IrcaSpuntiView() {
   const [progettando, setProgettando] = useState(false);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
+  const [syncStatus, setSyncStatus] = useState(null);
+  const [dettaglio, setDettaglio] = useState(null);
+  const [dettaglioDistinta, setDettaglioDistinta] = useState(null);
+  const [dettaglioLoading, setDettaglioLoading] = useState(false);
 
   const carica = useCallback(async () => {
     setLoading(true);
     try {
-      const [r, c] = await Promise.all([
+      const [r, c, s] = await Promise.all([
         axios.get(`${API}/irca/ricette?limit=200`),
         axios.get(`${API}/irca/cataloghi`),
+        axios.get(`${API}/irca/stato`),
       ]);
       setRicette(r.data?.ricette || []);
       setTotaleRicette(r.data?.totale || 0);
       setCataloghi(c.data?.cataloghi || []);
+      setSyncStatus(s.data || null);
     } catch { toast.error("Impossibile caricare l'archivio IRCA"); }
     setLoading(false);
   }, []);
   useEffect(() => { carica(); }, [carica]);
+
+  useEffect(() => {
+    if (syncStatus?.stato !== "in_corso") return undefined;
+    const timer = setInterval(async () => {
+      try {
+        const r = await axios.get(`${API}/irca/stato`);
+        setSyncStatus(r.data || null);
+        if (r.data?.stato === "completato") {
+          setSyncing(false);
+          clearInterval(timer);
+          await carica();
+          toast.success("Archivio Ricette IRCA aggiornato");
+        }
+      } catch { /* il prossimo controllo riprova */ }
+    }, 4000);
+    return () => clearInterval(timer);
+  }, [syncStatus?.stato, carica]);
 
   useEffect(() => {
     const timer = setTimeout(async () => {
@@ -73,7 +96,7 @@ export default function IrcaSpuntiView() {
     try {
       const r = await axios.post(`${API}/irca/distinta/aggiungi-carrello`, payload());
       window.dispatchEvent(new Event("ordini_smart_cart_update"));
-      toast.success(`${r.data.aggiunti} prodotti aggiunti alla bozza ordini; ${r.data.da_verificare} da verificare`);
+      toast.success(`${r.data.aggiunti} prodotti mancanti aggiunti; ${r.data.gia_acquistati} già acquistati esclusi; ${r.data.da_verificare} da associare`);
     } catch { toast.error("Impossibile creare la bozza ordine"); }
   };
 
@@ -81,9 +104,28 @@ export default function IrcaSpuntiView() {
     setSyncing(true);
     try {
       const r = await axios.post(`${API}/irca/sincronizza`);
+      setSyncStatus(s => ({ ...(s || {}), stato: "in_corso", fase: "avvio" }));
       toast.success(r.data.message || r.data.messaggio);
     } catch { toast.error("Avvio sincronizzazione IRCA non riuscito"); }
     setSyncing(false);
+  };
+
+  const apriRicetta = async (ricetta) => {
+    setDettaglioLoading(true);
+    setDettaglio({ ...ricetta, caricamento: true });
+    setDettaglioDistinta(null);
+    try {
+      const [r, d] = await Promise.all([
+        axios.get(`${API}/irca/ricette/${encodeURIComponent(ricetta.slug)}`),
+        axios.post(`${API}/irca/distinta`, { ricette: [{ slug: ricetta.slug, moltiplicatore: 1 }] }),
+      ]);
+      setDettaglio(r.data);
+      setDettaglioDistinta(d.data);
+    } catch (e) {
+      setDettaglio(null);
+      toast.error(e.response?.data?.detail || "Dettaglio ricetta non disponibile");
+    }
+    setDettaglioLoading(false);
   };
 
   const progetta = async () => {
@@ -101,19 +143,27 @@ export default function IrcaSpuntiView() {
 
   if (loading) return <div className="p-10 text-center text-gray-500">Caricamento archivio IRCA…</div>;
   return <div className="space-y-5">
-    <div className="bg-white border border-gray-100 rounded-xl p-4 flex flex-wrap items-center gap-3">
-      <div className="mr-auto">
-        <h2 className="font-bold text-xl text-gray-800">Spunti IRCA</h2>
-        <p className="text-sm text-gray-500">Ricette, cataloghi e distinta per preparare la bozza d'ordine</p>
+    <div className="overflow-hidden rounded-2xl border border-[#d8e3dc] bg-gradient-to-br from-[#f7f1e5] via-white to-[#eaf3ee] p-5 shadow-sm">
+      <div className="flex flex-wrap items-center gap-4">
+        <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#3f5a4e] text-white shadow-sm"><ChefHat size={25}/></div>
+        <div className="mr-auto">
+          <p className="m-0 text-[11px] font-black uppercase tracking-[0.18em] text-[#8a6135]">Quaderno professionale</p>
+          <h2 className="m-0 mt-0.5 text-2xl font-black text-[#263a31]">Ricettario IRCA</h2>
+          <p className="m-0 mt-1 text-sm text-gray-600">Ricettari e ricette ufficiali archiviati nel gestionale, con prodotti MEPA e ordine dei soli mancanti.</p>
+        </div>
+        <div className="rounded-xl border border-white/80 bg-white/80 px-4 py-2 text-center shadow-sm">
+          <strong className="block text-xl text-[#3f5a4e]">{totaleRicette}</strong><span className="text-[11px] font-bold uppercase tracking-wide text-gray-500">ricette archiviate</span>
+        </div>
+        <button onClick={sincronizza} disabled={syncing || syncStatus?.stato === "in_corso"} className="g-btn g-btn-secondary flex items-center gap-2">
+          <RefreshCw size={15} className={(syncing || syncStatus?.stato === "in_corso") ? "animate-spin" : ""} /> {(syncing || syncStatus?.stato === "in_corso") ? "Aggiornamento…" : "Aggiorna tutte"}
+        </button>
       </div>
-      <button onClick={sincronizza} disabled={syncing} className="g-btn g-btn-secondary flex items-center gap-2">
-        <RefreshCw size={15} className={syncing ? "animate-spin" : ""} /> Aggiorna archivio
-      </button>
+      {syncStatus?.stato === "in_corso" && <div className="mt-4 rounded-xl bg-white/80 px-4 py-3 text-xs font-semibold text-[#3f5a4e]">Importazione in corso: {syncStatus.fase || "avvio"}{syncStatus.totale_fase ? ` · ${syncStatus.avanzamento || 0} di ${syncStatus.totale_fase}` : ""}. Le ricette già salvate restano consultabili.</div>}
     </div>
 
     <div className="g-tabs">
-      <button className={`g-tab${sezione === "ricette" ? " active" : ""}`} onClick={() => setSezione("ricette")}>Ricette ({totaleRicette})</button>
-      <button className={`g-tab${sezione === "cataloghi" ? " active" : ""}`} onClick={() => setSezione("cataloghi")}>Cataloghi e ricettari ({cataloghi.length})</button>
+      <button className={`g-tab${sezione === "cataloghi" ? " active" : ""}`} onClick={() => setSezione("cataloghi")}>Ricettari e cataloghi ({cataloghi.length})</button>
+      <button className={`g-tab${sezione === "ricette" ? " active" : ""}`} onClick={() => setSezione("ricette")}>Singole ricette ({totaleRicette})</button>
       <button className={`g-tab${sezione === "crea" ? " active" : ""}`} onClick={() => setSezione("crea")}>Crea il tuo dolce</button>
     </div>
 
@@ -154,16 +204,20 @@ export default function IrcaSpuntiView() {
           {!!progetto.ricette_riferimento?.length && <div><h4 className="font-bold">Ricette IRCA di riferimento</h4><div className="flex flex-wrap gap-2 mt-2">{progetto.ricette_riferimento.map(r => <a key={r.slug} href={r.fonte.url} target="_blank" rel="noreferrer" className="border rounded-lg px-3 py-2 text-sm text-blue-700">{r.fonte.nome} · {r.motivo}</a>)}</div></div>}
         </div>
       </section>}
-    </div> : sezione === "cataloghi" ? <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-4">
-      {cataloghi.map(c => <article key={c.id} className="bg-white border border-gray-100 rounded-xl overflow-hidden">
+    </div> : sezione === "cataloghi" ? <div className="space-y-4">
+      <div className="rounded-2xl border border-[#e6ddce] bg-[#fffaf0] p-4"><h3 className="m-0 font-black text-[#4a3826]">Biblioteca dei ricettari</h3><p className="m-0 mt-1 text-sm text-[#725b42]">Tutti i riferimenti pubblicati da IRCA vengono salvati nel database. I documenti pubblici restano apribili dal loro collegamento ufficiale; quelli Premium sono indicati come riservati.</p></div>
+      <div className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-5">
+      {cataloghi.map(c => <article key={c.id} className="bg-white border border-gray-100 rounded-xl overflow-hidden shadow-sm">
         <img src={c.immagine_url || c.copertina_flipsnack_url} alt="" className="w-full aspect-[4/5] object-cover bg-gray-100" />
         <div className="p-3 space-y-2">
           <span className="text-[11px] uppercase font-bold text-[#5b7a6b]">{c.tipo}</span>
           <h3 className="font-semibold text-sm leading-snug">{c.titolo}</h3>
+          <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700"><CheckCircle2 size={12}/> Salvato nel gestionale</span>
           {c.premium && <span className="inline-block text-xs px-2 py-1 rounded bg-amber-100 text-amber-800">Premium · accesso richiesto</span>}
-          {c.url && <a href={c.url} target="_blank" rel="noreferrer" className="text-sm text-blue-700 flex items-center gap-1">Apri pubblicazione <ExternalLink size={13} /></a>}
+          {c.url && <a href={c.url} target="_blank" rel="noreferrer" className="text-sm font-bold text-[#3f5a4e] flex items-center gap-1">Apri ricettario <ExternalLink size={13} /></a>}
         </div>
       </article>)}
+      </div>
     </div> : <>
       <div className="flex flex-wrap gap-3 items-center">
         <div className="relative flex-1 min-w-[240px]">
@@ -175,21 +229,27 @@ export default function IrcaSpuntiView() {
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
         {ricette.map(r => {
           const scelta = Object.prototype.hasOwnProperty.call(selezionate, r.slug);
-          return <article key={r.slug} className={`bg-white border rounded-xl overflow-hidden ${scelta ? "border-[#5b7a6b] ring-1 ring-[#5b7a6b]" : "border-gray-100"}`}>
-            <div className="flex gap-3 p-3">
-              <img src={r.immagine_url} alt="" className="w-24 h-24 object-cover rounded-lg bg-gray-100" />
-              <div className="min-w-0 flex-1">
+          return <article key={r.slug} className={`group overflow-hidden rounded-2xl border bg-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md ${scelta ? "border-[#5b7a6b] ring-1 ring-[#5b7a6b]" : "border-[#e8e2d8]"}`}>
+            <div className="relative h-44 overflow-hidden bg-[#f3efe7]">
+              {r.immagine_url ? <img src={r.immagine_url} alt={r.nome} className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.03]" /> : <div className="flex h-full items-center justify-center text-[#8ca193]"><ChefHat size={42}/></div>}
+              <span className="absolute left-3 top-3 rounded-full bg-white/90 px-2.5 py-1 text-[10px] font-black uppercase tracking-wide text-[#3f5a4e] shadow-sm">{r.categoria || "Ricetta IRCA"}</span>
+            </div>
+            <div className="p-4">
+              <div className="min-w-0">
                 <label className="flex gap-2 items-start cursor-pointer">
                   <input type="checkbox" checked={scelta} onChange={e => setSelezionate(s => {
                     const next = { ...s }; if (e.target.checked) next[r.slug] = 1; else delete next[r.slug]; return next;
                   })} className="mt-1" />
-                  <span className="font-semibold leading-snug">{r.nome}</span>
+                  <span className="font-black leading-snug text-[#263a31]">{r.nome}</span>
                 </label>
-                <p className="text-xs text-gray-500 mt-1">{r.categoria} · {r.livello}</p>
+                <p className="text-xs text-gray-500 mt-1">{r.livello || "Livello non indicato"} · {(r.ingredienti || []).length} ingredienti</p>
                 {scelta && <label className="text-xs flex items-center gap-2 mt-2">Moltiplicatore
                   <input type="number" min="0.1" step="0.1" value={selezionate[r.slug]} onChange={e => setSelezionate(s => ({ ...s, [r.slug]: Number(e.target.value) || 1 }))} className="w-20 border rounded px-2 py-1" />
                 </label>}
-                <a href={r.url} target="_blank" rel="noreferrer" className="text-xs text-blue-700 mt-2 inline-flex items-center gap-1">Ricetta ufficiale <ExternalLink size={12} /></a>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <button type="button" onClick={() => apriRicetta(r)} className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-[#3f5a4e] px-3 py-2 text-xs font-black text-white"><BookOpen size={14}/> Apri nel gestionale</button>
+                  <a href={r.url} target="_blank" rel="noreferrer" aria-label={`Apri ${r.nome} sul sito IRCA`} className="flex items-center justify-center rounded-xl border border-gray-200 px-3 text-gray-500 hover:bg-gray-50"><ExternalLink size={14} /></a>
+                </div>
               </div>
             </div>
           </article>;
@@ -203,8 +263,8 @@ export default function IrcaSpuntiView() {
     {distinta && <section className="bg-white border rounded-xl p-4 space-y-3">
       <div className="flex flex-wrap justify-between gap-3 items-center">
         <div><h3 className="font-bold text-lg">Distinta prodotti e ingredienti</h3>
-          <p className="text-sm text-gray-500">{distinta.totali.pronti} associati a MePA · {distinta.totali.da_verificare} da verificare</p></div>
-        <button onClick={aggiungiOrdine} className="g-btn g-btn-primary flex items-center gap-2"><ShoppingCart size={15} /> Crea bozza ordine</button>
+          <p className="text-sm text-gray-500">{distinta.totali.gia_acquistati} già acquistati · {distinta.totali.da_acquistare} da acquistare · {distinta.totali.da_verificare} da associare</p></div>
+        <button onClick={aggiungiOrdine} disabled={!distinta.totali.da_acquistare} className="g-btn g-btn-primary flex items-center gap-2"><ShoppingCart size={15} /> Aggiungi solo i mancanti ({distinta.totali.da_acquistare})</button>
       </div>
       <div className="overflow-x-auto"><table className="w-full text-sm">
         <thead><tr className="text-left border-b"><th className="py-2">Ingrediente / prodotto</th><th>Quantità</th><th>Codice IRCA</th><th>Da chi</th><th>Stato</th></tr></thead>
@@ -213,10 +273,57 @@ export default function IrcaSpuntiView() {
           <td>{r.quantita_min == null ? r.dosi_originali.join(" + ") : `${r.quantita_min}${r.quantita_max !== r.quantita_min ? `–${r.quantita_max}` : ""}${r.unita}`}</td>
           <td>{r.codici_irca?.join(", ") || "—"}</td>
           <td>{r.fornitore ? `${r.fornitore.nome}${r.fornitore.codice ? ` · ${r.fornitore.codice}` : ""}` : "Da scegliere"}</td>
-          <td><span className={`text-xs px-2 py-1 rounded ${r.stato === "pronto" ? "bg-green-100 text-green-800" : "bg-amber-100 text-amber-800"}`}>{r.stato}</span></td>
+          <td><StatoAcquisto stato={r.stato}/></td>
         </tr>)}</tbody>
       </table></div>
-      <p className="text-xs text-amber-700">La bozza inserisce una confezione per prodotto: il numero di confezioni resta da confermare perché dipende dal formato di vendita.</p>
+      <p className="text-xs text-amber-700">I prodotti già acquistati non vengono duplicati. Per i mancanti viene inserita una confezione: il numero definitivo resta da confermare quando il formato MEPA non consente una conversione certa.</p>
     </section>}
+    {dettaglio && (
+      <DettaglioRicetta ricetta={dettaglio} distinta={dettaglioDistinta} loading={dettaglioLoading}
+        selezionata={Object.prototype.hasOwnProperty.call(selezionate, dettaglio.slug)}
+        onSeleziona={() => setSelezionate(s => ({ ...s, [dettaglio.slug]: s[dettaglio.slug] || 1 }))}
+        onClose={() => { setDettaglio(null); setDettaglioDistinta(null); }}/>
+    )}
+  </div>;
+}
+
+function StatoAcquisto({ stato }) {
+  if (stato === "gia_acquistato") return <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-1 text-xs font-bold text-emerald-800"><PackageCheck size={13}/> Già acquistato</span>;
+  if (stato === "da_acquistare") return <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-1 text-xs font-bold text-amber-900"><ShoppingCart size={13}/> Da acquistare</span>;
+  return <span className="inline-flex items-center gap-1 rounded-full bg-rose-100 px-2 py-1 text-xs font-bold text-rose-800"><CircleAlert size={13}/> Da associare</span>;
+}
+
+function DettaglioRicetta({ ricetta, distinta, loading, selezionata, onSeleziona, onClose }) {
+  const associazioni = new Map((distinta?.righe || []).map(r => [r.prodotto_irca_slug || r.ingrediente, r]));
+  return <div className="fixed inset-0 z-[260] flex items-center justify-center bg-black/60 p-3 sm:p-6" onClick={onClose}>
+    <article role="dialog" aria-modal="true" aria-label={`Ricetta ${ricetta.nome}`} className="max-h-[94vh] w-full max-w-5xl overflow-y-auto rounded-3xl bg-[#fbfaf6] shadow-2xl" onClick={e => e.stopPropagation()}>
+      <header className="relative overflow-hidden rounded-t-3xl bg-[#263a31] text-white">
+        {ricetta.immagine_url && <img src={ricetta.immagine_url} alt="" className="absolute inset-0 h-full w-full object-cover opacity-25"/>}
+        <div className="relative flex min-h-52 items-end p-6 sm:p-8">
+          <div className="mr-auto max-w-3xl"><p className="m-0 text-xs font-black uppercase tracking-[0.18em] text-[#f0ca92]">{ricetta.categoria || "Ricetta ufficiale IRCA"}</p><h3 className="m-0 mt-2 text-3xl font-black leading-tight">{ricetta.nome}</h3><p className="m-0 mt-2 text-sm text-white/80">{ricetta.livello || "Livello non indicato"}</p></div>
+          <button type="button" onClick={onClose} aria-label="Chiudi ricetta" className="absolute right-4 top-4 rounded-full bg-black/25 p-2 text-white hover:bg-black/40"><X size={20}/></button>
+        </div>
+      </header>
+      {loading ? <div className="p-12 text-center text-gray-500">Caricamento ingredienti e collegamenti MEPA…</div> : <div className="grid gap-6 p-5 sm:p-8 lg:grid-cols-[1fr_330px]">
+        <div className="space-y-6">
+          {(ricetta.fasi || []).map((fase, index) => <section key={`${fase.nome}-${index}`} className="rounded-2xl border border-[#e6e0d5] bg-white p-5">
+            <div className="mb-4 flex items-center gap-3"><span className="flex h-8 w-8 items-center justify-center rounded-full bg-[#eaf3ee] text-sm font-black text-[#3f5a4e]">{index + 1}</span><h4 className="m-0 text-lg font-black text-[#263a31]">{fase.nome || `Fase ${index + 1}`}</h4></div>
+            {!!fase.ingredienti?.length && <div className="mb-4 divide-y divide-gray-100 rounded-xl border border-gray-100">{fase.ingredienti.map((ingrediente, i) => {
+              const slug = ingrediente.prodotto_irca_url?.split("/").filter(Boolean).pop() || ingrediente.nome;
+              const link = associazioni.get(slug);
+              return <div key={`${ingrediente.nome}-${i}`} className="flex flex-wrap items-center gap-2 px-3 py-2.5 text-sm"><strong className="mr-auto text-gray-800">{ingrediente.nome}</strong><span className="font-mono text-gray-600">{ingrediente.dose || "—"}</span>{ingrediente.prodotto_irca_url && link && <StatoAcquisto stato={link.stato}/>}</div>;
+            })}</div>}
+            {fase.preparazione && <p className="m-0 whitespace-pre-line text-sm leading-7 text-gray-700">{fase.preparazione}</p>}
+          </section>)}
+          {!ricetta.fasi?.length && <section className="rounded-2xl border border-[#e6e0d5] bg-white p-5"><h4 className="mt-0 text-lg font-black">Ingredienti</h4>{(ricetta.ingredienti || []).map((i, n) => <div key={n} className="flex justify-between border-b py-2 text-sm"><span>{i.nome}</span><strong>{i.dose}</strong></div>)}</section>}
+        </div>
+        <aside className="space-y-4">
+          <section className="rounded-2xl border border-[#d6e5dc] bg-[#eef5f1] p-4"><h4 className="m-0 flex items-center gap-2 font-black text-[#263a31]"><PackageCheck size={18}/> Prodotti collegati a MEPA</h4><div className="mt-3 space-y-3">{(distinta?.righe || []).filter(r => r.prodotto_irca_slug).map((r, i) => <div key={`${r.ingrediente}-${i}`} className="rounded-xl bg-white p-3 shadow-sm"><strong className="block text-sm text-gray-800">{r.ingrediente}</strong><span className="mt-0.5 block text-xs text-gray-500">{r.fornitore ? `${r.fornitore.prodotto_nome || "Prodotto MEPA"}${r.fornitore.codice ? ` · ${r.fornitore.codice}` : ""}` : r.motivo}</span><span className="mt-2 inline-block"><StatoAcquisto stato={r.stato}/></span></div>)}{!distinta?.righe?.some(r => r.prodotto_irca_slug) && <p className="m-0 text-sm text-gray-600">Nessun prodotto IRCA associabile automaticamente.</p>}</div></section>
+          <button type="button" onClick={onSeleziona} disabled={selezionata} className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#3f5a4e] px-4 py-3 text-sm font-black text-white disabled:bg-emerald-100 disabled:text-emerald-800">{selezionata ? <CheckCircle2 size={17}/> : <BookOpen size={17}/>} {selezionata ? "Ricetta selezionata" : "Seleziona per la distinta"}</button>
+          <a href={ricetta.url} target="_blank" rel="noreferrer" className="flex w-full items-center justify-center gap-2 rounded-xl border border-[#d8d2c7] bg-white px-4 py-3 text-sm font-bold text-[#3f5a4e]"><ExternalLink size={16}/> Vedi fonte ufficiale IRCA</a>
+          <p className="rounded-xl bg-amber-50 p-3 text-xs leading-5 text-amber-900">Il gestionale conserva la fonte ufficiale e non inventa associazioni: se il collegamento IRCA–MEPA non è esatto e univoco, il prodotto resta “Da associare”.</p>
+        </aside>
+      </div>}
+    </article>
   </div>;
 }

@@ -385,14 +385,7 @@ async def get_prodotti_saima(
         ]
 
     prodotti = await db.dizionario_ingredienti.find(query, {"_id": 0}).limit(limit).to_list(limit)
-    # Aggancia il prezzo realmente pagato dalle fatture SAIMA (match per nome ufficiale).
-    # Se un prodotto è già stato comprato mostriamo il prezzo; altrimenti resta ordinabile senza.
-    try:
-        from app.lotti.routers.utils import prezzi_fatture_per_fornitore, applica_prezzo_da_fatture
-        prezzi = await prezzi_fatture_per_fornitore(db, "saima")
-        prodotti = applica_prezzo_da_fatture(prodotti, prezzi)
-    except Exception:
-        _LOG_INIT.debug("[saima] errore non bloccante ignorato")
+    # Prezzo e stato d'acquisto sono materializzati dal comando Sync Fatture.
     return prodotti
 
 
