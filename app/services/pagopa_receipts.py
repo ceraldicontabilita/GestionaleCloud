@@ -1418,15 +1418,33 @@ async def import_receipt(
         }
     if parsed.get("multiple_receipts"):
         import fitz
-        from app.services.fiscal_evidence import register_document
+        from app.services.fiscal_evidence import register_document, stable_id
 
         # Conserva il fascicolo originale; le contabili estratte mantengono
         # documento padre, impronta e pagina. La deduplica usa codice/data/importo.
+        digest = hashlib.sha256(content).hexdigest()
         original = await register_document(
             db, company_id=company_id, content=content, filename=filename,
-            source=source, source_ref=hashlib.sha256(content).hexdigest(), category="riscossione",
+            source=source, source_ref=digest, category="riscossione",
+            page_count=len(parsed["multiple_receipts"]),
             metadata={"kind": "fascicolo_contabili_bnl"},
         )
+        # register_document registra metadati/versioni, non conserva i byte.
+        # Il deposito canonico instrada il PDF intero su Drive; le singole
+        # pagine restano le prove dei due pagamenti, senza una terza ricevuta.
+        inbox = await db["documents_inbox"].find_one(
+            {"company_id": company_id, "sha256": digest}, {"id": 1, "_id": 0})
+        if not inbox:
+            await db["documents_inbox"].insert_one({
+                "id": stable_id("document", company_id, digest), "company_id": company_id,
+                "filename": filename, "sha256": digest, "file_hash": digest,
+                "file_size": len(content), "pdf_data": base64.b64encode(content).decode("ascii"),
+                "category": "ricevuta_mav", "document_type": "fascicolo_contabili_bnl",
+                "category_label": "Contabili MAV BNL", "source": source,
+                "status": "archiviato", "processed": True, "processed_to": "ricevute_pagopa",
+                "fiscal_document_id": original["document_id"], "fiscal_version_id": original["id"],
+                "created_at": datetime.now(timezone.utc).isoformat(),
+            })
         outcomes = []
         with fitz.open(stream=content, filetype="pdf") as document:
             for page_number in range(len(document)):

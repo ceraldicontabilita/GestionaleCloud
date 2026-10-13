@@ -106,3 +106,40 @@ def test_un_altro_file_non_si_promuove():
     _run(db[qi.COLL_QUIETANZE].insert_one(dict(riga)))
     assert _run(qi.promuovi_pdf_hash_sha256(db, dict(riga), sha256=SHA, md5=MD5)) is False
     assert _quietanze(db)[0]["pdf_hash"] == "a" * 64
+
+
+def test_stesso_originale_completa_data_assente_senza_duplicare(monkeypatch):
+    import copy
+
+    _patch(monkeypatch)
+    db = _db()
+    old = copy.deepcopy(PARSED)
+    old.update({"id": "senza-data", "pdf_hash": SHA, "data_pagamento": None,
+                "saldo": 250.0, "f24_associati": [], "nota_manuale": "conservare"})
+    old["dati_generali"]["data_pagamento"] = None
+    _run(db[qi.COLL_QUIETANZE].insert_one(old))
+    result = _run(qi.importa_quietanza_bytes(db, PDF, "q.pdf"))
+    [saved] = _quietanze(db)
+    assert result["duplicate"] and result["data_pagamento_completata"]
+    assert saved["id"] == "senza-data" and saved["data_pagamento"] == "2026-06-16"
+    assert saved["dati_generali"]["data_pagamento"] == "2026-06-16"
+    assert saved["saldo"] == 250.0 and saved["sezione_erario"] == old["sezione_erario"]
+    assert saved["nota_manuale"] == "conservare"
+    assert saved["data_pagamento_fonte"]["sha256"] == SHA
+
+
+def test_data_gia_presente_o_righe_diverse_non_si_sovrascrivono(monkeypatch):
+    import copy
+
+    _patch(monkeypatch)
+    for data, saldo in [("2026-06-15", 250.0), (None, 251.0)]:
+        db = _db()
+        old = copy.deepcopy(PARSED)
+        old.update({"id": "conservare", "pdf_hash": SHA, "data_pagamento": data,
+                    "saldo": saldo, "f24_associati": []})
+        old["dati_generali"]["data_pagamento"] = data
+        _run(db[qi.COLL_QUIETANZE].insert_one(old))
+        result = _run(qi.importa_quietanza_bytes(db, PDF, "q.pdf"))
+        [saved] = _quietanze(db)
+        assert result["duplicate"] and not result["data_pagamento_completata"]
+        assert saved["data_pagamento"] == data and saved["saldo"] == saldo

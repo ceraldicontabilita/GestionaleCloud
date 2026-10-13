@@ -300,6 +300,35 @@ async def importa_quietanza_bytes(
         await promuovi_pdf_hash_sha256(db, existing, sha256=pdf_hash, md5=pdf_hash_md5)
     guscio = bool(existing) and _e_guscio_vuoto(existing)
     if existing and not guscio:
+        # Alcune letture storiche avevano le righe ma non la data: il controllo
+        # dell'impronta le fermava come duplicati prima di completarle.
+        # Si integra solo una data assente, dallo stesso PDF, con contribuente,
+        # righe e saldo invariati; associazioni e importi restano quelli salvati.
+        data_completata = False
+        if not existing.get("data_pagamento"):
+            from app.services.f24_parser import parse_quietanza_f24
+            reread = parse_quietanza_f24(pdf_content=content)
+            generali = reread.get("dati_generali") or {}
+            cf_salvato = existing.get("codice_fiscale") or (existing.get("dati_generali") or {}).get("codice_fiscale")
+            firma = _firma_righe(existing, existing.get("saldo"))
+            data = generali.get("data_pagamento")
+            if (data and cf_salvato and cf_salvato == generali.get("codice_fiscale")
+                    and (reread.get("validazione") or {}).get("saldo_quadrato") is True
+                    and firma and firma == _firma_righe(reread, generali.get("saldo_delega"))):
+                patch = {
+                    "data_pagamento": data, "dati_generali.data_pagamento": data,
+                    "data_pagamento_fonte": {"sha256": pdf_hash, "parser_version": "quietanza-coordinate-v3"},
+                }
+                existing["data_pagamento"] = data
+                existing.setdefault("dati_generali", {})["data_pagamento"] = data
+                patch.update(stato_fiscale_quietanza(existing))
+                await db[COLL_QUIETANZE].update_one({"id": existing["id"]}, {"$set": patch})
+                data_completata = True
+                try:
+                    await abbina_quietanza_a_f24(db, existing)
+                    await _marca_scadenze_calendario(db, {**existing, "id": None}, data, existing["id"])
+                except Exception:
+                    logger.exception("Data quietanza %s completata; collegamenti da riprovare", existing["id"])
         # Arricchisce sul posto le quietanze già acquisite prima della lettura
         # del codice atto, senza riscrivere importi, associazioni o pagamenti.
         if (not (existing.get("dati_generali") or {}).get("codice_atto")
@@ -323,6 +352,7 @@ async def importa_quietanza_bytes(
         )
         return {"success": True, "duplicate": True,
                 "quietanza_id": existing["id"], "filename": filename,
+                "data_pagamento_completata": data_completata,
                 "riconciliazione_ader": ader}
 
     try:
