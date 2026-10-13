@@ -1937,7 +1937,7 @@ def detect_document_type(filename: str, file_content: bytes) -> str:
     # PagoPA contiene IUV/CBILL ma non dimostra alcun pagamento.
     pdf_text = _pdf_text_for_detection(file_content).upper() if lower.endswith(".pdf") else ""
     if len(pdf_text.strip()) < 80 and any(clue in lower for clue in (
-        "istanza", "identita", "carta", "visura", "ant_",
+        "istanza", "identita", "carta", "visura", "ant_", "ricevut",
     )):
         try:
             from app.services.pagopa_receipts import _extract_receipt_text
@@ -1953,6 +1953,8 @@ def detect_document_type(filename: str, file_content: bytes) -> str:
     marker_pdf_text = re.sub(r"[^A-Z0-9]", "", pdf_text)
     from app.services.pagopa_receipts import e_attestazione_ader, e_ricevuta_email_pagopa
 
+    if "MOVIMENTICONSOLIDATI" in marker_pdf_text and "BWAY-" in compact_pdf_text and "MAV" in compact_pdf_text:
+        return "ricevuta_mav"
     if e_ricevuta_email_pagopa(pdf_text) or e_attestazione_ader(pdf_text):
         return "ricevuta_pagopa"
     # Piano di una dilazione INPS: cita il «mod. F24» ma e' l'obbligo che le
@@ -2217,8 +2219,8 @@ def detect_document_type(filename: str, file_content: bytes) -> str:
             return routed_type
         content_str = pdf_text
         if any(marker in content_str for marker in (
-            "QUIETANZA", "RICEVUTA DI VERSAMENTO", "ESITO DEL VERSAMENTO F24",
-        )):
+            "QUIETANZA DI VERSAMENTO", "RICEVUTA DI VERSAMENTO F24", "ESITO DEL VERSAMENTO F24",
+        )) and ("CODICE TRIBUTO" in content_str or "SALDO DELEGA" in content_str):
             return "quietanza_f24"
         # La LIPE ha il campo «VERSAMENTI AUTO F24»: cita F24 ma non e' un modello.
         e_lipe = "LIQUIDAZIONIPERIODICHE" in re.sub(r"[^A-Z]", "", content_str)
@@ -2230,11 +2232,7 @@ def detect_document_type(filename: str, file_content: bytes) -> str:
         # Anche 770, IRAP e Redditi citano «F24» (versamenti, compensazioni): la sola
         # sigla nel testo non basta, se il documento e' una dichiarazione. Sono finite
         # cosi' nel lettore dei modelli, che le bloccava come «F24 non quadrato».
-        if not e_lipe and (
-            f24_forte
-            or (re.search(r"\bF\s*24\b", content_str)
-                and not _tipo_dichiarazione(filename, pdf_text))
-        ):
+        if not e_lipe and f24_forte:
             return "f24"
         if any(marker in content_str for marker in ("CEDOLINO", "BUSTA PAGA", "LIBRO UNICO")):
             return "cedolino"
@@ -2247,7 +2245,10 @@ def detect_document_type(filename: str, file_content: bytes) -> str:
             or ("SALDO INIZIALE" in content_str and "SALDO FINALE" in content_str)
         ):
             return "estratto_conto"
-        if "BONIFICO" in content_str and ("IBAN" in content_str or "CRO" in content_str):
+        if "BONIFICO" in content_str and (
+            "CRO" in content_str or "REGISTRIAMO A VOSTRO DEBITO" in content_str
+            or "RICEVUTA PER ORDINANTE" in content_str or "BONIFICO ESEGUITO" in content_str
+        ):
             return "bonifici"
         return _tipo_dichiarazione(filename, pdf_text) or "auto"
 
@@ -3712,7 +3713,7 @@ async def upload_documento_automatico(
             )
             result["duplicate"] = bool(receipt.get("duplicate"))
             if receipt.get("success"):
-                result["imported"] = 0 if receipt.get("duplicate") else 1
+                result["imported"] = receipt.get("imported", 0 if receipt.get("duplicate") else 1)
                 fiscal_match = receipt.get("riconciliazione_fiscale") or {}
                 result["message"] = (
                     "Ricevuta di pagamento gia importata"

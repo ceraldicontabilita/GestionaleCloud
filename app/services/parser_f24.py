@@ -313,6 +313,88 @@ def _unisci_codici_a_caselle(row):
     return uniti
 
 
+def _parse_semplificato(doc, result):
+    """F24 semplificato: sezioni per riga e copie contribuente/banca.
+
+    Le due copie dello stesso modulo non sono due obblighi. Si confrontano
+    contribuente, identificativo operazione, tutte le righe e saldo stampato.
+    """
+    seen = set()
+    models = []
+    names = {"EL": "sezione_tributi_locali", "ER": "sezione_erario", "RG": "sezione_regioni"}
+    for page_number, page in enumerate(doc, 1):
+        scale = 595 / page.rect.width
+        words = [(w[0] * scale, w[1], w[2] * scale, w[4]) for w in page.get_text('words')]
+        starts = sorted(w[1] for w in words if w[3] == 'MOTIVO' and w[0] < 100)
+        for start, end in zip(starts, starts[1:] + [page.rect.height]):
+            region = [w for w in words if start - 8 <= w[1] < end - 8]
+            anchors = [w for w in region if 70 < w[0] < 115 and re.fullmatch(r'\d{4}|TEF[ANZ]', w[3])]
+            rows = []
+            for anchor in anchors:
+                line = sorted(w for w in region if abs(w[1] - anchor[1]) < 3)
+                def field(left, right):
+                    return ''.join(w[3] for w in line if left <= w[0] < right)
+                section = names.get(field(25, 70))
+                year = field(307, 345)
+                if not section or not re.fullmatch(r'(?:19|20)\d{2}', year):
+                    continue
+                def money(left, right):
+                    return _importo_cents_da_token([(w[0], w[3]) for w in line if left <= w[0] < right and re.fullmatch(r'[\d.,]+', w[3])])
+                debit, credit = money(405, 488), money(488, 572)
+                if not (debit or credit):
+                    continue
+                entity, rate = field(115, 165), field(270, 307)
+                row = {
+                    'codice_tributo': anchor[3], 'anno': year, 'rateazione': rate,
+                    'periodo_riferimento': year, 'mese': None,
+                    'importo_debito': debit / 100, 'importo_credito': credit / 100,
+                    'importo_debito_cents': debit, 'importo_credito_cents': credit,
+                    'pagina': page_number, 'riga_y': anchor[1],
+                    'testo_sorgente': ' '.join(w[3] for w in line),
+                    'descrizione': get_descrizione_tributo(anchor[3]),
+                }
+                row['codice_comune' if section == 'sezione_tributi_locali' else 'codice_regione'] = entity
+                rows.append((section, row))
+            # Il saldo e' sulla riga EURO; non sommare le copie del modulo.
+            euro = next((w for w in region if w[3] == 'EURO' and w[0] > 420), None)
+            balance = None
+            if euro:
+                parts = [(w[0], w[3]) for w in region if abs(w[1]-euro[1]) < 5 and w[0] > 510 and re.fullmatch(r'[\d.,]+', w[3])]
+                if parts:
+                    balance = _importo_cents_da_token(parts)
+            operation = ''.join(w[3] for w in sorted(region) if abs(w[1]-start) < 8 and w[0] >= 310 and w[3].isdigit())
+            signature = (result['dati_generali'].get('codice_fiscale'), operation, balance,
+                         tuple((s, r['codice_tributo'], r.get('codice_comune'), r.get('codice_regione'), r['anno'], r['rateazione'], r['importo_debito_cents'], r['importo_credito_cents']) for s, r in rows))
+            if not rows or signature in seen:
+                continue
+            seen.add(signature)
+            debit = sum(r['importo_debito_cents'] for _, r in rows)
+            credit = sum(r['importo_credito_cents'] for _, r in rows)
+            difference = None if balance is None else debit - credit - balance
+            models.append({'numero_modello': len(models)+1, 'pagine': [page_number], 'identificativo_operazione': operation,
+                           'saldo_delega_cents': balance, 'saldo_delega': None if balance is None else balance/100,
+                           'differenza_saldo_cents': difference, 'saldo_quadrato': difference == 0})
+            for section, row in rows:
+                row['numero_modello'] = len(models)
+                result[section].append(row)
+    sections = list(names.values())
+    debit = sum(r['importo_debito_cents'] for s in sections for r in result[s])
+    credit = sum(r['importo_credito_cents'] for s in sections for r in result[s])
+    balance = sum(m['saldo_delega_cents'] for m in models) if models and all(m['saldo_delega_cents'] is not None for m in models) else None
+    difference = None if balance is None else debit - credit - balance
+    result['modelli'] = models
+    result['sezione_imu'] = result['sezione_tributi_locali']
+    result['totali'] = {f'{key}_cents': value for key, value in [('totale_debito', debit), ('totale_credito', credit), ('saldo_netto', debit-credit), ('saldo_delega', balance), ('saldo_finale', balance)]}
+    result['totali'].update({k.removesuffix('_cents'): None if v is None else v/100 for k,v in list(result['totali'].items())})
+    result['dati_generali']['saldo_delega'] = result['totali']['saldo_delega']
+    result['validazione'] = {'righe_estratte': sum(len(result[s]) for s in sections),
+                            'saldo_quadrato': bool(models) and all(m['saldo_quadrato'] for m in models),
+                            'modelli_quadrati': bool(models) and all(m['saldo_quadrato'] for m in models),
+                            'differenza_saldo_cents': difference, 'differenza_saldo': None if difference is None else difference/100,
+                            'parser_version': 'f24-semplificato-coordinate-v1'}
+    return result
+
+
 def parse_f24_commercialista(pdf_path: str = None, pdf_content: bytes = None) -> Dict[str, Any]:
     """
     Parsa un F24 PDF della commercialista ed estrae tutti i dati.
@@ -429,6 +511,12 @@ def parse_f24_commercialista(pdf_path: str = None, pdf_content: bytes = None) ->
     else:
         result["dati_generali"]["tipo_f24"] = "F24"
 
+    if result["dati_generali"]["tipo_f24"] == "F24 Semplificato":
+        try:
+            return _parse_semplificato(doc, result)
+        finally:
+            doc.close()
+
     # ============================================
     # COORDINATE PER ESTRAZIONE IMPORTI
     # ============================================
@@ -542,7 +630,8 @@ def parse_f24_commercialista(pdf_path: str = None, pdf_content: bytes = None) ->
             inps_riga = _RIGA_INPS_TESTO.search(row_text)
 
             # Processa ERARIO solo se NON è una riga regioni né una riga INPS
-            if not is_riga_regioni and not inps_riga:
+            local_prefix = bool(re.match(r"^(?:[A-Z]\s*\d\s*\d\s*\d|[A-Z]{2})\s", row_text))
+            if not is_riga_regioni and not inps_riga and not local_prefix:
                 for i, item in enumerate(row):
                     word = item['word']
 
@@ -937,7 +1026,7 @@ def parse_f24_commercialista(pdf_path: str = None, pdf_content: bytes = None) ->
                     # Codici tributi locali: 37xx, 38xx (Camera Commercio), 391x (IMU),
                     # 39xx (altri) e la TEFA (TEFA/TEFN/TEFZ, Ris. 5/E 2021): senza,
                     # la TEFA del modello spariva e il saldo della sezione non tornava.
-                    if re.match(r'^(37\d{2}|38\d{2}|39\d{2}|TEF[ANZ])$', word):
+                    if re.match(r'^(37\d{2}|38\d{2}|39\d{2}|8926|TEF[ANZ])$', word):
                         codice = word
                         rateazione, anno = _rateazione_e_anno(
                             [entry["word"] for entry in row[i + 1:min(i + 8, len(row))]]
