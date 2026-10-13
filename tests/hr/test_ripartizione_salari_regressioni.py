@@ -5,7 +5,15 @@ from app.services.posizione_dipendente import (
 
 class SaldoDipendenteTests(unittest.TestCase):
     def movimenti(self, **campi):
-        return componi_movimenti(**dict(paghe=[], esiti=[], cedolini=[], acconti=[], conciliazioni=[], **campi))
+        dati = {
+            "paghe": [],
+            "esiti": [],
+            "cedolini": [],
+            "acconti": [],
+            "conciliazioni": [],
+        }
+        dati.update(campi)
+        return componi_movimenti(**dati)
 
     def test_pagamento_non_riconciliato_senza_mese_riduce_saldo_alla_data(self):
         m = self.movimenti(pagamenti_senza_competenza=[{
