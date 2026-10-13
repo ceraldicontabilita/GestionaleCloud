@@ -774,7 +774,12 @@ def prima_nota_mensile(movimenti: Dict[str, List[Dict[str, Any]]]) -> Dict[str, 
         if not dovuto and not erogato:
             continue
         saldo += dovuto - erogato
-        righe.append({"anno": a, "mese": m, "busta": _eur(dovuto), "bonifico": _eur(r["bonifico"]),
+        righe.append({"anno": a, "mese": m,
+                      # ``cedolini`` resta distinto da conciliazioni e altri
+                      # dovuti: la scheda mensile non deve chiamare "cedolino"
+                      # una voce che appartiene a un altro titolo.
+                      "cedolini": _eur(r["busta"]), "altri_dovuti": _eur(r["altro_dare"]),
+                      "dovuto": _eur(dovuto), "busta": _eur(dovuto), "bonifico": _eur(r["bonifico"]),
                       "acconti": _eur(r["acconti"]), "erogato": _eur(erogato),
                       "saldo_progressivo": _eur(saldo)})
     dettaglio, saldo = _con_saldo(movimenti["registro"])
@@ -839,6 +844,102 @@ async def posizione_dipendente(db, dipendente_id: str, anno: Optional[int] = Non
 
 async def prima_nota_dipendente(db, dipendente_id: str) -> Dict[str, Any]:
     return prima_nota_mensile(await carica_movimenti(db, dipendente_id))
+
+
+def riepilogo_prima_nota_selezione(
+    movimenti_per_dipendente: Dict[str, Dict[str, List[Dict[str, Any]]]],
+    nomi: Optional[Dict[str, str]] = None,
+) -> Dict[str, Any]:
+    """Somma più posizioni solo dopo averle costruite separatamente.
+
+    Le allocazioni restano quindi confinate al rispettivo dipendente; il saldo
+    complessivo è la somma contabile dei registri selezionati, non un nuovo
+    tentativo di associare pagamenti tra persone diverse.
+    """
+    nomi = nomi or {}
+    mensili: Dict[Tuple[int, int], Dict[str, Decimal]] = {}
+    per_dipendente = []
+    for dipendente_id in sorted(movimenti_per_dipendente):
+        movimenti = movimenti_per_dipendente[dipendente_id]
+        prospetto = prima_nota_mensile(movimenti)
+        for riga in prospetto["righe"]:
+            chiave = (int(riga["anno"]), int(riga["mese"]))
+            totale = mensili.setdefault(chiave, {
+                "cedolini": ZERO, "altri_dovuti": ZERO, "dovuto": ZERO,
+                "bonifico": ZERO, "acconti": ZERO, "erogato": ZERO,
+            })
+            for campo in totale:
+                totale[campo] += importo(riga.get(campo)) or ZERO
+        per_dipendente.append({
+            "dipendente_id": dipendente_id,
+            "dipendente": nomi.get(dipendente_id) or dipendente_id,
+            "dovuto": round(sum(float(r.get("dovuto") or 0) for r in prospetto["righe"]), 2),
+            "pagato": round(sum(float(r.get("erogato") or 0) for r in prospetto["righe"]), 2),
+            "saldo": prospetto["saldo_finale"],
+        })
+    per_dipendente.sort(key=lambda r: r["dipendente"].casefold())
+    righe, saldo = [], ZERO
+    for (anno, mese), valori in sorted(mensili.items()):
+        saldo += valori["dovuto"] - valori["erogato"]
+        righe.append({
+            "anno": anno, "mese": mese,
+            **{campo: _eur(valore) for campo, valore in valori.items()},
+            "busta": _eur(valori["dovuto"]),
+            "saldo_progressivo": _eur(saldo),
+        })
+    return {
+        "righe": righe, "movimenti": [], "competenze": [],
+        "saldo_finale": _eur(saldo), "valuta": VALUTA,
+        "per_dipendente": per_dipendente,
+        "numero_dipendenti": len(per_dipendente),
+    }
+
+
+async def prima_nota_dipendenti(db, dipendente_ids: Iterable[str]) -> Dict[str, Any]:
+    """Prospetto mensile di uno o più dipendenti con una lettura per archivio."""
+    ids = sorted({str(x) for x in dipendente_ids if x})
+    if not ids:
+        return riepilogo_prima_nota_selezione({})
+    filtro = {"dipendente_id": {"$in": ids}}
+    senza_pdf = {"_id": 0, "pdf_data": 0}
+    paghe = await db.paghe_mensili.find(filtro, {"_id": 0}).to_list(None)
+    esiti = await db.pagamenti_esiti.find(filtro, senza_pdf).to_list(None)
+    code = await db.bonifici_da_associare.find(
+        {**filtro, "associazione_certa": True, "stato": "da_associare"}, senza_pdf).to_list(None)
+    cedolini = await db.cedolini.find(filtro, senza_pdf).to_list(None)
+    acconti = await db.acconti_dipendenti.find(filtro, {"_id": 0}).to_list(None)
+    conciliazioni = await db[COLL_CONCILIAZIONI].find(filtro, {"_id": 0, "file_data": 0}).to_list(None)
+    eccedenze = await db[COLL_ECCEDENZE].find(filtro, {"_id": 0}).to_list(None)
+    dipendenti = await db.dipendenti.find(
+        {"id": {"$in": ids}},
+        {"_id": 0, "id": 1, "nome": 1, "cognome": 1, "nome_completo": 1,
+         "stato": 1, "attivo": 1, "in_carico": 1, "data_fine_rapporto": 1,
+         "data_cessazione": 1, "data_dimissione": 1,
+         "data_cessazione_prevista": 1},
+    ).to_list(None)
+
+    def raggruppa(righe: Iterable[Dict[str, Any]]) -> Dict[str, List[Dict[str, Any]]]:
+        out = {dip_id: [] for dip_id in ids}
+        for riga in righe:
+            if riga.get("dipendente_id") in out:
+                out[riga["dipendente_id"]].append(riga)
+        return out
+
+    gruppi = [raggruppa(righe) for righe in
+              (paghe, esiti, cedolini, acconti, conciliazioni, code, eccedenze)]
+    rapporti = {d["id"]: d for d in dipendenti}
+    nomi = {d["id"]: (d.get("nome_completo")
+                      or f"{d.get('cognome', '')} {d.get('nome', '')}".strip()
+                      or d["id"]) for d in dipendenti}
+    movimenti = {}
+    for dip_id in ids:
+        movimenti[dip_id] = componi_movimenti(
+            paghe=gruppi[0][dip_id], esiti=gruppi[1][dip_id],
+            cedolini=gruppi[2][dip_id], acconti=gruppi[3][dip_id],
+            conciliazioni=gruppi[4][dip_id], pagamenti_senza_competenza=gruppi[5][dip_id],
+            eccedenze=gruppi[6][dip_id], rapporto=rapporti.get(dip_id) or {},
+        )
+    return riepilogo_prima_nota_selezione(movimenti, nomi)
 
 
 # ── scritture ────────────────────────────────────────────────────────────────

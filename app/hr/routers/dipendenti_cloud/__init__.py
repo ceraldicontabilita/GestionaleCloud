@@ -2,7 +2,7 @@
 Dipendenti in Cloud - Router Module
 Sistema HR completo per gestione personale
 """
-from fastapi import APIRouter, HTTPException, Depends, UploadFile, File, Body, Form, Request
+from fastapi import APIRouter, HTTPException, Depends, UploadFile, File, Body, Form, Request, Query
 from fastapi.responses import Response
 from pydantic import BaseModel
 from typing import List, Optional, Dict, Any
@@ -4053,9 +4053,26 @@ async def prima_nota(dipendente_id: str):
     return await prima_nota_dipendente(get_db(), dipendente_id)
 
 
+@router.get("/paghe/prospetto-contabile")
+async def prospetto_contabile_paghe(dipendente_id: Optional[List[str]] = Query(None)):
+    """Totali mensili e saldo progressivo per uno, più o tutti i dipendenti.
+
+    Senza filtro usa l'anagrafica completa. Ogni posizione viene costruita
+    separatamente dal motore Dare/Avere canonico e sommata solo dopo, così un
+    pagamento non può mai essere attribuito a un altro dipendente.
+    """
+    db = get_db()
+    ids = list(dict.fromkeys(dipendente_id or []))
+    if not ids:
+        ids = [d.get("id") async for d in db.dipendenti.find({}, {"_id": 0, "id": 1}) if d.get("id")]
+    from app.services.posizione_dipendente import prima_nota_dipendenti
+    return await prima_nota_dipendenti(db, ids)
+
+
 @router.get("/paghe/associazioni-bonifici")
 async def associazioni_bonifici(anno: Optional[int] = None, mese: Optional[int] = None,
-                                stato: Optional[str] = None):
+                                stato: Optional[str] = None,
+                                dipendente_id: Optional[List[str]] = Query(None)):
     """Vista UNICA cedolino↔bonifico. Per ogni busta del periodo mostra l'importo busta,
     i bonifici REALMENTE pagati (collezione pagamenti_esiti: data, importo, causale, riferimento/CRO),
     gli acconti, il saldo e lo stato di associazione:
@@ -4067,7 +4084,7 @@ async def associazioni_bonifici(anno: Optional[int] = None, mese: Optional[int] 
     Inoltre indica la 'fonte' del bonifico (banca/prima_nota/manuale), la 'qualita' del match
     (esatto/per_importo/aggregato/da_verificare) e se esiste il PDF del cedolino.
     Sorgente dati = sistema vivo paghe_mensili + pagamenti_esiti (nessun sistema parallelo)."""
-    return await _calcola_associazioni_bonifici(get_db(), anno, mese, stato)
+    return await _calcola_associazioni_bonifici(get_db(), anno, mese, stato, dipendente_id)
 
 
 @router.post("/paghe/bonifica-regole-pagamento")
@@ -4085,7 +4102,8 @@ async def bonifica_regole_pagamento(dry_run: bool = True, force: bool = False):
 
 
 async def _calcola_associazioni_bonifici(db, anno: Optional[int] = None, mese: Optional[int] = None,
-                                         stato: Optional[str] = None):
+                                         stato: Optional[str] = None,
+                                         dipendente_ids: Optional[List[str]] = None):
     from app.hr.db_supabase import SupabaseDatabase
     from app.hr.services.sincronizza_paghe_mensili import deduplica_pagamenti
 
@@ -4097,13 +4115,15 @@ async def _calcola_associazioni_bonifici(db, anno: Optional[int] = None, mese: O
     if mese:
         q["mese"] = int(mese)
 
+    selezionati = set(dipendente_ids or [])
     dip_map = {}
     async for d in db.dipendenti.find({}, {"_id": 0, "id": 1, "nome": 1, "cognome": 1,
                                             "codice_fiscale": 1, "stato": 1, "attivo": 1,
                                             "in_carico": 1, "data_fine_rapporto": 1,
                                             "data_cessazione": 1, "data_dimissione": 1,
                                             "data_cessazione_prevista": 1}):
-        dip_map[d["id"]] = d
+        if not selezionati or d["id"] in selezionati:
+            dip_map[d["id"]] = d
 
     # Prefetch in blocco (UNA lettura per tabella) invece che una query per ogni
     # riga di paghe_mensili: l'adattatore Supabase non ha indici, ogni find/
@@ -4200,11 +4220,14 @@ async def _calcola_associazioni_bonifici(db, anno: Optional[int] = None, mese: O
         for (a, m), quote in indice_quote(registro, gruppi["esiti"][dip_id]).items():
             esiti_idx[(dip_id, m, a)] = [e for e in quote if e["quota_tipo"] == "bonifico"]
             acconti_idx[(dip_id, m, a)] = [e for e in quote if e["quota_tipo"] == "acconto"]
-    paghe = [p for p in tutte_paghe if (not anno or p.get("anno") == int(anno))
+    paghe = [p for p in tutte_paghe if (not selezionati or p.get("dipendente_id") in selezionati)
+             and (not anno or p.get("anno") == int(anno))
              and (not mese or p.get("mese") == int(mese))]
     chiavi_paghe = {(p.get("dipendente_id"), p.get("anno"), p.get("mese")) for p in paghe}
     for dip_id, anno_c, mese_c in coperture:
-        if (dip_id, anno_c, mese_c) not in chiavi_paghe and (not anno or anno_c == int(anno)) and (not mese or mese_c == int(mese)):
+        if ((not selezionati or dip_id in selezionati)
+                and (dip_id, anno_c, mese_c) not in chiavi_paghe
+                and (not anno or anno_c == int(anno)) and (not mese or mese_c == int(mese))):
             paghe.append({"dipendente_id": dip_id, "anno": anno_c, "mese": mese_c})
     for p in paghe:
         dip_id = p.get("dipendente_id")
@@ -4389,6 +4412,8 @@ async def _calcola_associazioni_bonifici(db, anno: Optional[int] = None, mese: O
     # una busta da zero euro né un debito inventato.
     da_leggere = []
     for c in cedolini_lista:
+        if selezionati and c.get("dipendente_id") not in selezionati:
+            continue
         if c.get("netto") is not None or not ha_originale(c):
             continue
         if anno and c.get("anno") != int(anno):
@@ -4413,7 +4438,8 @@ async def _calcola_associazioni_bonifici(db, anno: Optional[int] = None, mese: O
 
 @router.get("/paghe/associazioni-bonifici/export-excel")
 async def associazioni_bonifici_export_excel(anno: Optional[int] = None, mese: Optional[int] = None,
-                                              stato: Optional[str] = None):
+                                              stato: Optional[str] = None,
+                                              dipendente_id: Optional[List[str]] = Query(None)):
     """Esporta in Excel la stessa vista di /paghe/associazioni-bonifici: una riga per
     dipendente/periodo con dipendente, periodo cedolino, importo cedolino, importo bonifico
     e stato dell'associazione. Stessa fonte dati (nessun sistema parallelo)."""
@@ -4422,7 +4448,7 @@ async def associazioni_bonifici_export_excel(anno: Optional[int] = None, mese: O
     from fastapi.responses import StreamingResponse
     from app.services.conti_pos import data_italiana
 
-    dati = await _calcola_associazioni_bonifici(get_db(), anno, mese, stato)
+    dati = await _calcola_associazioni_bonifici(get_db(), anno, mese, stato, dipendente_id)
     mesi = ["Gennaio", "Febbraio", "Marzo", "Aprile", "Maggio", "Giugno", "Luglio",
             "Agosto", "Settembre", "Ottobre", "Novembre", "Dicembre"]
 
