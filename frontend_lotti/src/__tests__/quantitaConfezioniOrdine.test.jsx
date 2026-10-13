@@ -1,5 +1,6 @@
 import {
   fornitoreUnicoOrdine,
+  primoGruppoFornitoreOrdine,
   quantitaSuccessivaOrdine,
 } from "../components/haccp/OrdiniView";
 
@@ -35,5 +36,16 @@ describe("fornitore delle righe da confermare", () => {
       { fornitore: "SAIMA S.p.a." }, { fornitore: "MEPA Alimentari" },
     ])).toBe("");
     expect(fornitoreUnicoOrdine([{ fornitore: "DA ASSEGNARE" }])).toBe("");
+  });
+
+  test("una bozza mista prepara un fornitore e conserva le altre righe", () => {
+    const gruppo = primoGruppoFornitoreOrdine([
+      { prodotto_id: "m1", fornitore: "MEPA Alimentari" },
+      { prodotto_id: "s1", fornitore: "SAIMA S.p.a." },
+      { prodotto_id: "m2", fornitore: "mepa alimentari" },
+    ]);
+    expect(gruppo.fornitore).toBe("MEPA Alimentari");
+    expect(gruppo.righe.map(r => r.prodotto_id)).toEqual(["m1", "m2"]);
+    expect(gruppo.escluse.map(r => r.prodotto_id)).toEqual(["s1"]);
   });
 });
