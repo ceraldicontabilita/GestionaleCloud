@@ -746,14 +746,40 @@ def prospetto_competenze(movimenti: Dict[str, List[Dict[str, Any]]]) -> List[Dic
     return out
 
 
+def registro_operativo(movimenti: Dict[str, List[Dict[str, Any]]]) -> Tuple[List[Dict[str, Any]], Optional[int]]:
+    """Registro confrontabile e primo anno coperto dai cedolini disponibili."""
+    registro_completo = movimenti["registro"]
+    anni_con_cedolino = [int(mv["data"][:4]) for mv in registro_completo
+                         if mv["tipo"] == "busta" and mv.get("dare") is not None]
+    dal_anno = min(anni_con_cedolino) if anni_con_cedolino else None
+
+    # Un pagamento attribuito a una competenza anteriore al primo anno con
+    # cedolini resta nella fonte storica, ma non può creare un riporto nel
+    # saldo operativo: manca il relativo dovuto con cui confrontarlo. Restano
+    # invece inclusi gli anticipi pagati prima, ma attribuiti al primo anno
+    # disponibile (o a uno successivo).
+    def nel_periodo_operativo(mv: Dict[str, Any]) -> bool:
+        if dal_anno is None or int(mv["data"][:4]) >= dal_anno:
+            return True
+        competenza = mv.get("competenza")
+        # Un pagamento senza competenza resta un possibile anticipo e non va
+        # eliminato dal saldo. Si esclude soltanto ciò che è esplicitamente
+        # attribuito a un'annualità anteriore e priva di cedolini.
+        return not competenza or int(competenza[0]) >= dal_anno
+
+    return [mv for mv in registro_completo if nel_periodo_operativo(mv)], dal_anno
+
+
 def prima_nota_mensile(movimenti: Dict[str, List[Dict[str, Any]]]) -> Dict[str, Any]:
     """Riepilogo per mese contabile e dettaglio cronologico dello stesso registro.
 
     Le buste maturano a fine competenza, i pagamenti incidono alla loro data,
     anche quando la competenza è diversa o ancora sconosciuta.
     """
+    registro, dal_anno = registro_operativo(movimenti)
+    movimenti_operativi = {**movimenti, "registro": registro}
     mesi: Dict[Tuple[int, int], Dict[str, Decimal]] = {}
-    for mv in movimenti["registro"]:
+    for mv in registro:
         comp = (int(mv["data"][:4]), int(mv["data"][5:7]))
         r = mesi.setdefault(comp, {"busta": ZERO, "acconto_in_busta": ZERO, "bonifico": ZERO,
                                    "acconti": ZERO, "altro_dare": ZERO, "altro_avere": ZERO})
@@ -782,10 +808,10 @@ def prima_nota_mensile(movimenti: Dict[str, List[Dict[str, Any]]]) -> Dict[str, 
                       "dovuto": _eur(dovuto), "busta": _eur(dovuto), "bonifico": _eur(r["bonifico"]),
                       "acconti": _eur(r["acconti"]), "erogato": _eur(erogato),
                       "saldo_progressivo": _eur(saldo)})
-    dettaglio, saldo = _con_saldo(movimenti["registro"])
+    dettaglio, saldo = _con_saldo(registro)
     return {"righe": righe, "movimenti": [_riga_json(mv) for mv in dettaglio],
-            "competenze": prospetto_competenze(movimenti),
-            "saldo_finale": _eur(saldo), "valuta": VALUTA}
+            "competenze": prospetto_competenze(movimenti_operativi),
+            "saldo_finale": _eur(saldo), "valuta": VALUTA, "dal_anno": dal_anno}
 
 
 # ── lettura dall'archivio HR ─────────────────────────────────────────────────
@@ -860,10 +886,12 @@ def riepilogo_prima_nota_selezione(
     mensili: Dict[Tuple[int, int], Dict[str, Decimal]] = {}
     per_dipendente = []
     mensili_per_dipendente = []
+    dal_anno_per_dipendente = {}
     for dipendente_id in sorted(movimenti_per_dipendente):
         movimenti = movimenti_per_dipendente[dipendente_id]
         prospetto = prima_nota_mensile(movimenti)
         nome = nomi.get(dipendente_id) or dipendente_id
+        dal_anno_per_dipendente[dipendente_id] = prospetto.get("dal_anno")
         for riga in prospetto["righe"]:
             chiave = (int(riga["anno"]), int(riga["mese"]))
             totale = mensili.setdefault(chiave, {
@@ -899,6 +927,8 @@ def riepilogo_prima_nota_selezione(
         "saldo_finale": _eur(saldo), "valuta": VALUTA,
         "per_dipendente": per_dipendente,
         "mensili_per_dipendente": mensili_per_dipendente,
+        "dal_anno": min((a for a in dal_anno_per_dipendente.values() if a is not None), default=None),
+        "dal_anno_per_dipendente": dal_anno_per_dipendente,
         "numero_dipendenti": len(per_dipendente),
     }
 

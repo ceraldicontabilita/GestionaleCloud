@@ -27,7 +27,10 @@ export default function PrimaNotaPaghe({ prospetto }) {
     </>}
     {mensili.length > 0 && <>
       <h3>Totali mensili e saldo progressivo</h3>
-      <p className="dc-muted">I cedolini maturano nel mese di competenza; bonifici e acconti incidono nel mese della data effettiva del pagamento.</p>
+      <p className="dc-muted">
+        {prospetto.dal_anno ? `Il saldo operativo parte dal ${prospetto.dal_anno}, primo anno con cedolini disponibili. I pagamenti di competenze precedenti restano nello storico ma non alterano questo saldo. ` : ''}
+        I cedolini maturano nel mese di competenza; bonifici e acconti incidono nel mese della data effettiva del pagamento.
+      </p>
       <div style={{ overflowX: 'auto' }} tabIndex={0} aria-label="Totali mensili paghe">
         <table className="dc-table" aria-label="Totali mensili e saldo progressivo" style={{ minWidth: 760 }}>
           <thead><tr><th>Mese</th><th style={destra}>Cedolini €</th><th style={destra}>Altri dovuti €</th><th style={destra}>Bonifici €</th><th style={destra}>Acconti €</th><th style={destra}>Pagato totale €</th><th style={destra}>Saldo progressivo €</th></tr></thead>

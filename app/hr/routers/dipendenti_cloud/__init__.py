@@ -4283,7 +4283,7 @@ async def _calcola_associazioni_bonifici(db, anno: Optional[int] = None, mese: O
     # L'intera storia del dipendente serve anche quando si visualizza un anno:
     # il residuo del pagamento continua sulle buste successive, senza duplicarlo.
     from collections import defaultdict
-    from app.services.posizione_dipendente import componi_movimenti
+    from app.services.posizione_dipendente import componi_movimenti, registro_operativo
     from app.services.ripartizione_salari import indice_quote
     tutte_paghe = await db.paghe_mensili.find({}, {"_id": 0}).to_list(None)
     tutti_acconti = await db.acconti_dipendenti.find({}, {"_id": 0}).to_list(None)
@@ -4316,7 +4316,10 @@ async def _calcola_associazioni_bonifici(db, anno: Optional[int] = None, mese: O
             conciliazioni=gruppi["conciliazioni"][dip_id], eccedenze=gruppi["eccedenze"][dip_id],
             rapporto=dip)
         movimenti_per_dipendente[dip_id] = movimenti
-        registro = movimenti["registro"]
+        # La tabella e la scheda contabile devono usare lo stesso perimetro:
+        # i pagamenti di competenze precedenti al primo cedolino disponibile
+        # restano nello storico, ma non creano saldi o attribuzioni artificiali.
+        registro, _ = registro_operativo(movimenti)
         for (a, m), quote in indice_quote(registro, gruppi["esiti"][dip_id]).items():
             esiti_idx[(dip_id, m, a)] = [e for e in quote if e["quota_tipo"] == "bonifico"]
             acconti_idx[(dip_id, m, a)] = [e for e in quote if e["quota_tipo"] == "acconto"]
