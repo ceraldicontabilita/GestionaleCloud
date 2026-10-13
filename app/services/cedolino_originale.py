@@ -59,6 +59,16 @@ async def carica_originale(doc: Dict[str, Any]) -> bytes:
             content = await scarica_originale(str(ref["drive_file_id"]), md5=ref.get("md5"))
         else:
             content = b""
+    if not content and doc.get("blob_key"):
+        from app.database import Database
+        from app.services.blob_store import blob_store_per_runtime
+
+        encoded_blob = await blob_store_per_runtime(Database.db).get(str(doc["blob_key"]))
+        if encoded_blob:
+            try:
+                content = base64.b64decode(encoded_blob, validate=False)
+            except Exception as exc:
+                raise ValueError("PDF archiviato non decodificabile") from exc
     encoded = doc.get("pdf_data")
     if not content and encoded:
         try:

@@ -1208,7 +1208,7 @@ async def download_cedolino_pdf(cedolino_id: str):
     db = Database.get_db()
     doc = await db["cedolini"].find_one({"id": cedolino_id}, {
         "_id": 0, "pdf_data": 1, "drive_file_id": 1, "drive_md5": 1,
-        "_drive_payloads": 1, "pdf_filename": 1, "filename": 1,
+        "_drive_payloads": 1, "blob_key": 1, "pdf_filename": 1, "filename": 1,
         "gestionale_cedolino_id": 1,
         "source_page_start": 1, "source_page_end": 1, "source_document_pages": 1,
     })
@@ -1216,7 +1216,8 @@ async def download_cedolino_pdf(cedolino_id: str):
         raise HTTPException(status_code=404, detail="Cedolino non trovato")
     pdf_data = doc.get("pdf_data")
     filename = doc.get("pdf_filename") or doc.get("filename")
-    if not pdf_data and not doc.get("drive_file_id") and not doc.get("_drive_payloads"):
+    if (not pdf_data and not doc.get("drive_file_id") and not doc.get("_drive_payloads")
+            and not doc.get("blob_key")):
         # Solo un collegamento esplicito prova quale allegato appartiene alla
         # busta. Il vecchio OR nome/periodo prendeva anche PDF di altre persone
         # e li associava scrivendo nel database durante un semplice download.

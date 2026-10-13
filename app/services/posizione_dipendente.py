@@ -859,9 +859,11 @@ def riepilogo_prima_nota_selezione(
     nomi = nomi or {}
     mensili: Dict[Tuple[int, int], Dict[str, Decimal]] = {}
     per_dipendente = []
+    mensili_per_dipendente = []
     for dipendente_id in sorted(movimenti_per_dipendente):
         movimenti = movimenti_per_dipendente[dipendente_id]
         prospetto = prima_nota_mensile(movimenti)
+        nome = nomi.get(dipendente_id) or dipendente_id
         for riga in prospetto["righe"]:
             chiave = (int(riga["anno"]), int(riga["mese"]))
             totale = mensili.setdefault(chiave, {
@@ -870,9 +872,14 @@ def riepilogo_prima_nota_selezione(
             })
             for campo in totale:
                 totale[campo] += importo(riga.get(campo)) or ZERO
+            mensili_per_dipendente.append({
+                **riga,
+                "dipendente_id": dipendente_id,
+                "dipendente": nome,
+            })
         per_dipendente.append({
             "dipendente_id": dipendente_id,
-            "dipendente": nomi.get(dipendente_id) or dipendente_id,
+            "dipendente": nome,
             "dovuto": round(sum(float(r.get("dovuto") or 0) for r in prospetto["righe"]), 2),
             "pagato": round(sum(float(r.get("erogato") or 0) for r in prospetto["righe"]), 2),
             "saldo": prospetto["saldo_finale"],
@@ -891,6 +898,7 @@ def riepilogo_prima_nota_selezione(
         "righe": righe, "movimenti": [], "competenze": [],
         "saldo_finale": _eur(saldo), "valuta": VALUTA,
         "per_dipendente": per_dipendente,
+        "mensili_per_dipendente": mensili_per_dipendente,
         "numero_dipendenti": len(per_dipendente),
     }
 

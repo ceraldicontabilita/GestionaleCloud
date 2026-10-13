@@ -100,6 +100,13 @@ class SaldoDipendenteTests(unittest.TestCase):
         self.assertEqual(vista["saldo_finale"], 400)
         self.assertEqual([(r["dipendente"], r["saldo"]) for r in vista["per_dipendente"]],
                          [("Luigi Bianchi", 0), ("Mario Rossi", 400)])
+        mensili = vista["mensili_per_dipendente"]
+        self.assertEqual(
+            [(r["dipendente_id"], r["anno"], r["mese"], r["dovuto"], r["erogato"])
+             for r in mensili],
+            [("luigi", 2026, 1, 800, 0), ("luigi", 2026, 2, 0, 800),
+             ("mario", 2026, 1, 1000, 0), ("mario", 2026, 2, 0, 600)],
+        )
 
     def test_totale_cedolini_resta_separato_dagli_altri_dovuti(self):
         movimenti = self.movimenti(
