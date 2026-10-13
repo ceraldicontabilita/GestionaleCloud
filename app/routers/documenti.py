@@ -1937,7 +1937,7 @@ def detect_document_type(filename: str, file_content: bytes) -> str:
     # PagoPA contiene IUV/CBILL ma non dimostra alcun pagamento.
     pdf_text = _pdf_text_for_detection(file_content).upper() if lower.endswith(".pdf") else ""
     if len(pdf_text.strip()) < 80 and any(clue in lower for clue in (
-        "istanza", "identita", "carta", "visura", "ant_",
+        "istanza", "identita", "carta", "visura", "ant_", "ricevut",
     )):
         try:
             from app.services.pagopa_receipts import _extract_receipt_text
@@ -1953,6 +1953,8 @@ def detect_document_type(filename: str, file_content: bytes) -> str:
     marker_pdf_text = re.sub(r"[^A-Z0-9]", "", pdf_text)
     from app.services.pagopa_receipts import e_attestazione_ader, e_ricevuta_email_pagopa
 
+    if "MOVIMENTICONSOLIDATI" in marker_pdf_text and "BWAY-" in compact_pdf_text and "MAV" in compact_pdf_text:
+        return "ricevuta_mav"
     if e_ricevuta_email_pagopa(pdf_text) or e_attestazione_ader(pdf_text):
         return "ricevuta_pagopa"
     # Piano di una dilazione INPS: cita il «mod. F24» ma e' l'obbligo che le
@@ -3700,7 +3702,7 @@ async def upload_documento_automatico(
             )
             result["duplicate"] = bool(receipt.get("duplicate"))
             if receipt.get("success"):
-                result["imported"] = 0 if receipt.get("duplicate") else 1
+                result["imported"] = receipt.get("imported", 0 if receipt.get("duplicate") else 1)
                 fiscal_match = receipt.get("riconciliazione_fiscale") or {}
                 result["message"] = (
                     "Ricevuta di pagamento gia importata"
