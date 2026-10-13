@@ -79,6 +79,29 @@ def _escape_query(value: str) -> str:
     return value.replace("\\", "\\\\").replace("'", "\\'")
 
 
+def _rileggi_originale(service, file_id: str, content: bytes) -> bytes:
+    """Verifica una copia dei byte gia' ricevuti, come nell'apertura PDF.
+
+    Drive puo' segnalare una ricevuta appena caricata come spam. La conferma
+    riguarda soltanto un PDF fornito all'import; il chiamante confronta poi
+    lo SHA-256. Errori di autorizzazione e file diversi restano bloccanti.
+    """
+    from app.services.drive_download import _e_file_segnalato, riprova
+
+    def read(**options):
+        return riprova(lambda: service.files().get_media(
+            fileId=file_id, supportsAllDrives=True, **options,
+        ).execute(), quale="verifica originale archiviato")
+
+    try:
+        return read()
+    except Exception as exc:
+        if (_e_file_segnalato(exc) and content.startswith(b"%PDF-")
+                and b"%%EOF" in content[-4096:]):
+            return read(acknowledgeAbuse=True)
+        raise
+
+
 def _already_archived(
     service, parent_id: str, filename: str, digest: str, content: bytes,
 ) -> dict[str, Any] | None:
@@ -109,7 +132,7 @@ def _already_archived(
         if item.get("md5Checksum") != content_md5:
             continue
         try:
-            originale = service.files().get_media(fileId=item["id"]).execute()
+            originale = _rileggi_originale(service, item["id"], content)
         except Exception as exc:  # il candidato non verificabile non si riusa
             logger.warning("Originale Drive %s non verificabile: %s", item.get("id"), type(exc).__name__)
             continue
@@ -209,7 +232,7 @@ def archive_binary_copy(
     if not drive_id or drive_md5 != content_md5:
         return {"status": "error", "area": area, "reason": "verifica_md5_fallita"}
     try:
-        originale = service.files().get_media(fileId=drive_id).execute()
+        originale = _rileggi_originale(service, drive_id, content)
     except Exception as exc:
         logger.warning("Originale Drive %s non rileggibile: %s", drive_id, type(exc).__name__)
         return {"status": "error", "area": area, "reason": "rilettura_fallita"}

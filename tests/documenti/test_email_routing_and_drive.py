@@ -1,5 +1,7 @@
 import hashlib
 
+import pytest
+
 from app.services.email_drive_archive import route_for_document_type
 from app.services import email_drive_archive
 from app.services.email_monitor_service import _risolvi_tipo_documento_email
@@ -190,3 +192,57 @@ def test_archivio_usa_elaborate_della_cartella_unica_e_registra_quota(monkeypatc
         "area": "verbali",
         "reason": "service_account_storage_quota",
     }
+
+
+class _DownloadError(Exception):
+    def __init__(self, reason):
+        super().__init__(reason)
+        self.resp = type("Response", (), {"status": 403})()
+
+
+class _DriveFilesFlagged(_DriveFiles):
+    def __init__(self, content, returned=None, reason="cannotDownloadAbusiveFile"):
+        super().__init__()
+        self.content = content
+        self.returned = content if returned is None else returned
+        self.reason = reason
+        self.download_calls = []
+
+    def create(self, **kwargs):
+        return _DriveRequest({"id": "new-copy", "md5Checksum":
+                              hashlib.md5(self.content, usedforsecurity=False).hexdigest()})
+
+    def get_media(self, **kwargs):
+        self.download_calls.append(kwargs)
+        if not kwargs.get("acknowledgeAbuse"):
+            return _DriveRequest(error=_DownloadError(self.reason))
+        return _DriveRequest(self.returned)
+
+
+@pytest.mark.parametrize("returned,reason,expected,calls", [
+    (None, "cannotDownloadAbusiveFile", "archived", 2),
+    (b"%PDF-diverso", "cannotDownloadAbusiveFile", "verifica_sha256_fallita", 2),
+    (None, "insufficientFilePermissions", "rilettura_fallita", 1),
+])
+def test_verifica_ricevuta_segnalata_senza_accettare_byte_diversi_o_permessi_mancanti(
+    monkeypatch, returned, reason, expected, calls,
+):
+    content = b"%PDF-1.4\nricevuta originale\n%%EOF"
+    service = _DriveService()
+    service.files_api = _DriveFilesFlagged(content, returned, reason)
+    monkeypatch.setenv("GOOGLE_DRIVE_DATI_FOLDER_ID", "radice-dati")
+    monkeypatch.setattr(email_drive_archive, "_drive_service", lambda: service)
+    result = email_drive_archive.archive_binary_copy(content, "ricevuta.pdf")
+    assert result.get("reason", result["status"]) == expected
+    assert len(service.files_api.download_calls) == calls
+
+
+def test_non_conferma_segnalazione_per_un_allegato_non_pdf(monkeypatch):
+    content = b"allegato non PDF"
+    service = _DriveService()
+    service.files_api = _DriveFilesFlagged(content)
+    monkeypatch.setenv("GOOGLE_DRIVE_DATI_FOLDER_ID", "radice-dati")
+    monkeypatch.setattr(email_drive_archive, "_drive_service", lambda: service)
+    result = email_drive_archive.archive_binary_copy(content, "allegato.txt")
+    assert result["reason"] == "rilettura_fallita"
+    assert len(service.files_api.download_calls) == 1
