@@ -5,6 +5,7 @@ registra-produzione-lotto, genera-lotto, anteprima-codice-lotto.
 
 import re
 import logging
+import math
 _LOG_INIT = logging.getLogger("uvicorn.error")
 import uuid
 import json
@@ -988,13 +989,27 @@ async def _candidati_lotti_fifo(ing: dict) -> tuple:
         {"esaurito": {"$ne": True}, "quantita_disponibile": {"$gt": 0}}, _proj,
     ).to_list(5000)
 
+    # Scelta esplicita nel form ricetta: se l'operatore ha indicato una riga
+    # XML precisa, si usano soltanto lotti con quella stessa descrizione. Una
+    # mancanza deve generare un riordino, non un ripiego fuzzy su altro prodotto.
+    descrizione_associata = str(ing.get("prodotto_fattura_nome") or "").strip()
+    associazione_esatta = bool(
+        descrizione_associata and ing.get("associazione_prodotto_stato") == "confermata"
+    )
+    if associazione_esatta:
+        descrizione_key = chiave_descrizione(descrizione_associata)
+        for lotto_f in lotti_attivi:
+            if chiave_descrizione(lotto_f.get("prodotto_nome")) == descrizione_key:
+                lotti_candidati.append({**lotto_f, "abbinamento": "confermato"})
+
     def _associazione(lotto_f):
         return associazioni.get(chiave_descrizione(lotto_f.get("prodotto_nome")))
 
-    for lotto_f in lotti_attivi:
-        a = _associazione(lotto_f)
-        if a and a.get("confermato") and serve_ingrediente(a, nome_ing, canonico):
-            lotti_candidati.append({**lotto_f, "abbinamento": "confermato"})
+    if not associazione_esatta:
+        for lotto_f in lotti_attivi:
+            a = _associazione(lotto_f)
+            if a and a.get("confermato") and serve_ingrediente(a, nome_ing, canonico):
+                lotti_candidati.append({**lotto_f, "abbinamento": "confermato"})
 
     # 2) RIPIEGO PER NOME, solo senza conferme. Parola intera, mai pezzo di
     #    parola («uova» non trova «nUOVA Biancalieve»), e fuori i lotti che
@@ -1005,7 +1020,7 @@ async def _candidati_lotti_fifo(ing: dict) -> tuple:
     def _parola_intera(pattern: str) -> str:
         return rf"(?<![a-zà-ù]){re.escape(pattern)}(?![a-zà-ù])"
 
-    if lotti_candidati:
+    if lotti_candidati or associazione_esatta:
         canonico = ""  # la conferma basta: niente ripiego
     if canonico:
         can_low = canonico.lower().strip()
@@ -1028,7 +1043,7 @@ async def _candidati_lotti_fifo(ing: dict) -> tuple:
             if not any(x["id"] == lotto_f["id"] for x in lotti_candidati):
                 lotti_candidati.append({**lotto_f, "abbinamento": "da_confermare"})
 
-    if not lotti_candidati:
+    if not lotti_candidati and not associazione_esatta:
         for pattern in search_patterns:
             if len(pattern) < 3:
                 continue
@@ -1158,6 +1173,7 @@ async def scala_lotti_fornitori_per_ricetta(
     lotti_esauriti = []
     ingredienti_non_trovati = []
     ingredienti_insufficienti = []
+    ingredienti_da_ordinare = []
     conversioni_non_disponibili = []
     lotti_da_smaltire = []
     # Un ingrediente senza dose non si puo' scalare: prima si saltava in
@@ -1187,6 +1203,12 @@ async def scala_lotti_fornitori_per_ricetta(
             })
         if not lotti_candidati:
             ingredienti_non_trovati.append(nome_ing)
+            ingredienti_da_ordinare.append({
+                **ing,
+                "quantita_mancante": round(quantita_scalata, 3),
+                "unita_mancante": unita,
+                "motivo_riordino": "nessun lotto disponibile",
+            })
             continue
         # (candidati gia' ordinati FIFO stretto dal helper condiviso)
 
@@ -1283,12 +1305,19 @@ async def scala_lotti_fornitori_per_ricetta(
                 "mancante": round(quantita_rimasta, 3),
                 "unita": unita,
             })
+            ingredienti_da_ordinare.append({
+                **ing,
+                "quantita_mancante": round(quantita_rimasta, 3),
+                "unita_mancante": unita,
+                "motivo_riordino": "giacenza insufficiente",
+            })
 
     return {
         "lotti_scalati": lotti_scalati,
         "lotti_esauriti": lotti_esauriti,
         "ingredienti_non_trovati": ingredienti_non_trovati,
         "ingredienti_insufficienti": ingredienti_insufficienti,
+        "ingredienti_da_ordinare": ingredienti_da_ordinare,
         "conversioni_non_disponibili": conversioni_non_disponibili,
         "lotti_da_smaltire": lotti_da_smaltire,
         "ingredienti_senza_dose": ingredienti_senza_dose,
@@ -1340,7 +1369,9 @@ def costo_da_consumo(lotti_info: dict) -> tuple:
     return float(totale.quantize(Decimal("0.01"))), None
 
 
-async def _riordini_post_produzione(lotti_scalati, ricetta_nome: str):
+async def _riordini_post_produzione(
+    lotti_scalati, ricetta_nome: str, ingredienti_da_ordinare=None
+):
     """MOTORE UNICO post-produzione (02/07/2026, richiesta Enzo: "se produco una
     ricetta e la giacenza scende al punto di riordino, l'ordine deve partire
     dalle ricette"). Dopo il consumo FIFO, per ogni ingrediente scalato:
@@ -1358,6 +1389,72 @@ async def _riordini_post_produzione(lotti_scalati, ricetta_nome: str):
     from app.lotti.routers.ordini_fornitori import aggiungi_a_bozza_riordino
     esiti = []
     visti = set()
+
+    # Ingredienti totalmente assenti o insufficienti. Prima non arrivavano
+    # mai qui: il riordino lavorava soltanto sui lotti gia' scalati.
+    for ing in ingredienti_da_ordinare or []:
+        nome_ing = str(ing.get("nome") or "").strip()
+        pid = str(ing.get("prodotto_dizionario_id") or "").strip()
+        prodotto = None
+        if pid:
+            prodotto = await db.dizionario_prodotti.find_one(
+                {"id": pid},
+                {"_id": 0, "id": 1, "nome_originale": 1, "nome_normalizzato": 1,
+                 "nome_canonico": 1, "fornitore": 1, "peso_confezione": 1,
+                 "unita_confezione": 1, "scorta_minima": 1},
+            )
+        raw_id = str(ing.get("prodotto_fattura_id") or "").strip()
+        if not prodotto and not raw_id:
+            # Senza una scelta esplicita non si inventa quale articolo comprare.
+            continue
+        prodotto_id = (prodotto or {}).get("id") or raw_id
+        if prodotto_id in visti:
+            continue
+        visti.add(prodotto_id)
+        nome_ord = (
+            (prodotto or {}).get("nome_canonico")
+            or (prodotto or {}).get("nome_originale")
+            or ing.get("prodotto_fattura_nome")
+            or nome_ing
+        )
+        fornitore = (
+            ing.get("prodotto_fattura_fornitore")
+            or (prodotto or {}).get("fornitore")
+            or ""
+        )
+        mancante = float(ing.get("quantita_mancante") or 0)
+        unita_mancante = str(ing.get("unita_mancante") or "").lower()
+        mancante_kg = mancante / 1000 if unita_mancante in {"g", "ml"} else (
+            mancante if unita_mancante in {"kg", "l", "lt"} else 0
+        )
+        peso_conf = float((prodotto or {}).get("peso_confezione") or 0)
+        scorta_min = float((prodotto or {}).get("scorta_minima") or 0)
+        if peso_conf > 0 and mancante_kg > 0:
+            quantita_ordine = max(1, math.ceil(mancante_kg / peso_conf))
+            unita_ordine = "conf."
+        elif scorta_min > 0 and mancante_kg > 0:
+            quantita_ordine = round(max(scorta_min * 2, mancante_kg), 2)
+            unita_ordine = "kg"
+        else:
+            quantita_ordine = 1
+            unita_ordine = "conf."
+        r = await aggiungi_a_bozza_riordino(
+            nome=nome_ord,
+            prodotto_id=prodotto_id,
+            quantita=quantita_ordine,
+            unita=unita_ordine,
+            richiesto_da=f"produzione {ricetta_nome}",
+            nota=(f"{ing.get('motivo_riordino') or 'ingrediente mancante'} per "
+                  f"{ricetta_nome}: fabbisogno non coperto {mancante:g} {unita_mancante}"),
+            fornitore_preferito=fornitore,
+        )
+        esiti.append({
+            "prodotto": nome_ord,
+            "mancante": mancante,
+            "unita": unita_mancante,
+            "gia_in_ordine": bool(r.get("gia_in_ordine")),
+        })
+
     for ls in (lotti_scalati or []):
         nome_ing = (ls.get("ingrediente") or "").strip()
         k = nome_ing.lower()
@@ -1636,7 +1733,10 @@ async def registra_produzione_e_crea_lotto(
         ricetta_scarico, moltiplicatore, numero_lotto)
     try:
         lotti_info["da_riordinare"] = await _riordini_post_produzione(
-            lotti_info.get("lotti_scalati", []), ricetta.get("nome", ""))
+            lotti_info.get("lotti_scalati", []),
+            ricetta.get("nome", ""),
+            lotti_info.get("ingredienti_da_ordinare", []),
+        )
     except Exception:
         lotti_info["da_riordinare"] = []
 

@@ -274,7 +274,8 @@ async def _aggiorna_totali_ordine(ordine_id: str) -> dict:
 
 async def aggiungi_a_bozza_riordino(nome: str, prodotto_id: str, quantita: float,
                                     unita: str = "pz", nota: str = "",
-                                    richiesto_da: str = "") -> dict:
+                                    richiesto_da: str = "",
+                                    fornitore_preferito: str = "") -> dict:
     """Mette UN prodotto nel circuito riordino (bozza per fornitore, stessa
     forma del motore automatico). Usato dalla LAVAGNA quando una consegna trova
     lo stock esaurito: prima quella richiesta moriva lì e nessuno ordinava
@@ -296,7 +297,10 @@ async def aggiungi_a_bozza_riordino(nome: str, prodotto_id: str, quantita: float
     if mp:
         comp = _comparatore_60gg(mp.get("prezzi_storici", []))
         best = comp[0] if comp else None
-    fornitore = (best and best["fornitore"]) or "DA ASSEGNARE"
+    # Una riga fattura scelta esplicitamente dall'operatore e' una prova del
+    # fornitore; prevale sulla comparazione per nome. Senza prova resta il
+    # comportamento prudente esistente.
+    fornitore = (fornitore_preferito or "").strip() or (best and best["fornitore"]) or "DA ASSEGNARE"
     riga = {"prodotto_id": str(prodotto_id), "nome": nome, "fornitore": fornitore,
             "quantita": max(float(quantita) or 1, 1), "unita": unita or "pz",
             "prezzo_ultimo": (best and best["prezzo"]) or 0,

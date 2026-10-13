@@ -97,6 +97,15 @@ function RigaIngrediente({ ing, idx, onChange, onRemove, bloccato = false }) {
     justPicked.current = true;
     const nome = nomeProdottoConInizialiMaiuscole(p.nome_canonico || p.nome_normalizzato || p.nome || "");
     onChange(idx, "nome", nome);
+    // Il nome visuale da solo non basta: conserviamo il riferimento esatto
+    // scelto dall'operatore per magazzino e riordino.
+    onChange(idx, "prodotto_dizionario_id", p.tipo_suggerimento === "fattura_xml" ? null : (p.id || null));
+    onChange(idx, "prodotto_fattura_id", p.prodotto_fattura_id || null);
+    onChange(idx, "prodotto_fattura_nome", p.nome_originale || p.descrizione || null);
+    onChange(idx, "prodotto_fattura_fornitore", p.fornitore || null);
+    onChange(idx, "prodotto_fattura_numero", p.numero_fattura || null);
+    onChange(idx, "prodotto_fattura_data", p.data_fattura || null);
+    onChange(idx, "associazione_prodotto_stato", "confermata");
     setOpen(false);
     setSugg([]);
   };
@@ -111,27 +120,44 @@ function RigaIngrediente({ ing, idx, onChange, onRemove, bloccato = false }) {
           onChange={e => {
             digitando.current = true;
             onChange(idx,"nome",e.target.value);
+            // Se il testo cambia, il collegamento precedente non e' piu'
+            // una prova valida: va scelta nuovamente una riga.
+            onChange(idx,"prodotto_dizionario_id",null);
+            onChange(idx,"prodotto_fattura_id",null);
+            onChange(idx,"prodotto_fattura_nome",null);
+            onChange(idx,"prodotto_fattura_fornitore",null);
+            onChange(idx,"prodotto_fattura_numero",null);
+            onChange(idx,"prodotto_fattura_data",null);
+            onChange(idx,"associazione_prodotto_stato",null);
           }}
           onFocus={() => { if (sugg.length) setOpen(true); }}
           placeholder="Ingrediente (cerca dalle fatture)…"
           style={{width:"100%",boxSizing:"border-box",padding:"10px 12px",border:"1.5px solid var(--border)",borderRadius:9,fontSize:15,fontWeight:700,color:"var(--text)",fontFamily:"var(--font)"}}
         />
-        {open && (sugg.length > 0 || loading) && (
+        {open && (
           <div style={{position:"absolute",top:"100%",left:0,right:0,zIndex:30,background:"#fff",border:"1px solid var(--border)",borderRadius:10,marginTop:4,maxHeight:240,overflowY:"auto",boxShadow:"0 10px 30px rgba(0,0,0,.18)"}}>
             {loading && <div style={{padding:"8px 12px",fontSize:12,color:"var(--text-3)"}}>Cerco…</div>}
+            {!loading && sugg.length === 0 && <div style={{padding:"10px 12px",fontSize:12,color:"var(--text-3)"}}>Nessun prodotto trovato nelle righe delle fatture XML.</div>}
             {sugg.map((p, i) => (
               <button key={i} type="button" onClick={() => scegli(p)}
                 style={{display:"block",width:"100%",textAlign:"left",border:"none",background:"transparent",padding:"10px 12px",cursor:"pointer",fontFamily:"var(--font)",borderBottom:"1px solid var(--bg)"}}
                 onMouseDown={(e)=>e.preventDefault()}>
                 <div style={{fontSize:14,fontWeight:700,color:"var(--text)"}}>{nomeProdottoConInizialiMaiuscole(p.nome_canonico || p.nome_normalizzato || "")}</div>
                 <div style={{fontSize:12,color:"var(--text-3)"}}>
-                  {p.fornitore || "—"}{p.prezzo_kg ? ` · €${Number(p.prezzo_kg).toFixed(2)}/kg` : ""}
+                  {p.tipo_suggerimento === "fattura_xml" ? "Riga fattura XML" : "Prodotto associato"}
+                  {p.fornitore ? ` · ${p.fornitore}` : ""}
+                  {p.prezzo_kg ? ` · €${Number(p.prezzo_kg).toFixed(2)}/kg` : ""}
                 </div>
               </button>
             ))}
           </div>
         )}
       </div>
+      {ing.associazione_prodotto_stato === "confermata" && (
+        <span style={{flex:"1 1 100%",marginLeft:28,fontSize:11,fontWeight:700,color:"var(--success)"}}>
+          ✓ Associato a {ing.prodotto_fattura_fornitore ? `riga fattura di ${ing.prodotto_fattura_fornitore}` : "prodotto acquistato"}
+        </span>
+      )}
       {/* Quantità */}
       <input
         type="text" inputMode="decimal"
@@ -158,7 +184,10 @@ function RigaIngrediente({ ing, idx, onChange, onRemove, bloccato = false }) {
       <select aria-label={`Fase ${ing.nome || idx+1}`} value={ing.fase || "impasto"} disabled={bloccato}
         onChange={e => onChange(idx,"fase",e.target.value)}
         style={{padding:"10px 8px",border:"1.5px solid var(--border)",borderRadius:9,fontSize:13,background:"#fff"}}>
-        <option value="impasto">Impasto</option><option value="pieghe">Pieghe</option><option value="finitura">Finitura</option>
+        <option value="impasto">Impasto / base</option>
+        <option value="ripieno">Ripieno / farcitura</option>
+        <option value="pieghe">Sfogliatura / pieghe</option>
+        <option value="finitura">Finitura / copertura</option>
       </select>
       {/* Elimina */}
       {!bloccato && <button onClick={() => onRemove(idx)} title="Rimuovi ingrediente"
@@ -184,7 +213,7 @@ function FormRicetta({ ricetta, onSalvato, onAnnulla, onApriScheda, onVisibilita
     if (det.length) {
       ingredienti = det.map(i => (typeof i === "string"
         ? { nome: i, quantita: "", unita: "g" }
-        : { nome: i.nome || "", quantita: i.quantita ?? "", unita: i.unita_misura || i.unita || "g",
+        : { ...i, nome: i.nome || "", quantita: i.quantita ?? "", unita: i.unita_misura || i.unita || "g",
             ...(i.fase && { fase: i.fase }), ...(i.peso_unitario_g && { peso_unitario_g: i.peso_unitario_g }) }));
     } else if (Array.isArray(ricetta.ingredienti)) {
       ingredienti = ricetta.ingredienti.map(x => (typeof x === "string"
@@ -248,7 +277,7 @@ function FormRicetta({ ricetta, onSalvato, onAnnulla, onApriScheda, onVisibilita
       const ings = det.length
         ? det.map(i => (typeof i === "string"
             ? { nome: i, quantita: "", unita: "g" }
-            : { nome: i.nome || "", quantita: i.quantita ?? "", unita: i.unita_misura || i.unita || "g" }))
+            : { ...i, nome: i.nome || "", quantita: i.quantita ?? "", unita: i.unita_misura || i.unita || "g" }))
         : (base.ingredienti || []).map(x => (typeof x === "string"
             ? { nome: x, quantita: "", unita: "g" }
             : { nome: x.nome || "", quantita: x.quantita ?? "", unita: x.unita_misura || x.unita || "g" }));
@@ -564,6 +593,13 @@ function FormRicetta({ ricetta, onSalvato, onAnnulla, onApriScheda, onVisibilita
           .map(i=>({
             ...(i.fase && { fase: i.fase }),
             ...(i.peso_unitario_g && { peso_unitario_g: num(i.peso_unitario_g) }),
+            ...(i.prodotto_dizionario_id && { prodotto_dizionario_id: i.prodotto_dizionario_id }),
+            ...(i.prodotto_fattura_id && { prodotto_fattura_id: i.prodotto_fattura_id }),
+            ...(i.prodotto_fattura_nome && { prodotto_fattura_nome: i.prodotto_fattura_nome }),
+            ...(i.prodotto_fattura_fornitore && { prodotto_fattura_fornitore: i.prodotto_fattura_fornitore }),
+            ...(i.prodotto_fattura_numero && { prodotto_fattura_numero: i.prodotto_fattura_numero }),
+            ...(i.prodotto_fattura_data && { prodotto_fattura_data: i.prodotto_fattura_data }),
+            ...(i.associazione_prodotto_stato && { associazione_prodotto_stato: i.associazione_prodotto_stato }),
             nome: i.nome.trim(),
             quantita: dose(i.quantita),
             unita_misura: i.unita || "g",

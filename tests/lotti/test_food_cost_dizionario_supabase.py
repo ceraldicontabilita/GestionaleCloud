@@ -105,3 +105,32 @@ def test_associa_non_rinomina_le_descrizioni_simili(monkeypatch):
     assert "ingrediente_canonico" not in penne
     spaghetti = run(database.dizionario_prodotti.find_one({"id": "spaghetti"}))
     assert spaghetti["ingrediente_canonico"] == "Spaghetti"
+
+
+def test_autocomplete_include_righe_xml_non_presenti_nel_dizionario(monkeypatch):
+    """Una riga XML resta selezionabile anche se il calcolo peso/prezzo non
+    l'ha trasformata in un prodotto del dizionario."""
+    from app.lotti.routers import ingredienti
+
+    database = AsyncMongoMockClient()["Gestionale_Test"]
+    monkeypatch.setattr(food_cost, "db", database)
+    monkeypatch.setattr(ingredienti, "db", database)
+    ingredienti._SMART_CACHE["tutte"].update({"righe": None, "scade": 0.0})
+    run(database.fatture.insert_one({
+        "fornitore": "Orto Fornitore",
+        "data_fattura": "2024-01-10",
+        "numero_fattura": "17/A",
+        "prodotti": [{"descrizione": "SCAROLA RICCIA CASSETTA", "quantita": 2, "unita_misura": "CT"}],
+    }))
+
+    risultati = run(food_cost.search_dizionario(
+        q="scarola", escludi_fornitori=True, solo_acquaviva=False,
+    ))
+
+    assert len(risultati) == 1
+    riga = risultati[0]
+    assert riga["tipo_suggerimento"] == "fattura_xml"
+    assert riga["nome_originale"] == "SCAROLA RICCIA CASSETTA"
+    assert riga["fornitore"] == "Orto Fornitore"
+    assert riga["numero_fattura"] == "17/A"
+    assert riga["prodotto_fattura_id"].startswith("fattura-")

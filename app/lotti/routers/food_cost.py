@@ -5,6 +5,7 @@ from datetime import datetime, timezone, date
 import re
 import math
 import logging
+import hashlib
 _LOG_INIT = logging.getLogger("uvicorn.error")
 import uuid
 
@@ -605,7 +606,11 @@ async def search_dizionario(
                 for f in fornitori_esclusi[:50]
             ]
 
-    prodotti = await db.dizionario_prodotti.find(query, {"_id": 0}).limit(20).to_list(20)
+    # Riserviamo parte dei risultati alle righe XML che non sono entrate nella
+    # proiezione del dizionario, altrimenti 20 voci derivate le nasconderebbero.
+    prodotti = await db.dizionario_prodotti.find(query, {"_id": 0}).limit(12).to_list(12)
+    for prodotto in prodotti:
+        prodotto["tipo_suggerimento"] = "dizionario"
 
     # Ordina per match migliore (inizia con la query)
     def sort_key(p):
@@ -634,11 +639,54 @@ async def search_dizionario(
                 _LOG_INIT.debug("[food_cost] errore non bloccante ignorato")
         p["nome_display"] = p.get("nome_canonico") or p.get("nome_normalizzato", "")
 
-    # Deduplicazione per nome_display: mostra una sola voce per nome canonico
+    # Il dizionario e' una proiezione delle fatture, non l'archivio completo:
+    # prodotti senza peso/formato interpretabile possono non entrarci. Integra
+    # quindi l'autocomplete con le righe XML reali, senza scrivere né creare
+    # associazioni finché l'operatore non ne sceglie una nel form ricetta.
+    try:
+        from app.lotti.routers.ingredienti import _righe_fatture_recenti
+        parole = [p.casefold().strip() for p in q.split() if len(p.strip()) >= 2]
+        righe = await _righe_fatture_recenti(tutte=True)
+        chiavi_presenti = {
+            ((p.get("nome_originale") or p.get("nome_normalizzato") or "").casefold().strip(),
+             (p.get("fornitore") or "").casefold().strip())
+            for p in prodotti
+        }
+        for desc, desc_lower, fornitore, data_fatt, num_fatt, prod in righe:
+            if parole and not all(parola in desc_lower for parola in parole):
+                continue
+            chiave = (desc.casefold().strip(), fornitore.casefold().strip())
+            if chiave in chiavi_presenti:
+                continue
+            chiavi_presenti.add(chiave)
+            impronta = hashlib.sha256(f"{chiave[1]}|{chiave[0]}".encode("utf-8")).hexdigest()[:24]
+            prodotti.append({
+                "id": None,
+                "prodotto_fattura_id": f"fattura-{impronta}",
+                "tipo_suggerimento": "fattura_xml",
+                "nome_originale": desc,
+                "nome_normalizzato": desc,
+                "nome_canonico": desc,
+                "nome_display": desc,
+                "fornitore": fornitore,
+                "data_fattura": data_fatt,
+                "numero_fattura": num_fatt,
+                "unita_misura_fattura": (prod or {}).get("unita_misura") or "",
+            })
+            if len(prodotti) >= 20:
+                break
+    except Exception:
+        _LOG_INIT.exception("[food_cost] ricerca righe fattura XML non riuscita")
+
+    # Deduplicazione per prodotto + fornitore: lo stesso articolo comprato da
+    # fornitori diversi sono due scelte reali e non vanno fuse.
     visti: dict = {}
     prodotti_dedup = []
     for p in prodotti:
-        nc_key = p.get("nome_display", "").lower().strip()
+        nc_key = (
+            p.get("nome_display", "").lower().strip(),
+            p.get("fornitore", "").lower().strip(),
+        )
         if nc_key not in visti:
             visti[nc_key] = True
             prodotti_dedup.append(p)
@@ -1210,7 +1258,9 @@ def _massa_impasto(ingredienti: list[dict], peso_uovo_g: float = 0) -> dict:
     for ingrediente in ingredienti:
         nome = str(ingrediente.get("nome") or "").strip()
         fase = str(ingrediente.get("fase") or "impasto").lower().strip()
-        if fase in {"finitura", "guarnizione", "cottura"}:
+        # Ripieno/farcitura, coperture e guarnizioni sono ingredienti della
+        # ricetta ma non massa dell'impasto da pezzare.
+        if fase in {"ripieno", "farcitura", "finitura", "guarnizione", "cottura"}:
             continue
         try:
             quantita = float(ingrediente.get("quantita") or 0)
