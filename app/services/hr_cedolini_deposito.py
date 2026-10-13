@@ -94,7 +94,8 @@ _SQL_DIPENDENTE = (
 
 _SQL_ESISTENTI = (
     "SELECT id, doc->>'tipo_cedolino' AS tipo, doc->>'cedolino_dedup_key' AS dedup_key,"
-    " doc->>'netto' AS netto, doc->'storico_netto' AS storico_netto, doc->>'rapporto_id' AS rapporto_id"
+    " doc->>'netto' AS netto, doc->'storico_netto' AS storico_netto, doc->>'rapporto_id' AS rapporto_id,"
+    " nullif(doc->>'pdf_data', '') IS NOT NULL AS ha_pdf"
     " FROM " + TABELLA_CEDOLINI +
     " WHERE (upper(doc->>'codice_fiscale') = $1"
     "        AND doc->>'anno' ~ '^[0-9]+$' AND (doc->>'anno')::int = $2"
@@ -323,14 +324,43 @@ def _netto_hr(riga: Any) -> Dict[str, Any]:
     """Netto e storico della riga HR, se la query li porta (le finte dei test no)."""
     try:
         netto, storico = riga.get("netto"), riga.get("storico_netto")
+        ha_pdf = bool(riga.get("ha_pdf"))
     except AttributeError:
-        return {"netto": None, "storico_netto": []}
+        return {"netto": None, "storico_netto": [], "ha_pdf": False}
     if isinstance(storico, str):
         try:
             storico = json.loads(storico)
         except ValueError:
             storico = []
-    return {"netto": _numero(netto), "storico_netto": list(storico or [])}
+    return {"netto": _numero(netto), "storico_netto": list(storico or []), "ha_pdf": ha_pdf}
+
+
+async def _completa_pdf_mancante(con, esistente: Dict[str, Any], doc: Dict[str, Any],
+                                 *, dry_run: bool) -> Optional[Dict[str, Any]]:
+    """Allega la copia PDF a una riga HR gia' esistente che ne era priva.
+
+    Non tocca importi, stato o associazioni: completa soltanto il documento e
+    la sua provenienza. Questo rende idempotente il replay di archivi importati
+    quando in passato il registro contabile era stato scritto senza il PDF HR.
+    """
+    if esistente.get("ha_pdf") or not doc.get("pdf_data"):
+        return None
+    patch = {
+        campo: doc[campo]
+        for campo in (
+            "pdf_data", "filename", "pdf_filename", "drive_file_id", "drive_md5",
+            "source_file_hash", "source_path", "source_container", "source_page_start",
+            "source_page_end", "source_document_pages", "canale",
+        )
+        if doc.get(campo) is not None
+    }
+    if dry_run:
+        return {"esito": "da_aggiornare", "id": esistente["id"], "pdf_riparato": True,
+                **_riepilogo(doc)}
+    await con.execute(_SQL_AGGIORNA, esistente["id"], json.dumps(patch, default=str))
+    logger.info("[HR deposito] PDF mancante completato su id=%s", esistente["id"])
+    return {"esito": "aggiornato", "id": esistente["id"], "pdf_riparato": True,
+            **_riepilogo(doc)}
 
 
 async def _segui_vincitore(con, esistente: Dict[str, Any], doc: Dict[str, Any], chiave: str,
@@ -426,6 +456,11 @@ async def deposita_cedolino_in_hr(
             if esistente and cedolino.get("rettificato"):
                 return await _segui_vincitore(con, esistente, doc, chiave, dry_run=dry_run)
             if esistente:
+                completato = await _completa_pdf_mancante(
+                    con, esistente, doc, dry_run=dry_run,
+                )
+                if completato:
+                    return completato
                 logger.info("[HR deposito] gia_presente %s -> id=%s (%s)",
                             chiave, esistente["id"], esistente["motivo"])
                 return {"esito": "gia_presente", "id": esistente["id"], **_riepilogo(doc)}

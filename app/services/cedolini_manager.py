@@ -126,14 +126,16 @@ async def registra_busta(db, ced: Dict[str, Any], *, filename: str, pdf_data: Op
                  "mese": ced.get("mese"), **esito})
 
 
-def _annota_busta(results: Dict[str, Any], ced: Dict[str, Any], esito: str) -> None:
+def _annota_busta(
+    results: Dict[str, Any], ced: Dict[str, Any], esito: str, **dettagli: Any,
+) -> None:
     """Cosa e' successo a ogni busta, per chi deve mostrarlo (Libro Unico in HR)."""
     results.setdefault("dettaglio", []).append({
         "dipendente": ced.get("nome_dipendente") or ced.get("codice_fiscale"),
         "codice_fiscale": ced.get("codice_fiscale"),
         "anno": ced.get("anno"), "mese": ced.get("mese"),
         "tipo_cedolino": ced.get("tipo_cedolino") or "mensile",
-        "netto": ced.get("netto"), "esito": esito,
+        "netto": ced.get("netto"), "esito": esito, **dettagli,
     })
 
 
@@ -169,8 +171,26 @@ async def _registra_busta(db, ced: Dict[str, Any], *, filename: str, pdf_data: O
             "filename": filename, "drive_file_id": ced.get("drive_file_id"),
             "source_file_hash": ced.get("source_file_hash"),
         }}})
+        # Il registro ERP e l'archivio HR sono due depositi distinti. Prima un
+        # duplicato ERP usciva qui e non riparava mai un cedolino mancante in
+        # HR: un Libro Unico gia' acquisito da Drive risultava quindi diviso in
+        # contabilita', ma assente dalla scheda dei singoli dipendenti.
+        deposito = await deposita_cedolino_in_hr({
+            **ced,
+            "id": gia["id"],
+            "filename": filename,
+            "pdf_data": pdf_data,
+            "source": "cedolino_v2",
+        })
+        deposito_hr = deposito.get("esito")
+        if deposito_hr in {"inserito", "aggiornato", "da_inserire", "da_aggiornare"}:
+            results["depositi_hr_riparati"] = results.get("depositi_hr_riparati", 0) + 1
+        elif deposito_hr == "errore":
+            results["errori"].append(
+                f"{chi}: registro ERP presente ma deposito HR fallito: {deposito.get('errore') or 'errore'}"
+            )
         results["gia_presenti"] = results.get("gia_presenti", 0) + 1
-        _annota_busta(results, ced, "gia_presente")
+        _annota_busta(results, ced, "gia_presente", deposito_hr=deposito_hr)
         return
 
     # Un'altra versione della stessa busta con un netto diverso (stampa di
@@ -223,7 +243,7 @@ async def _registra_busta(db, ced: Dict[str, Any], *, filename: str, pdf_data: O
 
     if res.get("success"):
         results["cedolini_processati"] += 1
-        _annota_busta(results, ced, "scritta")
+        _annota_busta(results, ced, "scritta", deposito_hr=res.get("deposito_hr"))
         if res.get("anagrafica_creata"):
             results["anagrafiche_create"] += 1
         if res.get("prima_nota_creata") or res.get("prima_nota_id"):
@@ -270,6 +290,7 @@ async def processa_tutti_cedolini_pdf(
         "motivo": "",
         "cedolini_processati": 0,
         "buste_senza_netto": 0,
+        "depositi_hr_riparati": 0,
         "fogli_presenze": 0,
         "anagrafiche_create": 0,
         "prima_nota_create": 0,

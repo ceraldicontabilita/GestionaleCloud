@@ -44,14 +44,17 @@ async def dividi_e_registra(db, pdf_bytes: bytes, filename: str = "") -> Dict[st
 
     inseriti, saltati = [], []
     for busta in esito.get("dettaglio") or []:
-        if busta["esito"] == "gia_presente":
+        riparata_hr = busta.get("deposito_hr") in {
+            "inserito", "aggiornato", "da_inserire", "da_aggiornare",
+        }
+        if busta["esito"] == "gia_presente" and not riparata_hr:
             saltati.append({"dipendente": busta["dipendente"], "competenza": _competenza(busta)})
             continue
         tipo = str(busta.get("tipo_cedolino") or "mensile").strip().lower()
         inseriti.append({
             "dipendente": busta["dipendente"], "competenza": _competenza(busta),
             "tipo_cedolino": "ordinario" if tipo in ("", "mensile") else tipo,
-            "netto": busta.get("netto"),
+            "netto": busta.get("netto"), "archivio_hr_riparato": riparata_hr,
         })
     senza_paga = [{"errore": e} for e in esito.get("errori") or []]
     senza_anagrafica: list = []
