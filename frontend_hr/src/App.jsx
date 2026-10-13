@@ -5781,11 +5781,43 @@ function PagheBonificiPage({ dipendenti = [] }) {
     } catch (err) { setPnMsg({ errore: err.response?.data?.detail || err.message }); }
     finally { setImporting(false); }
   };
-  const confermaVerificaImporto = async (r, a) => {
+  const confermaTuttiGliAvvisiImporto = async (r) => {
     try {
-      await axios.post(`${API}/paghe/verifica-importo-excel`, { dipendente_id: r.dipendente_id, anno: r.anno, mese: r.mese, confronto_id: a.id, busta_attuale: r.busta });
-      setConfrontoImporto(null); await load();
+      for (const a of (r.avvisi_importo || [])) {
+        await axios.post(`${API}/paghe/verifica-importo-excel`, {
+          dipendente_id: r.dipendente_id, anno: r.anno, mese: r.mese,
+          confronto_id: a.id, busta_attuale: r.busta,
+        });
+      }
+      toast(`Confermato l'importo del cedolino: € ${eur(r.busta)}`);
+      setConfrontoImporto(null);
+      await load();
     } catch (err) { toast(err.response?.data?.detail || 'Verifica non salvata', 'err'); }
+  };
+  const salvaImportoDaVerifica = async () => {
+    if (!confrontoImporto) return;
+    const importo = Number(String(confrontoImporto.nuovo_importo).replace(",", "."));
+    const nota = String(confrontoImporto.nota_manual || "").trim();
+    if (!Number.isFinite(importo) || importo < 0 || !nota) return;
+    setManualeBusy(true);
+    try {
+      await axios.put(`${API}/paghe/importo-busta`, {
+        dipendente_id: confrontoImporto.dipendente_id,
+        anno: confrontoImporto.anno, mese: confrontoImporto.mese,
+        importo_busta: importo, nota,
+      });
+      for (const a of (confrontoImporto.avvisi_importo || [])) {
+        await axios.post(`${API}/paghe/verifica-importo-excel`, {
+          dipendente_id: confrontoImporto.dipendente_id,
+          anno: confrontoImporto.anno, mese: confrontoImporto.mese,
+          confronto_id: a.id, busta_attuale: importo,
+        });
+      }
+      toast(`Importo manuale salvato nel gestionale: € ${eur(importo)}`);
+      setConfrontoImporto(null);
+      await load();
+    } catch (err) { toast(err.response?.data?.detail || 'Importo non salvato', 'err'); }
+    finally { setManualeBusy(false); }
   };
   const handleImportPagamenti = async (e) => {
     const fl = (e.target.files || [])[0];
@@ -5843,6 +5875,12 @@ function PagheBonificiPage({ dipendenti = [] }) {
     tipo: "dovuto", anno: anno || annoCorr, mese: mese || new Date().getMonth() + 1,
     importo: "", data: new Date().toISOString().slice(0, 10), nota: "",
   });
+  const apriPagamentoManualePeriodo = r => setInserimentoManuale({
+    dipendente_id: r.dipendente_id, tipo: "pagamento", anno: r.anno, mese: r.mese,
+    importo: "", data: new Date().toISOString().slice(0, 10),
+    nota: `Pagamento manuale per ${mesi[r.mese - 1] || r.mese} ${r.anno}`,
+    periodo_bloccato: true,
+  });
   const salvaInserimentoManuale = async () => {
     if (!inserimentoManuale) return;
     setManualeBusy(true);
@@ -5893,6 +5931,13 @@ function PagheBonificiPage({ dipendenti = [] }) {
     saldo_periodo: somma(righeContabili, "dovuto") - somma(righeContabili, "erogato"),
     saldo_finale: righeContabili.length ? righeContabili[righeContabili.length - 1].saldo_progressivo : 0,
   };
+  const saldoProgressivoPerPeriodo = Object.fromEntries(
+    (data.contabilita?.mensili_per_dipendente || []).map(r => [
+      `${r.dipendente_id}_${r.anno}_${r.mese}`, r.saldo_progressivo,
+    ]));
+  const saldoProgressivoRiga = r => saldoProgressivoPerPeriodo[
+    `${r.dipendente_id}_${r.anno}_${r.mese === 13 ? 12 : r.mese === 14 ? 7 : r.mese}`
+  ];
   const tArchivio = data.totali || {};
   const t = !data.contabilita ? tArchivio : {
     ...tArchivio,
@@ -6031,18 +6076,41 @@ function PagheBonificiPage({ dipendenti = [] }) {
         <textarea aria-label="Tabella importi" value={testoImporti} onChange={e => setTestoImporti(e.target.value)} rows={12} style={{ width: '100%' }} />
         <button className="dc-btn dc-btn-primary" disabled={!testoImporti.trim() || importing} onClick={() => handleImportPrimaNota(new File([testoImporti], 'importi-incollati.txt', { type: 'text/plain' }))}>Controlla anteprima</button>
       </Modal>}
-      {confrontoImporto && <Modal title="Verifica importo del cedolino" onClose={() => setConfrontoImporto(null)}>
+      {confrontoImporto && <Modal title="Conferma l'importo del cedolino" onClose={() => setConfrontoImporto(null)}>
         <p>{confrontoImporto.dipendente} · {mesi[confrontoImporto.mese - 1] || confrontoImporto.mese} {confrontoImporto.anno}</p>
-        <p>Dovuto nel gestionale: {confrontoImporto.busta == null ? 'non disponibile' : `€ ${eur(confrontoImporto.busta)}`}</p>
+        <p style={{ fontSize: 18, fontWeight: 700 }}>
+          {confrontoImporto.busta == null
+            ? "L'importo del cedolino non è ancora disponibile."
+            : `Confermi che l'importo corretto del cedolino è € ${eur(confrontoImporto.busta)}?`}
+        </p>
         {confrontoImporto.acconto_recuperato > 0 && <p>Netto PDF € {eur(confrontoImporto.netto_stampato)} · recupero acconto € {eur(confrontoImporto.acconto_recuperato)}</p>}
         {confrontoImporto.avvisi_importo.map(a => <div key={a.id} className="dc-card">
-          <strong>{a.motivo}: € {eur(a.importo)}</strong>
-          <p>{a.tipo === 'netto' ? 'Netto dichiarato nel file' : 'Importo attribuito dai pagamenti, non netto del cedolino'} · {a.file}, riga {a.riga}</p>
+          <strong>Dato discordante da controllare: € {eur(a.importo)}</strong>
+          <p>Questo è soltanto un valore letto da un'altra fonte ({a.file}, riga {a.riga}); non sostituisce automaticamente il cedolino.</p>
           {a.nota && <p>{a.nota}</p>}
-          <button className="dc-btn" disabled={confrontoImporto.busta == null} onClick={() => confermaVerificaImporto(confrontoImporto, a)}>Ho verificato: mantieni il valore nel gestionale</button>
         </div>)}
         {confrontoImporto.cedolino_id && <button className="dc-btn" onClick={() => apriCedolino(confrontoImporto)}>Apri PDF cedolino</button>}
-        <p>Se il dovuto è errato, correggilo con la matita accanto all'importo dopo aver controllato il documento. Il netto del PDF resta separato dal recupero acconto.</p>
+        {confrontoImporto.busta != null && <button className="dc-btn dc-btn-primary" disabled={manualeBusy} onClick={() => confermaTuttiGliAvvisiImporto(confrontoImporto)}>
+          Sì, confermo € {eur(confrontoImporto.busta)}
+        </button>}
+        <details style={{ marginTop: 14 }} open={confrontoImporto.busta == null}>
+          <summary style={{ cursor: "pointer", fontWeight: 700 }}>No, inserisco l'importo corretto</summary>
+          <div style={{ display: "grid", gap: 10, marginTop: 10 }}>
+            <label><span className="dc-label">Importo corretto del cedolino €</span>
+              <input className="dc-input" inputMode="decimal" value={confrontoImporto.nuovo_importo ?? ""}
+                onChange={e => setConfrontoImporto(v => ({ ...v, nuovo_importo: e.target.value }))} placeholder="0,00" />
+            </label>
+            <label><span className="dc-label">Motivazione obbligatoria</span>
+              <textarea className="dc-input" rows={2} value={confrontoImporto.nota_manual ?? ""}
+                onChange={e => setConfrontoImporto(v => ({ ...v, nota_manual: e.target.value }))}
+                placeholder="Esempio: verificato sul PDF; il parser non ha letto la trattenuta/acconto" />
+            </label>
+            <button className="dc-btn dc-btn-primary" disabled={manualeBusy || !String(confrontoImporto.nuovo_importo ?? "").trim() || !String(confrontoImporto.nota_manual || "").trim()} onClick={salvaImportoDaVerifica}>
+              {manualeBusy ? "Salvo…" : "Salva questo importo nel gestionale"}
+            </button>
+          </div>
+        </details>
+        <p className="dc-muted">Il valore confermato manualmente ha precedenza sui successivi import automatici. La fonte discordante resta nello storico, ma non modifica il dovuto.</p>
       </Modal>}
       {csvMsg && (
         <div className="dc-card" style={msgCard(csvMsg)}>
@@ -6172,7 +6240,8 @@ function PagheBonificiPage({ dipendenti = [] }) {
                 <th style={{ ...th, textAlign: "right" }}>Dovuto cedolino</th>
                 <th style={{ ...th, textAlign: "right" }}>Bonifico</th>
                 <th style={{ ...th, textAlign: "right" }}>Acconti</th>
-                <th style={{ ...th, textAlign: "right" }}>Saldo</th>
+                <th style={{ ...th, textAlign: "right" }}>Saldo periodo</th>
+                <th style={{ ...th, textAlign: "right" }}>Saldo progressivo</th>
                 <th style={th}>Stato</th>
                 <th style={th}>Associazione</th>
                 <th style={th}>Cedolino</th>
@@ -6180,8 +6249,8 @@ function PagheBonificiPage({ dipendenti = [] }) {
               </tr>
             </thead>
             <tbody>
-              {loading && <tr><td style={td} colSpan={10}>Caricamento…</td></tr>}
-              {!loading && !loadError && data.righe.length === 0 && <tr><td style={td} colSpan={10}>Nessuna busta con importo letto per il periodo selezionato.</td></tr>}
+              {loading && <tr><td style={td} colSpan={11}>Caricamento…</td></tr>}
+              {!loading && !loadError && data.righe.length === 0 && <tr><td style={td} colSpan={11}>Nessuna busta con importo letto per il periodo selezionato.</td></tr>}
               {!loading && data.righe.map(r => {
                 const k = keyOf(r);
                 const exp = aperta === k;
@@ -6193,7 +6262,7 @@ function PagheBonificiPage({ dipendenti = [] }) {
                   <Fragment key={k}>
                     <tr style={{ background: exp ? "#f7f4ec" : "transparent" }}>
                       <td style={{ ...td, fontWeight: 600 }}><button style={nomeBtn} title="Prima nota / saldo progressivo" onClick={() => apriPrimaNota(r.dipendente_id, r.dipendente)}>{r.dipendente}</button></td>
-                      <td style={td}>{periodoLbl}{r.avvisi_importo?.length > 0 && <div><button className="dc-btn" style={{ color: '#9a531b' }} onClick={() => setConfrontoImporto(r)}>⚠ Verifica importo ({r.avvisi_importo.length})</button></div>}</td>
+                      <td style={td}>{periodoLbl}{r.avvisi_importo?.length > 0 && <div><button className="dc-btn" style={{ color: '#9a531b' }} onClick={() => setConfrontoImporto({ ...r, nuovo_importo: r.busta ?? "", nota_manual: r.busta_nota || "" })}>⚠ Verifica importo ({r.avvisi_importo.length})</button></div>}</td>
                       <td style={{ ...td, textAlign: "right" }}>
                         {editBusta && editBusta.k === k ? (
                           <div style={{ display: "flex", flexDirection: "column", gap: 4, alignItems: "flex-end" }}>
@@ -6228,6 +6297,10 @@ function PagheBonificiPage({ dipendenti = [] }) {
                       <td style={{ ...td, textAlign: "right" }}>{r.acconti > 0 ? `€ ${eur(r.acconti)}` : "—"}</td>
                       <td style={{ ...td, textAlign: "right", color: r.saldo > 0 ? "#b04a3a" : "#3d8168" }}>
                         {r.saldo == null ? <span title="Saldo sconosciuto: la busta non è ancora arrivata">—</span> : r.saldo !== 0 ? `€ ${eur(r.saldo)}` : "✓"}
+                      </td>
+                      <td style={{ ...td, textAlign: "right", color: Number(saldoProgressivoRiga(r)) > 0 ? "#b04a3a" : "#3d8168" }}>
+                        {saldoProgressivoRiga(r) == null ? "—" : `€ ${eur(saldoProgressivoRiga(r))}`}
+                        <div><button className="dc-btn" style={{ fontSize: 11, padding: "3px 7px", marginTop: 4 }} onClick={() => apriPagamentoManualePeriodo(r)}>Registra pagamento</button></div>
                       </td>
                       <td style={td}><Badge variant={stInfo.variant}>{stInfo.label}</Badge>
                         {r.pagamenti_copertura?.map(p => <div key={p.id} style={{ fontSize: 12, marginTop: 4 }}>
@@ -6277,14 +6350,15 @@ function PagheBonificiPage({ dipendenti = [] }) {
                     </tr>
                     {exp && (
                       <tr>
-                        <td style={{ ...td, background: "#f7f4ec" }} colSpan={10}>
+                        <td style={{ ...td, background: "#f7f4ec" }} colSpan={11}>
                           {r.acconto_recuperato > 0 && <p style={{ fontSize: 13 }}>
                             Netto stampato € {eur(r.netto_stampato)} · recupero acconto € {eur(r.acconto_recuperato)} ({r.fonte_acconto_recuperato}) · dovuto del periodo € {eur(r.busta)}{r.busta_manuale ? " (corretto a mano)" : " (netto + recupero)"}.
                             Il recupero è una trattenuta del cedolino: i pagamenti si verificano separatamente con la banca.
                           </p>}
                           {r.bonifici.length > 0 && (<>
                             <div style={{ fontSize: 12, color: "#7a8576", marginBottom: 6 }}>
-                              Un bonifico arrivato nel mese sbagliato (es. il 1° gennaio per la busta di dicembre) si sposta con <b>Sposta / modifica</b>: il sistema ricalcola entrambi i mesi.
+                              Per correggere la competenza di un pagamento, usa <b>Cambia mese o importo</b>.
+                              Modifichi soltanto la registrazione del pagamento elencato qui sotto: il cedolino e il suo PDF non vengono spostati.
                             </div>
                             <div style={{ fontSize: 11, color: "#7a8576", fontWeight: 700, textTransform: "uppercase", marginBottom: 6 }}>Pagamenti registrati</div>
                             <table style={{ width: "100%", borderCollapse: "collapse" }}>
@@ -6296,7 +6370,7 @@ function PagheBonificiPage({ dipendenti = [] }) {
                                   <th style={{ ...th, borderBottom: "1px solid #e6e0d4" }}>Beneficiario</th>
                                   <th style={{ ...th, borderBottom: "1px solid #e6e0d4" }}>Riferimento</th>
                                   <th style={{ ...th, borderBottom: "1px solid #e6e0d4" }}>PDF</th>
-                                  <th style={{ ...th, borderBottom: "1px solid #e6e0d4" }}>Periodo / importo</th>
+                                  <th style={{ ...th, borderBottom: "1px solid #e6e0d4" }}>Competenza del pagamento</th>
                                 </tr>
                               </thead>
                               <tbody>
@@ -6318,22 +6392,22 @@ function PagheBonificiPage({ dipendenti = [] }) {
                                     <td style={{ ...td, borderBottom: "none", fontSize: 12, whiteSpace: "nowrap" }}>
                                       {editPag && editPag.key === b.key ? (
                                         <div style={{ display: "flex", gap: 4, alignItems: "center", flexWrap: "wrap" }}>
-                                          <select value={editPag.mese} onChange={e => setEditPag({ ...editPag, mese: e.target.value })} style={{ ...sel, padding: "4px 6px", fontSize: 12 }}>
+                                          <select aria-label="Mese di competenza del pagamento" title="Mese di competenza del pagamento" value={editPag.mese} onChange={e => setEditPag({ ...editPag, mese: e.target.value })} style={{ ...sel, padding: "4px 6px", fontSize: 12 }}>
                                             {mesi.map((m, idx) => <option key={idx + 1} value={idx + 1}>{m}</option>)}
                                             <option value={13}>Tredicesima</option>
                                             <option value={14}>Quattordicesima</option>
                                           </select>
-                                          <input type="number" value={editPag.anno} onChange={e => setEditPag({ ...editPag, anno: e.target.value })} style={{ ...sel, width: 70, padding: "4px 6px", fontSize: 12 }} />
-                                          <input type="number" step="0.01" min="0" value={editPag.importo} onChange={e => setEditPag({ ...editPag, importo: e.target.value })} style={{ ...sel, width: 100, padding: "4px 6px", fontSize: 12, textAlign: "right" }} />
-                                          <input type="text" placeholder="nota" value={editPag.nota} onChange={e => setEditPag({ ...editPag, nota: e.target.value })} style={{ ...sel, width: 140, padding: "4px 6px", fontSize: 12 }} />
+                                          <input aria-label="Anno di competenza del pagamento" title="Anno di competenza del pagamento" type="number" value={editPag.anno} onChange={e => setEditPag({ ...editPag, anno: e.target.value })} style={{ ...sel, width: 70, padding: "4px 6px", fontSize: 12 }} />
+                                          <input aria-label="Importo del pagamento" title="Importo del pagamento" type="number" step="0.01" min="0" value={editPag.importo} onChange={e => setEditPag({ ...editPag, importo: e.target.value })} style={{ ...sel, width: 100, padding: "4px 6px", fontSize: 12, textAlign: "right" }} />
+                                          <input aria-label="Motivo della correzione" title="Motivo della correzione" type="text" placeholder="motivo della correzione" value={editPag.nota} onChange={e => setEditPag({ ...editPag, nota: e.target.value })} style={{ ...sel, width: 180, padding: "4px 6px", fontSize: 12 }} />
                                           <button className="dc-btn" disabled={busy === b.key} onClick={salvaPagamento} style={{ fontSize: 12, padding: "3px 8px" }}>Salva</button>
                                           <button className="dc-btn" onClick={() => setEditPag(null)} style={{ fontSize: 12, padding: "3px 8px" }}>Annulla</button>
                                         </div>
                                       ) : (
                                         b.key
-                                          ? <span style={{ display: "inline-flex", gap: 4 }}><button className="dc-btn" title="Sposta questo pagamento a un altro mese (es. bonifico del 1° gennaio → dicembre) o correggi l'importo"
+                                          ? <span style={{ display: "inline-flex", gap: 4 }}><button className="dc-btn" title="Cambia il mese di competenza o l'importo di questo pagamento; il cedolino e il PDF non vengono spostati"
                                               onClick={() => setEditPag({ key: b.key, mese: r.mese, anno: r.anno, importo: b.importo, nota: "" })}
-                                              style={{ fontSize: 12, padding: "3px 8px" }}>Sposta / modifica</button>
+                                              style={{ fontSize: 12, padding: "3px 8px" }}>Cambia mese o importo</button>
                                               {b.origine === "manuale" && <button className="dc-btn" disabled={busy === b.key} onClick={() => eliminaPagamentoManuale(b.key)} style={{ fontSize: 12, padding: "3px 8px", color: "#b04a3a" }}>Elimina</button>}</span>
                                           : <span style={{ color: "#9aa295" }}>—</span>
                                       )}
@@ -6413,9 +6487,9 @@ function PagheBonificiPage({ dipendenti = [] }) {
         </Modal>
       )}
       {inserimentoManuale && (
-        <Modal title="Inserisci importo manuale" onClose={() => !manualeBusy && setInserimentoManuale(null)} maxWidth={620}>
+        <Modal title={inserimentoManuale.periodo_bloccato ? "Registra un pagamento per il periodo" : "Inserisci importo manuale"} onClose={() => !manualeBusy && setInserimentoManuale(null)} maxWidth={620}>
           <div className="dc-modal-body">
-            <p className="dc-muted">Usalo solo per una differenza verificata. La motivazione resta registrata; un pagamento manuale non viene presentato come prova bancaria.</p>
+            <p className="dc-muted">Inserisci l'importo realmente versato. Verrà conservato nel registro anche dopo nuove importazioni e ricalcolerà il saldo progressivo; non sarà presentato come prova bancaria.</p>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))", gap: 12 }}>
               <label><span className="dc-label">Dipendente</span>
                 <select className="dc-input" value={inserimentoManuale.dipendente_id} onChange={e => setInserimentoManuale(v => ({ ...v, dipendente_id: e.target.value }))}>
@@ -6423,12 +6497,12 @@ function PagheBonificiPage({ dipendenti = [] }) {
                   {dipendentiOrdinati.map(d => <option key={d.id} value={d.id}>{d.nome_completo || `${d.cognome || ""} ${d.nome || ""}`.trim()}</option>)}
                 </select>
               </label>
-              <label><span className="dc-label">Tipo di importo</span>
+              {!inserimentoManuale.periodo_bloccato && <label><span className="dc-label">Tipo di importo</span>
                 <select className="dc-input" value={inserimentoManuale.tipo} onChange={e => setInserimentoManuale(v => ({ ...v, tipo: e.target.value }))}>
                   <option value="dovuto">Dovuto del cedolino</option>
                   <option value="pagamento">Pagamento effettuato</option>
                 </select>
-              </label>
+              </label>}
               <label><span className="dc-label">Anno</span><input className="dc-input" type="number" min="2000" max="2100" value={inserimentoManuale.anno} onChange={e => setInserimentoManuale(v => ({ ...v, anno: Number(e.target.value) }))} /></label>
               <label><span className="dc-label">Competenza</span>
                 <select className="dc-input" value={inserimentoManuale.mese} onChange={e => setInserimentoManuale(v => ({ ...v, mese: Number(e.target.value) }))}>
