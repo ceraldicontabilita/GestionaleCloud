@@ -499,7 +499,7 @@ def _etichetta(dil: Dict[str, Any], rata: Dict[str, Any]) -> Dict[str, Any]:
 
 async def collega_dilazioni(db, *, dry_run: bool = False, oggi: Optional[str] = None) -> Dict[str, Any]:
     """Abbina le rate di ogni piano; scrive solo cio' che cambia; apre e chiude alert."""
-    from app.services.alert_engine import genera_alert, risolvi_alert
+    from app.services.alert_engine import genera_alert, risolvi_alert_entita
 
     dilazioni = await db[COLL_DILAZIONI_INPS].find({}, {"_id": 0}).to_list(500)
     if not dilazioni:
@@ -512,6 +512,7 @@ async def collega_dilazioni(db, *, dry_run: bool = False, oggi: Optional[str] = 
     scritti = {"dilazioni": 0, "quietanze": 0, "alert_aperti": 0, "alert_chiusi": 0}
     esiti = []
     etichette: Dict[str, Dict[str, Any]] = {}
+    alert_da_chiudere: List[str] = []
     for dil in dilazioni:
         piano = {**dil, "rate": dil.get("piano") or [], "mancanti": []}
         esito = abbina_rate(piano, quietanze, oggi=oggi, piani=dilazioni)
@@ -547,9 +548,10 @@ async def collega_dilazioni(db, *, dry_run: bool = False, oggi: Optional[str] = 
                 )
                 scritti["alert_aperti"] += int(bool(creato))
             else:
-                scritti["alert_chiusi"] += await risolvi_alert(ALERT_RATA_NON_PAGATA, entita, db)
+                alert_da_chiudere.append(entita)
 
     if not dry_run:
+        scritti["alert_chiusi"] = await risolvi_alert_entita(ALERT_RATA_NON_PAGATA, alert_da_chiudere, db)
         for q in quietanze:
             qid = str(q.get("id"))
             voluta = etichette.get(qid)

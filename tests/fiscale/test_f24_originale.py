@@ -108,3 +108,59 @@ def test_quietanza_non_apre_copia_con_byte_diversi(monkeypatch):
     with pytest.raises(ValueError, match='impronta'):
         asyncio.run(f24_originale.carica_originale({'pdf_hash': sha, 'source_occurrences': [
             {'drive_file_id': 'errato', 'sha256': sha}]}))
+
+
+def _delega():
+    return {"codice_fiscale": "04523831214", "data_pagamento": "2021-02-17", "saldo": 756,
+            "protocollo_telematico": "21011836051451643/000001", "sezione_inps": [
+                {"codice_sede": "5100", "causale": "RC01", "matricola": "5124776507",
+                 "periodo_da": "02/2020", "periodo_a": "08/2020", "importo_debito_cents": 75600}]}
+
+
+def _ristampa(doc):
+    return {"dati_generali": {k: v for k, v in doc.items() if k != "sezione_inps"} | {"saldo_delega": doc["saldo"]},
+            "sezione_inps": doc["sezione_inps"], "validazione": {"saldo_quadrato": True}}
+
+
+def test_recupera_la_ristampa_archiviata_senza_cambiare_il_pagamento(monkeypatch):
+    import copy, hashlib
+    from app.services import drive_cartella_unica, f24_parser
+
+    doc = _delega()
+    content = b'%PDF-ristampa-del-cassetto'
+    sha = hashlib.sha256(content).hexdigest()
+    doc.update(pdf_hash='a' * 64, source_occurrences=[{"sha256": sha}])
+    before = copy.deepcopy(doc)
+    async def archived(db, *, sha256):
+        return {"contenuto": content, "nome": "cassetto.pdf"} if sha256 == sha else None
+    monkeypatch.setattr(drive_cartella_unica, "originale", archived)
+    monkeypatch.setattr(f24_parser, "parse_quietanza_f24", lambda **_: _ristampa(doc))
+    copia = asyncio.run(f24_originale.recupera_copia_quietanza(None, doc))
+    assert copia == {"contenuto": content, "nome": "cassetto.pdf"}
+    assert doc == before
+
+
+@pytest.mark.parametrize("campo,valore", [
+    ("protocollo_telematico", "ALTRO/000001"), ("codice_fiscale", "11111111111"),
+    ("data_pagamento", "2021-02-18"), ("saldo", 757),
+])
+def test_ristampa_di_un_altro_pagamento_non_sostituisce_la_quietanza(monkeypatch, campo, valore):
+    from app.services import f24_parser
+
+    doc = _delega()
+    altra = {**doc, campo: valore}
+    monkeypatch.setattr(f24_parser, "parse_quietanza_f24", lambda **_: _ristampa(altra))
+    assert not f24_originale._stessa_quietanza(doc, b'%PDF-ristampa')
+
+
+def test_ristampa_con_periodo_inps_diverso_o_delega_non_quadrata_non_e_accettata(monkeypatch):
+    from app.services import f24_parser
+
+    doc = _delega()
+    altra = _ristampa(_delega())
+    altra["sezione_inps"][0]["periodo_a"] = "09/2020"
+    monkeypatch.setattr(f24_parser, "parse_quietanza_f24", lambda **_: altra)
+    assert not f24_originale._stessa_quietanza(doc, b'%PDF-ristampa')
+    altra = _ristampa(_delega())
+    altra["validazione"]["saldo_quadrato"] = False
+    assert not f24_originale._stessa_quietanza(doc, b'%PDF-ristampa')
