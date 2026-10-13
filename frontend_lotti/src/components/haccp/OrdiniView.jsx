@@ -68,6 +68,19 @@ function svuotaCarrelloCataloghi() {
   try { window.dispatchEvent(new Event("ordini_smart_cart_update")); } catch { /* no-op */ }
 }
 
+export function quantitaSuccessivaOrdine(prodotto, delta) {
+  const corrente = Number(prodotto?.quantita) || 1;
+  const daCatalogo = String(prodotto?.prodotto_id || "").startsWith("cat_");
+  if (daCatalogo) {
+    // Una riga catalogo rappresenta confezioni intere: 2 di "13 KG" sono
+    // due secchielli, non 26 kg sfusi e mai 2,5 confezioni.
+    return delta >= 0
+      ? Math.max(1, Math.floor(corrente) + delta)
+      : Math.max(1, Math.ceil(corrente) + delta);
+  }
+  return Math.max(0.5, corrente + delta);
+}
+
 export default function OrdiniView({ initialTab = "riordini" }) {
   const [tab, setTab] = useState(() => sessionStorage.getItem("ordini_apri_tab") || initialTab); // riordini | catalogo | confronto | carrello | giacenze | invio
   useEffect(() => { sessionStorage.removeItem("ordini_apri_tab"); }, []);
@@ -890,7 +903,7 @@ function DaInviare({ onModifica }) {
   const toggleRiga = (oid,pid) => setSel(s=>{ const set=new Set(s[oid]||[]); set.has(pid)?set.delete(pid):set.add(pid); return {...s,[oid]:set}; });
 
   const cambiaQta = async (o, p, delta) => {
-    const nuova = Math.max(0.5, (Number(p.quantita)||1) + delta);
+    const nuova = quantitaSuccessivaOrdine(p, delta);
     try {
       await axios.put(`${API}/ordini-fornitori/${o.id}/modifica-quantita`,
         { prodotti: [{ prodotto_id: String(p.prodotto_id), quantita: nuova }] });
@@ -1001,17 +1014,23 @@ function DaInviare({ onModifica }) {
         </div>
         {o.prodotti.map((p,i)=>{
           const przR = Number(p.prezzo_ultimo)||0, qtaR = Number(p.quantita)||0, impR = przR*qtaR;
+          const confezioneCatalogo = String(p.prodotto_id || "").startsWith("cat_");
+          const descrizionePrezzo = confezioneCatalogo
+            ? `€ ${przR.toFixed(2)} per confezione da ${p.unita||"pz"}`
+            : `€ ${przR.toFixed(2)}/${p.unita||"pz"}`;
           return (
           <div key={i} style={{ display:"flex", gap:8, alignItems:"center", padding:"7px 2px", borderTop:`1px solid #f1ede2`, flexWrap:"wrap" }}>
             <input type="checkbox" checked={(sel[o.id]||new Set()).has(String(p.prodotto_id))} onChange={()=>toggleRiga(o.id,String(p.prodotto_id))} style={{ width:22, height:22, flexShrink:0 }}/>
             <span style={{ flex:1, minWidth:140, fontWeight:700, fontSize:14 }}>{p.nome}
               <span style={{ display:"block", fontSize:11, color:C.muted, fontWeight:400 }}>
-                {[przR>0?`€ ${przR.toFixed(2)}/${p.unita||"pz"}${p.iva_pct?` · IVA ${p.iva_pct}%`:""}`:"prezzo n/d",
+                {[przR>0?`${descrizionePrezzo}${p.iva_pct?` · IVA ${p.iva_pct}%`:""}`:"prezzo n/d",
                   p.richiesto_da?`inserito da ${p.richiesto_da}`:"", p.note||""].filter(Boolean).join(" · ")}
               </span>
             </span>
             <button onClick={()=>cambiaQta(o,p,-1)} style={{ ...qtybtn, width:32, height:32 }}><Minus size={14}/></button>
-            <b style={{ minWidth:34, textAlign:"center", fontSize:14 }}>{p.quantita} {p.unita||""}</b>
+            <b style={{ minWidth:34, textAlign:"center", fontSize:14 }}>
+              {confezioneCatalogo ? `${p.quantita} conf. × ${p.unita||"pz"}` : `${p.quantita} ${p.unita||""}`}
+            </b>
             <button onClick={()=>cambiaQta(o,p,1)} style={{ ...qtybtn, width:32, height:32 }}><Plus size={14}/></button>
             <b style={{ minWidth:72, textAlign:"right", fontSize:13, color:C.ink }}>{impR>0?`€ ${impR.toFixed(2)}`:"—"}</b>
           </div>

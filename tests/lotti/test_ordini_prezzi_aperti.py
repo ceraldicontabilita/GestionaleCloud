@@ -4,8 +4,11 @@ from app.lotti.routers import ordini_fornitori as ordini
 from app.lotti.routers.ordini_fornitori import (
     _articolo_fattura_per_riga,
     _peso_kg_da_riga_ordine,
+    _quantita_riga_ordine,
     _riga_con_prezzo_fattura,
 )
+from fastapi import HTTPException
+import pytest
 
 
 def test_aggiornamento_prezzo_aperto_calcola_confezione_iva_e_storico():
@@ -69,6 +72,14 @@ def test_peso_cartone_moltiplica_numero_confezioni_per_kg():
     )
     assert cambiata is True
     assert aggiornata["prezzo_ultimo"] == 124.4
+
+
+def test_prodotti_catalogo_accettano_solo_confezioni_intere():
+    riga = {"prodotto_id": "cat_glf-002", "quantita": 2, "unita": "13 kg"}
+    assert _quantita_riga_ordine(riga) == 2
+    with pytest.raises(HTTPException, match="confezioni intere"):
+        _quantita_riga_ordine(riga, 2.5)
+    assert _quantita_riga_ordine({"prodotto_id": "sfuso", "quantita": 0.5}) == 0.5
 
 
 def test_recupero_bozza_nel_carrello_e_annullamento_conservano_lo_storico(monkeypatch):
