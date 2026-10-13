@@ -468,3 +468,26 @@ def test_la_ripresa_deposita_il_piano_conservato_ma_mai_depositato(monkeypatch):
     perso = asyncio.run(db["documents_inbox"].find_one({"id": "inbox-perso"}, {"_id": 0}))
     assert perso["status"] == "da_verificare" and perso["ripresa_v"] == di.RIPRESA_V
     assert asyncio.run(di.riprendi_da_verificare(db))["candidati"] == 0
+
+
+def test_periodo_ridotto_richiede_piano_univoco_e_importo_esatto():
+    piano = {**PIANO, 'periodo_da':'01/2025', 'periodo_a':'12/2025'}
+    q = _q('ridotto', '2026-03-06', 1293, 'protocollo-ridotto', '01/2025', '1 2025 1 2025')
+    # Senza confronto con tutti i piani non si presume la destinazione.
+    assert di.abbina_rate(piano, [q])['rate_pagate'] == 0
+    result = di.abbina_rate(piano, [q], piani=[piano])
+    assert result['rate_pagate'] == 1 and result['rate'][0]['periodo_ridotto']['periodo_originale'] == ['01/2025','01/2025']
+    ambiguo = {**piano, 'rif':'altro-piano'}
+    assert di.abbina_rate(piano, [q], piani=[piano, ambiguo])['rate_pagate'] == 0
+    esatto = {**ambiguo, 'periodo_da':'01/2025','periodo_a':'01/2025'}
+    assert di.abbina_rate(piano, [q], piani=[piano, esatto])['rate_pagate'] == 0
+    q['sezione_inps'][0]['importo_debito_cents'] = 129299
+    assert di.abbina_rate(piano, [q], piani=[piano])['rate_pagate'] == 0
+
+
+def test_pagamento_parziale_riduce_il_residuo_senza_chiudere_la_rata():
+    piano = {**PIANO, 'rate':[{'numero':1,'importo_cents':147700,'scadenza':'2026-03-08'}]}
+    q = _q('parziale', '2026-03-08', 1472, 'protocollo-parziale')
+    result = di.abbina_rate(piano, [q])
+    assert result['residuo_cents'] == 500
+    assert result['rate_pagate'] == 0 and result['rate'][0]['stato'] == di.RATA_IMPORTO_DIVERSO
