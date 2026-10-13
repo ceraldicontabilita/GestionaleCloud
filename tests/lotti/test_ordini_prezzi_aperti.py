@@ -7,6 +7,8 @@ from app.lotti.routers.ordini_fornitori import (
     _peso_kg_da_riga_ordine,
     _quantita_riga_ordine,
     _riga_con_prezzo_fattura,
+    _prodotto_listino_acquaviva_per_riga,
+    _riga_con_prezzo_listino_acquaviva,
 )
 from fastapi import HTTPException
 import pytest
@@ -30,6 +32,72 @@ def test_prezzo_invariato_non_crea_un_falso_aggiornamento():
     aggiornata, cambiata = _riga_con_prezzo_fattura(
         riga, {"prezzo": 5, "unita_confezione": "PZ", "iva_pct": 10}, "oggi")
     assert cambiata is False and aggiornata == riga
+
+
+def test_listino_acquaviva_calcola_il_cartone_e_non_il_singolo_pezzo():
+    prodotto = {
+        "id": "ab339479-0731-5932-898b-54a91db91131",
+        "codice_aqv_2026": "60935",
+        "prezzo_listino_riferimento": 0.727,
+        "qty_cartone": 45,
+        "unita_misura": "PZ",
+        "iva_pct": 10,
+    }
+    riga = {
+        "prodotto_id": "cat_ab339479-0731-5932-898b-54a91db91131",
+        "nome": "Cornetto vegano dritto all’arancia",
+        "prezzo_ultimo": 0,
+        "unita": "kar",
+    }
+    assert _prodotto_listino_acquaviva_per_riga(riga, [prodotto]) == prodotto
+    aggiornata, cambiata = _riga_con_prezzo_listino_acquaviva(riga, prodotto, "oggi")
+    assert cambiata is True
+    assert aggiornata["prezzo_unitario_listino"] == 0.727
+    assert aggiornata["prezzo_ultimo"] == 32.715
+    assert aggiornata["iva_pct"] == 10
+    assert aggiornata["unita"] == "ct 45 pz"
+    assert aggiornata["prezzo_fonte"] == "listino_fornitore"
+
+
+def test_sync_acquaviva_aggiorna_ordine_confermato_senza_fattura(monkeypatch):
+    async def scenario():
+        from app.lotti.servizi import preferiti_cataloghi
+
+        database = AsyncMongoMockClient().lotti
+        monkeypatch.setattr(ordini, "db", database)
+
+        async def nessuna_fattura(_db, _fonte):
+            return []
+
+        monkeypatch.setattr(preferiti_cataloghi, "fatture_catalogo", nessuna_fattura)
+        monkeypatch.setattr(preferiti_cataloghi, "articoli_acquistati", lambda _: [])
+        await database.acquaviva_prodotti.insert_one({
+            "id": "ab339479-0731-5932-898b-54a91db91131",
+            "fonte": "vandemoortele",
+            "codice_aqv_2026": "60935",
+            "prezzo_listino_riferimento": 0.727,
+            "qty_cartone": 45,
+            "unita_misura": "PZ",
+            "iva_pct": 10,
+        })
+        await database.ordini_fornitori.insert_one({
+            "id": "o-acquaviva", "stato": "confermato", "prodotti": [{
+                "prodotto_id": "cat_ab339479-0731-5932-898b-54a91db91131",
+                "nome": "Cornetto vegano dritto all’arancia",
+                "quantita": 1, "unita": "kar", "prezzo_ultimo": 0,
+                "prezzo_fonte": "non_disponibile", "iva_pct": 10,
+            }],
+        })
+        esito = await ordini.aggiorna_prezzi_ordini_aperti("acquaviva", _admin=True)
+        salvato = await database.ordini_fornitori.find_one({"id": "o-acquaviva"})
+        assert esito["ordini_aggiornati"] == 1
+        assert salvato["prodotti"][0]["prezzo_ultimo"] == 32.715
+        assert salvato["prodotti"][0]["unita"] == "ct 45 pz"
+        assert salvato["totali"]["imponibile"] == 32.72
+        assert salvato["totali"]["iva"] == 3.27
+        assert salvato["totali"]["totale"] == 35.99
+
+    asyncio.run(scenario())
 
 
 def test_collega_nomi_catalogo_fattura_solo_quando_univoci_e_compatibili():
