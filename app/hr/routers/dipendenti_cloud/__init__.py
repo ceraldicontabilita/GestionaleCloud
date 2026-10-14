@@ -4089,8 +4089,13 @@ async def importa_pagamenti(file: UploadFile = File(...)):
 async def paghe_in_attesa():
     """Buste in attesa di pagamento (o parziali): elenco per il pannello/avvisi."""
     db = get_db()
-    dip_map = {d["id"]: f"{d.get('cognome','')} {d.get('nome','')}".strip()
-               async for d in db.dipendenti.find({}, {"_id": 0, "id": 1, "nome": 1, "cognome": 1})}
+    dip_map = {
+        d["id"]: (d.get("nome_completo") or d.get("name")
+                  or f"{d.get('cognome','')} {d.get('nome','')}".strip())
+        async for d in db.dipendenti.find(
+            {}, {"_id": 0, "id": 1, "nome_completo": 1, "name": 1,
+                 "nome": 1, "cognome": 1})
+    }
     out = []
     async for p in db.paghe_mensili.find(
             {"stato_pagamento": {"$in": list(STATI_PAGA_APERTI)}}, {"_id": 0}):
@@ -4198,7 +4203,8 @@ async def _calcola_associazioni_bonifici(db, anno: Optional[int] = None, mese: O
 
     selezionati = set(dipendente_ids or [])
     dip_map = {}
-    async for d in db.dipendenti.find({}, {"_id": 0, "id": 1, "nome": 1, "cognome": 1,
+    async for d in db.dipendenti.find({}, {"_id": 0, "id": 1, "nome_completo": 1,
+                                            "name": 1, "nome": 1, "cognome": 1,
                                             "codice_fiscale": 1, "stato": 1, "attivo": 1,
                                             "in_carico": 1, "data_fine_rapporto": 1,
                                             "data_cessazione": 1, "data_dimissione": 1,
@@ -4355,7 +4361,11 @@ async def _calcola_associazioni_bonifici(db, anno: Optional[int] = None, mese: O
         if busta_dec is None and bon <= 0 and acc <= 0 and not p.get("importi_excel") and not copertura:
             continue
 
-        nome = f"{dip.get('cognome', '')} {dip.get('nome', '')}".strip() or dip_id
+        nome = (dip.get("nome_completo") or dip.get("name")
+                or f"{dip.get('cognome', '')} {dip.get('nome', '')}".strip()
+                or (ced or {}).get("nome_dipendente")
+                or (ced or {}).get("dipendente_nome")
+                or dip_id)
 
         # Bonifici reali pagati (esiti banca) per questo dipendente/mese/anno
         esiti = [{
@@ -4533,13 +4543,15 @@ async def _calcola_associazioni_bonifici(db, anno: Optional[int] = None, mese: O
         dip = dip_map.get(c.get("dipendente_id")) or {}
         da_leggere.append({
             "cedolino_id": c.get("id"), "dipendente_id": c.get("dipendente_id"),
-            "dipendente": f"{dip.get('cognome', '')} {dip.get('nome', '')}".strip()
-                or c.get("nome_dipendente") or "Dipendente da associare",
+            "dipendente": (dip.get("nome_completo") or dip.get("name")
+                or f"{dip.get('cognome', '')} {dip.get('nome', '')}".strip()
+                or c.get("nome_dipendente") or c.get("dipendente_nome")
+                or "Dipendente da associare"),
             "anno": c.get("anno"), "mese": mese_cedolino,
         })
     from app.services.posizione_dipendente import riepilogo_prima_nota_selezione
     nomi_contabili = {
-        dip_id: (dip.get("nome_completo")
+        dip_id: (dip.get("nome_completo") or dip.get("name")
                  or f"{dip.get('cognome', '')} {dip.get('nome', '')}".strip()
                  or dip_id)
         for dip_id, dip in dip_map.items()

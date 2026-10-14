@@ -58,6 +58,13 @@ class _Db:
             self.pagamenti_esiti.rows[0]["confermato_manuale"] = True
 
 
+def test_nome_completo_non_viene_sostituito_dall_uuid():
+    db = _Db(riconciliato=False)
+    db.dipendenti.rows[0] = {"id": "dip-1", "nome_completo": "Rossi Mario"}
+    result = asyncio.run(_calcola_associazioni_bonifici(db, 2026, 8))
+    assert result["righe"][0]["dipendente"] == "Rossi Mario"
+
+
 def test_importo_nome_periodo_e_pdf_non_confermano_da_soli():
     result = asyncio.run(_calcola_associazioni_bonifici(_Db(riconciliato=False), 2026, 8))
     row = result["righe"][0]
