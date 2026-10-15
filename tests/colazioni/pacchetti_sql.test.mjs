@@ -8,7 +8,7 @@
  * connessione: non certifica la contesa tra processi PostgreSQL distinti.
  */
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { after, before, beforeEach, test } from 'node:test';
 import { pathToFileURL } from 'node:url';
 
@@ -18,7 +18,10 @@ const { PGlite } = await import(moduleUrl);
 const cryptoModule = process.env.BB_QA_PGCRYPTO_MODULE || (moduleName.startsWith('/')
   ? new URL('./contrib/pgcrypto.js', moduleUrl).href : '@electric-sql/pglite/contrib/pgcrypto');
 const { pgcrypto } = await import(cryptoModule);
-const migration = new URL('../../supabase/migrations/20261015140320_colazioni_pacchetti_qr_monouso.sql', import.meta.url);
+const migrationsDir = new URL('../../supabase/migrations/', import.meta.url);
+const migrations = readdirSync(migrationsDir)
+  .filter(name => /^\d+_colazioni_pacchetti.*\.sql$/.test(name)).sort()
+  .map(name => new URL(name, migrationsDir));
 const A = '11111111-1111-1111-1111-111111111111';
 const B = '22222222-2222-2222-2222-222222222222';
 const db = new PGlite({ extensions: { pgcrypto } });
@@ -38,7 +41,7 @@ const hotelState = (hotel = A) => anon('select public.bb_alb_pacchetti($1,$2)', 
 
 before(async () => {
   await db.exec(readFileSync(new URL('./fixture_pacchetti.sql', import.meta.url), 'utf8'));
-  await db.exec(readFileSync(migration, 'utf8'));
+  for (const migration of migrations) await db.exec(readFileSync(migration, 'utf8'));
 });
 after(async () => { await db.close(); });
 beforeEach(async () => {
@@ -74,6 +77,24 @@ test('la ricarica in attesa non compra: nessun addebito, pacchetto o QR parziale
   assert.equal(await scalar("select count(*)::int from public.bb_movimenti where tipo='prenotazione'"), 0);
 });
 
+test('i codici business risolvono il rifiuto solo dopo il controllo della richiesta già acquistata', async () => {
+  const first = await buy(100, 'acquisto-da-verificare');
+  assert.equal(first.saldo, 0);
+  const replay = await buy(100, 'acquisto-da-verificare');
+  assert.equal(replay.ripetuta, true);
+  assert.equal(replay.pacchetto.id, first.pacchetto.id);
+  await assert.rejects(buy(1, 'rifiuto-saldo-001'), error => error.code === 'PBB02');
+  await anon("select public.bb_tit_pacchetto_abilita('tk:bar-test',$1,false)", [A]);
+  assert.equal((await buy(100, 'acquisto-da-verificare')).pacchetto.id, first.pacchetto.id);
+  await assert.rejects(buy(1, 'rifiuto-offerta-001'), error => error.code === 'PBB03');
+  await anon("select public.bb_tit_pacchetto_abilita('tk:bar-test',$1,true)", [A]);
+  await db.query('update menu.menu_products set visible=false where id=152788');
+  assert.equal((await buy(100, 'acquisto-da-verificare')).pacchetto.id, first.pacchetto.id);
+  await assert.rejects(buy(1, 'rifiuto-catalogo-001'), error => error.code === 'PBB01');
+  assert.equal(await scalar("select count(*)::int from public.bb_movimenti where tipo='prenotazione'"), 1);
+  assert.equal(await scalar('select count(*)::int from public.bb_pacchetti'), 1);
+});
+
 test('un errore dopo la creazione del pacchetto annulla anche addebito e QR precedenti', async () => {
   await db.exec(`create function public.qa_fallimento_voucher() returns trigger language plpgsql as $$
     begin
@@ -107,6 +128,19 @@ test('l’apertura pubblica del QR non consuma e non rivela altri QR o il saldo 
   assert.equal((await hotelState()).pacchetti[0].consumate, 0);
   assert.equal(await anon("select public.bb_pacchetto_voucher('SCONOSCIUTO')"), null);
   assert.equal((await anon('select public.bb_ospite($1)', [v.id])).id, v.id);
+});
+
+test('un unico dispatch ospite addebita una sola richiesta alla quota sia per soggiorni sia per pacchetti', async () => {
+  const id = (await buy(1)).pacchetto.vouchers[0].id;
+  for (let i = 0; i < 30; i++) {
+    assert.equal((await anon("select public.bb_ospite('LEGACY')")).legacy, 'ospite');
+  }
+  assert.equal(await scalar('select n from public.qa_ospite_limite'), 30);
+  for (let i = 0; i < 30; i++) {
+    assert.equal((await anon('select public.bb_ospite($1)', [id])).id, id);
+  }
+  assert.equal(await scalar('select n from public.qa_ospite_limite'), 60);
+  await assert.rejects(anon("select public.bb_ospite('LEGACY')"), /Limite ospite raggiunto/);
 });
 
 test('il prodotto deve appartenere alla formula, una sola bevanda è ammessa e la parigina consente solo acqua', async () => {
@@ -192,6 +226,8 @@ test('i pacchetti non impongono date di soggiorno e non entrano in produzione o 
     values('LEGACY',$1,4,1,current_date,current_date)`, [A]);
   const hotel = await anon('select public.bb_alb_stato($1,$2)', [A, `tk:${A}`]);
   const bar = await anon("select public.bb_tit_stato('tk:bar-test')");
+  assert.equal(hotel.legacy, 'stato_alb');
+  assert.equal(bar.legacy, 'stato_tit');
   assert.deepEqual(hotel.vouchers, [{ id: 'LEGACY' }]);
   assert.deepEqual(bar.vouchers, [{ id: 'LEGACY' }]);
   assert.equal(await scalar('select count(*)::int from public.qa_notifiche'), 1);

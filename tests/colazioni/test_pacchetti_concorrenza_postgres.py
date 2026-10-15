@@ -25,7 +25,8 @@ class PacchettiConcorrenzaTest(unittest.TestCase):
             raise RuntimeError("Serve un database usa e getta qa_colazioni_*")
         cls.connection = ["-h", os.environ["BB_QA_HOST"], "-p", os.environ["BB_QA_PORT"],
                           "-U", os.environ["BB_QA_USER"], "-d", cls.database]
-        for file in (ROOT / "tests/colazioni/fixture_pacchetti.sql", Path(os.environ["BB_QA_MIGRATION"])):
+        migrations = sorted(Path(os.environ["BB_QA_MIGRATIONS_DIR"]).glob("*_colazioni_pacchetti*.sql"))
+        for file in (ROOT / "tests/colazioni/fixture_pacchetti.sql", *migrations):
             result = cls.execute(file.read_text(encoding="utf-8"))
             if result.returncode:
                 raise RuntimeError(result.stderr)

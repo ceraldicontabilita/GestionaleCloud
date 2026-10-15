@@ -196,7 +196,7 @@ function toast(m){const t=document.createElement("div");t.className="toast";t.te
 async function rpc(fn,args={}){
  const r=await fetch(`${SB_URL}/rest/v1/rpc/${fn}`,{method:"POST",headers:{apikey:SB_KEY,Authorization:"Bearer "+SB_KEY,"Content-Type":"application/json"},body:JSON.stringify(args)});
  const j=await r.json().catch(()=>null);
- if(!r.ok){const errore=new Error((j&&j.message)||"Errore di rete");errore.esitoNoto=!!(j&&typeof j.code==="string"&&/^[A-Z0-9]{5}$/.test(j.code));throw errore}
+ if(!r.ok){const errore=new Error((j&&j.message)||"Errore di rete");errore.code=j&&j.code;errore.esitoNoto=!!(j&&typeof j.code==="string"&&/^[A-Z0-9]{5}$/.test(j.code));throw errore}
  return j}
 async function run(fn,args,okMsg){try{const r=await rpc(fn,args);if(okMsg)toast(okMsg);return r??true}catch(e){
  if(/Sessione scaduta/i.test(e.message)&&sess){const r=sess.r,c=sess.c;setSess(null);toast("Sessione scaduta: rientra");go(r==="alb"&&c?"#/hotel/"+c:"#/titolare");return undefined}
@@ -768,7 +768,7 @@ async function pacchettoAcquista(){
   if(contesto==="alb")ALB.struttura.saldo=r.saldo;else{const s=TIT.strutture.find(x=>x.id===sid);if(s)s.saldo=r.saldo}
   pacchettoChiudiRichiesta();PCK.inviando=false;toast(r.ripetuta?"Acquisto già registrato: nessun nuovo addebito":"Pacchetto acquistato e QR generati");
   if($("#package_area")===area&&PCK.contesto===contesto){await pacchettiCarica(contesto,sidFiltro);pacchettoApri(r.pacchetto.id)}
- }catch(e){const risolto=e.esitoNoto&&!pendente;if(risolto)pacchettoChiudiRichiesta();toast((e.message||"Esito da verificare")+(risolto?"":" · verifica la stessa richiesta prima di un nuovo acquisto"));PCK.inviando=false;pacchettoCosto()}
+ }catch(e){const rifiutoDefinitivo=["PBB01","PBB02","PBB03"].includes(e.code),risolto=e.esitoNoto&&(!pendente||rifiutoDefinitivo);if(risolto)pacchettoChiudiRichiesta();toast((e.message||"Esito da verificare")+(risolto?"":" · verifica la stessa richiesta prima di un nuovo acquisto"));PCK.inviando=false;pacchettoCosto()}
 }
 function pacchettoApri(id){
  const p=(PCK.dati.pacchetti||[]).find(x=>x.id===id),el=$("#pk_detail");if(!p||!el)return;
@@ -851,10 +851,10 @@ async function pacchettoSalvaScelta(){
 }
 async function ospite(id){
  $("#ttl").textContent="☕ La tua colazione";loading();
- try{const pacchetto=await rpc("bb_pacchetto_voucher",{vid:id||""});if(pacchetto)return ospitePacchetto(pacchetto)}catch(e){app.innerHTML=`<div class="card"><p>${esc(e.message||"Impossibile verificare il QR")}</p><button class="btn sec" id="guest_retry">Riprova</button></div>`;$("#guest_retry").onclick=()=>ospite(id);return}
  const d0=await rpc("bb_ospite",{vid:id||""}).catch(e=>({errore:e.message}));
- if(d0&&d0.errore){app.innerHTML=`<div class="card">${esc(d0.errore)}</div>`;return}
+ if(d0&&d0.errore){app.innerHTML=`<div class="card"><p>${esc(d0.errore)}</p><button class="btn sec" id="guest_retry">Riprova</button></div>`;$("#guest_retry").onclick=()=>ospite(id);return}
  if(!d0){app.innerHTML=`<div class="card">Codice non valido.</div>`;return}
+ if(d0.pacchetto_id)return ospitePacchetto(d0);
  const d=gNorm(d0),r=(d.richieste&&typeof d.richieste==="object")?d.richieste:{};
  G={d,req:{allergie:Array.isArray(r.allergie)?r.allergie:[],nota:typeof r.nota==="string"?r.nota:"",modifiche:[]},cart:{},cata:null,sub:"",q:"",form:null,sporco:false,giorno:d.oggi<d.data?d.data:(d.oggi<=fine(d)?d.oggi:fine(d)),panel:"home",saved:false};
  const b=d.bar||{},maps=b.bar_maps||"https://www.google.com/maps/search/?api=1&query="+encodeURIComponent((b.bar_nome||"Bar Pasticceria Ceraldi")+" "+(b.bar_indirizzo||"Napoli"));

@@ -78,24 +78,39 @@ $$;
 create function public.bb_annulla(vid text,pmotivo text,pda text) returns json language sql as $$
  select json_build_object('legacy','annulla','id',vid)
 $$;
-create function public.bb_ospite(vid text) returns json language sql as $$
+create function public.bb_ospite_json(vid text) returns json language sql as $$
  select json_build_object('legacy','ospite','id',vid)
+$$;
+create function public.bb_ospite(vid text) returns json language plpgsql as $$
+begin
+ perform public.bb_limite_ospite();
+ return public.bb_ospite_json(vid);
+end
 $$;
 create function public.bb_ospite_salva(vid text,prichieste jsonb,pextra jsonb,pgiorno date default null)
  returns json language sql as $$ select json_build_object('legacy','ospite_salva','id',vid) $$;
 create function public.bb_ospite_menu_salva(vid text,pgiorno date,righe jsonb)
  returns json language sql as $$ select json_build_object('legacy','menu_salva','id',vid) $$;
-create function public.bb_alb_stato(sid uuid,p text) returns json language plpgsql as $$
+-- Una proiezione soggiorno non deve nemmeno valutare una riga pacchetto:
+-- intercetta filtri applicati solo dopo avere aggregato tutti i voucher.
+create function public.qa_soggiorno_json(vid text) returns json language plpgsql as $$
+begin
+ if exists(select 1 from public.bb_vouchers where id=vid and pacchetto_id is not null) then
+  raise exception 'Voucher pacchetto valutato dalla proiezione soggiorni';
+ end if;
+ return json_build_object('id',vid);
+end $$;
+create function public.bb_alb_stato(sid uuid,p text) returns json language plpgsql security definer set search_path='' as $$
 begin
  perform public.bb_check_alb(sid,p);
  return json_build_object('legacy','stato_alb','vouchers',coalesce((
-  select json_agg(json_build_object('id',id)) from public.bb_vouchers where struttura_id=sid),'[]'::json));
+  select json_agg(public.qa_soggiorno_json(x.id)) from public.bb_vouchers x where x.struttura_id=sid),'[]'::json));
 end $$;
-create function public.bb_tit_stato(p text) returns json language plpgsql as $$
+create function public.bb_tit_stato(p text) returns json language plpgsql security definer set search_path='' as $$
 begin
  perform public.bb_check_tit(p);
  return json_build_object('legacy','stato_tit','vouchers',coalesce((
-  select json_agg(json_build_object('id',id)) from public.bb_vouchers),'[]'::json));
+  select json_agg(public.qa_soggiorno_json(v.id)) from public.bb_vouchers v join public.bb_strutture s on s.id=v.struttura_id),'[]'::json));
 end $$;
 create table public.qa_notifiche(voucher_id text not null);
 create function public.bb_accoda_notifica_voucher() returns trigger language plpgsql as $$

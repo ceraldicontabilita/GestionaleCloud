@@ -22,7 +22,7 @@ const offerta = {
   vincoli: { parigina_prodotto_id: 153886, parigina_bevanda_id: 153895 },
   regole: ['Un prodotto e una sola bevanda a scelta.'],
 };
-const buono = () => ({ id: 'ABC123', qta: 1, usate: 0, annullato: false, struttura: 'B&B Test', offerta,
+const buono = () => ({ id: 'ABC123', pacchetto_id: 'pack-1', qta: 1, usate: 0, annullato: false, struttura: 'B&B Test', offerta,
   scelta: null, bar: { bar_nome: 'Ceraldi Caffè' } });
 const normale = value => JSON.parse(JSON.stringify(value));
 
@@ -102,7 +102,7 @@ test('l’ospite apre soltanto il proprio buono senza sessione o account e non e
   p.esegui('rpc=__rpc');
   await p.esegui('ospite("ABC123")');
   assert.equal(p.esegui('sess'), null);
-  assert.deepEqual(calls, [{ name: 'bb_pacchetto_voucher', args: { vid: 'ABC123' } }]);
+  assert.deepEqual(calls, [{ name: 'bb_ospite', args: { vid: 'ABC123' } }]);
   assert.match(p.element('#app').innerHTML, /Un prodotto e una sola bevanda/);
   assert.doesNotMatch(p.element('#app').innerHTML, /password|type="password"|Saldo borsellino/);
 });
@@ -264,6 +264,7 @@ test('un errore di sessione al retry non cancella il riferimento del primo acqui
     attempts.push(normale(args));
     const error = new Error('Sessione albergatore scaduta');
     error.esitoNoto = true;
+    error.code = 'P0001';
     throw error;
   };
   refreshed.esegui('rpc=__rpc');
@@ -280,5 +281,29 @@ test('un errore di sessione al retry non cancella il riferimento del primo acqui
   assert.ok(attempts.every(args => args.pidempotenza === requestId));
   assert.equal(attempts[2].p, 'tk:nuova-sessione');
   assert.equal(refreshed.esegui('pacchettoRichiestaPendente()'), null);
+});
+
+test('un rifiuto business dopo il lookup idempotente risolve anche una richiesta precedentemente incerta', async () => {
+  for (const code of ['PBB01', 'PBB02', 'PBB03']) {
+    const p = pagina();
+    acquistoPronto(p);
+    const calls = [];
+    p.context.__rpc = async (name, args) => {
+      calls.push(normale(args));
+      if (calls.length === 1) throw new Error('Risposta persa');
+      const error = new Error('Acquisto rifiutato definitivamente');
+      error.esitoNoto = true;
+      error.code = code;
+      throw error;
+    };
+    p.esegui('rpc=__rpc');
+    await p.esegui('pacchettoAcquista()');
+    assert.ok(p.esegui('pacchettoRichiestaPendente()'));
+    await p.esegui('pacchettoAcquista()');
+    assert.equal(calls.length, 2);
+    assert.equal(calls[1].pidempotenza, calls[0].pidempotenza);
+    assert.equal(p.esegui('pacchettoRichiestaPendente()'), null, code);
+    assert.equal(p.element('#pk_qta').disabled, false, code);
+  }
 });
 

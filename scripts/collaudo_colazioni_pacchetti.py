@@ -39,7 +39,7 @@ def main():
     environment = {key: value for key, value in os.environ.items() if not key.startswith("PG")}
     environment.update(BB_QA_PG_READY="1", BB_QA_PSQL=str(psql), BB_QA_HOST=str(host),
                        BB_QA_PORT=str(args.port), BB_QA_USER=args.user, BB_QA_NAME=name,
-                       BB_QA_MIGRATION=str(ROOT / "supabase/migrations/20261015140320_colazioni_pacchetti_qr_monouso.sql"))
+                       BB_QA_MIGRATIONS_DIR=str(ROOT / "supabase/migrations"))
     create = subprocess.run([str(createdb), *connection, "--template=template0", name],
                             env=environment, text=True, capture_output=True, timeout=25)
     if create.returncode:
