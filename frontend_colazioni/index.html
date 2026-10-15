@@ -59,6 +59,7 @@ table{width:100%;border-collapse:collapse;font-size:14px}td,th{padding:8px 4px;b
 .toast{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);background:#222;color:#fff;padding:10px 16px;border-radius:12px;z-index:9;font-size:14px}
 .demo{font-size:12px;background:#fff3cd;color:#664d03;padding:6px 10px;text-align:center}
 .wallet-custom{justify-content:flex-start;align-items:stretch;gap:8px}.wallet-custom input{margin:0;max-width:240px}.recharge-choice{min-width:105px}.wallet-kpis .k{font-size:27px}
+.package-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}.package-actions .btn{min-height:44px}.package-qr-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px}.package-qr-grid .card{margin:0;min-width:0}.package-counts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:12px 0}.package-counts div{padding:12px 8px;background:var(--bg);border:1px solid var(--line);border-radius:12px;text-align:center}.package-counts b{display:block;font-size:24px;color:var(--brand)}.package-counts span{font-size:12px}.package-offer{display:grid;gap:10px}.package-offer article{border-bottom:1px solid var(--line);padding:4px 0 10px}.package-offer article:last-child{border:0}.package-offer p{margin:5px 0}.package-code{font-weight:800;letter-spacing:2px;overflow-wrap:anywhere}.package-order{max-width:560px}.package-note{font-size:13px;color:var(--mute);line-height:1.5}
 @media(max-width:640px){.wallet-custom{display:grid;grid-template-columns:1fr}.wallet-custom input{max-width:none}.wallet-kpis{grid-template-columns:repeat(3,minmax(0,1fr))}.wallet-kpis .card{padding:12px 8px}.wallet-kpis .k{font-size:20px}}
 
 main.wide{max-width:1100px}
@@ -195,7 +196,7 @@ function toast(m){const t=document.createElement("div");t.className="toast";t.te
 async function rpc(fn,args={}){
  const r=await fetch(`${SB_URL}/rest/v1/rpc/${fn}`,{method:"POST",headers:{apikey:SB_KEY,Authorization:"Bearer "+SB_KEY,"Content-Type":"application/json"},body:JSON.stringify(args)});
  const j=await r.json().catch(()=>null);
- if(!r.ok)throw new Error((j&&j.message)||"Errore di rete");
+ if(!r.ok){const errore=new Error((j&&j.message)||"Errore di rete");errore.code=j&&j.code;errore.esitoNoto=!!(j&&typeof j.code==="string"&&/^[A-Z0-9]{5}$/.test(j.code));throw errore}
  return j}
 async function run(fn,args,okMsg){try{const r=await rpc(fn,args);if(okMsg)toast(okMsg);return r??true}catch(e){
  if(/Sessione scaduta/i.test(e.message)&&sess){const r=sess.r,c=sess.c;setSess(null);toast("Sessione scaduta: rientra");go(r==="alb"&&c?"#/hotel/"+c:"#/titolare");return undefined}
@@ -532,16 +533,18 @@ async function alb(sec){
  if(!HOT||HOT.id!==ALB.struttura.id)HOT=await rpc("bb_hotel_info",{codice:ALB.struttura.accesso}).catch(()=>null);
  const s=ALB.struttura,my=ALB.vouchers,oggi=ALB.oggi;
  $("#ttl").textContent="🏨 "+s.nome;
-  const tabs=[["home","Riepilogo"],["nuova","Nuova colazione"],["prodotti","Prodotti e ordini"],["lista","Ospiti"],["camere","Camere"],["profilo","Profilo"],["borsellino","Borsellino"]];
+  const tabs=[["home","Riepilogo"],["pacchetti","Pacchetti da €4"],["nuova","Nuova colazione"],["prodotti","Prodotti e ordini"],["lista","Ospiti"],["camere","Camere"],["profilo","Profilo"],["borsellino","Borsellino"]];
  let body="";
  if(sec==="home"){
   const att=my.filter(v=>!v.annullato&&v.usate<v.qta&&fine(v)>=oggi),att2=ALB.movimenti.filter(m=>!m.confermato).reduce((a,m)=>a+m.importo,0);
   const prossime=att.slice().sort((a,b)=>a.data.localeCompare(b.data)).slice(0,5);
-  body=fiscBanner()+`<div class="kpis"><div class="card"><div class="mute">Saldo</div><div class="k">${eur(s.saldo)}</div>${att2?`<div class="mute">+${eur(att2)} in attesa</div>`:""}</div>
-  <div class="card"><div class="mute">Colazioni da ritirare</div><div class="k">${att.reduce((a,v)=>a+v.qta-v.usate,0)}</div></div>
-  <div class="card"><div class="mute">Ritirate (totale)</div><div class="k">${my.reduce((a,v)=>a+v.usate,0)}</div></div></div>
+  body=fiscBanner()+`<div id="package_summary"><p class="mute">Caricamento conteggio pacchetti…</p></div><div class="kpis"><div class="card"><div class="mute">Saldo borsellino</div><div class="k">${eur(s.saldo)}</div>${att2?`<div class="mute">+${eur(att2)} in attesa</div>`:""}</div>
+  <div class="card"><div class="mute">Soggiorni · da ritirare</div><div class="k">${att.reduce((a,v)=>a+v.qta-v.usate,0)}</div></div>
+  <div class="card"><div class="mute">Soggiorni · ritirate</div><div class="k">${my.reduce((a,v)=>a+v.usate,0)}</div></div></div>
   <button class="btn" onclick="go('#/albergatore/nuova')">+ Nuova colazione</button> <button class="btn sec" onclick="go('#/albergatore/borsellino')">Ricarica</button>
   <h3 style="margin-top:18px">Prossime colazioni</h3>${prossime.map(v=>`<div class="card row"><div><b>${esc(descV(v))}</b><div class="mute">${dRange(v)}${v.colazione_nome?" · "+esc(v.colazione_nome):""}</div></div><button class="btn sm sec" onclick="mostraQR('${v.id}')">QR</button></div>`).join("")||`<p class="mute">Nessuna colazione in programma.</p>`}`;
+ }else if(sec==="pacchetti"){
+  body=`<div id="package_area"><p class="mute">Caricamento pacchetti…</p></div>`;
  }else if(sec==="nuova"){
   body=nuovaHtml();
  }else if(sec==="lista"){
@@ -571,6 +574,8 @@ async function alb(sec){
  if(sec==="prodotti")albProdotti();
  if(sec==="camere")crTab();
  if(sec==="borsellino")setTimeout(sincronizzaRicariche,0);
+ if(sec==="pacchetti")pacchettiCarica("alb",s.id);
+ if(sec==="home")pacchettiRiepilogo("alb");
 }
 let AP={prodotti:[],cart:{},ordini:[],termini:null,data:"",ora:"07:00",nota:"",met:"in_loco",esito:null};
 async function albProdotti(){
@@ -688,6 +693,98 @@ async function mostraQR(id,continua=false){
  qr($("#qrbox"),l);
  const msg=(ALB.config.msg||"La tua colazione da {bar}").replace("{ospite}",v.ospite).replace("{bar}",ALB.bar.bar_nome||"Bar Ceraldi").replace("{link}","").trim();
  $("#sh").onclick=()=>navigator.share?navigator.share({title:"La tua colazione",text:msg,url:l}).catch(()=>{}):navigator.clipboard.writeText((msg?msg+"\n":"")+l).then(()=>toast("Link unico copiato"))}
+
+/* Pacchetti a numero: il database acquista, assegna e scala i QR monouso. */
+const PENDING_PACKAGE_KEY="bb_pacchetto_acquisto_pendente";
+function pacchettoRichiestaPendente(){try{const r=JSON.parse(sessionStorage.getItem(PENDING_PACKAGE_KEY)||"null");return r&&r.id&&r.sid&&Number.isInteger(r.qta)?r:null}catch(e){return null}}
+function pacchettoChiudiRichiesta(){PCK.richiesta=null;sessionStorage.removeItem(PENDING_PACKAGE_KEY)}
+let PCK={contesto:"",sid:null,dati:null,aperto:null,inviando:false,richiesta:pacchettoRichiestaPendente()};
+addEventListener("click",event=>{const b=event.target.closest?.("[data-pk-action]");if(!b)return;const id=b.dataset.pkId;switch(b.dataset.pkAction){case "reload":pacchettiCarica(b.dataset.pkContext,b.dataset.pkSid||null);break;case "open":pacchettoApri(id);break;case "qr":pacchettoQR(id);break;case "guest-refresh":ospite(id);break}});
+const pacchettiTotali=lista=>(lista||[]).reduce((a,p)=>({qta:a.qta+Number(p.qta),consumate:a.consumate+Number(p.consumate),residue:a.residue+Number(p.residue)}),{qta:0,consumate:0,residue:0});
+function pacchettoContatori(p){return `<div class="package-counts" aria-label="Conteggio colazioni"><div><span>Acquistate</span><b>${esc(p.qta)}</b></div><div><span>Consumate</span><b>${esc(p.consumate)}</b></div><div><span>Da consumare</span><b>${esc(p.residue)}</b></div></div>`}
+async function pacchettiRiepilogo(contesto){
+ const host=$("#package_summary");if(!host)return;
+ try{
+  const d=await rpc(contesto==="tit"?"bb_tit_pacchetti":"bb_alb_pacchetti",contesto==="tit"?{p:sess.p,sid:null}:{sid:sess.s,p:sess.p});
+  if($("#package_summary")!==host)return;
+  host.innerHTML=`<div class="card"><div class="row"><h3 style="margin:0">Pacchetti colazioni da €4</h3><button class="btn sec" onclick="pacchettiRiepilogo('${contesto}')">Aggiorna</button></div>${pacchettoContatori(pacchettiTotali(d.pacchetti))}<p class="package-note">Ogni QR vale una colazione. Il conteggio è condiviso tra bar e B&B e scala alla consegna confermata.</p>${contesto==="alb"&&d.offerta.abilitata===false?`<p class="package-note">${esc(d.offerta.motivo||"Per nuovi acquisti contatta il bar. I QR già acquistati restano validi.")}</p>`:""}<button class="btn" onclick="go('#/${contesto==="tit"?"titolare":"albergatore"}/pacchetti')">Apri pacchetti e QR</button></div>`;
+ }catch(e){if($("#package_summary")===host)host.innerHTML=`<div class="card"><p>Conteggio pacchetti non disponibile.</p><button class="btn sec" onclick="pacchettiRiepilogo('${contesto}')">Riprova</button></div>`}
+}
+function pacchettoOfferta(o){
+ if(!o)return "";
+ return `<details class="card"><summary><b>${esc(o.nome)} · ${eur(o.prezzo)} a colazione</b></summary><div class="package-offer" style="margin-top:12px">${(o.formule||[]).map(f=>`<article><b>${esc(f.nome)}</b><p>${(f.prodotti||[]).map(x=>esc(x.nome)).join(" oppure ")}</p></article>`).join("")}</div><p><b>Una sola bevanda a scelta:</b> ${(o.bevande||[]).map(x=>esc(x.nome)).join(" oppure ")}.</p>${(o.regole||[]).map(t=>`<p class="package-note">${esc(t)}</p>`).join("")}<p class="package-note"><b>Parigina:</b> esclusivamente con una bottiglina d’acqua da 33 cl. Ogni colazione comprende un prodotto e una sola bevanda.</p></details>`}
+async function pacchettiCarica(contesto,sid=null){
+ const pendente=pacchettoRichiestaPendente();if(contesto==="tit"&&pendente)sid=pendente.sid;
+ const host=$("#package_area");if(!host)return;
+ const dati=await run(contesto==="tit"?"bb_tit_pacchetti":"bb_alb_pacchetti",contesto==="tit"?{p:sess.p,sid:sid||null}:{sid:sess.s,p:sess.p});
+ if(!dati||dati===true){if($("#package_area")===host)host.innerHTML=`<div class="card"><p>Impossibile caricare i pacchetti.</p><button class="btn sec" data-pk-action="reload" data-pk-context="${esc(contesto)}" data-pk-sid="${esc(sid||"")}">Riprova</button></div>`;return}
+ if($("#package_area")!==host)return;
+ PCK={...PCK,contesto,sid:contesto==="alb"?sess.s:sid,dati,aperto:null};
+ host.innerHTML=pacchettiHtml(contesto,dati);
+ pacchettoCosto();
+}
+function pacchettiHtml(contesto,dati){
+ const lista=Array.isArray(dati.pacchetti)?dati.pacchetti:[],tot=pacchettiTotali(lista),o=dati.offerta;
+ const sid=PCK.sid,hotel=contesto==="alb"?ALB.struttura:(TIT.strutture||[]).find(s=>s.id===sid);
+ const abilitata=contesto==="tit"?(dati.strutture_abilitate||[]).includes(sid):o.abilitata===true,pendente=pacchettoRichiestaPendente(),qtaIniziale=pendente&&pendente.sid===(sid||sess.s)?pendente.qta:10;
+ const strutture=contesto==="tit"?`<label for="pk_sid">B&B che acquista</label><select id="pk_sid" onchange="pacchettoScegliHotel(this.value)"><option value="">Scegli il B&B…</option>${(TIT.strutture||[]).filter(s=>!s.disattivata_il).map(s=>`<option value="${esc(s.id)}" ${s.id===sid?"selected":""}>${esc(s.nome)}</option>`).join("")}</select>${hotel?`<p><span class="pill ${abilitata?"p-ok":"p-warn"}">${abilitata?"Offerta abilitata per questo B&B":"Offerta non abilitata per questo B&B"}</span></p><button class="btn sec" id="pk_enable" onclick="pacchettoAbilita()">${abilitata?"Disabilita nuovi acquisti per ":"Abilita questa offerta per "}${esc(hotel.nome)}</button><p class="package-note">L’abilitazione riguarda soltanto questo B&B. Disabilitare blocca i nuovi acquisti e conserva la validità dei QR già acquistati.</p>`:`<p class="package-note">Scegli il B&B e abilita espressamente questa offerta per consentire gli acquisti.</p>`}`:"";
+ return `<div class="card"><div class="row"><h2 style="margin:0">Colazioni prepagate da €4</h2><button class="btn sec" data-pk-action="reload" data-pk-context="${esc(contesto)}" data-pk-sid="${esc(sid||"")}">Aggiorna conteggi</button></div><p>Un QR monouso per ogni colazione acquistata. Gli ospiti mostrano il QR al bar, senza account né tessera. La consegna confermata dal bar scala una colazione.</p>${pacchettoContatori(tot)}<p class="package-note">I QR distribuiti e ancora validi restano nel conteggio “Da consumare”. Il conteggio si aggiorna dal registro condiviso del bar e del B&B.</p></div>
+ ${pacchettoOfferta(o)}
+ <div class="card package-order"><h3>Acquista un pacchetto</h3>${strutture}${pendente?`<div class="alert"><b>Un acquisto è ancora da verificare.</b> Riprendi la stessa richiesta di ${pendente.qta} colazioni. Il sistema recupera il risultato usando lo stesso riferimento, anche dopo un aggiornamento della pagina.</div>`:""}${o.acquistabile===false?`<div class="alert bad">${esc(o.motivo||"L’offerta non è acquistabile al momento. Contatta il bar.")}</div>`:""}<label for="pk_qta">Numero di colazioni</label><input id="pk_qta" type="number" min="1" max="1000" step="1" value="${qtaIniziale}" inputmode="numeric" oninput="pacchettoNuovaRichiesta();pacchettoCosto()"><div id="pk_cost" aria-live="polite"></div><p class="package-note">L’acquisto usa esclusivamente il saldo confermato del borsellino del B&B. Genera subito un QR diverso per ciascuna colazione; ogni QR vale una sola consumazione.</p><button class="btn" id="pk_buy" onclick="pacchettoAcquista()">${pendente?"Verifica l’acquisto in sospeso":"Acquista e genera i QR"}</button>${contesto==="alb"?` <button class="btn sec" onclick="go('#/albergatore/borsellino')">Ricarica borsellino</button>`:""}</div>
+ <h3>Pacchetti acquistati</h3>${lista.map(p=>`<article class="card"><div class="row"><div><b>${esc(p.struttura||hotel&&hotel.nome||"B&B")}</b><div class="package-note">${esc(p.id)} · ${new Date(p.creato).toLocaleDateString("it-IT")} · ${eur(p.totale)}</div></div><span class="pill p-ok">${eur(p.prezzo_unitario)} ciascuna</span></div>${pacchettoContatori(p)}<button class="btn sec" data-pk-action="open" data-pk-id="${esc(p.id)}">Apri e distribuisci i ${p.qta} QR</button></article>`).join("")||`<div class="card"><p class="mute">Nessun pacchetto acquistato.</p></div>`}<div id="pk_detail"></div>`;
+}
+function pacchettoNuovaRichiesta(){const r=pacchettoRichiestaPendente();if(r){$("#pk_qta").value=r.qta;toast("Verifica prima l’acquisto in sospeso");return}if(!PCK.inviando)PCK.richiesta=null}
+function pacchettoScegliHotel(sid){if(PCK.inviando)return;const r=pacchettoRichiestaPendente();if(r){$("#pk_sid").value=r.sid;toast("Verifica prima l’acquisto in sospeso");return}pacchettoNuovaRichiesta();pacchettiCarica("tit",sid||null)}
+async function pacchettoAbilita(){
+ if(PCK.contesto!=="tit"||PCK.inviando)return;const sid=$("#pk_sid")?.value;if(!sid)return;
+ const attiva=!(PCK.dati.strutture_abilitate||[]).includes(sid),b=$("#pk_enable");if(b)b.disabled=true;
+ const r=await run("bb_tit_pacchetto_abilita",{p:sess.p,sid,pattiva:attiva},attiva?"Offerta abilitata per questo B&B":"Nuovi acquisti disabilitati; i QR pagati restano validi");
+ if(r&&r!==true)await pacchettiCarica("tit",sid);else if(b)b.disabled=false;
+}
+function pacchettoCosto(){
+ const el=$("#pk_cost"),btn=$("#pk_buy");if(!el||!btn)return;
+ const pendente=pacchettoRichiestaPendente();$("#pk_qta").disabled=PCK.inviando||!!pendente;const sceltaHotel=$("#pk_sid");if(sceltaHotel)sceltaHotel.disabled=PCK.inviando||!!pendente;
+ const sid=PCK.contesto==="alb"?sess.s:$("#pk_sid")?.value,qta=Number($("#pk_qta").value),o=PCK.dati.offerta;
+ const s=PCK.contesto==="alb"?ALB.struttura:(TIT.strutture||[]).find(x=>x.id===sid),saldo=s?Number(s.saldo):null;
+ const valida=Number.isInteger(qta)&&qta>=1&&qta<=1000,tot=valida?qta*Number(o.prezzo):null,riprende=pendente&&pendente.sid===sid&&pendente.qta===qta;
+ el.innerHTML=`<p>Prezzo per colazione: <b>${eur(o.prezzo)}</b></p>${valida?`<p>Totale acquisto: <b>${eur(tot)}</b> per ${qta} colazioni</p>`:`<p class="alert bad">Inserisci un numero intero da 1 a 1000.</p>`}${saldo!==null?`<p>Saldo confermato disponibile: <b>${eur(saldo)}</b>${valida&&saldo>=tot&&!riprende?` · dopo l’acquisto ${eur(saldo-tot)}`:""}</p>${valida&&saldo<tot&&!riprende?`<div class="alert bad">Saldo insufficiente: mancano ${eur(tot-saldo)}. Ricarica il borsellino prima di acquistare.</div>`:""}`:`<p class="mute">Scegli il B&B per vedere il saldo disponibile.</p>`}${riprende?`<p class="alert">Richiesta già inviata: usa “Verifica l’acquisto in sospeso” per recuperare lo stesso risultato. Fino alla verifica non puoi avviare un acquisto diverso.</p>`:""}`;
+ const abilitata=PCK.contesto==="tit"?(PCK.dati.strutture_abilitate||[]).includes(sid):o.abilitata===true;
+ btn.textContent=riprende?"Verifica l’acquisto in sospeso":"Acquista e genera i QR";
+ btn.disabled=PCK.inviando||!s||!valida||(!riprende&&(saldo<tot||o.acquistabile===false||!abilitata));
+}
+async function pacchettoAcquista(){
+ if(PCK.inviando)return;
+ const contesto=PCK.contesto,area=$("#package_area"),sidFiltro=PCK.sid,sid=contesto==="alb"?sess.s:$("#pk_sid")?.value,qta=Number($("#pk_qta").value);
+ if(!sid||!Number.isInteger(qta)||qta<1||qta>1000)return toast("Scegli il B&B e un numero intero di colazioni da 1 a 1000");
+ const pendente=pacchettoRichiestaPendente();if(pendente&&(pendente.sid!==sid||pendente.qta!==qta))return toast("Verifica prima l’acquisto in sospeso senza cambiare B&B o quantità");
+ if(!pendente&&PCK.dati.offerta.acquistabile===false)return toast(PCK.dati.offerta.motivo||"L’offerta non è acquistabile al momento");
+ if(!pendente&&(contesto==="tit"?!(PCK.dati.strutture_abilitate||[]).includes(sid):PCK.dati.offerta.abilitata!==true))return toast("Questa offerta deve essere abilitata dal bar per il B&B");
+ const firma=sid+":"+qta;
+ PCK.richiesta=pendente||{firma,sid,qta,id:crypto.randomUUID?crypto.randomUUID():Date.now()+"-"+Math.random()};sessionStorage.setItem(PENDING_PACKAGE_KEY,JSON.stringify(PCK.richiesta));
+ const idempotenza=PCK.richiesta.id;PCK.inviando=true;pacchettoCosto();
+ try{
+  const r=await rpc(contesto==="tit"?"bb_tit_pacchetto_crea":"bb_alb_pacchetto_acquista",{p:sess.p,sid,pqta:qta,pidempotenza:idempotenza});
+  if(!r||!r.ok||!r.pacchetto)throw Error(r&&r.msg||"Acquisto non completato");
+  if(contesto==="alb")ALB.struttura.saldo=r.saldo;else{const s=TIT.strutture.find(x=>x.id===sid);if(s)s.saldo=r.saldo}
+  pacchettoChiudiRichiesta();PCK.inviando=false;toast(r.ripetuta?"Acquisto già registrato: nessun nuovo addebito":"Pacchetto acquistato e QR generati");
+  if($("#package_area")===area&&PCK.contesto===contesto){await pacchettiCarica(contesto,sidFiltro);pacchettoApri(r.pacchetto.id)}
+ }catch(e){const rifiutoDefinitivo=["PBB01","PBB02","PBB03"].includes(e.code),risolto=e.esitoNoto&&(!pendente||rifiutoDefinitivo);if(risolto)pacchettoChiudiRichiesta();toast((e.message||"Esito da verificare")+(risolto?"":" · verifica la stessa richiesta prima di un nuovo acquisto"));PCK.inviando=false;pacchettoCosto()}
+}
+function pacchettoApri(id){
+ const p=(PCK.dati.pacchetti||[]).find(x=>x.id===id),el=$("#pk_detail");if(!p||!el)return;
+ PCK.aperto=id;
+ el.innerHTML=`<div class="card"><h3>QR del pacchetto ${esc(p.id)}</h3>${pacchettoContatori(p)}<p>Consegna a ogni ospite un QR ancora da consumare. Ogni codice funziona una volta sola: duplicare o ristampare il codice non aggiunge colazioni.</p><div class="package-actions"><button class="btn" onclick="pacchettoStampa(false)">Stampa i QR da consumare</button><button class="btn sec" onclick="pacchettoEsporta()">Scarica elenco e link</button></div></div><div class="package-qr-grid">${(p.vouchers||[]).map((v,i)=>`<article class="card"><b>Colazione ${i+1} di ${p.qta}</b><p><span class="pill ${v.annullato?"p-bad":v.usate?"p-ok":"p-warn"}">${v.annullato?"Annullata":v.usate?"Consumata":"Da consumare"}</span></p><p class="package-code">${esc(v.id)}</p>${v.usate?`<p class="package-note">Questo QR è già stato utilizzato.</p>`:v.annullato?"":`<button class="btn sec" data-pk-action="qr" data-pk-id="${esc(v.id)}">Apri e condividi QR</button>`}</article>`).join("")}</div><div id="pk_qr_single"></div>`;
+ el.scrollIntoView({behavior:"smooth",block:"start"});
+}
+function pacchettoCorrente(){return (PCK.dati.pacchetti||[]).find(x=>x.id===PCK.aperto)}
+function pacchettoScheda(p,v){return {sopra:(p.struttura||"B&B")+" · "+((p.offerta||PCK.dati.offerta).nome||"Colazione B&B"),titolo:"Una colazione inclusa",riga:"Un prodotto e una sola bevanda a scelta",qr:linkOspite(v.id),codice:v.id,sotto:"QR monouso · mostra al bar · nessun account o tessera. Parigina solo con acqua da 33 cl."}}
+function pacchettoStampa(tutti=false){const p=pacchettoCorrente();if(!p)return;const vs=(p.vouchers||[]).filter(v=>tutti||!v.usate&&!v.annullato);if(!vs.length)return toast("Nessun QR da consumare");stampa(vs.map(v=>pacchettoScheda(p,v)))}
+function pacchettoEsporta(){const p=pacchettoCorrente();if(p)download("colazioni-"+p.id+".csv",csvRows([["pacchetto","codice","stato","link"],...(p.vouchers||[]).map(v=>[p.id,v.id,v.annullato?"annullata":v.usate?"consumata":"da consumare",linkOspite(v.id)])]))}
+function pacchettoQR(id){
+ const p=pacchettoCorrente(),v=p&&(p.vouchers||[]).find(x=>x.id===id),el=$("#pk_qr_single");if(!v||!el)return;
+ el.innerHTML=`<div class="card" style="text-align:center"><h3>Una colazione inclusa</h3><div class="qr" id="pk_qr"></div><p class="package-code">${esc(v.id)}</p><p>Un prodotto e una sola bevanda a scelta. Parigina esclusivamente con acqua da 33 cl.</p><div class="package-actions" style="justify-content:center"><button class="btn" id="pk_share">Condividi con l’ospite</button><button class="btn sec" id="pk_print_one">Stampa questo QR</button></div><p class="package-note">Il link apre soltanto questa colazione e non dà accesso all’area del B&B.</p></div>`;
+ const l=linkOspite(v.id);qr($("#pk_qr"),l);$("#pk_share").onclick=()=>navigator.share?navigator.share({title:"La tua colazione",text:"La tua colazione inclusa da Ceraldi Caffè. Un prodotto e una sola bevanda. Mostra questo QR al bar.",url:l}).catch(()=>{}):navigator.clipboard.writeText(l).then(()=>toast("Link della colazione copiato"));$("#pk_print_one").onclick=()=>stampa([pacchettoScheda(p,v)]);el.scrollIntoView({behavior:"smooth",block:"start"});
+}
 /* --- editor camere (albergatore e titolare) --- */
 let CR=[],CRSID=null;
 function camereEditor(titolo){return `<div class="card"><h3>${esc(titolo)}</h3><p class="mute">Scrivi nome e ospiti, poi scegli Banco o Tavolo per ogni camera. Durante ogni prenotazione potrai ancora cambiare la scelta.</p><div id="ce"></div>
@@ -715,11 +812,49 @@ async function recensioniVoucher(){
   REC={token:null,fonte:"qr",info,sessione:info.sessione,scelte:{},telefono:false,host:"g_rec"};
   recPagina();$("#g_rec").scrollIntoView({behavior:"smooth"})}
  catch(e){toast(e.message)}}
+let PVIEWS={guest:null,scan:null};
+function pacchettoBevande(offerta,prodotto){
+ const vincoli=offerta.vincoli||{},bevande=Array.isArray(offerta.bevande)?offerta.bevande:[];
+ return String(prodotto)===String(vincoli.parigina_prodotto_id)?bevande.filter(b=>String(b.id)===String(vincoli.parigina_bevanda_id)):bevande;
+}
+function pacchettoVista(d){const s=d.scelta||{};return {d,formula:s.formula||"",prodotto:s.prodotto_id==null?"":String(s.prodotto_id),bevanda:s.bevanda_id==null?"":String(s.bevanda_id),inviando:false}}
+function pacchettoSceltaValida(v){
+ const f=(v.d.offerta.formule||[]).find(f=>f.codice===v.formula);
+ return !!f&&(f.prodotti||[]).some(p=>String(p.id)===String(v.prodotto))&&pacchettoBevande(v.d.offerta,v.prodotto).some(b=>String(b.id)===String(v.bevanda));
+}
+function pacchettoSceltaHtml(contesto){
+ const v=PVIEWS[contesto],d=v.d,o=d.offerta,f=(o.formule||[]).find(f=>f.codice===v.formula),bevande=pacchettoBevande(o,v.prodotto),chiuso=d.annullato||d.usate>0,dis=chiuso||v.inviando?"disabled":"";
+ return `<label for="pv_${contesto}_formula">Formula della colazione</label><select id="pv_${contesto}_formula" ${dis} onchange="pacchettoScegli('${contesto}','formula',this.value)"><option value="">Scegli una formula…</option>${(o.formule||[]).map(x=>`<option value="${esc(x.codice)}" ${x.codice===v.formula?"selected":""}>${esc(x.nome)}</option>`).join("")}</select>
+ <label for="pv_${contesto}_prodotto">Un solo prodotto</label><select id="pv_${contesto}_prodotto" ${dis||!f?"disabled":""} onchange="pacchettoScegli('${contesto}','prodotto',this.value)"><option value="">Scegli un prodotto…</option>${(f&&f.prodotti||[]).map(x=>`<option value="${esc(x.id)}" ${String(x.id)===String(v.prodotto)?"selected":""}>${esc(x.nome)}</option>`).join("")}</select>
+ <label for="pv_${contesto}_bevanda">Una sola bevanda</label><select id="pv_${contesto}_bevanda" ${dis||!v.prodotto?"disabled":""} onchange="pacchettoScegli('${contesto}','bevanda',this.value)"><option value="">Scegli una bevanda…</option>${bevande.map(x=>`<option value="${esc(x.id)}" ${String(x.id)===String(v.bevanda)?"selected":""}>${esc(x.nome)}${x.tipo==="calda"?" (calda)":x.tipo==="fredda"?" (fredda)":""}</option>`).join("")}</select>
+ ${v.prodotto&&String(v.prodotto)===String((o.vincoli||{}).parigina_prodotto_id)?`<p class="package-note"><b>La parigina comprende esclusivamente una bottiglina d’acqua da 33 cl.</b></p>`:""}
+ ${chiuso?"":`<button class="btn" id="pv_${contesto}_save" ${!pacchettoSceltaValida(v)||v.inviando?"disabled":""} onclick="${contesto==="scan"?"consegnaPacchetto()":"pacchettoSalvaScelta()"}">${v.inviando?"Attendi…":contesto==="scan"?"Conferma una consegna e scala una colazione":"Salva la scelta"}</button>`}`;
+}
+function pacchettoScegli(contesto,campo,valore){
+ const v=PVIEWS[contesto];if(!v||v.inviando||v.d.annullato||v.d.usate>0)return;
+ v[campo]=valore;
+ if(campo==="formula"){v.prodotto="";v.bevanda=""}
+ if(campo==="prodotto"&&!pacchettoBevande(v.d.offerta,v.prodotto).some(b=>String(b.id)===String(v.bevanda)))v.bevanda="";
+ const el=$("#pv_"+contesto+"_choice");if(el)el.innerHTML=pacchettoSceltaHtml(contesto);
+}
+function ospitePacchetto(d){
+ PVIEWS.guest=pacchettoVista(d);$("#ttl").textContent="La tua colazione";
+ const b=d.bar||{},chiuso=d.annullato||d.usate>0;
+ app.innerHTML=`<div class="card"><h2>Una colazione inclusa</h2><p>${esc(d.struttura)} · ${esc(b.bar_nome||"Ceraldi Caffè")}</p><div class="alert ${d.annullato?"bad":d.usate?"ok":""}"><b>${d.annullato?"QR annullato":d.usate?"Colazione già consumata":"QR valido per una sola colazione"}</b></div><p>Un prodotto e una sola bevanda a scelta. Puoi scegliere qui oppure direttamente con il personale del bar, mostrando il QR.</p>${chiuso?"":`<div id="pv_guest_choice">${pacchettoSceltaHtml("guest")}</div>`}${d.scelta?`<p class="package-note"><b>Scelta registrata:</b> ${esc(d.scelta.prodotto)} · ${esc(d.scelta.bevanda)}.</p>`:""}<div class="qr" id="pv_guest_qr"></div><p class="package-code" style="text-align:center">${esc(d.id)}</p><p class="package-note">Mostra questo QR al banco. Non servono account né tessera: il bar conferma la consegna e il sistema registra l’utilizzo.</p>${b.bar_indirizzo?`<p>${esc(b.bar_indirizzo)}</p>`:""}${b.bar_orari?`<p class="package-note">${esc(b.bar_orari)}</p>`:""}<button class="btn sec" data-pk-action="guest-refresh" data-pk-id="${esc(d.id)}">Aggiorna stato</button></div>${pacchettoOfferta(d.offerta)}`;
+ qr($("#pv_guest_qr"),linkOspite(d.id));
+}
+async function pacchettoSalvaScelta(){
+ const v=PVIEWS.guest;if(!v||v.inviando||!pacchettoSceltaValida(v))return;
+ v.inviando=true;$("#pv_guest_choice").innerHTML=pacchettoSceltaHtml("guest");
+ try{const d=await rpc("bb_pacchetto_scelta",{vid:v.d.id,pformula:v.formula,pprodotto:Number(v.prodotto),pbevanda:Number(v.bevanda)});if(!d)throw Error("Scelta non salvata");ospitePacchetto(d);toast("Scelta salvata. Mostra il QR al bar.")}
+ catch(e){toast(e.message);v.inviando=false;if($("#pv_guest_choice"))$("#pv_guest_choice").innerHTML=pacchettoSceltaHtml("guest")}
+}
 async function ospite(id){
  $("#ttl").textContent="☕ La tua colazione";loading();
  const d0=await rpc("bb_ospite",{vid:id||""}).catch(e=>({errore:e.message}));
- if(d0&&d0.errore){app.innerHTML=`<div class="card">${esc(d0.errore)}</div>`;return}
+ if(d0&&d0.errore){app.innerHTML=`<div class="card"><p>${esc(d0.errore)}</p><button class="btn sec" id="guest_retry">Riprova</button></div>`;$("#guest_retry").onclick=()=>ospite(id);return}
  if(!d0){app.innerHTML=`<div class="card">Codice non valido.</div>`;return}
+ if(d0.pacchetto_id)return ospitePacchetto(d0);
  const d=gNorm(d0),r=(d.richieste&&typeof d.richieste==="object")?d.richieste:{};
  G={d,req:{allergie:Array.isArray(r.allergie)?r.allergie:[],nota:typeof r.nota==="string"?r.nota:"",modifiche:[]},cart:{},cata:null,sub:"",q:"",form:null,sporco:false,giorno:d.oggi<d.data?d.data:(d.oggi<=fine(d)?d.oggi:fine(d)),panel:"home",saved:false};
  const b=d.bar||{},maps=b.bar_maps||"https://www.google.com/maps/search/?api=1&query="+encodeURIComponent((b.bar_nome||"Bar Pasticceria Ceraldi")+" "+(b.bar_indirizzo||"Napoli"));
@@ -914,7 +1049,7 @@ const ora=f=>{try{return new Date(String(f).replace(" ","T").replace(/\+00$/,"+0
 const pinStrict=()=>sess.p;
 let TIT=null;
 async function ordiniHotelTitolare(){try{const r=await fetch("/api/colazioni/ordini-prodotti",{credentials:"same-origin"});if(!r.ok)return[];const j=await r.json();return j.ordini||[]}catch(e){return[]}}
-const TABS=[["cruscotto","Cruscotto"],["produzione","Produzione"],["scan","Scanner"],["ordini","Ordini colazioni"],["forniture","Ordini prodotti"],["strutture","Strutture"],["prodotti","Prodotti ordinabili dall’hotel"],["fatture","Fatture"],["menu","Menù"],["impostazioni","Impostazioni"]];
+const TABS=[["cruscotto","Cruscotto"],["pacchetti","Pacchetti da €4"],["produzione","Produzione"],["scan","Scanner"],["ordini","Ordini colazioni"],["forniture","Ordini prodotti"],["strutture","Strutture"],["prodotti","Prodotti ordinabili dall’hotel"],["fatture","Fatture"],["menu","Menù"],["impostazioni","Impostazioni"]];
 const supTxt=()=>eur(+String((TIT.config||{}).supplemento_tavolo||"1.5").replace(",","."));
 const fasceMenu=()=>Object.keys(TIT.menu).map(Number).sort((a,b)=>a-b);
 const barNome=()=>TIT.bar.bar_nome||"Bar Pasticceria Ceraldi";
@@ -924,14 +1059,16 @@ async function tit(sec,arg){
  TIT.richieste_pin=await rpc("bb_tit_richieste_pin",{p:sess.p}).catch(()=>[]);
  TIT.fatture=await rpc("bb_tit_fatture",{p:sess.p}).catch(()=>[]);
  TIT.ordini_hotel=await ordiniHotelTitolare();
- const gestita=arg&&["struttura","invito","recensioni","prodotti"].includes(sec)?TIT.strutture.find(s=>s.id===arg):null;
+ const gestita=arg&&["struttura","invito","recensioni","prodotti","pacchetti"].includes(sec)?TIT.strutture.find(s=>s.id===arg):null;
  $("#ttl").textContent="🧁 "+barNome()+(gestita?" · gestisci "+gestita.nome:"");
- const fn={cruscotto:pCruscotto,produzione:pProduzione,scan:pScan,ordini:pOrdini,forniture:pForniture,strutture:pStrutture,struttura:pStruttura,invita:pInvita,invito:pInvito,recensioni:pRecensioni,prodotti:pProdottiHotel,fatture:pFatture,menu:pMenu,impostazioni:pImpostazioni}[sec]||pCruscotto;
+ const fn={cruscotto:pCruscotto,pacchetti:pPacchetti,produzione:pProduzione,scan:pScan,ordini:pOrdini,forniture:pForniture,strutture:pStrutture,struttura:pStruttura,invita:pInvita,invito:pInvito,recensioni:pRecensioni,prodotti:pProdottiHotel,fatture:pFatture,menu:pMenu,impostazioni:pImpostazioni}[sec]||pCruscotto;
  const nf=(TIT.fatture||[]).filter(f=>f.stato==="da_emettere"&&!f.demo).length;
  const no=(TIT.ordini_hotel||[]).filter(o=>!["consegnato","annullato"].includes(o.stato)).length;
  const contesto=gestita?`<div class="owner-context"><b>SEI NELL’AREA BAR CERALDI</b><span>Stai gestendo la struttura <strong>${esc(gestita.nome)}</strong>. Non sei entrato come albergatore.</span></div>`:"";
  app.innerHTML=tabsHtml(TABS.map(t=>t[0]==="fatture"&&nf?[t[0],t[1]+" ("+nf+")"]:t[0]==="forniture"&&no?[t[0],t[1]+" ("+no+")"]:t),["struttura","invita","invito","recensioni"].includes(sec)?"strutture":sec,"titolare")+contesto+fn(arg);
  (fn.after||(()=>{}))(arg)}
+function pPacchetti(){return `<div id="package_area"><p class="mute">Caricamento pacchetti…</p></div>`}
+pPacchetti.after=id=>pacchettiCarica("tit",id||null);
 const consegnato=vs=>vs.reduce((a,v)=>a+v.usate*v.fascia,0);
 const attivi=vs=>vs.filter(v=>!v.annullato);
 const copre=(v,D)=>v.data<=D&&D<=fine(v);
@@ -955,9 +1092,9 @@ function pCruscotto(){
  return `${oh.length?`<div class="alert ok"><b>🛒 ${oh.length} ordin${oh.length>1?"i":"e"} prodotti dagli hotel da lavorare</b> · ${eur(ohDue)} da incassare <button class="btn sm" onclick="go('#/titolare/forniture')">Apri</button></div>`:""}${nfc.length?`<div class="alert"><b>🧾 ${nfc.length} fattur${nfc.length>1?"e":"a"} da emettere</b> (${eur(nfc.reduce((a,f)=>a+ +f.importo,0))}) <button class="btn sm" onclick="go('#/titolare/fatture')">Apri</button></div>`:""}${(TIT.richieste_pin||[]).map(r=>`<div class="alert"><b>🔑 ${esc(r.struttura)}</b> ha perso il PIN e il codice di recupero${r.telefono?` · ${esc(r.telefono)}`:""}${r.nota?` · «${esc(r.nota)}»`:""}<div class="row" style="margin-top:6px;justify-content:flex-start;gap:6px"><button class="btn sm" onclick="richiestaInvito('${r.struttura_id}','${r.id}')">Invia nuovo link</button><button class="btn sm sec" onclick="richiestaChiudi('${r.id}')">Ignora</button></div></div>`).join("")}
  ${TIT.attesa.length?`<div class="alert"><b>💶 Ricariche da confermare</b>${TIT.attesa.map(a=>`<div class="row" style="margin-top:6px"><span>${esc(a.nome)} · ${eur(a.importo)}</span><button class="btn sm" onclick="conferma('${a.id}')">Incassata</button></div>`).join("")}</div>`:""}
  ${(()=>{const n=day.filter(v=>hasReq(v.richieste)||hasExtra(v,oggi)).length;return n?`<div class="alert"><b>⚠️ ${n} colazioni di oggi con richieste o extra</b> <button class="btn sm" onclick="go('#/titolare/produzione')">Vedi</button></div>`:""})()}
- <div class="kpis"><div class="card"><div class="mute">Da preparare oggi</div><div class="k">${daPrep}</div></div>
- <div class="card"><div class="mute">Consegnate oggi</div><div class="k">${fatte}</div></div>
- <div class="card"><div class="mute">Consegnato nel mese</div><div class="k">${eur(consegnato(mese))}</div></div>
+ <div id="package_summary"><p class="mute">Caricamento conteggio pacchetti…</p></div><h3>Colazioni prenotate per soggiorno</h3><div class="kpis"><div class="card"><div class="mute">Soggiorni · da preparare oggi</div><div class="k">${daPrep}</div></div>
+ <div class="card"><div class="mute">Soggiorni · consegnate oggi</div><div class="k">${fatte}</div></div>
+ <div class="card"><div class="mute">Soggiorni · consegnato nel mese</div><div class="k">${eur(consegnato(mese))}</div></div>
  <div class="card"><div class="mute">Borsellini (totale)</div><div class="k">${eur(saldo)}</div></div></div>
  <div class="card"><h3>Prossimi 7 giorni · colazioni prenotate</h3><div class="bars">${giorni.map(g=>`<div><b>${g.n}</b><i style="height:${Math.round(g.n/max*70)}px"></i>${dmy(g.d).slice(0,5)}</div>`).join("")}</div></div>
  <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(260px,1fr))">
@@ -965,7 +1102,7 @@ function pCruscotto(){
  <div class="card"><h3>🚢 Navi oggi</h3><div id="ex_n" class="mute">Caricamento…</div></div></div>
  <div class="card"><h3>✊ Scioperi nei prossimi 14 giorni</h3><div id="ex_s" class="mute">Caricamento…</div></div>
  <button class="btn" onclick="go('#/titolare/produzione')">Vai alla produzione di oggi →</button>`}
-pCruscotto.after=()=>loadExt().then(E=>{if($("#ex_n")){$("#ex_n").innerHTML=naviHtml(E);$("#ex_s").innerHTML=scioperiHtml(E)}});
+pCruscotto.after=()=>{pacchettiRiepilogo("tit");loadExt().then(E=>{if($("#ex_n")){$("#ex_n").innerHTML=naviHtml(E);$("#ex_s").innerHTML=scioperiHtml(E)}})};
 async function richiestaInvito(sid,rid){if(await run("bb_tit_invito_rigenera",{p:sess.p,sid})){await run("bb_tit_richiesta_chiudi",{p:sess.p,pid:rid});go("#/titolare/invito/"+sid)}}
 async function richiestaChiudi(rid){if(await run("bb_tit_richiesta_chiudi",{p:sess.p,pid:rid})!==undefined)render()}
 /* --- Fatture da emettere (a mano da SumUp Fatture: nessuna API pubblica) --- */
@@ -1029,18 +1166,42 @@ function stampaProd(){const w=window.open("","_blank");w.document.write(`<title>
 
 /* --- Scanner --- */
 function pScan(){return `<div class="card"><label>Codice voucher</label><input id="sc" placeholder="es. AB12CD34EF" autocapitalize="characters">
- <button class="btn" onclick="doScan($('#sc').value)">Verifica e consegna</button>
+ <button class="btn" id="scan_verify" onclick="doScan($('#sc').value)">Verifica QR</button>
  <button class="btn sec" onclick="camera()">📷 Scansiona con fotocamera</button><video id="vid" playsinline style="width:100%;margin-top:10px;border-radius:12px" hidden></video><div id="scr"></div></div>
- <p class="hint">Consegna una colazione alla volta: per una camera con 2 ospiti scansiona due volte. Un voucher su più giorni vale ogni giorno fino a tanti ritiri quanti sono gli ospiti; il sistema blocca voucher esauriti, scaduti, non ancora validi o annullati.</p>`}
+ <p class="hint">I QR dei pacchetti da €4 valgono una sola colazione: verifica le scelte e conferma la consegna. Per i voucher soggiorno, la verifica consegna una colazione alla volta; con 2 ospiti scansiona due volte. Il sistema blocca voucher esauriti, scaduti, non ancora validi o annullati.</p>`}
 pScan.after=()=>{$("#sc").onkeydown=e=>{if(e.key==="Enter")doScan($("#sc").value)}};
 /* accetta il codice oppure il link completo della pagina ospite (e' quello stampato nel QR) */
 const codiceDaScan=c=>{c=String(c||"").trim();const m=c.match(/#\/ospite\/([A-Za-z0-9]+)/i);return m?m[1]:c};
+let SCANBUSY=false;
 async function doScan(c){
- c=codiceDaScan(c);if(!c)return;
- const r=await run("bb_tit_riscatta",{p:sess.p,vid:c});if(!r||r===true)return;const v=r.voucher;
+ c=codiceDaScan(c);if(!c||SCANBUSY)return;
+ SCANBUSY=true;const bottone=$("#scan_verify");if(bottone)bottone.disabled=true;
+ try{
+  const d=await rpc("bb_tit_pacchetto_voucher",{p:sess.p,vid:c});
+  if(d){PVIEWS.scan=pacchettoVista(d);pacchettoScanner();return}
+  const r=await run("bb_tit_riscatta",{p:sess.p,vid:c});if(r&&r!==true)scanEsito(r);
+ }catch(e){toast(e.message||"Impossibile verificare il QR")}
+ finally{SCANBUSY=false;if(bottone)bottone.disabled=false}
+}
+function pacchettoScanner(){
+ const v=PVIEWS.scan,d=v.d,chiuso=d.annullato||d.usate>0;
+ $("#scr").innerHTML=`<div class="card"><h3>Una colazione da pacchetto</h3><p>${esc(d.struttura)} · <b>${esc(d.id)}</b></p><div class="alert ${d.annullato?"bad":d.usate?"ok":""}"><b>${d.annullato?"QR annullato: non consegnare":d.usate?"QR già consumato: non consegnare di nuovo":"QR monouso: una sola colazione"}</b></div>${chiuso?d.scelta?`<p>${esc(d.scelta.prodotto)} · ${esc(d.scelta.bevanda)}</p>`:"":`<p>Conferma con l’ospite un prodotto e una sola bevanda. La parigina è abbinabile soltanto all’acqua da 33 cl.</p><div id="pv_scan_choice">${pacchettoSceltaHtml("scan")}</div>`}</div>`;
+}
+async function consegnaPacchetto(){
+ const v=PVIEWS.scan;if(!v||v.inviando||SCANBUSY||!pacchettoSceltaValida(v)||v.d.annullato||v.d.usate>0)return;
+ v.inviando=true;SCANBUSY=true;const bottone=$("#scan_verify");if(bottone)bottone.disabled=true;$("#pv_scan_choice").innerHTML=pacchettoSceltaHtml("scan");
+ try{
+  const r=await rpc("bb_tit_pacchetto_consegna",{p:sess.p,vid:v.d.id,pformula:v.formula,pprodotto:Number(v.prodotto),pbevanda:Number(v.bevanda)});if(!r)throw Error("Esito consegna non disponibile: verifica il QR prima di riprovare");
+  scanEsito(r);PVIEWS.scan=null;
+ }catch(e){toast(e.message||"Esito da verificare: controlla lo stato del QR prima di riprovare");v.inviando=false;if($("#pv_scan_choice"))$("#pv_scan_choice").innerHTML=pacchettoSceltaHtml("scan")}
+ finally{SCANBUSY=false;if(bottone)bottone.disabled=false}
+}
+function scanEsito(r){
+ const v=r.voucher;
  const voci=v&&Array.isArray(v.voci)?v.voci:[],eo=v&&v.extra_oggi&&typeof v.extra_oggi==="object"?v.extra_oggi:null,altri=v?(+v.extra_da_pagare||0)-(eo&&!eo.pagato?+eo.totale||0:0):0;
- $("#scr").innerHTML=`<div class="alert ${r.ok?"ok":"bad"}"><b>${r.ok?"✅":"❌"} ${esc(r.msg)}</b>${v?`<br>${esc(v.struttura)} · ${esc(descV(v,false))}${v.colazione?" · "+esc(v.colazione):""}<br>${dRange(v)} · ritirate ${v.usate}/${v.qta}
- <br>Da preparare: ${voci.length?voci.map(x=>(x.qta>1?x.qta+"× ":"")+esc(x.nome)).join(" + "):esc(v.menu||"")}`:""}</div>${v?reqHtml(v,TIT.oggi):""}
+ const p=r.pacchetto||v&&v.pacchetto;
+ $("#scr").innerHTML=`<div class="alert ${r.ok?"ok":"bad"}"><b>${esc(r.msg)}</b>${v?`<br>${esc(v.struttura)}${v.pacchetto_id?"":" · "+esc(descV(v,false))}${v.colazione?" · "+esc(v.colazione):""}<br>${v.pacchetto_id?"QR monouso":dRange(v)} · ritirate ${v.usate}/${v.qta}
+ <br>Da preparare: ${voci.length?voci.map(x=>(x.qta>1?x.qta+"× ":"")+esc(x.nome)).join(" · "):esc(v.menu||"")}`:""}</div>${p?pacchettoContatori(p):""}${v&&!v.pacchetto_id?reqHtml(v,TIT.oggi):""}
  ${eo&&eo.totale>0&&!eo.pagato?`<button class="btn" onclick="incassaExtra('${v.id}')">Incassato ${eur(eo.totale)} di extra di oggi</button>`:""}
  ${altri>0?`<p class="mute">Altri extra da incassare in altri giorni: ${eur(altri)}.</p>`:""}`;$("#sc").value=""}
 async function incassaExtra(id){const r=await run("bb_tit_extra_incassato",{p:sess.p,vid:id,pgiorno:TIT.oggi});if(r&&r!==true){toast("Extra incassati");$("#scr").innerHTML+=`<div class="alert ok">Extra del ${dmy(r.giorno).slice(0,5)} incassati: ${eur(r.incassato)}.</div>`}}
@@ -1137,7 +1298,7 @@ function pStruttura(id){
  <div class="row"><h2 style="margin:4px 0">${esc(s.nome)}</h2>${s.demo?`<span class="pill p-warn">DEMO</span>`:""}${s.disattivata_il?`<span class="pill p-bad">disattivata</span>`:""}</div>
  ${s.disattivata_il?`<div class="alert bad"><b>Struttura disattivata</b> il ${new Date(s.disattivata_il).toLocaleDateString("it-IT")}${s.disattivata_motivo?" · "+esc(s.disattivata_motivo):""}. L'albergatore non entra, il link recensioni è spento, borsellino e storico restano. <button class="btn sm" onclick="invRigenera('${id}')">Riattiva con un nuovo invito</button></div>`:""}
  <div class="kpis"><div class="card"><div class="mute">Saldo borsellino</div><div class="k">${eur(s.saldo)}</div></div><div class="card"><div class="mute">Ordini</div><div class="k">${attivi(vs).length}</div></div><div class="card"><div class="mute">Consegnato</div><div class="k">${eur(consegnato(attivi(vs)))}</div></div></div>
- <div class="card"><h3>Azioni</h3><button class="btn sm" onclick="ricaricaManuale('${id}')">+ Registra ricarica</button> <button class="btn sm sec" onclick="modificaStruttura('${id}')">Modifica dati</button> <button class="btn sm sec" onclick="go('#/titolare/prodotti/${id}')">Prodotti e prezzi</button> <button class="btn sm sec" onclick="go('#/titolare/recensioni/${id}')">Inviti recensione</button>${s.disattivata_il?"":` <button class="btn sm bad" onclick="disattivaStruttura('${id}')">Disattiva struttura</button>`}
+ <div class="card"><h3>Azioni</h3><button class="btn sm" onclick="ricaricaManuale('${id}')">+ Registra ricarica</button> <button class="btn sm sec" onclick="go('#/titolare/pacchetti/${id}')">Pacchetti e QR da €4</button> <button class="btn sm sec" onclick="modificaStruttura('${id}')">Modifica dati</button> <button class="btn sm sec" onclick="go('#/titolare/prodotti/${id}')">Prodotti e prezzi</button> <button class="btn sm sec" onclick="go('#/titolare/recensioni/${id}')">Inviti recensione</button>${s.disattivata_il?"":` <button class="btn sm bad" onclick="disattivaStruttura('${id}')">Disattiva struttura</button>`}
  <p class="mute" style="margin:8px 0 0">Il PIN lo sceglie l'albergatore: se lo perde usa il suo codice di recupero, oppure gli mandi un nuovo invito.</p></div>
  <div class="card"><h3>☕ Banco o 🪑 Tavolo per ogni camera</h3><p class="mute">Nell’elenco Camere scegli il servizio per ciascuna camera. In fase di prenotazione l’albergatore può confermare o cambiare la scelta: solo le righe impostate su Tavolo aumentano subito di ${supTxt()} a persona per ogni colazione.</p></div>
  <div class="card"><h3>🥐 Colazioni offerte a questo hotel</h3><p class="mute">Solo queste colazioni compariranno nella pagina dell'albergatore, con i prezzi che stabilisci qui.</p><div id="ce2"></div></div>

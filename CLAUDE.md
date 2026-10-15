@@ -4650,6 +4650,24 @@ storno.
 
 ---
 
+## Pacchetti di colazioni da €4 con QR monouso
+
+La convenzione `COLAZIONE_BB_4_20261015` è distinta dai soggiorni per camera e giorni. Il titolare abilita esplicitamente l'offerta per la singola struttura; la migrazione non abilita automaticamente gli alberghi esistenti. Gli ospiti usano il link pubblico del singolo buono senza account né tessera cliente.
+
+L'acquisto di N colazioni addebita una sola volta €4 × N dal saldo confermato del wallet e crea, nella stessa transazione, un pacchetto e N voucher monouso. Non registra un incasso nuovo e non usa ricariche in attesa. La coppia struttura/identificativo richiesta rende il retry idempotente; il browser conserva le richieste con esito incerto anche dopo un aggiornamento pagina o una sessione scaduta.
+
+I codici SQLSTATE `PBB01` (catalogo), `PBB02` (saldo) e `PBB03` (abilitazione), restituiti dall'acquisto dopo il controllo idempotente, provano che quella richiesta non ha un acquisto registrato: anche un retry può quindi liberare il modulo per un nuovo tentativo. Gli errori di autenticazione o trasporto conservano invece l'identificativo incerto. L'ingresso pubblico `bb_ospite` distingue soggiorni e pacchetti con una sola quota di accesso; i riepiloghi soggiorno escludono `pacchetto_id` già nella query SQL, prima di aggregare e serializzare i voucher.
+
+`bb_pacchetti` conserva quantità acquistata, movimento e offerta dell'acquisto. I consumi restano esclusivamente in `bb_vouchers.usate`: acquistate = N, consumate = somma degli utilizzi, da consumare = N meno consumate. Bar e albergatore leggono gli stessi conteggi. Ogni QR consente una sola consegna; `bb_tit_pacchetto_consegna` valida e salva la scelta e richiama il riscatto canonico nella medesima transazione con lock sul voucher. Lo scanner autenticato non usa la quota dei collegamenti pubblici degli ospiti.
+
+L'offerta comprende un prodotto e una sola bevanda tra le alternative esplicite. La Parigina è abbinabile esclusivamente all'acqua minerale da 33 cl. Il prezzo di convenzione di €4 è stato concordato dal titolare: non è un ripiego sul prezzo al tavolo quando il prezzo banco è assente. Il catalogo Menu fornisce ID e nomi; ogni acquisto conserva l'offerta del momento. Disabilitare nuovi acquisti o nascondere un prodotto non cancella né modifica i QR già acquistati.
+
+I pacchetti non hanno una scadenza commerciale aggiunta automaticamente e non generano prenotazioni, notifiche o calendari di produzione dei soggiorni. Gli ingressi legacy di annullo e modifica dei soggiorni non possono rimborsare o modificare questi buoni. Un rimborso o una sostituzione di un pacchetto richiede un flusso esplicito dedicato; non simularlo con ricariche o nuovi QR.
+
+Migrazioni `20261015140320_colazioni_pacchetti_qr_monouso.sql` e `20261015143051_colazioni_pacchetti_letture_e_ripresa.sql`, applicate al database operativo il 15/10/2026; nessuna struttura abilitata né pacchetto acquistato dalle migrazioni. Collaudo isolato: `npm ci --prefix tests/colazioni --ignore-scripts --no-audit --no-fund` e `npm test --prefix tests/colazioni`. I test PGlite esercitano il SQL reale, transazioni, vincoli e autorizzazioni; essendo una sola connessione non certificano la contesa fra processi PostgreSQL distinti. La suite nativa opzionale in `tests/colazioni/test_pacchetti_concorrenza_postgres.py` copre quel caso su un database locale temporaneo.
+
+---
+
 # 80. Fatture B&B
 
 Non automatizzare emissione fiscale con API inesistenti.
