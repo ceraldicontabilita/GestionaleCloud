@@ -1,5 +1,6 @@
 import asyncio
 import base64
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock
 
 from mongomock_motor import AsyncMongoMockClient
@@ -71,6 +72,16 @@ def test_data_emissione_del_pdf_salvata_come_data_verbale(monkeypatch):
 
 def test_pec_in_inbox_importa_un_verbale_e_aggancia_entrambi_originali(monkeypatch):
     from app.services import verbali_document_import as writer, pagopa_receipts
+    from app.services import verbali_importo_atteso
+
+    class DataNotifica(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            valore = cls(2026, 10, 9, 12, 0, tzinfo=timezone.utc)
+            return valore.astimezone(tz) if tz else valore.replace(tzinfo=None)
+
+    # L'importazione viene verificata nel giorno della PEC, entro i cinque giorni.
+    monkeypatch.setattr(verbali_importo_atteso, "datetime", DataNotifica)
     db = AsyncMongoMockClient().db
     monkeypatch.setattr(writer, "_extract_text", lambda b: b.decode())
     monkeypatch.setattr(pagopa_receipts, "parse_receipt_pdf", lambda *a, **kw: {})
