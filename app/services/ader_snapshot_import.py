@@ -582,7 +582,8 @@ async def apply_ader_archive_plan(*, db, plan: dict[str, Any], actor: str | None
     """Applica un piano già validato; ogni scrittura è idempotente e append-only."""
     from app.db_collections import (
         COLL_ADER_ARCHIVE_IMPORTS, COLL_ADER_POSITION_SNAPSHOTS,
-        COLL_TAX_COLLECTION_CLAIMS, COLL_TAX_RATE_PLANS, COLL_TAX_SETTLEMENT_APPLICATIONS,
+        COLL_FISCAL_DOCUMENTS, COLL_TAX_COLLECTION_CLAIMS, COLL_TAX_RATE_PLANS,
+        COLL_TAX_SETTLEMENT_APPLICATIONS,
     )
 
     now = _now_iso()
@@ -601,8 +602,21 @@ async def apply_ader_archive_plan(*, db, plan: dict[str, Any], actor: str | None
         document_refs[item["filename"]] = result
 
     async def link_source(*, entity_type: str, entity_id: str, source_filename: str,
-                          relation_type: str = "source_document") -> None:
-        reference = document_refs[source_filename]
+                          relation_type: str = "source_document",
+                          source_document_id: str | None = None) -> None:
+        reference = document_refs.get(source_filename)
+        if reference is None and source_document_id:
+            fiscal_document = await db[COLL_FISCAL_DOCUMENTS].find_one(
+                {"company_id": plan["company_id"], "id": source_document_id},
+                {"_id": 0, "id": 1, "current_version_id": 1},
+            )
+            if fiscal_document:
+                reference = {
+                    "document_id": fiscal_document["id"],
+                    "version_id": fiscal_document.get("current_version_id"),
+                }
+        if reference is None:
+            return
         evidence = normalize_evidence(
             document_id=reference["document_id"],
             version_id=reference["version_id"],
@@ -675,7 +689,40 @@ async def apply_ader_archive_plan(*, db, plan: dict[str, Any], actor: str | None
         module = dict(original)
         source = document_refs[module["source_filename"]]
         module["source_document_id"] = source["document_id"]
+        module["source_fiscal_document_registered"] = True
         modules_by_plan.setdefault(module.get("plan_reference") or "", []).append(module)
+
+    # Un modulo puo' arrivare prima o dopo la lettera di accoglimento. Si
+    # riusa soltanto il riferimento AR esplicito letto nel PDF; mai importo o
+    # scadenza. Gli archivi scritti dalle versioni precedenti non avevano il
+    # flag di registrazione e non vengono promossi a collegamenti apribili.
+    stored_archives = await db[COLL_ADER_ARCHIVE_IMPORTS].find(
+        {"company_id": plan["company_id"]}, {"_id": 0, "payment_modules": 1},
+    ).to_list(5000)
+    available_modules_by_plan: dict[str, list[dict[str, Any]]] = {}
+    for archive in stored_archives:
+        for module in archive.get("payment_modules") or []:
+            if module.get("source_fiscal_document_registered") and module.get("plan_reference"):
+                available_modules_by_plan.setdefault(module["plan_reference"], []).append(module)
+    for reference, modules in modules_by_plan.items():
+        available_modules_by_plan.setdefault(reference, []).extend(modules)
+
+    def merge_modules(*groups: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        merged: list[dict[str, Any]] = []
+        seen: set[tuple[Any, ...]] = set()
+        for group in groups:
+            for module in group or []:
+                key = (("document_number", module.get("document_number"),
+                        tuple(module.get("installment_numbers") or []))
+                       if module.get("document_number") else
+                       ("source_document", module.get("source_document_id"),
+                        tuple(module.get("installment_numbers") or [])))
+                if key in seen:
+                    continue
+                seen.add(key)
+                merged.append(module)
+        return merged
+
     inserted_plans = 0
     for collection, items in ((COLL_TAX_RATE_PLANS, plan["rate_plans"]),
                               (COLL_TAX_SETTLEMENT_APPLICATIONS, plan["settlements"])):
@@ -683,7 +730,10 @@ async def apply_ader_archive_plan(*, db, plan: dict[str, Any], actor: str | None
             item = dict(original)
             item["source_document_id"] = document_refs[item["source_filename"]]["document_id"]
             if collection == COLL_TAX_RATE_PLANS:
-                item["payment_modules"] = modules_by_plan.get(item.get("plan_reference") or "", [])
+                item["payment_modules"] = merge_modules(
+                    available_modules_by_plan.get(item.get("plan_reference") or "", []),
+                )
+                item["source_document_ids"] = [item["source_document_id"]]
             item.update({"created_at": now, "created_by": actor})
             scrittura = await db[collection].update_one(
                 {"company_id": item["company_id"], "id": item["id"]},
@@ -691,6 +741,18 @@ async def apply_ader_archive_plan(*, db, plan: dict[str, Any], actor: str | None
             )
             if collection == COLL_TAX_RATE_PLANS:
                 inserted_plans += int(getattr(scrittura, "upserted_id", None) is not None)
+                stored_plan = await db[collection].find_one(
+                    {"company_id": item["company_id"], "id": item["id"]}, {"_id": 0},
+                ) or item
+                merged_modules = merge_modules(
+                    stored_plan.get("payment_modules") or [], item.get("payment_modules") or [],
+                )
+                await db[collection].update_one(
+                    {"company_id": item["company_id"], "id": item["id"]},
+                    {"$set": {"payment_modules": merged_modules, "updated_at": now},
+                     "$addToSet": {"source_document_ids": item["source_document_id"]}},
+                )
+                item["payment_modules"] = merged_modules
             entity_type = ("tax_rate_plan" if collection == COLL_TAX_RATE_PLANS
                            else "tax_settlement_application")
             await link_source(entity_type=entity_type, entity_id=item["id"],
@@ -700,7 +762,8 @@ async def apply_ader_archive_plan(*, db, plan: dict[str, Any], actor: str | None
                 for module in item["payment_modules"]:
                     await link_source(entity_type=entity_type, entity_id=item["id"],
                                       source_filename=module["source_filename"],
-                                      relation_type="payment_module")
+                                      relation_type="payment_module",
+                                      source_document_id=module.get("source_document_id"))
                 for reference in item.get("document_references", []):
                     document_number = reference.get("document_number")
                     if not document_number:
@@ -714,17 +777,42 @@ async def apply_ader_archive_plan(*, db, plan: dict[str, Any], actor: str | None
                 await link_source(entity_type="tax_collection_claim", entity_id=claim_id,
                                   source_filename=item["source_filename"],
                                   relation_type="settlement_source")
+
+    linked_payment_modules = 0
+    for reference, modules in modules_by_plan.items():
+        if not reference:
+            continue
+        existing_plan = await db[COLL_TAX_RATE_PLANS].find_one(
+            {"company_id": plan["company_id"], "plan_reference": reference}, {"_id": 0},
+        )
+        if not existing_plan:
+            continue
+        merged_modules = merge_modules(existing_plan.get("payment_modules") or [], modules)
+        await db[COLL_TAX_RATE_PLANS].update_one(
+            {"company_id": plan["company_id"], "id": existing_plan["id"]},
+            {"$set": {"payment_modules": merged_modules, "updated_at": now}},
+        )
+        for module in modules:
+            await link_source(
+                entity_type="tax_rate_plan", entity_id=existing_plan["id"],
+                source_filename=module["source_filename"], relation_type="payment_module",
+            )
+            linked_payment_modules += 1
     archive_record = {key: value for key, value in plan.items()
-                      if key not in {"analytics", "rate_plans", "settlements", "pdfs"}}
+                      if key not in {"analytics", "rate_plans", "settlements", "pdfs", "payment_modules"}}
     archive_record.update({"created_at": now, "created_by": actor})
+    persisted_modules = [module for modules in modules_by_plan.values() for module in modules]
     await db[COLL_ADER_ARCHIVE_IMPORTS].update_one(
         {"company_id": plan["company_id"], "id": plan["id"]},
-        {"$setOnInsert": archive_record}, upsert=True,
+        {"$setOnInsert": archive_record,
+         "$set": {"payment_modules": persisted_modules, "updated_at": now}}, upsert=True,
     )
     return {"archive_id": plan["id"], "inserted_snapshots": inserted,
             "existing_snapshots": len(plan["analytics"]) - inserted,
             "inserted_rate_plans": inserted_plans,
             "existing_rate_plans": len(plan["rate_plans"]) - inserted_plans,
+            "linked_payment_modules": linked_payment_modules,
+            "unlinked_payment_modules": len(plan["payment_modules"]) - linked_payment_modules,
             "analytic_count": len(plan["analytics"]), "pdf_count": len(plan["pdfs"]),
             "documents": {name: {k: ref.get(k) for k in ("document_id", "version_id", "status")}
                           for name, ref in document_refs.items()}}
@@ -771,6 +859,7 @@ async def _deposita_rate_attese(db, plan_item: dict[str, Any], *, now: str) -> i
 
 TIPO_PIANO = "ader_piano_rateizzazione"
 TIPO_DETTAGLIO = "ader_dettaglio_tributi"
+TIPO_MODULO_PAGAMENTO = "ader_modulo_f24_rateizzazione"
 LAYOUT_DETTAGLIO = "PORTAL_DETAIL_PRINT"
 _RE_NUMERO_DOCUMENTO = re.compile(r"Dati documento\s+(\d{20})", re.IGNORECASE)
 
@@ -793,6 +882,12 @@ def riconosci(testo_compatto: str) -> str | None:
             "AGENZIA DELLE ENTRATE-RISCOSSIONE" in t or "AGENZIA DELLE ENTRATE RISCOSSIONE" in t
             or "EQUITALIA" in t):
         return TIPO_PIANO
+    if (
+        "DOCUMENTO N." in t
+        and "ISTANZA DI RATEIZZAZIONE N." in t
+        and re.search(r"\b\d{1,2}[°º]?\s*RATA\s+ENTRO IL\b", t)
+    ):
+        return TIPO_MODULO_PAGAMENTO
     if "AREA RISERVATA - CITTADINI E IMPRESE" in t and "DETTAGLIO TRIBUTI" in t and "DATI DOCUMENTO" in t:
         return TIPO_DETTAGLIO
     return None
@@ -1100,6 +1195,13 @@ async def archivia_documento_ader(db, *, filename: str, content: bytes, testo: s
             raise ValueError(f"Dettaglio tributi di un altro contribuente ({riga['company_id']})")
         plan.update({"analytics": [riga], "analytic_count": 1, "snapshot_date": riga["snapshot_date"],
                      "counts": {riga["calculated_business_status"]: 1}})
+    elif tipo == TIPO_MODULO_PAGAMENTO:
+        modulo = parse_payment_module(
+            content=content, filename=filename, company_id=company_id, dataset_sha256=sha,
+        )
+        if not modulo.get("plan_reference"):
+            raise ValueError("Riferimento del piano AdeR non leggibile nel modulo F24")
+        plan.update({"payment_modules": [modulo], "snapshot_date": None})
     else:
         noti = await _numeri_documento_noti(db, company_id)
         piano = parse_rate_plan(content=content, filename=filename, company_id=company_id,
@@ -1115,7 +1217,11 @@ async def archivia_documento_ader(db, *, filename: str, content: bytes, testo: s
         "duplicate": (
             bool(esito.get("existing_snapshots"))
             if tipo in {TIPO_ANALITICA, TIPO_DETTAGLIO}
-            else bool(esito.get("existing_rate_plans"))
+            else (
+                documento.get("status") == "duplicate"
+                if tipo == TIPO_MODULO_PAGAMENTO
+                else bool(esito.get("existing_rate_plans"))
+            )
         ),
         "fiscal_document_id": documento.get("document_id"),
     }
@@ -1135,6 +1241,20 @@ async def archivia_documento_ader(db, *, filename: str, content: bytes, testo: s
             "document_number", "document_type", "creditor", "notification_date",
             "net_payable_amount", "calculated_business_status", "snapshot_date",
         )}
+    elif tipo == TIPO_MODULO_PAGAMENTO:
+        modulo = plan["payment_modules"][0]
+        collegato = bool(esito.get("linked_payment_modules"))
+        risultato["message"] = (
+            f"Modulo F24 AdeR del piano {modulo['plan_reference']} archiviato: "
+            + ("collegamento verificato sul riferimento del piano" if collegato
+               else "piano non ancora presente; collegamento lasciato in attesa")
+            + ". Il modulo predisposto non prova il pagamento."
+        )
+        risultato["data"] = {key: modulo.get(key) for key in (
+            "document_number", "plan_reference", "installment_numbers", "installments",
+            "payment_evidence",
+        )}
+        risultato["piani_collegati"] = esito.get("linked_payment_modules", 0)
     else:
         piano = plan["rate_plans"][0]
         risultato["message"] = (

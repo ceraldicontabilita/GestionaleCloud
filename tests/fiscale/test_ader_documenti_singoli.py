@@ -298,3 +298,47 @@ def test_un_dettaglio_di_un_altro_contribuente_si_rifiuta(monkeypatch):
     db = ClientArchivioMemoria()["ader_altro"]
     with pytest.raises(ValueError, match="altro contribuente"):
         asyncio.run(ader.archivia_documento_ader(db, filename="s.pdf", content=_pdf(_dettaglio()), testo=_dettaglio()))
+
+
+def test_modulo_f24_singolo_si_collega_solo_al_riferimento_esatto_del_piano(monkeypatch):
+    from app.config import settings
+    from app.db_collections import COLL_TAX_RATE_PLANS
+
+    monkeypatch.setattr(settings, "FISCAL_COMPANY_ID", SOCIETA)
+    db = ClientArchivioMemoria()["ader_modulo_f24_singolo"]
+    modulo = (
+        "AGENZIA DELLE ENTRATE-RISCOSSIONE DOCUMENTO N. 07198308127062530701 "
+        "ISTANZA DI RATEIZZAZIONE N. AR071 - 904285 "
+        "1° RATA entro il 13/10/2025 Euro 644,11"
+    )
+    modulo_altro = modulo.replace("AR071 - 904285", "AR071 - 999999")
+
+    async def scenario():
+        # Il modulo puo' arrivare prima della lettera: resta registrato senza
+        # essere forzato su un piano simile per data o importo.
+        prima = await ader.archivia_documento_ader(
+            db, filename="F24_rata_1.pdf", content=_pdf(modulo), testo=modulo,
+            source_context={"email_account": "archivio@example.it", "email_from": "ader@example.it"},
+        )
+        piano = await ader.archivia_documento_ader(
+            db, filename="Accoglimento_AR071904285.pdf", content=_pdf(ACCOGLIMENTO), testo=ACCOGLIMENTO,
+        )
+        estraneo = await ader.archivia_documento_ader(
+            db, filename="F24_altro_piano.pdf", content=_pdf(modulo_altro), testo=modulo_altro,
+        )
+        duplicato = await ader.archivia_documento_ader(
+            db, filename="F24_rata_1.pdf", content=_pdf(modulo), testo=modulo,
+        )
+        return prima, piano, estraneo, duplicato
+
+    prima, piano, estraneo, duplicato = asyncio.run(scenario())
+    salvato = asyncio.run(db[COLL_TAX_RATE_PLANS].find_one({"plan_reference": "AR071904285"}, {"_id": 0}))
+
+    assert prima["tipo"] == ader.TIPO_MODULO_PAGAMENTO and prima["piani_collegati"] == 0
+    assert piano["tipo"] == ader.TIPO_PIANO
+    assert estraneo["piani_collegati"] == 0
+    assert duplicato["piani_collegati"] == 1
+    assert len(salvato["payment_modules"]) == 1
+    assert salvato["payment_modules"][0]["plan_reference"] == "AR071904285"
+    assert salvato["payment_modules"][0]["payment_evidence"] is False
+    assert salvato["payment_modules"][0]["source_document_id"]

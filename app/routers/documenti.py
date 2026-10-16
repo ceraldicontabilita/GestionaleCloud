@@ -3497,6 +3497,7 @@ async def upload_documento_automatico(
         elif tipo_rilevato in (
             'ader_piano_rateizzazione', 'ader_dettaglio_tributi',
             'ader_analitica_posizione', 'ader_richiesta_informazioni',
+            'ader_modulo_f24_rateizzazione',
         ):
             from app.config import settings
             from app.services.ader_snapshot_import import archivia_documento_ader

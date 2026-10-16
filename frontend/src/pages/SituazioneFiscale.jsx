@@ -100,6 +100,7 @@ function SchedeFiscali({ tab }) {
 
 const labelForClaim = item => item.document_number || item.collection_number || item.cartella_number_original || item.id;
 const euro = value => value == null ? 'Non disponibile' : new Intl.NumberFormat('it-IT', { style: 'currency', currency: 'EUR' }).format(value);
+const euroCents = value => value == null ? 'importo non disponibile' : euro(Number(value) / 100);
 const searchableText = item => Object.values(item || {}).filter(value => ['string', 'number'].includes(typeof value)).join(' ').toLocaleLowerCase('it');
 const itemYear = item => String(item.payment_year || item.filing_year || item.tax_year || item.year || item.notification_date || item.payment_date || '').slice(0, 4);
 const itemStatus = item => item.documentary_payment_status || item.evidence_state || item.calculated_business_status || item.business_status || item.payment_status || item.status || '';
@@ -635,9 +636,63 @@ function ElenchiFiscali() {
               <div style={{ marginTop: 5, color: '#5f5c55' }}>
                 {plan.installment_count ?? 'N.'} rate · totale {euro(plan.total_plan_amount)} · prima rata {euro(plan.first_installment_amount)} il {plan.first_installment_due_date || 'data non disponibile'}
               </div>
-              {(plan.payment_modules || []).map(module => <div key={module.id} style={{ marginTop: 5, color: '#5f5c55' }}>
-                Modulo {module.document_number || module.source_filename}: {(module.installments || []).map(rate => `${rate.number}ª ${rate.due_date} ${euro(rate.amount)}`).join(' · ') || 'rate non leggibili'}
-              </div>)}
+              <div style={{ marginTop: 8, padding: '8px 10px', borderRadius: 7, background: '#fff', border: '1px solid #e6e3d9' }}>
+                <strong>Provenienza del piano</strong>
+                {plan.source_provenance?.status === 'RECORDED' ? (plan.source_provenance.email_sources || []).map((source, index) => <div key={`${source.email_message_id || source.email_from || 'email'}-${index}`} style={{ marginTop: 4, color: '#5f5c55' }}>
+                  {source.email_account && <>Casella email: <strong>{source.email_account}</strong>. </>}
+                  {source.email_from && <>Mittente: <strong>{source.email_from}</strong>. </>}
+                  {source.email_to && <>Destinatario: <strong>{source.email_to}</strong>. </>}
+                  {source.email_subject && <>Oggetto: {source.email_subject}. </>}
+                  {source.email_date && <>Data: {source.email_date}.</>}
+                </div>) : plan.source_provenance?.status === 'FILENAME_ONLY' ? <div style={{ marginTop: 4, color: '#92400e' }}>
+                  Indirizzo presente nel nome file: <strong>{(plan.source_provenance.filename_email_hints || []).join(', ')}</strong>. Il documento non specifica se sia mittente, destinatario o casella di acquisizione.
+                </div> : <div style={{ marginTop: 4, color: '#92400e' }}>
+                  Email associata non registrata nei metadati dell’originale.
+                </div>}
+                <div style={{ marginTop: 4, color: '#5f5c55' }}>File sorgente: {plan.source_provenance?.source_filename || plan.source_filename || 'non disponibile'}</div>
+              </div>
+              <div style={{ marginTop: 8, padding: '8px 10px', borderRadius: 7, background: (plan.payment_modules || []).length ? '#eff6ff' : '#fff7ed', border: `1px solid ${(plan.payment_modules || []).length ? '#93c5fd' : '#fdba74'}` }}>
+                <strong>F24 del piano</strong>
+                {(plan.payment_modules || []).length === 0 && <div style={{ marginTop: 4, color: '#9a3412' }}>
+                  Nessun modulo F24 con riferimento esatto {plan.plan_reference} trovato. Nessun abbinamento viene creato per solo importo o data.
+                </div>}
+                {(plan.payment_modules || []).map(module => <div key={module.id || module.source_document_id} style={{ marginTop: 7, color: '#1e3a5f' }}>
+                  <strong>Collegamento verificato sul riferimento {plan.plan_reference}</strong> · modulo {module.document_number || module.source_filename || 'senza numero leggibile'}.
+                  <div>{(module.installments || []).map(rate => `${rate.number}ª rata · ${rate.due_date} · ${euro(rate.amount)}`).join(' · ') || 'Rate non leggibili nel modulo'}.</div>
+                  {(module.source_provenance?.email_sources || []).map((source, index) => <div key={`${source.email_message_id || source.email_from || 'email-f24'}-${index}`}>
+                    {source.email_account && <>Casella email F24: <strong>{source.email_account}</strong>. </>}
+                    {source.email_from && <>Mittente F24: <strong>{source.email_from}</strong>.</>}
+                  </div>)}
+                  {module.source_provenance?.status === 'NOT_RECORDED' && <div>Email del modulo F24 non registrata nei metadati dell’originale.</div>}
+                  <div>Questo F24 predisposto non prova il pagamento della rata.</div>
+                  {module.source_document_id && <Button size="sm" variant="secondary" style={{ marginTop: 6 }} onClick={() => openDocument(module.source_document_id)}>Apri F24 del piano</Button>}
+                </div>)}
+              </div>
+              <details style={{ marginTop: 8 }}>
+                <summary style={{ cursor: 'pointer', fontWeight: 700 }}>Cartelle e tributi cui si riferisce il piano ({(plan.related_claims || []).length})</summary>
+                {(plan.related_claims || []).length === 0 && <div style={{ marginTop: 6, color: '#92400e' }}>Nessun riferimento a cartelle o avvisi leggibile nell’accoglimento.</div>}
+                {(plan.related_claims || []).map((claim, index) => <div key={`${claim.printed_reference || 'riferimento'}-${index}`} style={{ marginTop: 8, padding: 8, borderLeft: '3px solid #d6c7a1', background: '#fff' }}>
+                  <strong>{claim.document_type || 'Documento'} {claim.document_number || claim.printed_reference || 'numero non leggibile'}</strong>
+                  {' · '}importo incluso nel piano {euroCents(claim.plan_amount_cents)}
+                  <div style={{ marginTop: 3, color: claim.link_status === 'CONFIRMED_WITH_TAX_DETAIL' ? '#166534' : '#92400e' }}>
+                    {claim.link_status === 'CONFIRMED_WITH_TAX_DETAIL'
+                      ? `Riferimento verificato${claim.creditor ? ` · ente: ${claim.creditor}` : ''}`
+                      : claim.link_status === 'UNRESOLVED_REFERENCE'
+                        ? 'Riferimento stampato nell’accoglimento, ma cartella completa non ancora identificata.'
+                        : 'Cartella identificata, ma dettaglio tributi non disponibile.'}
+                  </div>
+                  {claim.current_business_status && <div style={{ marginTop: 3 }}>
+                    Stato AdeR al {claim.current_snapshot_date || 'giorno non disponibile'}: <strong>{String(claim.current_business_status).replaceAll('_', ' ')}</strong>.
+                  </div>}
+                  {(claim.tributes || []).map((tribute, tributeIndex) => <div key={`${tribute.tax_code || 'tributo'}-${tribute.year || ''}-${tributeIndex}`} style={{ marginTop: 4 }}>
+                    Codice <strong>{tribute.tax_code || 'non leggibile'}</strong>{tribute.year ? ` · anno ${tribute.year}` : ''}{tribute.description ? ` · ${tribute.description}` : ''}
+                    {tribute.initial_cents != null ? ` · originario ${euroCents(tribute.initial_cents)}` : ''}
+                    {tribute.residual_cents != null ? ` · residuo ${euroCents(tribute.residual_cents)}` : ''}
+                  </div>)}
+                  {claim.tribute_status !== 'AVAILABLE' && <div style={{ marginTop: 4 }}>Tributi dettagliati non disponibili nel documento sorgente.</div>}
+                  {claim.tax_detail_source_document_id && <Button size="sm" variant="secondary" style={{ marginTop: 6 }} onClick={() => openDocument(claim.tax_detail_source_document_id)}>Apri dettaglio tributi</Button>}
+                </div>)}
+              </details>
               {(plan.reconciled_installments || []).map(rate => {
                 const pagata = rate.status === 'PAID_DOCUMENTED' || rate.payment_evidence;
                 return <div key={rate.id} data-testid="rata-piano" data-stato={pagata ? 'documentata' : 'attesa'} style={{ marginTop: 7, padding: '7px 9px', borderRadius: 7, background: pagata ? '#ecfdf5' : '#f7ebe4', color: pagata ? '#166534' : '#7a3b1e' }}>
