@@ -610,6 +610,10 @@ async def apply_ader_archive_plan(*, db, plan: dict[str, Any], actor: str | None
     now = _now_iso()
     ingestor = FiscalDocumentIngestionService(db, plan["company_id"])
     document_refs: dict[str, dict[str, Any]] = {}
+    payment_module_filenames = {
+        module["source_filename"] for module in plan["payment_modules"]
+        if module.get("source_filename")
+    }
     for item in plan["pdfs"]:
         from app.services.pdf_drive_only import verified_drive_source
 
@@ -619,6 +623,11 @@ async def apply_ader_archive_plan(*, db, plan: dict[str, Any], actor: str | None
             source_metadata={**source_metadata, "source_archive_id": plan["source_archive_id"],
                              "source_archive_sha256": plan["dataset_sha256"]},
             expected_sha256=item["sha256"], category_hint="riscossione",
+            document_type_hint=(
+                "MODULO_PAGAMENTO_ADER"
+                if item["filename"] in payment_module_filenames
+                else None
+            ),
         )
         document_refs[item["filename"]] = result
 

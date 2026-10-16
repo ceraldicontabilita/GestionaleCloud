@@ -227,3 +227,43 @@ def test_duplicato_parziale_riceve_il_riferimento_drive(monkeypatch):
         assert "pdf_data" not in inbox
 
     asyncio.run(scenario())
+
+
+def test_workflow_hint_corregge_il_tipo_di_un_documento_gia_archiviato(monkeypatch):
+    async def scenario():
+        db = ClientArchivioMemoria().db
+        content = b"%PDF-RAV-GIA-ARCHIVIATO"
+        digest = hashlib.sha256(content).hexdigest()
+        await db.fiscal_document_versions.insert_one({
+            "id": "VERSION-RAV", "document_id": "DOC-RAV",
+            "company_id": "CERALDI", "sha256": digest,
+        })
+        await db.fiscal_documents.insert_one({
+            "id": "DOC-RAV", "company_id": "CERALDI",
+            "document_type": "RICEVUTA_CBILL", "review_status": "CLASSIFIED",
+        })
+        monkeypatch.setattr(ingestion, "extract_pdf_pages", lambda _content: [{
+            "page_number": 1, "text": "modulo di pagamento", "text_source": "pdf_text",
+            "ocr_used": False, "ocr_confidence": None, "layout_words": [],
+            "requires_ocr": False,
+        }])
+
+        result = await FiscalDocumentIngestionService(db, "CERALDI").ingest(
+            content=content,
+            filename="RAV_AR071904285_DA_1_A_6.pdf",
+            source="ader_archive",
+            category_hint="riscossione",
+            document_type_hint="MODULO_PAGAMENTO_ADER",
+        )
+        document = await db.fiscal_documents.find_one({"id": "DOC-RAV"})
+        evidence = await db.fiscal_evidence.find({"document_id": "DOC-RAV"}).to_list(None)
+
+        assert result["status"] == "duplicate"
+        assert document["document_type"] == "MODULO_PAGAMENTO_ADER"
+        assert document["classification"]["reasons"] == [
+            "workflow_hint:MODULO_PAGAMENTO_ADER"
+        ]
+        assert len(evidence) == 1
+        assert evidence[0]["reason"] == "classificazione_guidata_dal_workflow"
+
+    asyncio.run(scenario())
