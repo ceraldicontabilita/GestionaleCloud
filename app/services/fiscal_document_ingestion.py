@@ -184,6 +184,7 @@ class FiscalDocumentIngestionService:
         source_metadata: dict[str, Any] | None = None,
         expected_sha256: str | None = None,
         category_hint: str | None = None,
+        document_type_hint: str | None = None,
     ) -> dict[str, Any]:
         if not content:
             raise ValueError("Documento vuoto")
@@ -231,6 +232,37 @@ class FiscalDocumentIngestionService:
                 {"company_id": self.company_id, "id": existing_version["document_id"]},
                 {"$addToSet": {"source_occurrences": source_occurrence}, "$set": {"updated_at": utc_now()}},
             )
+            if document_type_hint:
+                hinted_classification = {
+                    "document_type": document_type_hint,
+                    "confidence": 1.0,
+                    "reasons": [f"workflow_hint:{document_type_hint}"],
+                    "requires_review": False,
+                }
+                corrected = await self.db[COLL_FISCAL_DOCUMENTS].update_one(
+                    {"company_id": self.company_id, "id": existing_version["document_id"],
+                     "document_type": {"$ne": document_type_hint}},
+                    {"$set": {
+                        "document_type": document_type_hint,
+                        "classification": hinted_classification,
+                        "review_status": "CLASSIFIED",
+                        "updated_at": utc_now(),
+                    }},
+                )
+                if corrected.modified_count:
+                    evidence = build_evidence(
+                        document_id=existing_version["document_id"],
+                        version_id=existing_version["id"],
+                        page_number=1,
+                        field_name="document_type",
+                        raw_value=hinted_classification["reasons"],
+                        normalized_value=document_type_hint,
+                        parser_version=self.PARSER_VERSION,
+                        confidence=1.0,
+                        reason="classificazione_guidata_dal_workflow",
+                    )
+                    evidence["company_id"] = self.company_id
+                    await self.db[COLL_FISCAL_EVIDENCE].insert_one(evidence)
             if source_metadata.get("drive_document_id") or source_metadata.get("drive_file_id"):
                 inbox_id = stable_id("document", self.company_id, digest)
                 await self.db[COLL_DOCUMENTS_INBOX].update_one(
@@ -277,7 +309,14 @@ class FiscalDocumentIngestionService:
         pages = extract_pdf_pages(content)
         full_text = "\n".join(page["text"] for page in pages)
         classification = classify_document(filename, full_text)
-        if category_hint in CATEGORY_DOCUMENT_TYPES:
+        if document_type_hint:
+            classification = {
+                "document_type": document_type_hint,
+                "confidence": 1.0,
+                "reasons": [f"workflow_hint:{document_type_hint}"],
+                "requires_review": False,
+            }
+        elif category_hint in CATEGORY_DOCUMENT_TYPES:
             classification = {
                 "document_type": CATEGORY_DOCUMENT_TYPES[category_hint],
                 "confidence": 1.0,
