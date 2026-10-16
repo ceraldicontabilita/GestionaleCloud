@@ -1344,8 +1344,10 @@ async def associa_avvisi_a_ricevuta(db, receipt: dict[str, Any]) -> list[str]:
         }})
         linked.append(row["id"])
     if linked:
-        await db[COLLECTION_RICEVUTE].update_one({"id": receipt["id"]},
-            {"$addToSet": {"avvisi_collegati": {"$each": linked}}})
+        await db[COLLECTION_RICEVUTE].update_one({"id": receipt["id"]}, {
+            "$addToSet": {"avvisi_collegati": {"$each": linked}},
+            "$set": {"stato": "associata"},
+        })
     return linked
 
 
@@ -1657,6 +1659,7 @@ async def import_receipt(
             "fiscal_target_type": fiscal_match["target_type"],
             "cartelle_collegate": fiscal_match["linked_claim_ids"],
             "riconciliazione_fiscale": fiscal_match,
+            "stato": "associata",
         }
         receipt.update(patch)
         await db[COLLECTION_RICEVUTE].update_one({"id": receipt_id}, {"$set": patch})

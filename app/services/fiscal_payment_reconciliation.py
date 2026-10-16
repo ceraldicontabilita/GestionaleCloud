@@ -354,6 +354,7 @@ async def reconcile_existing_receipts_for_payment_modules(
             "fiscal_target_type": match["target_type"],
             "cartelle_collegate": match["linked_claim_ids"],
             "riconciliazione_fiscale": match,
+            "stato": "associata",
         }
         await db["ricevute_pagopa"].update_one({"id": source_id}, {"$set": patch})
         matched_receipt_ids.append(source_id)

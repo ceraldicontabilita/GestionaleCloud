@@ -26,7 +26,7 @@ def _first(metadata: dict[str, Any], *keys: str) -> Any:
 
 def _email_provenance(document: dict[str, Any] | None, fallback_filename: str | None) -> dict[str, Any]:
     document = document or {}
-    candidates = [document, document.get("source_metadata") or {}]
+    candidates = [document, document.get("source_metadata") or {}, document.get("source_context") or {}]
     candidates.extend(document.get("source_occurrences") or [])
     sources: list[dict[str, Any]] = []
     seen: set[tuple[Any, ...]] = set()

@@ -2607,6 +2607,13 @@ async def _archive_non_payment_document(
         {"sha256": digest}, {"_id": 0, "id": 1, "filename": 1},
     )
     if existing:
+        if source_context:
+            await db["documents_inbox"].update_one(
+                {"id": existing["id"]},
+                {"$addToSet": {"source_occurrences": {
+                    "source": "upload_automatico", **source_context,
+                }}},
+            )
         return {
             "success": False, "duplicate": True, "action": "duplicate",
             "imported": 0, "tipo_rilevato": document_type,
@@ -2689,6 +2696,8 @@ async def _archive_non_payment_document(
         "processed": negative_outcome,
         "source": "upload_automatico", "downloaded_at": now,
         "source_context": source_context or {},
+        "source_occurrences": ([{"source": "upload_automatico", **source_context}]
+                               if source_context else []),
         "parsed_metadata": parsed_metadata,
         "obligation_status": parsed_metadata.get("obligation_status") or "APERTO",
         "data_scadenza": parsed_metadata.get("data_scadenza"),

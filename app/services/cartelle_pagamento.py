@@ -475,8 +475,10 @@ async def _applica_ricevuta(db, cartella: Dict[str, Any], ricevuta: Dict[str, An
         "data_pagamento": ricevuta.get("data_pagamento"),
         "updated_at": datetime.now(timezone.utc).isoformat(),
     }})
-    await db["ricevute_pagopa"].update_one({"id": ricevuta["id"]},
-        {"$addToSet": {"cartelle_collegate": cartella["id"]}})
+    await db["ricevute_pagopa"].update_one({"id": ricevuta["id"]}, {
+        "$addToSet": {"cartelle_collegate": cartella["id"]},
+        "$set": {"stato": "associata", "updated_at": datetime.now(timezone.utc).isoformat()},
+    })
     return campi["expectation_status"]
 
 

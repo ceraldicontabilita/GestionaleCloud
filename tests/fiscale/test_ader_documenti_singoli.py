@@ -196,6 +196,12 @@ def test_analitica_saldati_azzera_il_residuo_ma_non_inventa_un_pagamento(monkeyp
     asyncio.run(db[cartelle_pagamento.COLL].insert_one({
         "id": legacy_id, "expectation_status": "ATTESO", "totale": "17.11",
     }))
+    asyncio.run(db["documents_inbox"].insert_one({
+        "id": "avviso-originale", "filename": "avviso.pdf", "sha256": "b" * 64,
+        "document_type": "avviso_addebito_inps",
+        "parsed_metadata": {"numero_atto": NUMERO_ANALITICA, "codice_fiscale": SOCIETA},
+        "source_context": {"drive_file_id": "drive-avviso"},
+    }))
 
     result = asyncio.run(ader.archivia_documento_ader(
         db, filename=NOME_ANALITICA, content=_pdf(ANALITICA_SALDATA), testo=ANALITICA_SALDATA,
@@ -205,6 +211,7 @@ def test_analitica_saldati_azzera_il_residuo_ma_non_inventa_un_pagamento(monkeyp
     ))
     snapshot = asyncio.run(db[COLL_ADER_POSITION_SNAPSHOTS].find_one({}, {"_id": 0}))
     legacy = asyncio.run(db[cartelle_pagamento.COLL].find_one({"id": legacy_id}, {"_id": 0}))
+    originale = asyncio.run(db["documents_inbox"].find_one({"id": "avviso-originale"}, {"_id": 0}))
 
     assert result["tipo"] == ader.TIPO_ANALITICA and not result["duplicate"]
     assert result["tipo_rilevato"] == ader.TIPO_ANALITICA
@@ -214,6 +221,16 @@ def test_analitica_saldati_azzera_il_residuo_ma_non_inventa_un_pagamento(monkeyp
     assert legacy["expectation_status"] == "SUPERATO"
     assert legacy["expectation_resolution"] == "ADER_CURRENT_RESIDUAL_ZERO_WITHOUT_PAYMENT_EVIDENCE"
     assert not legacy.get("data_pagamento") and not legacy.get("expectation_evidence_ids")
+    assert originale["tax_collection_claim_id"] == claim["id"]
+    assert originale["ader_link_basis"] == "EXACT_DOCUMENT_NUMBER"
+    assert originale["ader_business_status"] == "PORTAL_CLOSED_PENDING_EVIDENCE"
+    assert originale["ader_residual_cents"] == 0
+    assert not originale.get("pagato") and not originale.get("data_pagamento")
+    assert claim["original_notice_sources"] == [{
+        "inbox_document_id": "avviso-originale", "filename": "avviso.pdf",
+        "sha256": "b" * 64, "drive_file_id": "drive-avviso",
+        "link_basis": "EXACT_DOCUMENT_NUMBER",
+    }]
 
 
 def test_richiesta_contattaci_resta_corrispondenza_senza_prova(monkeypatch):

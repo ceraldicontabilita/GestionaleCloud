@@ -218,14 +218,21 @@ def test_rilettura_stesso_originale_corregge_importi_e_riconcilia_senza_duplicar
 def test_ricevuta_con_lo_stesso_iuv_e_importo_chiude_l_attesa():
     db = AsyncMongoMockClient()["cartelle"]
     cartella = _run(cp.registra_cartella(db, "a.pdf", _pdf()))
+    _run(db["ricevute_pagopa"].insert_one({
+        "id": "ric-1", "identificativo_bolletta": IUV, "operation_amount": 118.88,
+        "data_pagamento": "2026-09-20", "stato": "non_associata",
+    }))
 
     stato = _run(cp.chiudi_da_ricevuta(db, {
         "id": "ric-1", "identificativo_bolletta": IUV, "operation_amount": 118.88,
         "data_pagamento": "2026-09-20",
     }))
     doc = _run(db[cp.COLL].find_one({"id": cartella["id"]}))
+    ricevuta = _run(db["ricevute_pagopa"].find_one({"id": "ric-1"}))
 
     assert stato == "SODDISFATTO" and doc["expectation_evidence_ids"] == ["ric-1"]
+    assert ricevuta["stato"] == "associata"
+    assert ricevuta["cartelle_collegate"] == [cartella["id"]]
 
 
 def test_ricevuta_con_lo_stesso_iuv_e_importo_diverso_resta_da_verificare():

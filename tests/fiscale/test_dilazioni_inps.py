@@ -239,6 +239,32 @@ def test_l_import_classifica_l_istanza_senza_chiamarla_piano(monkeypatch):
     assert documenti.detect_document_type("DichiarazioneDilazioni.pdf", b"%PDF-1.4 finto") == di.TIPO_ISTANZA
 
 
+def test_reimport_dello_stesso_piano_conserva_anche_la_provenienza_email():
+    db = ClientArchivioMemoria()["dilazione-inps-provenienza-email"]
+    contenuto = b"%PDF-1.4 piano-inps"
+
+    async def scenario():
+        await documenti._archive_non_payment_document(
+            db, filename="piano.pdf", content=contenuto, document_type=di.TIPO,
+            source_context={"drive_file_id": "drive-1"},
+        )
+        duplicate = await documenti._archive_non_payment_document(
+            db, filename="piano-email.pdf", content=contenuto, document_type=di.TIPO,
+            source_context={
+                "gmail_message_id": "gmail-1", "email_from": "inps@example.it",
+                "email_subject": "Dilazione amministrativa", "email_date": "2026-02-26",
+            },
+        )
+        saved = await db["documents_inbox"].find_one({"sha256": duplicate["sha256"]}) \
+            if duplicate.get("sha256") else await db["documents_inbox"].find_one({})
+        return duplicate, saved
+
+    duplicate, saved = _run(scenario())
+    assert duplicate["duplicate"] is True
+    assert len(saved["source_occurrences"]) == 2
+    assert saved["source_occurrences"][1]["gmail_message_id"] == "gmail-1"
+
+
 def test_una_lettera_senza_piano_non_e_una_dilazione():
     assert not di.riconosci(TESTO.replace("Piano di ammortamento", "Prospetto"))
 
@@ -279,6 +305,27 @@ def test_cassetto_senza_protocollo_e_quietanza_sono_la_stessa_rata():
         assert esito["rate_pagate"] == 1
         assert esito["rate"][1]["quietanza_ids"] == ["cassetto", "q2"]
         assert esito["pagamenti_non_previsti"] == []
+
+
+def test_stampa_f24_senza_protocollo_e_senza_banca_non_paga_la_rata():
+    stampa = _q("stampa", "2026-03-06", 1293.0, "")
+
+    esito = di.abbina_rate(PIANO, [stampa], oggi="2026-10-13")
+
+    assert esito["rate_pagate"] == 0
+    assert esito["rate"][0]["stato"] == di.RATA_SCADUTA
+    assert esito["pagamenti_non_previsti"][0]["quietanza_ids"] == ["stampa"]
+    assert "senza protocollo" in esito["pagamenti_non_previsti"][0]["da_verificare"]
+
+
+def test_stampa_f24_senza_protocollo_con_banca_esatta_paga_la_rata():
+    stampa = _q("stampa-banca", "2026-03-06", 1293.0, "", movimento="mov-1")
+
+    esito = di.abbina_rate(PIANO, [stampa], oggi="2026-10-13")
+
+    assert esito["rate_pagate"] == 1
+    assert esito["rate"][0]["movimento_id"] == "mov-1"
+    assert esito["pagamenti_non_previsti"] == []
 
 
 def test_la_copia_ambigua_non_paga_una_terza_rata():
