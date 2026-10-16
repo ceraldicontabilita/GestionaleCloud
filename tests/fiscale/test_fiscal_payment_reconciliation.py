@@ -15,6 +15,7 @@ from app.db_collections import (
 )
 from app.services.fiscal_payment_reconciliation import (
     find_ader_payment_target,
+    reconcile_direct_collection_receipt,
     reconcile_fiscal_payment,
 )
 
@@ -125,6 +126,89 @@ def test_pagamento_cbill_collega_rata_e_cartelle_senza_duplicare_importo():
         )
         assert await db[COLL_TAX_PAYMENTS].count_documents({}) == 1
         assert await db[COLL_TAX_ALLOCATIONS].count_documents({}) == 1
+
+    asyncio.run(scenario())
+
+
+def test_ricevuta_ader_collega_solo_cartelle_esatte_con_quote_quadrate():
+    async def scenario():
+        db = ClientArchivioMemoria()["direct-collection-receipt-test"]
+        await db[COLL_TAX_COLLECTION_CLAIMS].insert_many([
+            {
+                "id": "claim-a", "company_id": "company-1",
+                "collection_number": "07120210025982844000",
+                "original_total_cents": 6991,
+                "business_status": "PORTAL_CLOSED_PENDING_EVIDENCE",
+            },
+            {
+                "id": "claim-b", "company_id": "company-1",
+                "collection_number": "07120200109224131000",
+                "original_total_cents": 9623,
+                "business_status": "PORTAL_CLOSED_PENDING_EVIDENCE",
+            },
+        ])
+        payment = {
+            "importo": 166.14,
+            "data_pagamento": "2022-03-10",
+            "documenti": [
+                {"numero": "07120210025982844000", "totale": 69.91, "quadra": True},
+                {"numero": "07120200109224131000", "totale": 96.23, "quadra": True},
+            ],
+        }
+        result = await reconcile_direct_collection_receipt(
+            db, company_id="company-1", payment=payment,
+            source_type="RICEVUTA_PAGOPA", source_id="receipt-1",
+            document_id="document-1", version_id="version-1",
+        )
+        assert result["matched"] is True
+        assert set(result["linked_claim_ids"]) == {"claim-a", "claim-b"}
+        assert await db[COLL_TAX_PAYMENTS].count_documents({}) == 1
+        allocations = await db[COLL_TAX_ALLOCATIONS].find({}).to_list(10)
+        assert {item["amount"] for item in allocations} == {"69.91", "96.23"}
+        events = await db[COLL_TAX_COLLECTION_EVENTS].find({}).to_list(10)
+        assert {item["amount"] for item in events} == {"69.91", "96.23"}
+        claims = await db[COLL_TAX_COLLECTION_CLAIMS].find({}).to_list(10)
+        assert all(len(item["payment_evidence_ids"]) == 1 for item in claims)
+        assert all(item["documentary_payment_status"] == "PAID_DOCUMENTED" for item in claims)
+        assert all(item["business_status"] == "PORTAL_CLOSED_PENDING_EVIDENCE" for item in claims)
+
+        # Idempotenza: la stessa ricevuta non somma due volte le quote.
+        await reconcile_direct_collection_receipt(
+            db, company_id="company-1", payment=payment,
+            source_type="RICEVUTA_PAGOPA", source_id="receipt-1",
+            document_id="document-1", version_id="version-1",
+        )
+        assert await db[COLL_TAX_ALLOCATIONS].count_documents({}) == 2
+        refreshed = await db[COLL_TAX_COLLECTION_CLAIMS].find_one({"id": "claim-a"})
+        assert refreshed["documentary_paid_cents"] == 6991
+
+    asyncio.run(scenario())
+
+
+def test_ricevuta_ader_non_crea_cartella_mancante_ne_collegamento_parziale():
+    async def scenario():
+        db = ClientArchivioMemoria()["direct-collection-missing-claim-test"]
+        await db[COLL_TAX_COLLECTION_CLAIMS].insert_one({
+            "id": "claim-a", "company_id": "company-1",
+            "collection_number": "07120210025982844000",
+        })
+        result = await reconcile_direct_collection_receipt(
+            db, company_id="company-1",
+            payment={
+                "importo": 166.14,
+                "documenti": [
+                    {"numero": "07120210025982844000", "totale": 69.91, "quadra": True},
+                    {"numero": "07120200109224131000", "totale": 96.23, "quadra": True},
+                ],
+            },
+            source_type="RICEVUTA_PAGOPA", source_id="receipt-1",
+            document_id="document-1", version_id="version-1",
+        )
+        assert result["matched"] is False
+        assert result["reason"] == "posizione_fiscale_originale_non_importata"
+        assert result["missing_collection_numbers"] == ["07120200109224131000"]
+        assert await db[COLL_TAX_PAYMENTS].count_documents({}) == 0
+        assert await db[COLL_TAX_ALLOCATIONS].count_documents({}) == 0
 
     asyncio.run(scenario())
 

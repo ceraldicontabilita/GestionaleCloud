@@ -283,6 +283,215 @@ async def reconcile_fiscal_payment(
     }
 
 
+async def reconcile_direct_collection_receipt(
+    db, *, company_id: str, payment: dict[str, Any], source_type: str,
+    source_id: str, document_id: str | None = None, version_id: str | None = None,
+) -> dict[str, Any]:
+    """Collega una ricevuta AdeR alle cartelle stampate nel suo dettaglio.
+
+    Il collegamento e' ammesso soltanto quando la ricevuta espone una o piu'
+    quote quadrate, la loro somma coincide al centesimo con il totale pagato e
+    tutte le posizioni esistono gia' nel deposito fiscale con lo stesso numero
+    completo.  La ricevuta documenta il versamento ma non inventa la prova
+    bancaria e non cambia lo stato pubblicato dal portale AdeR.
+    """
+    rows: list[dict[str, Any]] = []
+    for item in payment.get("documenti") or []:
+        number = _identifier(item.get("numero"))
+        amount = _money(item.get("totale"))
+        if len(number) != 20 or item.get("quadra") is not True or amount is None:
+            return {
+                "matched": False,
+                "reason": "dettaglio_cartelle_incompleto_o_non_quadrato",
+                "candidates": [],
+            }
+        rows.append({"collection_number": number, "amount": amount})
+    if not rows:
+        return {"matched": False, "reason": "nessuna_cartella_stampata", "candidates": []}
+    if len({row["collection_number"] for row in rows}) != len(rows):
+        return {"matched": False, "reason": "cartelle_duplicate_nella_ricevuta", "candidates": []}
+
+    total = _money(payment.get("amount") if payment.get("amount") is not None else payment.get("importo"))
+    allocated_total = sum((row["amount"] for row in rows), Decimal("0.00"))
+    if total is None or allocated_total != total:
+        return {
+            "matched": False,
+            "reason": "somma_quote_diversa_dal_totale_ricevuta",
+            "candidates": [],
+        }
+
+    numbers = [row["collection_number"] for row in rows]
+    claims = await db[COLL_TAX_COLLECTION_CLAIMS].find(
+        {"company_id": company_id, "collection_number": {"$in": numbers}},
+        {"_id": 0},
+    ).to_list(len(numbers))
+    claims_by_number = {claim.get("collection_number"): claim for claim in claims}
+    missing = [number for number in numbers if number not in claims_by_number]
+    if missing:
+        return {
+            "matched": False,
+            "reason": "posizione_fiscale_originale_non_importata",
+            "missing_collection_numbers": missing,
+            "candidates": [],
+        }
+    if not document_id or not version_id:
+        return {
+            "matched": False,
+            "reason": "originale_ricevuta_non_registrato",
+            "candidates": [],
+        }
+
+    now = datetime.now(timezone.utc).isoformat()
+    payment_id = stable_id("taxpayment", company_id, source_type, source_id)
+    payment_date = payment.get("payment_date") or payment.get("data_pagamento")
+    bank_verified = bool(payment.get("bank_verified") or payment.get("movimento_id"))
+    payment_record = {
+        "id": payment_id,
+        "company_id": company_id,
+        "source_type": source_type,
+        "source_id": source_id,
+        "document_id": document_id,
+        "version_id": version_id,
+        "amount": str(total),
+        "operation_amount": str(total),
+        "fee_amount": str(_money(payment.get("fee_amount")) or Decimal("0.00")),
+        "bank_debit_total": str(_money(payment.get("bank_debit_total")) or total),
+        "payment_date": payment_date,
+        "bank_verified": bank_verified,
+        "documentary_evidence": True,
+        "fee_accounting_status": (
+            "BANK_EVIDENCE_LINKED" if bank_verified else "PENDING_BANK_VERIFICATION"
+        ),
+        "direct_collection_numbers": numbers,
+        "updated_at": now,
+    }
+    await db[COLL_TAX_PAYMENTS].update_one(
+        {"company_id": company_id, "id": payment_id},
+        {"$setOnInsert": {"created_at": now}, "$set": payment_record},
+        upsert=True,
+    )
+
+    linked_claim_ids: list[str] = []
+    allocation_ids: list[str] = []
+    documentary_statuses: dict[str, str] = {}
+    for row in rows:
+        claim = claims_by_number[row["collection_number"]]
+        claim_id = claim["id"]
+        amount = row["amount"]
+        evidence = normalize_evidence(
+            document_id=document_id,
+            version_id=version_id,
+            page_number=1,
+            field="collection_payment",
+            raw_value=row["collection_number"],
+            normalized_value={
+                "collection_number": row["collection_number"],
+                "allocated_amount": str(amount),
+                "receipt_total_amount": str(total),
+            },
+            parser_version="direct-collection-receipt-v1",
+            reason="numero_cartella_esatto_e_quota_quadrata",
+        )
+        await link_evidence(
+            db,
+            company_id=company_id,
+            entity_type="tax_collection_claim",
+            entity_id=claim_id,
+            relation_type="payment_receipt",
+            evidence=[evidence],
+            actor="fiscal_payment_reconciliation",
+        )
+        await db[COLL_TAX_COLLECTION_CLAIMS].update_one(
+            {"company_id": company_id, "id": claim_id},
+            {
+                "$addToSet": {
+                    "linked_payment_ids": payment_id,
+                    "payment_evidence_ids": evidence["id"],
+                },
+                "$set": {"updated_at": now},
+            },
+        )
+
+        allocation_id = stable_id(
+            "taxallocation", company_id, payment_id, "tax_collection_claim", claim_id,
+        )
+        await db[COLL_TAX_ALLOCATIONS].update_one(
+            {"company_id": company_id, "id": allocation_id},
+            {"$setOnInsert": {
+                "id": allocation_id,
+                "company_id": company_id,
+                "payment_id": payment_id,
+                "entity_type": "tax_collection_claim",
+                "entity_id": claim_id,
+                "amount": str(amount),
+                "evidence_types": [source_type],
+                "created_at": now,
+            }},
+            upsert=True,
+        )
+        event_id = stable_id("taxevent", company_id, claim_id, "DIRECT_CLAIM_PAYMENT", payment_id)
+        await db[COLL_TAX_COLLECTION_EVENTS].update_one(
+            {"company_id": company_id, "id": event_id},
+            {"$setOnInsert": {
+                "id": event_id,
+                "company_id": company_id,
+                "claim_id": claim_id,
+                "event_type": "DIRECT_CLAIM_PAYMENT",
+                "amount": str(amount),
+                "effective_at": payment_date or now,
+                "source_reference": payment_id,
+                "payment_id": payment_id,
+                "shared_plan_payment": False,
+                "created_at": now,
+            }},
+            upsert=True,
+        )
+
+        allocations = await db[COLL_TAX_ALLOCATIONS].find(
+            {
+                "company_id": company_id,
+                "entity_type": "tax_collection_claim",
+                "entity_id": claim_id,
+            },
+            {"_id": 0, "amount": 1},
+        ).to_list(5000)
+        documented = sum(
+            (_money(item.get("amount")) or Decimal("0.00") for item in allocations),
+            Decimal("0.00"),
+        )
+        documented_cents = int(documented * 100)
+        original_cents = claim.get("original_total_cents")
+        status = (
+            "PAID_DOCUMENTED"
+            if isinstance(original_cents, int) and documented_cents >= original_cents
+            else "PARTIAL_DOCUMENTED"
+        )
+        await db[COLL_TAX_COLLECTION_CLAIMS].update_one(
+            {"company_id": company_id, "id": claim_id},
+            {"$set": {
+                "documentary_paid_cents": documented_cents,
+                "documentary_payment_status": status,
+                "bank_payment_verified": bank_verified,
+                "updated_at": now,
+            }},
+        )
+        linked_claim_ids.append(claim_id)
+        allocation_ids.append(allocation_id)
+        documentary_statuses[claim_id] = status
+
+    return {
+        "matched": True,
+        "reason": "numeri_cartella_esatti_quote_quadrate_e_totale_coincidente",
+        "target_type": "direct_collection_claims",
+        "payment_id": payment_id,
+        "target_id": linked_claim_ids[0] if len(linked_claim_ids) == 1 else None,
+        "linked_claim_ids": linked_claim_ids,
+        "allocation_ids": allocation_ids,
+        "documentary_statuses": documentary_statuses,
+        "bank_verified": bank_verified,
+    }
+
+
 async def reconcile_existing_receipts_for_payment_modules(
     db, *, company_id: str, payment_modules: Iterable[dict[str, Any]],
 ) -> dict[str, Any]:
