@@ -2,7 +2,7 @@
   "coreVersion": "1.0.0",
   "files": {
     "core.mjs": "619e35d8f7aafc685d858991f42ebf54a0934592581655c4d0f511eebda388a2",
-    "view.mjs": "92026ce0a041f4d4321390a01c8f9fb0df7a80e235d34524556eed5891a13163",
+    "view.mjs": "dff3219449862ee46791eda30a47ad5c8754675c986922dda26369ddb5ab6630",
     "core.test.mjs": "b3573eba56c4ea1352fa37ddb92b5dba412234e4bbd39ee6c281503707b1f23e"
   },
   "scope": "Generic source only; no private data or host adapters"

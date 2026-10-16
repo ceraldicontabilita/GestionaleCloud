@@ -30,3 +30,9 @@ Non copiare mai nel repository pubblico JSON paghe, PDF, codici fiscali reali, s
 - Validazione visuale autenticata e approvazione della PR prima dell'attivazione nell'ERP.
 
 Nessuna migrazione DB, modifica Auth, fusione di archivi o attivazione in produzione è inclusa nella fase 1.
+
+## Aggiornamento v46 — scheda unificata
+
+La proposta parallela offre una sola scheda dipendente con Cedolini/documenti, Pagamenti, Partitario mensile e Apertura 2023. Filtri di periodo e somme in centesimi passano dallo stesso core; il widget mensile non ripete i filtri esterni. Il link al minisito porta alla scheda canonica MiniHR_v37. Anche il miglioramento visivo v45 è incluso nel componente condiviso.
+
+Rimane tutto in sola lettura nel Gestionale. Le conferme/esclusioni del minisito, le nuove quietanze, i link privati a ricevute Drive e gli Elenchi netti NON sono stati importati. Funzioni di scrittura/riconciliazione e migrazione dei dati restano pendenti per un checkpoint separato con revisione dei permessi. Nessuna attivazione/migrazione/merge di produzione. Il repository pubblico contiene soltanto codice generico e nessun PDF, codice fiscale reale o snapshot privato del minisito.
