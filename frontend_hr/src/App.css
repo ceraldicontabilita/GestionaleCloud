@@ -468,6 +468,36 @@ a.dc-sidebar-logo {
   color: #6b7669;
 }
 
+.dc-alert-item {
+  align-items: flex-start;
+}
+
+.dc-alert-summary {
+  margin-top: 0.2rem;
+}
+
+.dc-alert-details {
+  margin-top: 0.35rem;
+  color: #6b7669;
+  font-size: 0.78rem;
+}
+
+.dc-alert-details summary {
+  cursor: pointer;
+  color: #4f6f5e;
+  font-weight: 600;
+}
+
+.dc-alert-details p {
+  margin: 0.45rem 0 0;
+  line-height: 1.45;
+  white-space: pre-line;
+}
+
+.dc-alert-resolve {
+  flex-shrink: 0;
+}
+
 .dc-empty {
   color: #9aa593;
   font-size: 0.875rem;
