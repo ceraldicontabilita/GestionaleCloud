@@ -1,6 +1,14 @@
+export function codiceRigaOrdine(riga) {
+  const primoCodice = Array.isArray(riga?.codici) ? riga.codici.find(Boolean) : "";
+  return String(riga?.codice_articolo || riga?.codice || primoCodice || "").trim();
+}
+
 export function testoOrdineFornitore(ordine, righe) {
   const fornitore = righe[0]?.fornitore || ordine.fornitore || "Fornitore";
-  const prodotti = righe.map((r) => `- ${r.nome}: ${r.quantita} ${r.unita || "pz"}`);
+  const prodotti = righe.map((r) => {
+    const codice = codiceRigaOrdine(r);
+    return `- ${codice ? `COD: ${codice} · ` : ""}${r.nome}: ${r.quantita} ${r.unita || "pz"}`;
+  });
   return [`Buongiorno ${fornitore},`, "", "Confermiamo il seguente ordine:", ...prodotti,
     "", `Riferimento: ORD-${String(ordine.id || "").slice(0, 8).toUpperCase()}`,
     "Grazie, Ceraldi Group"].join("\n");

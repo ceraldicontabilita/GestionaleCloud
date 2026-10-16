@@ -23,6 +23,8 @@ router = APIRouter(prefix="/ordini-fornitori", tags=["Ordini Fornitori"])
 class ProdottoOrdine(BaseModel):
     prodotto_id: str
     nome: str
+    codice_articolo: str = ""
+    codici: List[str] = Field(default_factory=list)
     fornitore: str = ""
     quantita: float = 1.0
     unita: str = "kg"
@@ -1087,6 +1089,7 @@ async def riporta_ordine_al_carrello(ordine_id: str, _admin=Depends(require_admi
     for p in ordine.get("prodotti") or []:
         pid = str(p.get("prodotto_id") or uuid.uuid4().hex)
         righe.append({"id": pid[4:] if pid.startswith("cat_") else pid, "nome": p.get("nome") or "Prodotto",
+                      "codice_articolo": p.get("codice_articolo") or "", "codici": p.get("codici") or [],
                       "fornitore": p.get("fornitore") or "DA ASSEGNARE", "prezzo": p.get("prezzo_ultimo") or 0,
                       "iva_pct": p.get("iva_pct") or 0, "prezzo_fonte": p.get("prezzo_fonte") or "",
                       "prezzo_unitario_fattura": p.get("prezzo_unitario_fattura") or 0,

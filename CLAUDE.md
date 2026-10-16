@@ -5600,6 +5600,10 @@ Collaudo locale del ripristino: suite completa backend offline 7.959 passati, 10
 
 Le righe codificate vengono conservate con codice, descrizione, valori ordinati, pagina, testo delle celle e rettangoli di origine. CSC/TeamSystem con codici numerici richiedono intestazione della tabella e posizione nella colonna CODICE: non vengono interpretati come voci i codici anagrafici o gli importi della tabella presenze a destra. Le colonne recuperate senza una classificazione semantica certa hanno stato `colonne_non_classificate`; una riga senza importi decifrabili conserva il testo e ha stato `da_verificare`. Nessun valore di una voce grezza diventa automaticamente pagamento, netto o anticipo. Anche il caso di una base già presente nel testo deve conservare quantità e importo delle altre colonne.
 
+### Codici articolo negli ordini — regola del 16/10/2026
+
+Il codice articolo esplicito del fornitore accompagna la riga da catalogo a carrello, bozza, ordine, email/WhatsApp e PDF. Se manca resta vuoto e non viene ricavato dall'ID tecnico interno.
+
 ### Posta attendibile — richiesta del 12/10/2026
 
 Riattivati soltanto `gmail_full_scan` e `mittenti_email_sync`, ogni 15 minuti con primo giro dopo il riavvio. Restano ritirati gli altri 69 job. La pipeline Verbali usa `process_verbale_document`; la relata non crea un secondo verbale e i due PDF si agganciano attraverso `aggancia_notifiche_pec`. La registrazione dello scheduler non certifica importazione o pagamento: verificare gli esiti e i dati live.

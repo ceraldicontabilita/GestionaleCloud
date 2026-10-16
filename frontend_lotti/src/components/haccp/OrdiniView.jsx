@@ -10,7 +10,7 @@ import { toast } from "sonner";
 import { API } from "../../utils/constants";
 import { apriDocumentoAutenticato } from "../../auth";
 import { norm } from "../../utils/textNormalize";
-import { linkEmailOrdine, linkWhatsAppOrdine } from "../../utils/invioOrdine";
+import { codiceRigaOrdine, linkEmailOrdine, linkWhatsAppOrdine } from "../../utils/invioOrdine";
 import { chiediMigliore, messaggioMigliore, versoIlMigliore } from "../../utils/confrontoFornitori";
 import { getOperatoreNome } from "../../auth";
 import { Search, ShoppingCart, Package, Send, Plus, Check, X, Minus, AlertTriangle, Scale } from "lucide-react";
@@ -205,6 +205,7 @@ export default function OrdiniView({ initialTab = "riordini" }) {
         const id = `cat_${e.id}`;
         if (!nc[id]) nc[id] = {
           id, idCatalogo: e.id, nome: e.nome, conf: e.unita_misura || "pz",
+          codice_articolo: codiceRigaOrdine(e), codici: e.codici || [],
           fornitore: e.fornitore || "DA ASSEGNARE", prezzo: Number(e.prezzo) || 0,
           iva_pct: Number(e.iva_pct) || 0, prezzo_fonte: e.prezzo_fonte || "",
           fornitori60: [], qty: Number(e.quantita) || 1, stock_iniziale: 0, soglia: 0,
@@ -212,7 +213,11 @@ export default function OrdiniView({ initialTab = "riordini" }) {
         };
         else if (!(Number(nc[id].prezzo) > 0) && Number(e.prezzo) > 0) {
           nc[id] = { ...nc[id], prezzo: Number(e.prezzo), iva_pct: Number(e.iva_pct) || nc[id].iva_pct || 0,
+            codice_articolo: codiceRigaOrdine(nc[id]) || codiceRigaOrdine(e), codici: nc[id].codici?.length ? nc[id].codici : (e.codici || []),
             fornitore: e.fornitore || nc[id].fornitore, conf: e.unita_misura || nc[id].conf };
+        }
+        if (!codiceRigaOrdine(nc[id]) && codiceRigaOrdine(e)) {
+          nc[id] = { ...nc[id], codice_articolo: codiceRigaOrdine(e), codici: e.codici || [codiceRigaOrdine(e)] };
         }
       });
       return nc;
@@ -290,7 +295,7 @@ export default function OrdiniView({ initialTab = "riordini" }) {
     if (next<=0) { if (nc[p.id]?.da_catalogo) rimuoviDaCarrelloCataloghi(nc[p.id].idCatalogo); delete nc[p.id]; }
     else {
       const precedente = nc[p.id];
-      nc[p.id] = { id:p.id, nome:p.nome, conf:p.conf, fornitore:p.fornitore, prezzo:p.prezzo, fornitori60:p.fornitori60||[], prezzoRecente:p.prezzoRecente, prezzoGiorniFa:p.prezzoGiorniFa, qty:next, stock_iniziale:stockOf(p), soglia:sogliaOf(p), richiesto_da:(c[p.id]&&c[p.id].richiesto_da)||getOperatoreNome()||"Ordini app", ...(precedente?.da_catalogo ? { da_catalogo:true, idCatalogo:precedente.idCatalogo } : {}),
+      nc[p.id] = { id:p.id, nome:p.nome, conf:p.conf, codice_articolo:codiceRigaOrdine(precedente || p), codici:(precedente || p).codici || [], fornitore:p.fornitore, prezzo:p.prezzo, fornitori60:p.fornitori60||[], prezzoRecente:p.prezzoRecente, prezzoGiorniFa:p.prezzoGiorniFa, qty:next, stock_iniziale:stockOf(p), soglia:sogliaOf(p), richiesto_da:(c[p.id]&&c[p.id].richiesto_da)||getOperatoreNome()||"Ordini app", ...(precedente?.da_catalogo ? { da_catalogo:true, idCatalogo:precedente.idCatalogo } : {}),
         // fornitore, prezzo e unità già scelti (a mano o dal confronto) restano quelli
         ...(precedente ? { fornitore: precedente.fornitore, prezzo: precedente.prezzo, conf: precedente.conf, prezzoFonte: precedente.prezzoFonte, fornitoreSceltoDa: precedente.fornitoreSceltoDa } : {}) };
       if (precedente?.da_catalogo) aggiornaQuantitaCarrelloCataloghi(precedente.idCatalogo, next);
@@ -399,6 +404,7 @@ export default function OrdiniView({ initialTab = "riordini" }) {
     const ordineInModifica = sessionStorage.getItem("ordine_modifica_id");
     if (ordineInModifica) {
       const prodotti = rows.map(r => ({ prodotto_id:String(r.prodottoId || r.id), nome:r.nome,
+        codice_articolo:codiceRigaOrdine(r), codici:r.codici||[],
         fornitore:r.fornitore, quantita:Number(r.qty), unita:r.conf||"pz", prezzo_ultimo:r.prezzo||0,
         iva_pct:Number(r.iva_pct)||0, prezzo_fonte:r.prezzo_fonte||"", note:"",
         richiesto_da:r.richiesto_da||getOperatoreNome()||"Ordini app" }));
@@ -423,6 +429,7 @@ export default function OrdiniView({ initialTab = "riordini" }) {
           riga.richiesto_da = [riga.richiesto_da, r.richiesto_da].filter(Boolean).join("; ");
         } else {
           unite.set(chiave, {prodotto_id:String(r.prodottoId || r.id),nome:r.nome,fornitore:f,
+            codice_articolo:codiceRigaOrdine(r),codici:r.codici||[],
             quantita:Number(r.qty),unita:r.conf||"pz",prezzo_ultimo:r.prezzo||0,note:"",
             iva_pct:Number(r.iva_pct)||0, prezzo_fonte:r.prezzo_fonte||"",
             richiesto_da:r.richiesto_da||getOperatoreNome()||"Ordini app"});
@@ -835,7 +842,7 @@ function Carrello({ rows, tot, inc, onSetFornitore, onCrea, onRemove, creando })
       const nettoRiga=(Number(r.prezzo)||0)*(Number(r.qty)||0), ivaRiga=nettoRiga*(Number(r.iva_pct)||0)/100;
       return (<div key={r.id} style={{ border:`1px solid ${C.line}`, borderRadius:14, padding:12, marginBottom:10 }}>
         <div style={{ display:"flex", gap:10 }}>
-          <div style={{ flex:1, minWidth:0, fontWeight:800 }}>{r.nome}{r.da_reparto && <span style={{display:"block",fontSize:11,color:C.amber}}>Richiesta del reparto da valutare</span>}
+          <div style={{ flex:1, minWidth:0, fontWeight:800 }}>{r.nome}{codiceRigaOrdine(r) && <span style={{display:"block",fontSize:11,color:C.brand}}>COD: {codiceRigaOrdine(r)}</span>}{r.da_reparto && <span style={{display:"block",fontSize:11,color:C.amber}}>Richiesta del reparto da valutare</span>}
             <div style={{ fontSize:12, color:C.muted, marginTop:2 }}>Giac. {r.stock_iniziale||0} → prevista {fut}{r.richiesto_da?` · inserito da ${r.richiesto_da}`:""}</div>
           </div>
           <button onClick={()=>onRemove(r.id)} style={{ width:40, height:40, border:"none", borderRadius:12, background:"#fee2e2", color:"#b91c1c", cursor:"pointer" }}><X size={18}/></button>
@@ -1077,6 +1084,7 @@ function DaInviare({ onModifica }) {
           <div key={i} style={{ display:"flex", gap:8, alignItems:"center", padding:"7px 2px", borderTop:`1px solid #f1ede2`, flexWrap:"wrap" }}>
             <input type="checkbox" checked={(sel[o.id]||new Set()).has(String(p.prodotto_id))} onChange={()=>toggleRiga(o.id,String(p.prodotto_id))} style={{ width:22, height:22, flexShrink:0 }}/>
             <span style={{ flex:1, minWidth:140, fontWeight:700, fontSize:14 }}>{p.nome}
+              {codiceRigaOrdine(p) && <span style={{ display:"block", fontSize:11, color:C.brand }}>COD: {codiceRigaOrdine(p)}</span>}
               <span style={{ display:"block", fontSize:11, color:C.muted, fontWeight:400 }}>
                 {[przR>0?`${descrizionePrezzo}${p.iva_pct?` · IVA ${p.iva_pct}%`:""}`:"prezzo n/d",
                   p.fornitore?`fornitore ${p.fornitore}`:"fornitore da assegnare",
@@ -1130,7 +1138,7 @@ function DaInviare({ onModifica }) {
           <div><b>{o.prodotti?.[0]?.fornitore || "Fornitore"}</b><div style={{fontSize:12,color:C.muted}}>{o.numero_ordine || o.id} · {o.inviato_at || o.data_ordine || ""} · {o.invio_canale || "invio registrato"}{o.invio_destinatario?` · ${o.invio_destinatario}`:""}</div></div>
           <b style={{color:C.brand}}>€ {Number(o.totali?.totale || 0).toFixed(2)}</b>
         </div>
-        <div style={{fontSize:12,color:C.muted,marginTop:6}}>{(o.prodotti||[]).map(p=>`${p.nome} × ${p.quantita}`).join(" · ")}</div>
+        <div style={{fontSize:12,color:C.muted,marginTop:6}}>{(o.prodotti||[]).map(p=>`${codiceRigaOrdine(p)?`COD: ${codiceRigaOrdine(p)} · `:""}${p.nome} × ${p.quantita}`).join(" · ")}</div>
         {!!o.riconciliazione?.scostamenti_prezzo?.length && <div style={{marginTop:8,border:"1px solid #fecaca",background:"#fef2f2",color:"#991b1b",borderRadius:10,padding:9,fontSize:12,fontWeight:700}}>
           {o.riconciliazione.scostamenti_prezzo.map((s,i)=><div key={i}>{s.prodotto}: fattura {s.differenza_euro>0?"maggiore":"minore"} di € {Math.abs(Number(s.differenza_euro)||0).toFixed(2)} (ordine € {Number(s.prezzo_ordine||0).toFixed(2)} · fattura € {Number(s.prezzo_fattura||0).toFixed(2)})</div>)}
         </div>}

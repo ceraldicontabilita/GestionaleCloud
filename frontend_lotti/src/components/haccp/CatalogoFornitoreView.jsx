@@ -181,7 +181,11 @@ export function useCart(fornitoreNome) {
     const datiPrezzo = datiPrezzoProdotto(p);
     const esistente = current.find(c => c.id === id);
     if (esistente) {
-      const updated = riconciliaPrezziCarrello([p]);
+      const codice = p.codice_articolo || p.codice || "";
+      const updated = riconciliaPrezziCarrello([p]).map(item => item.id === id && codice
+        ? { ...item, codice_articolo: item.codice_articolo || codice,
+          codici: item.codici?.length ? item.codici : [codice] }
+        : item);
       if (JSON.stringify(updated) !== JSON.stringify(current)) {
         setCart(updated);
         toast.success(`Totale confezione e IVA di "${(p.nome || p.nome_display || "prodotto").slice(0, 28)}" aggiornati`);
@@ -192,7 +196,8 @@ export function useCart(fornitoreNome) {
     let item = {
       id,
       nome:            p.nome_display || p.nome || id,
-      codici:          p.codice_articolo ? [p.codice_articolo] : [],
+      codice_articolo: p.codice_articolo || p.codice || "",
+      codici:          (p.codice_articolo || p.codice) ? [p.codice_articolo || p.codice] : [],
       fornitore:       fornitoreNome,
       prezzo:          datiPrezzo.prezzo,   // 0 se mai acquistato → ordinabile lo stesso
       prezzo_fonte:    datiPrezzo.fonte,
