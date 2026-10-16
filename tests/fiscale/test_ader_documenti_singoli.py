@@ -185,6 +185,34 @@ def test_lo_smistatore_li_riconosce_prima_della_cartella(monkeypatch):
     assert documenti.detect_document_type("Riepilogo_segnalazione.pdf", b"%PDF-1.4 finto") == ader.TIPO_RICHIESTA_INFORMAZIONI
 
 
+def test_analitica_scansionata_e_instradata_solo_col_nome_ufficiale(monkeypatch):
+    monkeypatch.setattr(documenti, "_pdf_text_for_detection", lambda *_a, **_k: "")
+
+    assert documenti.detect_document_type(NOME_ANALITICA, b"%PDF-1.4 scansione") == ader.TIPO_ANALITICA
+    assert documenti.detect_document_type(
+        "2026-08-10_04523831214_0712024010136555500_Analitica_Saldati.pdf",
+        b"%PDF-1.4 scansione",
+    ) == "auto"
+
+
+def test_analitica_scansionata_viene_validata_dal_contenuto_ocr(monkeypatch):
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "FISCAL_COMPANY_ID", SOCIETA)
+    db = ClientArchivioMemoria()["ader_analitica_scansionata"]
+
+    result = asyncio.run(ader.archivia_documento_ader(
+        db,
+        filename=NOME_ANALITICA,
+        content=_pdf(ANALITICA_SALDATA),
+        testo="",
+    ))
+
+    assert result["success"] is True
+    assert result["tipo"] == ader.TIPO_ANALITICA
+    assert result["data"]["document_number"] == NUMERO_ANALITICA
+
+
 def test_analitica_saldati_azzera_il_residuo_ma_non_inventa_un_pagamento(monkeypatch):
     from app.config import settings
     from app.db_collections import COLL_ADER_POSITION_SNAPSHOTS, COLL_TAX_COLLECTION_CLAIMS
