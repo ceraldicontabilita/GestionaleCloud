@@ -104,12 +104,42 @@ def test_corregge_importo_busta_e_la_sincronizzazione_non_lo_sovrascrive(hr):
     assert paga["importo_busta"] == 1310.0 and paga["importo_busta_originale"] == 1250.0
 
 
+def test_inserimento_pagamento_manuale_e_reversibile(hr):
+    creato = _run(mod.inserimento_manuale_paghe({
+        "tipo": "pagamento", "dipendente_id": "dip-1", "anno": 2025, "mese": 12,
+        "data": "2026-01-10", "importo": "300,50", "nota": "differenza verificata dal titolare",
+    }))
+    assert creato["ok"] and creato["stato"] == "parziale"
+    salvato = _run(hr.pagamenti_esiti.find_one({"key": creato["key"]}, {"_id": 0}))
+    assert salvato["origine"] == "manuale" and salvato["confermato_manuale"] is True
+    assert salvato["importo"] == 300.5 and salvato["causale"] == "differenza verificata dal titolare"
+
+    eliminato = _run(mod.elimina_pagamento_manuale(creato["key"]))
+    # Il movimento bancario del 01/01 resta nel registro storico e può ancora
+    # coprire in parte dicembre: eliminare la rettifica non cancella la banca.
+    assert eliminato["ok"] and eliminato["stato"] == "parziale"
+    assert _run(hr.pagamenti_esiti.find_one({"key": creato["key"]})) is None
+
+
+def test_inserimento_manuale_richiede_motivazione_e_non_elimina_la_banca(hr):
+    with pytest.raises(HTTPException) as exc:
+        _run(mod.inserimento_manuale_paghe({
+            "tipo": "dovuto", "dipendente_id": "dip-1", "anno": 2026,
+            "mese": 2, "importo": 1000, "nota": "",
+        }))
+    assert exc.value.status_code == 400
+    with pytest.raises(HTTPException) as exc:
+        _run(mod.elimina_pagamento_manuale("ecm:m-1"))
+    assert exc.value.status_code == 409
+
+
 def test_associazioni_espongono_chiave_e_flag_manuali(hr):
     _run(mod.modifica_importo_busta({"dipendente_id": "dip-1", "anno": 2026, "mese": 1, "importo_busta": 1300}))
     out = _run(mod._calcola_associazioni_bonifici(hr, 2026, 1))
     riga = out["righe"][0]
     assert riga["busta_manuale"] is True and riga["busta_originale"] == 1250.0
     assert riga["bonifici"][0]["key"] == "ecm:m-1" and riga["bonifici"][0]["modificato"] is False
+    assert out["contabilita"]["mensili_per_dipendente"]
 
 
 def test_quattordicesima_crea_un_attesa_separata_dal_mese_ordinario(hr):

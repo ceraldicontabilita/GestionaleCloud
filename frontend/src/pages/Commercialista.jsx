@@ -12,6 +12,7 @@ import { Button, Badge, Card, Input, StatCard } from '../components/ds';
 import { AlertTriangle, FileSpreadsheet, FolderArchive, Mail, Save } from 'lucide-react';
 import SelettorPeriodo from '../components/commercialista/SelettorPeriodo';
 import PacchettoDaInviare from '../components/commercialista/PacchettoDaInviare';
+import ChecklistDocumenti from '../components/commercialista/ChecklistDocumenti';
 import { MESI, calcolaPeriodo, queryPeriodo, statoMese } from '../lib/periodoCommercialista';
 import { DA_COLLEGARE, avvisoSenzaFattura, datiRigaAssegno } from '../lib/carnetAssegni';
 
@@ -1068,6 +1069,8 @@ export default function Commercialista() {
         </Card>
 
         {periodo.valido && completezza && <CompletezzaPacchetto esito={completezza} />}
+
+        {periodo.valido && <ChecklistDocumenti periodo={periodo} />}
 
         {periodo.valido && (
           <PacchettoDaInviare

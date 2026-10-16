@@ -27,6 +27,7 @@ F24 ↔ banca, a livelli) scrive solo i riscontri CERTI ed e' idempotente.
 from __future__ import annotations
 
 import logging
+import asyncio
 import re
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
@@ -406,7 +407,7 @@ def modello_attivo(f24: Dict[str, Any]) -> bool:
     return not (f24.get("superato_da") or f24.get("motivo_quarantena"))
 
 
-async def carica_quietanze(db) -> List[Dict[str, Any]]:
+async def carica_quietanze(db, *, strict=False) -> List[Dict[str, Any]]:
     """Quietanze autonome dalle due raccolte documentali, senza interrogare la banca."""
     quietanze: List[Dict[str, Any]] = []
     fiscal = await db[COLL_FISCAL_DOCUMENTS].find(
@@ -417,24 +418,28 @@ async def carica_quietanze(db) -> List[Dict[str, Any]]:
     try:
         legacy = await db[COLL_QUIETANZE_F24].find({}, {"_id": 0, "pdf_data": 0}).to_list(5000)
     except Exception:  # noqa: BLE001 - collezione storica facoltativa
+        if strict:
+            raise
         legacy = []
     quietanze.extend(_quietanza_legacy(d) for d in legacy if d.get("entity_status") != "deleted")
     return quietanze
 
 
-async def carica_registro(db) -> Dict[str, Any]:
+async def carica_registro(db, *, strict=False) -> Dict[str, Any]:
     """Legge una volta sola modelli, quietanze e addebiti bancari F24."""
-    modelli = await db[COLL_F24].find(
+    models_query = db[COLL_F24].find(
         {"status": {"$ne": "eliminato"}}, {"_id": 0, "pdf_data": 0},
     ).to_list(5000)
-    modelli = [f for f in modelli if modello_attivo(f)]
-    quietanze = await carica_quietanze(db)
 
-    movimenti = await db[COLL_ESTRATTO_CONTO].find({"$or": [
+    bank_query = db[COLL_ESTRATTO_CONTO].find({"$or": [
         {"descrizione": {"$regex": REGEX_MOVIMENTI_F24, "$options": "i"}},
         {"descrizione_originale": {"$regex": REGEX_MOVIMENTI_F24, "$options": "i"}},
         {"classificazione_tipo": "f24"},
     ]}, {"_id": 0}).to_list(20000)
+    modelli, quietanze, movimenti = await asyncio.gather(
+        models_query, carica_quietanze(db, strict=strict), bank_query,
+    )
+    modelli = [f for f in modelli if modello_attivo(f)]
     movimenti = [
         m for m in movimenti
         if m.get("entity_status") != "deleted" and str(m.get("tipo") or "uscita").lower() != "entrata"

@@ -636,6 +636,21 @@ def parse_quietanza_f24(pdf_path: str = None, pdf_content: bytes = None) -> Dict
     if coordinate_data["sezione_tributi_locali"]:
         result["sezione_tributi_locali"] = coordinate_data["sezione_tributi_locali"]
 
+    # Il Cassetto fiscale stampa anche deleghe versate sul modulo ordinario:
+    # qui i tributi sono sotto le intestazioni, non preceduti da «ERARIO» in
+    # ogni riga. Riusa il lettore a coordinate del modello, conservando la
+    # data di versamento e l'identità bancaria della quietanza (non la stampa).
+    marker = re.sub(r"[^A-Z0-9]", "", text.upper())
+    if e_stampa_cassetto(text) and "MODELLODIPAGAMENTOUNIFICATO" in marker:
+        from app.services.parser_f24 import parse_f24_commercialista
+
+        modello = parse_f24_commercialista(pdf_path=pdf_path, pdf_content=pdf_content)
+        if modello.get("error"):
+            return modello
+        for name in set(_QUIETANZA_SECTION_LABELS.values()):
+            result[name] = modello.get(name, [])
+        result["dati_generali"]["natura_documento"] = "QUIETANZA_CASSETTO_FISCALE"
+
     # Da questo punto in poi il ledger usa esclusivamente centesimi interi.
     # I float mantenuti nei campi storici sono solo una vista compatibile.
     for section_name in _QUIETANZA_SECTION_LABELS.values():
@@ -674,8 +689,12 @@ def parse_quietanza_f24(pdf_path: str = None, pdf_content: bytes = None) -> Dict
     saldo_delega_cents = result["totali"]["saldo_delega_cents"]
     difference_cents = saldo_netto_cents - saldo_delega_cents
     result["validazione"] = {
-        "righe_estratte": sum(len(result[name]) for name in _QUIETANZA_SECTION_LABELS.values()),
-        "saldo_quadrato": difference_cents == 0,
+        "righe_estratte": sum(len(result[name]) for name in set(_QUIETANZA_SECTION_LABELS.values())),
+        "saldo_quadrato": (
+            difference_cents == 0
+            and result["dati_generali"].get("saldo_delega") is not None
+            and any(result[name] for name in set(_QUIETANZA_SECTION_LABELS.values()))
+        ),
         "differenza_saldo": difference_cents / 100,
         "differenza_saldo_cents": difference_cents,
         "parser_version": "quietanza-coordinate-v3",

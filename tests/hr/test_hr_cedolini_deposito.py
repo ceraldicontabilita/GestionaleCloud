@@ -48,17 +48,23 @@ class ConnessioneFinta:
                         "id": d["id"], "tipo": d.get("tipo_cedolino"),
                         "dedup_key": d.get("cedolino_dedup_key"),
                         "netto": d.get("netto"), "rapporto_id": d.get("rapporto_id"),
+                        "ha_pdf": bool(d.get("pdf_data")),
                     })
             return righe
         raise AssertionError("query inattesa: " + sql)
 
     async def execute(self, sql, *args):
-        assert "INSERT INTO" in sql and "app_cedolini" in sql
         chiave, doc = args
         doc = json.loads(doc)
-        assert doc["id"] == chiave
-        self.inseriti.append(doc)
-        return "INSERT 0 1"
+        if "INSERT INTO" in sql and "app_cedolini" in sql:
+            assert doc["id"] == chiave
+            self.inseriti.append(doc)
+            return "INSERT 0 1"
+        if "UPDATE" in sql and "app_cedolini" in sql:
+            record = next(d for d in self.cedolini if d["id"] == chiave)
+            record.update(doc)
+            return "UPDATE 1"
+        raise AssertionError("query inattesa: " + sql)
 
     async def close(self):
         self.chiusa = True
@@ -112,6 +118,14 @@ DIPENDENTE_HR = {
 
 
 # ── mapping ──────────────────────────────────────────────────────────────────
+
+def test_deposito_automatico_puo_essere_disabilitato(monkeypatch):
+    monkeypatch.setenv("HR_AUTOMATIC_DEPOSITS_ENABLED", "false")
+
+    esito = _run(modulo.deposita_cedolino_in_hr(_cedolino_erp()))
+
+    assert esito == {"esito": "automatico_disabilitato", "id": None}
+
 
 def test_deposito_scrive_il_cedolino_nella_forma_dell_app_hr(monkeypatch):
     con = ConnessioneFinta(dipendenti=[DIPENDENTE_HR])
@@ -200,7 +214,7 @@ def test_dati_insufficienti_non_apre_connessioni(monkeypatch):
 
 def test_cedolino_gia_in_hr_non_viene_sovrascritto(monkeypatch):
     esistente = {"id": "hr-ced-1", "codice_fiscale": CF, "anno": 2026, "mese": 6,
-                 "tipo_cedolino": "ordinario", "netto": 1499}
+                 "tipo_cedolino": "ordinario", "netto": 1499, "pdf_data": "gia-presente"}
     con = ConnessioneFinta(cedolini=[esistente], dipendenti=[DIPENDENTE_HR])
     _configura(monkeypatch, con)
 
@@ -211,9 +225,23 @@ def test_cedolino_gia_in_hr_non_viene_sovrascritto(monkeypatch):
     assert con.inseriti == []
 
 
+def test_cedolino_esistente_senza_pdf_viene_completato_senza_cambiare_importi(monkeypatch):
+    esistente = {"id": "hr-ced-pdf", "codice_fiscale": CF, "anno": 2026, "mese": 6,
+                 "tipo_cedolino": "ordinario", "netto": 1499}
+    con = ConnessioneFinta(cedolini=[esistente], dipendenti=[DIPENDENTE_HR])
+    _configura(monkeypatch, con)
+
+    esito = _run(modulo.deposita_cedolino_in_hr(_cedolino_erp(netto=1500)))
+
+    assert esito["esito"] == "aggiornato" and esito["pdf_riparato"] is True
+    assert con.cedolini[0]["netto"] == 1499
+    assert base64.b64decode(con.cedolini[0]["pdf_data"]) == b"%PDF-1.4 finto"
+
+
 def test_dedup_riconosce_la_chiave_documentale_anche_con_periodo_diverso(monkeypatch):
     esistente = {"id": "hr-ced-2", "codice_fiscale": CF, "anno": 2026, "mese": 5,
-                 "tipo_cedolino": "ordinario", "cedolino_dedup_key": "ced_key_1"}
+                 "tipo_cedolino": "ordinario", "cedolino_dedup_key": "ced_key_1",
+                 "pdf_data": "gia-presente"}
     con = ConnessioneFinta(cedolini=[esistente], dipendenti=[DIPENDENTE_HR])
     _configura(monkeypatch, con)
 

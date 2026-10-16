@@ -33,6 +33,18 @@ def test_occorrenza_documento_fiscale_conserva_la_provenienza_email():
     assert occurrence["email_message_id"] == "<messaggio@example.it>"
 
 
+def _raster_pdf() -> bytes:
+    import io
+    from PIL import Image
+
+    image = io.BytesIO()
+    Image.new("RGB", (100, 100), "white").save(image, format="PNG")
+    with fitz.open() as document:
+        page = document.new_page()
+        page.insert_image(page.rect, stream=image.getvalue())
+        return document.tobytes()
+
+
 def test_pagina_fiscale_raster_usa_ocr_locale_con_confidenza(monkeypatch):
     import contextlib
 
@@ -45,7 +57,7 @@ def test_pagina_fiscale_raster_usa_ocr_locale_con_confidenza(monkeypatch):
         ),
     )
 
-    pages = ingestion.extract_pdf_pages(_blank_pdf())
+    pages = ingestion.extract_pdf_pages(_raster_pdf())
 
     assert pages == [{
         "page_number": 1,
@@ -56,6 +68,63 @@ def test_pagina_fiscale_raster_usa_ocr_locale_con_confidenza(monkeypatch):
         "layout_words": [{"x0": 10, "y0": 10, "x1": 20, "y1": 20, "text": "VP1"}],
         "requires_ocr": False,
     }]
+
+
+def test_retro_vuoto_e_numero_pagina_non_avviano_ocr(monkeypatch):
+    def non_avviare():
+        raise AssertionError("OCR non necessario su pagine digitali vuote")
+
+    monkeypatch.setattr(ingestion, "motore", non_avviare)
+    with fitz.open() as document:
+        document.new_page()
+        page = document.new_page()
+        page.insert_text((50, 50), "10")
+        pages = ingestion.extract_pdf_pages(document.tobytes())
+    assert len(pages) == 2
+    assert pages[1]["text"].strip() == "10"
+    assert all(p["ocr_not_required"] and not p["requires_ocr"] for p in pages)
+
+
+def test_reimport_non_rilegge_retro_vuoto_gia_verificato(monkeypatch):
+    async def scenario():
+        db = ClientArchivioMemoria().db
+        content = _blank_pdf()
+        digest = hashlib.sha256(content).hexdigest()
+        await db.fiscal_document_versions.insert_one({
+            "id": "V-BLANK", "document_id": "D-BLANK",
+            "company_id": "CERALDI", "sha256": digest,
+        })
+        await db.fiscal_pages.insert_one({
+            "id": "P-BLANK", "version_id": "V-BLANK", "document_id": "D-BLANK",
+            "company_id": "CERALDI", **ingestion.extract_pdf_pages(content)[0],
+        })
+
+        def non_rileggere(_content):
+            raise AssertionError("Il retro bianco non deve causare una nuova lettura")
+
+        monkeypatch.setattr(ingestion, "extract_pdf_pages", non_rileggere)
+        result = await FiscalDocumentIngestionService(db, "CERALDI").ingest(
+            content=content, filename="cartella.pdf", source="documenti",
+        )
+        assert result["status"] == "duplicate"
+        assert result["derived_text_refreshed"] is False
+
+    asyncio.run(scenario())
+
+
+def test_pdf_chiuso_anche_se_ocr_rinviato(monkeypatch):
+    import pytest
+
+    document = fitz.open(stream=_raster_pdf(), filetype="pdf")
+    monkeypatch.setattr(ingestion.fitz, "open", lambda **_kwargs: document)
+
+    def senza_memoria():
+        raise ingestion.MemoriaInsufficiente(1400, 2048)
+
+    monkeypatch.setattr(ingestion, "motore", senza_memoria)
+    with pytest.raises(ingestion.MemoriaInsufficiente):
+        ingestion.extract_pdf_pages(b"non viene riaperto")
+    assert document.is_closed
 
 
 def test_duplicato_legacy_rigenera_solo_il_testo_derivato(monkeypatch):

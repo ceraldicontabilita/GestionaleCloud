@@ -10,6 +10,7 @@ import { LockKeyhole, Delete, X } from "lucide-react";
 import { createPinModal } from "../../frontend_shared/PinModal";
 import { esciDalGruppo } from "../../frontend_shared/SessioneGruppo";
 import { entraDalGestionale, loginGestionale } from "./sessioneGruppo.js";
+import { apriFinestraPdfAttesa, mostraPdfNellaFinestra } from "./pdfWindow";
 const PinModal = createPinModal(React, { LockKeyhole, Delete, X });
 
 const TK = "pt_token";
@@ -411,11 +412,11 @@ function Buste() {
   const mm = (b)=>String(b.mese).padStart(2,"0");
   const visiona = async (b) => {
     setVisionato(true);                            // sblocca subito Accetto/Contesta
-    const win = window.open("", "_blank");         // aperto nel gesto utente: niente blocco popup
+    const win = apriFinestraPdfAttesa();           // aperto nel gesto utente: niente blocco popup
     try {
       const r = await api.get(`/portale/buste/${b.id}/pdf`, { responseType: "blob", timeout: FILE_TIMEOUT });
-      const url = URL.createObjectURL(r.data);
-      if (win) { win.location = url; }
+      const url = URL.createObjectURL(new Blob([r.data], { type: "application/pdf" }));
+      if (win) { mostraPdfNellaFinestra(win, url); }
       else { const a=document.createElement("a"); a.href=url; a.download=b.filename||`busta_${b.mese}_${b.anno}.pdf`; a.click(); }
       setTimeout(()=>URL.revokeObjectURL(url), 60000);
     } catch { if (win) win.close(); alert("PDF non disponibile, riprova o contatta l'ufficio."); }
@@ -880,11 +881,11 @@ function BusteAdmin() {
   }, [anno, q]);
   useEffect(() => { const t = setTimeout(load, 250); return () => clearTimeout(t); }, [load]);
   const apri = async (b) => {
-    const win = window.open("", "_blank");
+    const win = apriFinestraPdfAttesa();
     try {
       const r = await api.get(`/portale/buste/${b.id}/pdf`, { responseType: "blob", timeout: FILE_TIMEOUT });
-      const url = URL.createObjectURL(r.data);
-      if (win) win.location = url;
+      const url = URL.createObjectURL(new Blob([r.data], { type: "application/pdf" }));
+      if (win) mostraPdfNellaFinestra(win, url);
       else { const a = document.createElement("a"); a.href = url; a.download = b.filename || "busta.pdf"; a.click(); }
       setTimeout(() => URL.revokeObjectURL(url), 60000);
     } catch { if (win) win.close(); alert("PDF non disponibile."); }
@@ -1012,11 +1013,11 @@ function DocumentiAdmin() {
   const [q, setQ] = useState("");
   useEffect(() => { api.get("/dipendenti-cloud/documenti").then(r => setDocs(r.data || [])).catch(() => setDocs([])); }, []);
   const scarica = async (d) => {
-    const win = window.open("", "_blank");
+    const win = apriFinestraPdfAttesa();
     try {
       const r = await api.get(`/dipendenti-cloud/documenti/${d.id}/file`, { responseType: "blob", timeout: FILE_TIMEOUT });
       const url = URL.createObjectURL(r.data);
-      if (win) win.location = url;
+      if (win) mostraPdfNellaFinestra(win, url);
       else { const a = document.createElement("a"); a.href = url; a.download = d.filename || "documento"; a.click(); }
       setTimeout(() => URL.revokeObjectURL(url), 60000);
     } catch { if (win) win.close(); alert("File non disponibile."); }

@@ -12,6 +12,41 @@ def _amount(value: str) -> Decimal:
     return Decimal(value.replace(".", "").replace(",", "."))
 
 
+def _rav_regions(page) -> list[tuple]:
+    """Legge ogni bollettino RAV separatamente, anche ruotato sulla stessa pagina."""
+    import fitz
+    text = page.get_text()
+    codes = set(re.findall(r"\b81\d{15}\b", text))
+    if "RAV" not in text.upper() or not codes:
+        return []
+
+    def one(region):
+        t = page.get_text(clip=region)
+        identifiers = set(re.findall(r"\b81\d{15}\b", t))
+        encoded = set(re.findall(r"\b0+(\d+)\+(\d{2})>", t))
+        if len(identifiers) != 1 or len(encoded) != 1:
+            return None
+        code = identifiers.pop()
+        euros, decimals = encoded.pop()
+        amount = Decimal(euros + '.' + decimals)
+        if not re.search(r"<0" + code + r">", t):
+            return None
+        # Il valore codificato deve comparire anche nell'importo leggibile.
+        if f"{amount:.2f}".replace('.', ',') not in t.replace('.', ''):
+            return None
+        return (code, amount, "RAV", None)
+
+    rect = page.rect
+    partitions = [[rect],
+                  [fitz.Rect(0, 0, rect.width / 2, rect.height), fitz.Rect(rect.width / 2, 0, rect.width, rect.height)],
+                  [fitz.Rect(0, 0, rect.width, rect.height / 2), fitz.Rect(0, rect.height / 2, rect.width, rect.height)]]
+    for regions in partitions:
+        found = [value for region in regions if (value := one(region))]
+        if {item[0] for item in found} == codes:
+            return found
+    return []
+
+
 def parse_notice_modules(content: bytes) -> list[dict]:
     import fitz
 
@@ -26,7 +61,7 @@ def parse_notice_modules(content: bytes) -> list[dict]:
             upper = text.upper()
             if any(marker in upper for marker in ("TRANSAZIONE ESEGUITA", "PAGAMENTO ESEGUITO", "PAGAMENTO MAV")):
                 continue
-            found = []
+            found = _rav_regions(page)
             if "BOLLO DELL'UFFICIO POSTALE" in upper and "CODICE CLIENTE" in upper:
                 for match in POSTAL.finditer(text):
                     code, account, cents, _ = match.groups()

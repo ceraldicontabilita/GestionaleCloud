@@ -129,7 +129,10 @@ async def lifespan(app: FastAPI):
     # solo il suo scheduler segue il ruolo del processo.
     from app.lotti.embed import avvia_lotti
 
-    await avvia_lotti(avvia_scheduler=scheduler_completo)
+    # Lotti applica la propria policy: anche con una allowlist ERP parziale deve
+    # poter avviare il controllo HACCP obbligatorio delle 07:00. HR continua a
+    # richiedere lo scheduler completo e resta spento con la allowlist.
+    await avvia_lotti(avvia_scheduler=scheduler_attivo)
     if scheduler_completo:
         try:
             from app.lotti.db import database as lotti_db

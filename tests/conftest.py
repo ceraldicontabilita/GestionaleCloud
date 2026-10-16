@@ -22,6 +22,7 @@ os.environ.clear()
 os.environ.update(_isolated_environment)
 os.environ["LOTTI_TEST_MEMORY"] = "1"
 os.environ["PYTHON_DOTENV_DISABLED"] = "1"
+os.environ.setdefault("HR_AUTOMATIC_DEPOSITS_ENABLED", "true")
 
 
 def pytest_configure(config):

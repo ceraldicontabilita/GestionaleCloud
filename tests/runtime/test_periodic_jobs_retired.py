@@ -1,4 +1,4 @@
-"""Le 71 procedure ritirate restano spente anche senza la allowlist di Render."""
+"""Le procedure ritirate restano spente; resta attivo il solo giro HACCP delle 07:00."""
 
 import ast
 import asyncio
@@ -12,7 +12,8 @@ import app.scheduler as scheduler_module
 from app.scheduler_policy import RETIRED_PERIODIC_JOBS
 
 
-KEPT_JOBS = {"drive_cartella_unica", "import_cartelle_drive", "enable_banking_giro", "gmail_full_scan", "mittenti_email_sync"}
+ERP_KEPT_JOBS = {"drive_cartella_unica", "import_cartelle_drive", "enable_banking_giro", "gmail_full_scan", "mittenti_email_sync"}
+LOTTI_ACTIVE_JOBS = {"haccp_daily_generation"}
 ROOT = Path(__file__).resolve().parents[2]
 
 
@@ -24,6 +25,11 @@ def test_inventory_covers_all_periodic_registrations():
     ):
         for node in ast.walk(ast.parse((ROOT / path).read_text())):
             if not isinstance(node, ast.Call) or getattr(node.func, "attr", "") != "add_job":
+                if not isinstance(node, ast.Call) or getattr(node.func, "id", "") != "aggiungi_se_attivo":
+                    continue
+                job_id = node.args[0] if node.args else None
+                if isinstance(job_id, ast.Constant):
+                    periodic_ids.add(job_id.value)
                 continue
             job_id = next((k.value for k in node.keywords if k.arg == "id"), None)
             if not isinstance(job_id, ast.Constant):
@@ -31,12 +37,12 @@ def test_inventory_covers_all_periodic_registrations():
             if len(node.args) > 1 and isinstance(node.args[1], ast.Constant) and node.args[1].value == "date":
                 continue  # i due avvii singoli non sono procedure periodiche
             periodic_ids.add(job_id.value)
-    assert len(RETIRED_PERIODIC_JOBS) == 69
+    assert len(RETIRED_PERIODIC_JOBS) == 68
     assert len(periodic_ids) == 74
-    assert periodic_ids == RETIRED_PERIODIC_JOBS | KEPT_JOBS
+    assert periodic_ids == RETIRED_PERIODIC_JOBS | ERP_KEPT_JOBS | LOTTI_ACTIVE_JOBS
 
 
-@pytest.mark.parametrize("allowlist", [None, "", ", ", ",".join(sorted(RETIRED_PERIODIC_JOBS | KEPT_JOBS))])
+@pytest.mark.parametrize("allowlist", [None, "", ", ", ",".join(sorted(RETIRED_PERIODIC_JOBS | ERP_KEPT_JOBS | LOTTI_ACTIVE_JOBS))])
 def test_cannot_reactivate_retired_jobs_with_environment(monkeypatch, allowlist):
     if allowlist is None:
         monkeypatch.delenv("SCHEDULER_JOB_ALLOWLIST", raising=False)
@@ -51,7 +57,7 @@ def test_cannot_reactivate_retired_jobs_with_environment(monkeypatch, allowlist)
     callback.assert_not_called()
 
 
-@pytest.mark.parametrize("allowlist", [None, ",".join(sorted(KEPT_JOBS)), "drive_cartella_unica"])
+@pytest.mark.parametrize("allowlist", [None, ",".join(sorted(ERP_KEPT_JOBS)), "drive_cartella_unica"])
 def test_real_erp_start_registers_only_allowed_jobs(monkeypatch, caplog, allowlist):
     if allowlist is None:
         monkeypatch.delenv("SCHEDULER_JOB_ALLOWLIST", raising=False)
@@ -70,7 +76,7 @@ def test_real_erp_start_registers_only_allowed_jobs(monkeypatch, caplog, allowli
         try:
             jobs = scheduler.get_jobs()
             periodic = {job.id for job in jobs if not isinstance(job.trigger, DateTrigger)}
-            expected = KEPT_JOBS if allowlist is None else set(allowlist.split(","))
+            expected = ERP_KEPT_JOBS if allowlist is None else set(allowlist.split(","))
             assert periodic == expected
             assert not {job.id for job in jobs} & RETIRED_PERIODIC_JOBS
             from datetime import datetime, timezone
@@ -88,19 +94,23 @@ def test_real_erp_start_registers_only_allowed_jobs(monkeypatch, caplog, allowli
     asyncio.run(start_and_stop())
 
 
-def test_hr_and_lotti_start_and_catchup_remain_off(monkeypatch):
+def test_hr_resta_spento_e_lotti_avvia_solo_haccp_ore_7(monkeypatch):
     from app.hr.services import paghe_scheduler, scadenze_scheduler
     from app.lotti.routers import scheduler as lotti
 
     monkeypatch.delenv("SCHEDULER_JOB_ALLOWLIST", raising=False)
     monkeypatch.setenv("ENABLE_SCHEDULER", "true")
     scheduler = Mock(running=False)
+    scheduler.get_jobs.return_value = [Mock(id="haccp_daily_generation")]
     monkeypatch.setattr(lotti, "scheduler", scheduler)
     monkeypatch.setattr(lotti, "scheduler_started", False)
     monkeypatch.setattr(paghe_scheduler, "_scheduler", None)
     monkeypatch.setattr(scadenze_scheduler, "_scheduler", None)
-    create_task = Mock(side_effect=AssertionError("Nessun recupero automatico all'avvio"))
-    sleep = AsyncMock(side_effect=AssertionError("Il blocco deve precedere l'attesa"))
+    def chiudi_coroutine(coro):
+        coro.close()
+        return Mock()
+    create_task = Mock(side_effect=chiudi_coroutine)
+    sleep = AsyncMock()
     monkeypatch.setattr(lotti.asyncio, "create_task", create_task)
     monkeypatch.setattr(lotti.asyncio, "sleep", sleep)
 
@@ -108,17 +118,24 @@ def test_hr_and_lotti_start_and_catchup_remain_off(monkeypatch):
         assert paghe_scheduler.start_scheduler() is None
         assert scadenze_scheduler.start_scheduler() is None
         result = await lotti.start_scheduler(_admin={})
-        assert result["success"] is False
-        assert "disattivate definitivamente" in result["message"]
-        await lotti._catchup_jobs_mancanti()
+        assert result["success"] is False  # il Mock non cambia running, ma il job viene registrato
         await lotti._lettura_articoli_ai_dopo_avvio()
 
     asyncio.run(verify())
-    scheduler.add_job.assert_not_called()
-    scheduler.start.assert_not_called()
-    create_task.assert_not_called()
+    scheduler.add_job.assert_called_once()
+    assert scheduler.add_job.call_args.kwargs["id"] == "haccp_daily_generation"
+    scheduler.start.assert_called_once()
+    create_task.assert_called_once()
     sleep.assert_not_called()
-    assert not lotti.scheduler_started
+    assert lotti.scheduler_started
+
+
+def test_haccp_ore_7_resta_attivo_con_allowlist_erp(monkeypatch):
+    from app.scheduler_policy import scheduler_job_enabled
+
+    monkeypatch.setenv("SCHEDULER_JOB_ALLOWLIST", "drive_cartella_unica,gmail_full_scan")
+    assert scheduler_job_enabled("haccp_daily_generation") is True
+    assert scheduler_job_enabled("digest_mattutino") is False
 
 
 def test_manual_command_still_runs_retired_job_callback(monkeypatch):

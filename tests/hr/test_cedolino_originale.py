@@ -14,6 +14,17 @@ def test_originale_storico_embedded():
     assert result == content
 
 
+def test_originale_recupera_il_blob_persistente(monkeypatch):
+    class Archivio:
+        async def get(self, key):
+            assert key == "sha256:cedolino"
+            return base64.b64encode(b"%PDF-da-blob").decode("ascii")
+
+    monkeypatch.setattr("app.services.blob_store.blob_store_per_runtime", lambda _runtime: Archivio())
+    result = asyncio.run(cedolino_originale.carica_originale({"blob_key": "sha256:cedolino"}))
+    assert result == b"%PDF-da-blob"
+
+
 def test_originale_drive_letto_per_id(monkeypatch):
     async def fake_download(file_id, md5=None):
         assert file_id == "drive-1"

@@ -7,6 +7,8 @@ from app.lotti.routers.ordini_fornitori import (
     _peso_kg_da_riga_ordine,
     _quantita_riga_ordine,
     _riga_con_prezzo_fattura,
+    _prodotto_listino_acquaviva_per_riga,
+    _riga_con_prezzo_listino_acquaviva,
 )
 from fastapi import HTTPException
 import pytest
@@ -30,6 +32,72 @@ def test_prezzo_invariato_non_crea_un_falso_aggiornamento():
     aggiornata, cambiata = _riga_con_prezzo_fattura(
         riga, {"prezzo": 5, "unita_confezione": "PZ", "iva_pct": 10}, "oggi")
     assert cambiata is False and aggiornata == riga
+
+
+def test_listino_acquaviva_calcola_il_cartone_e_non_il_singolo_pezzo():
+    prodotto = {
+        "id": "ab339479-0731-5932-898b-54a91db91131",
+        "codice_aqv_2026": "60935",
+        "prezzo_listino_riferimento": 0.727,
+        "qty_cartone": 45,
+        "unita_misura": "PZ",
+        "iva_pct": 10,
+    }
+    riga = {
+        "prodotto_id": "cat_ab339479-0731-5932-898b-54a91db91131",
+        "nome": "Cornetto vegano dritto all’arancia",
+        "prezzo_ultimo": 0,
+        "unita": "kar",
+    }
+    assert _prodotto_listino_acquaviva_per_riga(riga, [prodotto]) == prodotto
+    aggiornata, cambiata = _riga_con_prezzo_listino_acquaviva(riga, prodotto, "oggi")
+    assert cambiata is True
+    assert aggiornata["prezzo_unitario_listino"] == 0.727
+    assert aggiornata["prezzo_ultimo"] == 32.715
+    assert aggiornata["iva_pct"] == 10
+    assert aggiornata["unita"] == "ct 45 pz"
+    assert aggiornata["prezzo_fonte"] == "listino_fornitore"
+
+
+def test_sync_acquaviva_aggiorna_ordine_confermato_senza_fattura(monkeypatch):
+    async def scenario():
+        from app.lotti.servizi import preferiti_cataloghi
+
+        database = AsyncMongoMockClient().lotti
+        monkeypatch.setattr(ordini, "db", database)
+
+        async def nessuna_fattura(_db, _fonte):
+            return []
+
+        monkeypatch.setattr(preferiti_cataloghi, "fatture_catalogo", nessuna_fattura)
+        monkeypatch.setattr(preferiti_cataloghi, "articoli_acquistati", lambda _: [])
+        await database.acquaviva_prodotti.insert_one({
+            "id": "ab339479-0731-5932-898b-54a91db91131",
+            "fonte": "vandemoortele",
+            "codice_aqv_2026": "60935",
+            "prezzo_listino_riferimento": 0.727,
+            "qty_cartone": 45,
+            "unita_misura": "PZ",
+            "iva_pct": 10,
+        })
+        await database.ordini_fornitori.insert_one({
+            "id": "o-acquaviva", "stato": "confermato", "prodotti": [{
+                "prodotto_id": "cat_ab339479-0731-5932-898b-54a91db91131",
+                "nome": "Cornetto vegano dritto all’arancia",
+                "quantita": 1, "unita": "kar", "prezzo_ultimo": 0,
+                "prezzo_fonte": "non_disponibile", "iva_pct": 10,
+            }],
+        })
+        esito = await ordini.aggiorna_prezzi_ordini_aperti("acquaviva", _admin=True)
+        salvato = await database.ordini_fornitori.find_one({"id": "o-acquaviva"})
+        assert esito["ordini_aggiornati"] == 1
+        assert salvato["prodotti"][0]["prezzo_ultimo"] == 32.715
+        assert salvato["prodotti"][0]["unita"] == "ct 45 pz"
+        assert salvato["totali"]["imponibile"] == 32.72
+        assert salvato["totali"]["iva"] == 3.27
+        assert salvato["totali"]["totale"] == 35.99
+
+    asyncio.run(scenario())
 
 
 def test_collega_nomi_catalogo_fattura_solo_quando_univoci_e_compatibili():
@@ -101,9 +169,12 @@ def test_recupero_bozza_nel_carrello_e_annullamento_conservano_lo_storico(monkey
         monkeypatch.setattr(ordini, "db", database)
         await database.ordini_fornitori.insert_one({"id": "o1", "stato": "bozza", "prodotti": [
             {"prodotto_id": "cat_saima-N031", "nome": "Crema", "fornitore": "SAIMA",
+             "codice_articolo": "SAIMA N031", "codici": ["SAIMA N031"],
              "quantita": 2, "unita": "13 KG", "prezzo_ultimo": 53.43, "iva_pct": 10}]})
         recuperato = await ordini.riporta_ordine_al_carrello("o1", _admin=True)
         assert recuperato["righe"][0]["id"] == "saima-N031"
+        assert recuperato["righe"][0]["codice_articolo"] == "SAIMA N031"
+        assert recuperato["righe"][0]["codici"] == ["SAIMA N031"]
         assert (await database.ordini_fornitori.find_one({"id": "o1"}))["stato"] == "in_modifica"
         await ordini.elimina_ordine("o1", _admin=True)
         assert (await database.ordini_fornitori.find_one({"id": "o1"}))["stato"] == "annullato"

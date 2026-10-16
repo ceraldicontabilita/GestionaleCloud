@@ -266,6 +266,49 @@ def test_due_copie_della_stessa_quietanza_sono_un_pagamento_solo():
     assert esito["rate"][2]["quietanza_ids"] == ["q3"]
 
 
+def test_cassetto_senza_protocollo_e_quietanza_sono_la_stessa_rata():
+    from copy import deepcopy
+
+    quietanza = {**QUIETANZE[1], "codice_fiscale": "04523831214"}
+    copia = {**deepcopy(quietanza), "id": "cassetto", "protocollo_telematico": ""}
+    riga = copia["sezione_inps"][0]
+    riga.pop("periodo_raw")
+    riga.update(periodo_da="09/2025", periodo_a="09/2025")
+    for documenti in ([quietanza, copia], [copia, quietanza]):
+        esito = di.abbina_rate(PIANO, documenti, oggi="2026-10-13")
+        assert esito["rate_pagate"] == 1
+        assert esito["rate"][1]["quietanza_ids"] == ["cassetto", "q2"]
+        assert esito["pagamenti_non_previsti"] == []
+
+
+def test_la_copia_ambigua_non_paga_una_terza_rata():
+    prima = {**QUIETANZE[1], "codice_fiscale": "04523831214"}
+    seconda = {**prima, "id": "seconda", "protocollo_telematico": "ALTRO/000001"}
+    copia = {**prima, "id": "cassetto", "protocollo_telematico": ""}
+    esito = di.abbina_rate(PIANO, [prima, seconda, copia], oggi="2026-10-13")
+    assert esito["rate_pagate"] == 2
+    assert esito["pagamenti_non_previsti"][0]["quietanza_ids"] == ["cassetto"]
+    assert esito["pagamenti_non_previsti"][0]["da_verificare"]
+
+
+def test_non_accorpa_la_sola_riga_inps_se_le_altre_righe_della_delega_cambiano():
+    quietanza = {**QUIETANZE[1], "codice_fiscale": "04523831214"}
+    copia = {**quietanza, "id": "cassetto", "protocollo_telematico": "",
+             "sezione_erario": [{"codice_tributo": "1001", "periodo_riferimento": "2025",
+                                  "importo_debito": 10, "importo_credito": 10}]}
+    assert len(di.pagamenti_della_dilazione(PIANO, [quietanza, copia])) == 2
+    assert di._firma_delega_pagata({**quietanza, "codice_fiscale": ""}) is None
+
+
+def test_la_firma_della_quietanza_conserva_la_fine_del_periodo_inps():
+    from copy import deepcopy
+
+    quietanza = {**QUIETANZE[1], "codice_fiscale": "04523831214"}
+    diversa = deepcopy(quietanza)
+    diversa["sezione_inps"][0]["periodo_raw"] = "9 2025 10 2025"
+    assert di._firma_delega_pagata(quietanza) != di._firma_delega_pagata(diversa)
+
+
 def test_importo_diverso_o_versamento_prima_della_domanda_non_pagano_la_rata():
     diverso = _q("x", "2026-04-08", 1294.01, "26030611002055014/000001")
     prima = _q("y", "2026-02-20", 1293.0, "26022011002055014/000001")
@@ -353,6 +396,25 @@ def test_la_rata_scaduta_apre_un_alert_che_si_chiude_quando_arriva_la_quietanza(
     _run(db[COLL_QUIETANZE_F24].insert_one(dict(QUIETANZE[3])))
     esito = _run(di.collega_dilazioni(db, oggi="2026-09-27"))
     assert esito["scritti"]["alert_chiusi"] == 1
+
+
+def test_la_chiusura_in_blocco_lascia_aperti_gli_alert_delle_rate_non_pagate(monkeypatch):
+    from app.constants.canale_documento import STATO_ALERT_APERTO
+    db = _db([])
+    _run(di.collega_dilazioni(db, oggi="2026-10-13"))
+    for quietanza in QUIETANZE[:3]:
+        _run(db[COLL_QUIETANZE_F24].insert_one(dict(quietanza)))
+    chiamate = []
+    update = db["alerts"].update_many
+    async def registra(selector, patch):
+        chiamate.append(selector)
+        return await update(selector, patch)
+    monkeypatch.setattr(db["alerts"], "update_many", registra)
+    esito = _run(di.collega_dilazioni(db, oggi="2026-10-13"))
+    assert esito["scritti"]["alert_chiusi"] == 3
+    assert len(chiamate) == 1
+    aperti = _run(db["alerts"].find({"stato": STATO_ALERT_APERTO}).to_list(10))
+    assert len(aperti) == 1 and "rata 4/4" in aperti[0]["dettaglio"]
 
 
 def test_il_pdf_arrivato_viene_conservato_depositato_e_abbinato_subito():
@@ -468,3 +530,26 @@ def test_la_ripresa_deposita_il_piano_conservato_ma_mai_depositato(monkeypatch):
     perso = asyncio.run(db["documents_inbox"].find_one({"id": "inbox-perso"}, {"_id": 0}))
     assert perso["status"] == "da_verificare" and perso["ripresa_v"] == di.RIPRESA_V
     assert asyncio.run(di.riprendi_da_verificare(db))["candidati"] == 0
+
+
+def test_periodo_ridotto_richiede_piano_univoco_e_importo_esatto():
+    piano = {**PIANO, 'periodo_da':'01/2025', 'periodo_a':'12/2025'}
+    q = _q('ridotto', '2026-03-06', 1293, 'protocollo-ridotto', '01/2025', '1 2025 1 2025')
+    # Senza confronto con tutti i piani non si presume la destinazione.
+    assert di.abbina_rate(piano, [q])['rate_pagate'] == 0
+    result = di.abbina_rate(piano, [q], piani=[piano])
+    assert result['rate_pagate'] == 1 and result['rate'][0]['periodo_ridotto']['periodo_originale'] == ['01/2025','01/2025']
+    ambiguo = {**piano, 'rif':'altro-piano'}
+    assert di.abbina_rate(piano, [q], piani=[piano, ambiguo])['rate_pagate'] == 0
+    esatto = {**ambiguo, 'periodo_da':'01/2025','periodo_a':'01/2025'}
+    assert di.abbina_rate(piano, [q], piani=[piano, esatto])['rate_pagate'] == 0
+    q['sezione_inps'][0]['importo_debito_cents'] = 129299
+    assert di.abbina_rate(piano, [q], piani=[piano])['rate_pagate'] == 0
+
+
+def test_pagamento_parziale_riduce_il_residuo_senza_chiudere_la_rata():
+    piano = {**PIANO, 'rate':[{'numero':1,'importo_cents':147700,'scadenza':'2026-03-08'}]}
+    q = _q('parziale', '2026-03-08', 1472, 'protocollo-parziale')
+    result = di.abbina_rate(piano, [q])
+    assert result['residuo_cents'] == 500
+    assert result['rate_pagate'] == 0 and result['rate'][0]['stato'] == di.RATA_IMPORTO_DIVERSO

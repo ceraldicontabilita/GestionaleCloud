@@ -107,7 +107,7 @@ def extract_pdf_pages(content: bytes, *, use_ocr: bool = True) -> list[dict[str,
     except Exception as exc:
         raise ValueError("PDF non leggibile") from exc
     # Il motore OCR si crea alla prima pagina che ne ha bisogno e si libera a fine documento.
-    with contextlib.ExitStack() as pila:
+    with pdf, contextlib.ExitStack() as pila:
         return _pagine_del_pdf(pdf, use_ocr, pila)
 
 
@@ -123,7 +123,17 @@ def _pagine_del_pdf(pdf, use_ocr: bool, pila) -> list[dict[str, Any]]:
         ]
         ocr_used = False
         ocr_confidence = None
-        if use_ocr and len(text.strip()) < 20:
+        # Le cartelle AdeR contengono anche retro vuoti o il solo numero di
+        # pagina. Non sono scansioni: avviare l'OCR qui consumava 600 MB e
+        # bloccava l'intera cartella, benché il testo fosse già leggibile.
+        # Le immagini effettivamente disegnate (anche inline), i tracciati e
+        # le annotazioni mantengono invece il normale percorso OCR.
+        poco_testo = len(text.strip()) < 20
+        ocr_non_necessario = poco_testo and not (
+            page.get_image_info() or page.get_drawings() or page.first_annot
+            or page.first_widget
+        )
+        if use_ocr and poco_testo and not ocr_non_necessario:
             try:
                 if engine is None:
                     engine = pila.enter_context(motore())
@@ -148,9 +158,9 @@ def _pagine_del_pdf(pdf, use_ocr: bool, pila) -> list[dict[str, Any]]:
             # dichiarazioni (VL/VX, RN, IR, esito ISA), che si leggono solo
             # per posizione; non gonfiano le righe degli altri documenti.
             "layout_words": layout_words if (_looks_like_lipe_module(text) or pagina_con_quadro(text)) else [],
-            "requires_ocr": len(text.strip()) < 20,
+            "requires_ocr": len(text.strip()) < 20 and not ocr_non_necessario,
+            **({"ocr_not_required": True} if ocr_non_necessario else {}),
         })
-    pdf.close()
     return pages
 
 
@@ -192,7 +202,8 @@ class FiscalDocumentIngestionService:
             refreshed = False
             if not pages or any(
                 page.get("requires_ocr")
-                or len(str(page.get("text") or "").strip()) < 20
+                or (len(str(page.get("text") or "").strip()) < 20
+                    and not page.get("ocr_not_required"))
                 or (
                     (_looks_like_lipe_module(page.get("text") or "")
                      or pagina_con_quadro(page.get("text") or ""))

@@ -1,9 +1,19 @@
 import unittest
-from app.services.posizione_dipendente import componi_movimenti, posizione, prima_nota_mensile
+from app.services.posizione_dipendente import (
+    componi_movimenti, posizione, prima_nota_mensile, riepilogo_prima_nota_selezione,
+)
 
 class SaldoDipendenteTests(unittest.TestCase):
     def movimenti(self, **campi):
-        return componi_movimenti(**dict(paghe=[], esiti=[], cedolini=[], acconti=[], conciliazioni=[], **campi))
+        dati = {
+            "paghe": [],
+            "esiti": [],
+            "cedolini": [],
+            "acconti": [],
+            "conciliazioni": [],
+        }
+        dati.update(campi)
+        return componi_movimenti(**dati)
 
     def test_pagamento_non_riconciliato_senza_mese_riduce_saldo_alla_data(self):
         m = self.movimenti(pagamenti_senza_competenza=[{
@@ -19,6 +29,30 @@ class SaldoDipendenteTests(unittest.TestCase):
                               cedolini=[], acconti=[], conciliazioni=[])
         righe = prima_nota_mensile(m)["movimenti"]
         self.assertEqual([(r["data"], r["saldo"]) for r in righe], [("2025-12-20", -400), ("2026-01-31", 600)])
+
+    def test_saldo_parte_dal_primo_anno_con_cedolini_senza_falso_riporto(self):
+        m = componi_movimenti(
+            paghe=[
+                {"anno": 2019, "mese": 12, "importo_busta": 1642},
+                {"anno": 2019, "mese": 13, "importo_busta": 985},
+            ],
+            esiti=[
+                {"data": "2018-08-07", "importo": 375, "anno": 2018, "mese": 6},
+                {"data": "2018-09-17", "importo": 770, "anno": 2018, "mese": 8},
+                {"data": "2019-12-12", "importo": 1031, "anno": 2019, "mese": 10},
+                {"data": "2019-12-12", "importo": 435, "anno": 2019, "mese": 14},
+                {"data": "2019-12-19", "importo": 985, "anno": 2019, "mese": 13},
+            ], cedolini=[], acconti=[], conciliazioni=[])
+
+        vista = prima_nota_mensile(m)
+
+        self.assertEqual(vista["dal_anno"], 2019)
+        self.assertEqual([(r["anno"], r["mese"]) for r in vista["righe"]], [(2019, 12)])
+        self.assertEqual(vista["righe"][0]["dovuto"], 2627)
+        self.assertEqual(vista["righe"][0]["erogato"], 2451)
+        self.assertEqual(vista["saldo_finale"], 176)
+        # Le fonti restano conservate: cambia solo il perimetro del saldo.
+        self.assertEqual(len(m["registro"]), 7)
 
     def test_cedolino_e_pagamento_successivo_sulla_stessa_riga(self):
         m = componi_movimenti(paghe=[{"anno": 2021, "mese": 11, "importo_busta": 878}],
@@ -70,6 +104,43 @@ class SaldoDipendenteTests(unittest.TestCase):
                               cedolini=[], acconti=[], conciliazioni=[], pagamenti_senza_competenza=[q])
         self.assertEqual(prima_nota_mensile(m)["saldo_finale"], -400)
         self.assertEqual(m["registro"][1]["tipo"], "verifica_bonifico")
+
+    def test_scheda_selezione_somma_solo_dopo_i_registri_individuali(self):
+        mario = self.movimenti(
+            paghe=[{"anno": 2026, "mese": 1, "importo_busta": 1000}],
+            esiti=[{"data": "2026-02-05", "importo": 600, "anno": 2026, "mese": 1}],
+        )
+        luigi = self.movimenti(
+            paghe=[{"anno": 2026, "mese": 1, "importo_busta": 800}],
+            esiti=[{"data": "2026-02-06", "importo": 800, "anno": 2026, "mese": 1}],
+        )
+        vista = riepilogo_prima_nota_selezione(
+            {"mario": mario, "luigi": luigi}, {"mario": "Mario Rossi", "luigi": "Luigi Bianchi"})
+        gennaio, febbraio = vista["righe"]
+        self.assertEqual((gennaio["cedolini"], gennaio["erogato"], gennaio["saldo_progressivo"]),
+                         (1800, 0, 1800))
+        self.assertEqual((febbraio["cedolini"], febbraio["erogato"], febbraio["saldo_progressivo"]),
+                         (0, 1400, 400))
+        self.assertEqual(vista["saldo_finale"], 400)
+        self.assertEqual([(r["dipendente"], r["saldo"]) for r in vista["per_dipendente"]],
+                         [("Luigi Bianchi", 0), ("Mario Rossi", 400)])
+        mensili = vista["mensili_per_dipendente"]
+        self.assertEqual(
+            [(r["dipendente_id"], r["anno"], r["mese"], r["dovuto"], r["erogato"])
+             for r in mensili],
+            [("luigi", 2026, 1, 800, 0), ("luigi", 2026, 2, 0, 800),
+             ("mario", 2026, 1, 1000, 0), ("mario", 2026, 2, 0, 600)],
+        )
+
+    def test_totale_cedolini_resta_separato_dagli_altri_dovuti(self):
+        movimenti = self.movimenti(
+            paghe=[{"anno": 2026, "mese": 1, "importo_busta": 1000}],
+            conciliazioni=[{"id": "c", "dipendente_id": "d", "data": "2026-01-15",
+                            "tipo": "saldo_spettanze", "totale": "200.00", "bonus": "0.00"}],
+        )
+        gennaio = prima_nota_mensile(movimenti)["righe"][0]
+        self.assertEqual((gennaio["cedolini"], gennaio["altri_dovuti"], gennaio["dovuto"]),
+                         (1000, 200, 1200))
 
 
 class RipartizioneSalariTests(unittest.TestCase):

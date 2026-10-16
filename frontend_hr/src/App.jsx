@@ -15,6 +15,7 @@ import PrimaNotaPaghe from "./PrimaNotaPaghe";
 import { sceltaIniziale, sceltaCandidato, propostaIntatta } from "./sceltaBonifico";
 import MissioniPage from "./MissioniPage";
 import { normalizzaEsitoImportPaghe } from "./esitoImportPaghe";
+import { apriFinestraPdfAttesa, mostraPdfNellaFinestra } from "./pdfWindow";
 import { 
   Users, Calendar, Clock, FileText, Briefcase, Home, 
   ChevronRight, Plus, Check, X, Edit2, Trash2, 
@@ -5045,16 +5046,15 @@ const COMPONENTE_CEDOLINO = {
 function ComponentiCedolino({ voci = [] }) {
   const [busy, setBusy] = useState(null);
   const apri = async (voce) => {
-    const finestra = window.open("", "_blank");
-    if (finestra) finestra.opener = null;
+    const finestra = apriFinestraPdfAttesa();
+    if (!finestra) { toast("Consenti l’apertura del PDF nel browser", "err"); return; }
     setBusy(voce.cedolino_id);
     try {
       const r = await axios.get(`/hr/api/cedolini/${encodeURIComponent(voce.cedolino_id)}/download`,
         { responseType: "blob", timeout: 60000 });
       const blob = new Blob([r.data], { type: "application/pdf" });
       const url = URL.createObjectURL(blob);
-      if (finestra) finestra.location.href = `${url}#page=${voce.pagina || 1}`;
-      else toast("Consenti l’apertura del PDF nel browser", "err");
+      mostraPdfNellaFinestra(finestra, url, voce.pagina || 1);
       setTimeout(() => URL.revokeObjectURL(url), 60000);
     } catch (e) { finestra?.close(); toast(erroreApi(e, "PDF non disponibile"), "err"); }
     finally { setBusy(null); }
@@ -5453,7 +5453,7 @@ function PagheBonificiPage({ dipendenti = [] }) {
   // della banca col motore unico. Resta questa, con dentro tutte le funzioni
   // dell'altra: import (Libro Unico, email, Prima Nota, CSV banca, archivio
   // storico, Drive), acconti in contanti, prima nota per dipendente, ricerca
-  // voci di busta, simulazione F24, griglia annuale.
+  // voci di busta e griglia annuale.
   const mesi = ["Gennaio","Febbraio","Marzo","Aprile","Maggio","Giugno","Luglio","Agosto","Settembre","Ottobre","Novembre","Dicembre"];
   const annoCorr = new Date().getFullYear();
   const importSession = useImportSession('hr-paghe', { importing: false, importMsg: null, pnMsg: null, csvMsg: null, storicoMsg: null, files: [], anno: 0, mese: 0, filtroStato: "", griglia: false });
@@ -5469,8 +5469,12 @@ function PagheBonificiPage({ dipendenti = [] }) {
   const [editBusta, setEditBusta] = useState(null); // { k, dipendente_id, anno, mese, importo, nota }
   const [editAcc, setEditAcc] = useState(null);   // { k, dipendente_id, anno, mese, acconti: [{importo,data}] }
   const [exportBusy, setExportBusy] = useState(false);
-  const [syncBusy, setSyncBusy] = useState(false);
-  const [cedSyncBusy, setCedSyncBusy] = useState(false);
+  const [dipendentiSelezionati, setDipendentiSelezionati] = useState([]);
+  const [schedaContabile, setSchedaContabile] = useState(null);
+  const [schedaBusy, setSchedaBusy] = useState(false);
+  const [inserimentoManuale, setInserimentoManuale] = useState(null);
+  const [manualeBusy, setManualeBusy] = useState(false);
+  const filtroDipendentiRef = useRef(null);
   const griglia = Boolean(importSession.state.griglia);
   const setGriglia = value => importSession.setField("griglia", value);
   // Import (ex pagina Buste Paga)
@@ -5489,10 +5493,6 @@ function PagheBonificiPage({ dipendenti = [] }) {
   // Strumenti
   const [showStrumenti, setShowStrumenti] = useState(false);
   const [cercaQ, setCercaQ] = useState(""); const [cercaRes, setCercaRes] = useState(null); const [cercaBusy, setCercaBusy] = useState(false);
-  const [rescanMsg, setRescanMsg] = useState("");
-  const [rescanBusy, setRescanBusy] = useState(false);
-  const rescanRunning = useRef(false);
-  const [f24, setF24] = useState(null); const [f24Busy, setF24Busy] = useState(false);
   const [pnDett, setPnDett] = useState(null);
 
   const eur = (n) => (Number(n) || 0).toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -5501,7 +5501,8 @@ function PagheBonificiPage({ dipendenti = [] }) {
   const [loadError, setLoadError] = useState("");
   const requestVersion = useRef(0);
   const activeFilters = useRef("");
-  const filterKey = `${anno}:${mese}:${filtroStato}`;
+  const selezioneKey = [...dipendentiSelezionati].sort().join(",");
+  const filterKey = `${anno}:${mese}:${filtroStato}:${selezioneKey}`;
   activeFilters.current = filterKey;
   useEffect(() => () => { requestVersion.current += 1; }, []);
   const load = async () => {
@@ -5514,6 +5515,7 @@ function PagheBonificiPage({ dipendenti = [] }) {
       if (anno) params.set("anno", anno);
       if (mese) params.set("mese", mese);
       if (filtroStato) params.set("stato", filtroStato);
+      dipendentiSelezionati.forEach(id => params.append("dipendente_id", id));
       const r = await axios.get(`${API}/paghe/associazioni-bonifici?${params.toString()}`);
       if (current()) setData(r.data || { righe: [], totali: {}, count: 0 });
     } catch (e) {
@@ -5523,7 +5525,7 @@ function PagheBonificiPage({ dipendenti = [] }) {
       }
     } finally { if (current()) setLoading(false); }
   };
-  useEffect(() => { load(); }, [anno, mese, filtroStato, importing, importSession.ready]);
+  useEffect(() => { load(); }, [anno, mese, filtroStato, selezioneKey, importing, importSession.ready]);
 
   const conferma = async (r, val) => {
     setBusy(keyOf(r));
@@ -5551,6 +5553,17 @@ function PagheBonificiPage({ dipendenti = [] }) {
       setEditPag(null);
       await load();
     } catch (e) { toast(e?.response?.data?.detail || "Errore nello spostamento del pagamento", "err"); }
+    finally { setBusy(null); }
+  };
+
+  const eliminaPagamentoManuale = async (key) => {
+    if (!window.confirm("Eliminare questo pagamento inserito a mano? I documenti bancari non vengono toccati.")) return;
+    setBusy(key);
+    try {
+      await axios.delete(`${API}/paghe/pagamento-esito/${encodeURIComponent(key)}`);
+      toast("Pagamento manuale eliminato");
+      await load();
+    } catch (e) { toast(e?.response?.data?.detail || "Impossibile eliminare il pagamento", "err"); }
     finally { setBusy(null); }
   };
 
@@ -5587,28 +5600,6 @@ function PagheBonificiPage({ dipendenti = [] }) {
     finally { setBusy(null); }
   };
 
-  const recuperaStorici = async () => {
-    setSyncBusy(true);
-    try {
-      const r = await axios.post(`${API}/paghe/sincronizza-bonifici-storici`, {});
-      const d = r.data || {};
-      toast(`Bonifici storici collegati: ${d.importati_in_pagamenti_esiti || 0} su ${d.mesi_aggiornati || 0} mesi aggiornati`);
-      await load();
-    } catch (e) { toast(e?.response?.data?.detail || "Errore sincronizzazione", "err"); }
-    finally { setSyncBusy(false); }
-  };
-
-  const sincronizzaDaCedolini = async () => {
-    setCedSyncBusy(true);
-    try {
-      const r = await axios.post(`${API}/paghe/sincronizza`, {});
-      const d = r.data || {};
-      toast(`Registro paghe popolato dai cedolini: ${d.creati || 0} nuovi, ${d.aggiornati || 0} aggiornati, ${d.saltati_manuali || 0} lasciati (già modificati a mano)`);
-      await load();
-    } catch (e) { toast(e?.response?.data?.detail || "Errore sincronizzazione dai cedolini", "err"); }
-    finally { setCedSyncBusy(false); }
-  };
-
   const esportaExcel = async () => {
     setExportBusy(true);
     try {
@@ -5616,6 +5607,7 @@ function PagheBonificiPage({ dipendenti = [] }) {
       if (anno) params.set("anno", anno);
       if (mese) params.set("mese", mese);
       if (filtroStato) params.set("stato", filtroStato);
+      dipendentiSelezionati.forEach(id => params.append("dipendente_id", id));
       const r = await axios.get(`${API}/paghe/associazioni-bonifici/export-excel?${params.toString()}`, { responseType: "blob" });
       const a = document.createElement("a"); a.href = URL.createObjectURL(r.data);
       a.download = `cedolini_bonifici${anno ? `_${anno}` : ""}${mese ? `_${String(mese).padStart(2, '0')}` : ""}.xlsx`;
@@ -5626,12 +5618,12 @@ function PagheBonificiPage({ dipendenti = [] }) {
   };
 
   const apriCopertura = async (prova) => {
-    const finestra = window.open("", "_blank");
-    if (finestra) finestra.opener = null;
+    const finestra = apriFinestraPdfAttesa();
+    if (!finestra) { toast("Consenti l’apertura del PDF nel browser", "err"); return; }
     try {
       const r = await axios.get(`${API}/bonifici-da-associare/${encodeURIComponent(prova.bonifico_da_associare_id)}/pdf`, { responseType: "blob" });
-      const url = URL.createObjectURL(r.data);
-      if (finestra) finestra.location = url;
+      const url = URL.createObjectURL(new Blob([r.data], { type: "application/pdf" }));
+      mostraPdfNellaFinestra(finestra, url);
       setTimeout(() => URL.revokeObjectURL(url), 60000);
     } catch { finestra?.close(); toast("PDF del bonifico non disponibile", "err"); }
   };
@@ -5640,25 +5632,39 @@ function PagheBonificiPage({ dipendenti = [] }) {
     if (!riga?.cedolino_id) return;
     const chiaveBusy = `cedolino_${keyOf(riga)}`;
     // «Scarica» salva il PDF senza aprire schede; «Apri» lo mostra.
-    const nuovaFinestra = scarica ? null : window.open("", "_blank");
+    const nuovaFinestra = scarica ? null : apriFinestraPdfAttesa();
+    if (!scarica && !nuovaFinestra) { toast("Consenti l’apertura del PDF nel browser", "err"); return; }
     setBusy(chiaveBusy);
     try {
       const risposta = await axios.get(
         `/hr/api/cedolini/${encodeURIComponent(riga.cedolino_id)}/download`,
         { responseType: "blob", timeout: 60000 },
       );
-      const url = URL.createObjectURL(risposta.data);
+      const url = URL.createObjectURL(new Blob([risposta.data], { type: "application/pdf" }));
       if (nuovaFinestra) {
-        nuovaFinestra.location = url;
+        mostraPdfNellaFinestra(nuovaFinestra, url);
       } else {
         const link = document.createElement("a");
         link.href = url;
         link.download = `cedolino_${riga.dipendente}_${riga.anno}_${String(riga.mese).padStart(2, "0")}.pdf`;
+        link.hidden = true;
+        document.body.appendChild(link);
         link.click();
+        link.remove();
       }
       setTimeout(() => URL.revokeObjectURL(url), 60000);
     } catch (e) {
       if (nuovaFinestra) nuovaFinestra.close();
+      if (e?.response?.status === 404 && riga?.cedolino_id) {
+        setData(precedenti => ({
+          ...precedenti,
+          righe: (precedenti.righe || []).map(r => ({
+            ...r,
+            cedolino_pdf: r.cedolino_id === riga.cedolino_id ? false : r.cedolino_pdf,
+            cedolini: (r.cedolini || []).map(c => c.cedolino_id === riga.cedolino_id ? { ...c, cedolino_pdf: false } : c),
+          })),
+        }));
+      }
       toast(e?.response?.data?.detail || "PDF del cedolino non disponibile", "err");
     } finally {
       setBusy(null);
@@ -5775,11 +5781,43 @@ function PagheBonificiPage({ dipendenti = [] }) {
     } catch (err) { setPnMsg({ errore: err.response?.data?.detail || err.message }); }
     finally { setImporting(false); }
   };
-  const confermaVerificaImporto = async (r, a) => {
+  const confermaTuttiGliAvvisiImporto = async (r) => {
     try {
-      await axios.post(`${API}/paghe/verifica-importo-excel`, { dipendente_id: r.dipendente_id, anno: r.anno, mese: r.mese, confronto_id: a.id, busta_attuale: r.busta });
-      setConfrontoImporto(null); await load();
+      for (const a of (r.avvisi_importo || [])) {
+        await axios.post(`${API}/paghe/verifica-importo-excel`, {
+          dipendente_id: r.dipendente_id, anno: r.anno, mese: r.mese,
+          confronto_id: a.id, busta_attuale: r.busta,
+        });
+      }
+      toast(`Confermato l'importo del cedolino: € ${eur(r.busta)}`);
+      setConfrontoImporto(null);
+      await load();
     } catch (err) { toast(err.response?.data?.detail || 'Verifica non salvata', 'err'); }
+  };
+  const salvaImportoDaVerifica = async () => {
+    if (!confrontoImporto) return;
+    const importo = Number(String(confrontoImporto.nuovo_importo).replace(",", "."));
+    const nota = String(confrontoImporto.nota_manual || "").trim();
+    if (!Number.isFinite(importo) || importo < 0 || !nota) return;
+    setManualeBusy(true);
+    try {
+      await axios.put(`${API}/paghe/importo-busta`, {
+        dipendente_id: confrontoImporto.dipendente_id,
+        anno: confrontoImporto.anno, mese: confrontoImporto.mese,
+        importo_busta: importo, nota,
+      });
+      for (const a of (confrontoImporto.avvisi_importo || [])) {
+        await axios.post(`${API}/paghe/verifica-importo-excel`, {
+          dipendente_id: confrontoImporto.dipendente_id,
+          anno: confrontoImporto.anno, mese: confrontoImporto.mese,
+          confronto_id: a.id, busta_attuale: importo,
+        });
+      }
+      toast(`Importo manuale salvato nel gestionale: € ${eur(importo)}`);
+      setConfrontoImporto(null);
+      await load();
+    } catch (err) { toast(err.response?.data?.detail || 'Importo non salvato', 'err'); }
+    finally { setManualeBusy(false); }
   };
   const handleImportPagamenti = async (e) => {
     const fl = (e.target.files || [])[0];
@@ -5814,38 +5852,47 @@ function PagheBonificiPage({ dipendenti = [] }) {
     catch (e) { setCercaRes({ risultati: [], totale: 0, errore: e?.response?.data?.detail || "Errore ricerca" }); }
     finally { setCercaBusy(false); }
   };
-  const riscansiona = async () => {
-    if (rescanRunning.current) return;
-    if (!window.confirm("Rileggi 13ª, 14ª e TFR dai PDF originali? Netti e pagamenti restano invariati. Le voci già rilette vengono saltate.")) return;
-    rescanRunning.current = true;
-    setRescanBusy(true);
-    setRescanMsg("Rilettura originali in corso…");
-    let dopoId = "", aggiornati = 0, errori = 0;
+  const apriSchedaContabile = async () => {
+    setSchedaBusy(true);
     try {
-      do {
-        const r = await axios.post(`${API}/cedolini/riscansiona`, null,
-          { params: { ...(anno ? { anno } : {}), dopo_id: dopoId }, timeout: 120000 });
-        aggiornati += r.data.aggiornati;
-        errori += r.data.errori;
-        dopoId = r.data.prossimo_id;
-        setRescanMsg(`Originali riletti: ${aggiornati}. Da verificare: ${errori}.${dopoId ? " Rilettura in corso…" : " Completata."}`);
-      } while (dopoId);
+      const selezionati = dipendentiSelezionati.length;
+      setSchedaContabile({
+        mensili: contabilitaVista.righe,
+        righe: data.contabilita?.movimenti || [],
+        saldo_finale: contabilitaVista.saldo_finale,
+        perDipendente: contabilitaVista.per_dipendente,
+        dal_anno: data.contabilita?.dal_anno,
+        titolo: selezionati === 1
+          ? (dipendenti.find(d => d.id === dipendentiSelezionati[0])?.nome_completo || "Dipendente")
+          : selezionati > 1 ? `${selezionati} dipendenti selezionati` : "Tutti i dipendenti",
+      });
+    } catch (e) {
+      toast(e?.response?.data?.detail || "Impossibile caricare la scheda contabile", "err");
+    } finally { setSchedaBusy(false); }
+  };
+
+  const apriInserimentoManuale = () => setInserimentoManuale({
+    dipendente_id: dipendentiSelezionati.length === 1 ? dipendentiSelezionati[0] : "",
+    tipo: "dovuto", anno: anno || annoCorr, mese: mese || new Date().getMonth() + 1,
+    importo: "", data: new Date().toISOString().slice(0, 10), nota: "",
+  });
+  const apriPagamentoManualePeriodo = r => setInserimentoManuale({
+    dipendente_id: r.dipendente_id, tipo: "pagamento", anno: r.anno, mese: r.mese,
+    importo: "", data: new Date().toISOString().slice(0, 10),
+    nota: `Pagamento manuale per ${mesi[r.mese - 1] || r.mese} ${r.anno}`,
+    periodo_bloccato: true,
+  });
+  const salvaInserimentoManuale = async () => {
+    if (!inserimentoManuale) return;
+    setManualeBusy(true);
+    try {
+      await axios.post(`${API}/paghe/inserimento-manuale`, inserimentoManuale);
+      toast(inserimentoManuale.tipo === "dovuto" ? "Importo dovuto registrato" : "Pagamento manuale registrato");
+      setInserimentoManuale(null);
       await load();
-    } catch (e) { setRescanMsg("⚠ " + (e?.response?.data?.detail || "Rilettura interrotta; puoi riprenderla senza perdere i risultati.")); }
-    finally { rescanRunning.current = false; setRescanBusy(false); }
-  };
-  const correggiAcconti = async () => {
-    if (!window.confirm("Togliere gli 'acconto dal cedolino' implausibili (poche decine di euro, probabile errore di lettura) e ricalcolare il saldo? Non tocca gli acconti registrati a mano.")) return;
-    setRescanMsg("Correzione acconti in corso…");
-    try { const r = await axios.post(`${API}/paghe/correggi-acconti-cedolino`); setRescanMsg(`✓ Corretti ${r.data.corretti} acconti implausibili (rimossi, saldo ricalcolato sul netto pieno).`); await load(); }
-    catch (e) { setRescanMsg("⚠ " + (e?.response?.data?.detail || "Errore correzione acconti")); }
-  };
-  const calcolaF24 = async () => {
-    if (!mese) { toast("Scegli un mese per la simulazione F24", "err"); return; }
-    setF24Busy(true); setF24(null);
-    try { const r = await axios.get(`/hr/api/cedolini/simulazione-f24?anno=${anno}&mese=${mese}`); setF24(r.data); }
-    catch (e) { setF24({ errore: e?.response?.data?.detail || "Errore nel calcolo" }); }
-    finally { setF24Busy(false); }
+    } catch (e) {
+      toast(e?.response?.data?.detail || "Impossibile registrare l'importo manuale", "err");
+    } finally { setManualeBusy(false); }
   };
   const apriPrimaNota = async (dipId, nome) => {
     setPnDett({ nome, loading: true });
@@ -5854,11 +5901,62 @@ function PagheBonificiPage({ dipendenti = [] }) {
         axios.get(`${API}/paghe/prima-nota?dipendente_id=${dipId}`),
         axios.get(`${API}/paghe/storico-pagamenti?dipendente_id=${dipId}`).catch(() => ({ data: { righe: [] } })),
       ]);
-      setPnDett({ nome, competenze: r.data.competenze || [], righe: r.data.movimenti || [], saldo_finale: r.data.saldo_finale, storico: st.data.righe || [] });
+      setPnDett({ nome, mensili: r.data.righe || [], competenze: r.data.competenze || [], righe: r.data.movimenti || [], saldo_finale: r.data.saldo_finale, dal_anno: r.data.dal_anno, storico: st.data.righe || [] });
     } catch { setPnDett({ nome, righe: [], errore: true }); }
   };
 
-  const t = data.totali || {};
+  const meseContabile = mese === 13 ? 12 : mese === 14 ? 7 : mese;
+  const filtraRigheContabili = righe => (righe || []).filter(x =>
+    (!anno || Number(x.anno) === Number(anno)) && (!meseContabile || Number(x.mese) === Number(meseContabile)));
+  const righeContabili = filtraRigheContabili(data.contabilita?.righe);
+  const mensiliDipendente = filtraRigheContabili(data.contabilita?.mensili_per_dipendente);
+  const somma = (righe, campo) => Math.round(righe.reduce((totale, r) => totale + Number(r?.[campo] || 0), 0) * 100) / 100;
+  const perDipendenteContabile = Object.values(mensiliDipendente.reduce((acc, r) => {
+    const id = r.dipendente_id;
+    acc[id] ||= { dipendente_id: id, dipendente: r.dipendente, dovuto: 0, pagato: 0, saldo: 0 };
+    acc[id].dovuto += Number(r.dovuto || 0);
+    acc[id].pagato += Number(r.erogato || 0);
+    acc[id].saldo = Number(r.saldo_progressivo || 0);
+    return acc;
+  }, {})).sort((a, b) => a.dipendente.localeCompare(b.dipendente, "it"));
+  const contabilitaVista = {
+    righe: righeContabili,
+    mensili_per_dipendente: mensiliDipendente,
+    per_dipendente: perDipendenteContabile,
+    cedolini: somma(righeContabili, "cedolini"),
+    altri_dovuti: somma(righeContabili, "altri_dovuti"),
+    dovuto: somma(righeContabili, "dovuto"),
+    bonifico: somma(righeContabili, "bonifico"),
+    acconti: somma(righeContabili, "acconti"),
+    erogato: somma(righeContabili, "erogato"),
+    saldo_periodo: somma(righeContabili, "dovuto") - somma(righeContabili, "erogato"),
+    saldo_finale: righeContabili.length ? righeContabili[righeContabili.length - 1].saldo_progressivo : 0,
+  };
+  const saldoProgressivoPerPeriodo = Object.fromEntries(
+    (data.contabilita?.mensili_per_dipendente || []).map(r => [
+      `${r.dipendente_id}_${r.anno}_${r.mese}`, r.saldo_progressivo,
+    ]));
+  const saldoProgressivoRiga = r => saldoProgressivoPerPeriodo[
+    `${r.dipendente_id}_${r.anno}_${r.mese === 13 ? 12 : r.mese === 14 ? 7 : r.mese}`
+  ];
+  const tArchivio = data.totali || {};
+  const t = !data.contabilita ? tArchivio : {
+    ...tArchivio,
+    buste: contabilitaVista.dovuto,
+    bonifici: contabilitaVista.bonifico,
+    acconti: contabilitaVista.acconti,
+    saldo: contabilitaVista.saldo_periodo,
+  };
+  const dipendentiOrdinati = [...dipendenti].sort((a, b) =>
+    (a.nome_completo || `${a.cognome || ""} ${a.nome || ""}`).localeCompare(
+      b.nome_completo || `${b.cognome || ""} ${b.nome || ""}`, "it"));
+  const chiudiFiltroDipendenti = () => {
+    if (filtroDipendentiRef.current) filtroDipendentiRef.current.open = false;
+  };
+  const cambiaDipendente = id => {
+    setDipendentiSelezionati(attuali => attuali.includes(id) ? attuali.filter(x => x !== id) : [...attuali, id]);
+    requestAnimationFrame(chiudiFiltroDipendenti);
+  };
   const STATI = {
     vuoto: { label: "Nessun importo da pagare", variant: "default" },
     pagato: { label: "✓ Pagato", variant: "success" },
@@ -5934,17 +6032,11 @@ function PagheBonificiPage({ dipendenti = [] }) {
               </div>
             )}
           </div>
-          <button className="dc-btn" disabled={cedSyncBusy} onClick={sincronizzaDaCedolini} title="Popola questo registro dai cedolini in archivio">
-            {cedSyncBusy ? "Sincronizzo…" : "🔄 Sincronizza da cedolini"}
-          </button>
-          <button className="dc-btn" disabled={syncBusy} onClick={recuperaStorici} title="Collega alla busta i bonifici storici già archiviati ma non ancora agganciati qui">
-            {syncBusy ? "Collego…" : "🔗 Recupera bonifici storici"}
-          </button>
           <button className="dc-btn" disabled={exportBusy} onClick={esportaExcel}>
             {exportBusy ? "Esporto…" : "📊 Esporta Excel"}
           </button>
           {!importing && importSession.state.files.length > 0 && !importMsg?.success && <button className="dc-btn" onClick={() => handleImportLul(null)}>Riprendi import</button>}
-          <button className="dc-btn" onClick={() => setShowStrumenti(s => !s)}>🔎 Strumenti {showStrumenti ? "▲" : "▼"}</button>
+          <button className="dc-btn" onClick={() => setShowStrumenti(s => !s)}>🔎 Cerca nei cedolini {showStrumenti ? "▲" : "▼"}</button>
         </div>
       </div>
 
@@ -5985,18 +6077,41 @@ function PagheBonificiPage({ dipendenti = [] }) {
         <textarea aria-label="Tabella importi" value={testoImporti} onChange={e => setTestoImporti(e.target.value)} rows={12} style={{ width: '100%' }} />
         <button className="dc-btn dc-btn-primary" disabled={!testoImporti.trim() || importing} onClick={() => handleImportPrimaNota(new File([testoImporti], 'importi-incollati.txt', { type: 'text/plain' }))}>Controlla anteprima</button>
       </Modal>}
-      {confrontoImporto && <Modal title="Verifica importo del cedolino" onClose={() => setConfrontoImporto(null)}>
+      {confrontoImporto && <Modal title="Conferma l'importo del cedolino" onClose={() => setConfrontoImporto(null)}>
         <p>{confrontoImporto.dipendente} · {mesi[confrontoImporto.mese - 1] || confrontoImporto.mese} {confrontoImporto.anno}</p>
-        <p>Dovuto nel gestionale: {confrontoImporto.busta == null ? 'non disponibile' : `€ ${eur(confrontoImporto.busta)}`}</p>
+        <p style={{ fontSize: 18, fontWeight: 700 }}>
+          {confrontoImporto.busta == null
+            ? "L'importo del cedolino non è ancora disponibile."
+            : `Confermi che l'importo corretto del cedolino è € ${eur(confrontoImporto.busta)}?`}
+        </p>
         {confrontoImporto.acconto_recuperato > 0 && <p>Netto PDF € {eur(confrontoImporto.netto_stampato)} · recupero acconto € {eur(confrontoImporto.acconto_recuperato)}</p>}
         {confrontoImporto.avvisi_importo.map(a => <div key={a.id} className="dc-card">
-          <strong>{a.motivo}: € {eur(a.importo)}</strong>
-          <p>{a.tipo === 'netto' ? 'Netto dichiarato nel file' : 'Importo attribuito dai pagamenti, non netto del cedolino'} · {a.file}, riga {a.riga}</p>
+          <strong>Dato discordante da controllare: € {eur(a.importo)}</strong>
+          <p>Questo è soltanto un valore letto da un'altra fonte ({a.file}, riga {a.riga}); non sostituisce automaticamente il cedolino.</p>
           {a.nota && <p>{a.nota}</p>}
-          <button className="dc-btn" disabled={confrontoImporto.busta == null} onClick={() => confermaVerificaImporto(confrontoImporto, a)}>Ho verificato: mantieni il valore nel gestionale</button>
         </div>)}
         {confrontoImporto.cedolino_id && <button className="dc-btn" onClick={() => apriCedolino(confrontoImporto)}>Apri PDF cedolino</button>}
-        <p>Se il dovuto è errato, correggilo con la matita accanto all'importo dopo aver controllato il documento. Il netto del PDF resta separato dal recupero acconto.</p>
+        {confrontoImporto.busta != null && <button className="dc-btn dc-btn-primary" disabled={manualeBusy} onClick={() => confermaTuttiGliAvvisiImporto(confrontoImporto)}>
+          Sì, confermo € {eur(confrontoImporto.busta)}
+        </button>}
+        <details style={{ marginTop: 14 }} open={confrontoImporto.busta == null}>
+          <summary style={{ cursor: "pointer", fontWeight: 700 }}>No, inserisco l'importo corretto</summary>
+          <div style={{ display: "grid", gap: 10, marginTop: 10 }}>
+            <label><span className="dc-label">Importo corretto del cedolino €</span>
+              <input className="dc-input" inputMode="decimal" value={confrontoImporto.nuovo_importo ?? ""}
+                onChange={e => setConfrontoImporto(v => ({ ...v, nuovo_importo: e.target.value }))} placeholder="0,00" />
+            </label>
+            <label><span className="dc-label">Motivazione obbligatoria</span>
+              <textarea className="dc-input" rows={2} value={confrontoImporto.nota_manual ?? ""}
+                onChange={e => setConfrontoImporto(v => ({ ...v, nota_manual: e.target.value }))}
+                placeholder="Esempio: verificato sul PDF; il parser non ha letto la trattenuta/acconto" />
+            </label>
+            <button className="dc-btn dc-btn-primary" disabled={manualeBusy || !String(confrontoImporto.nuovo_importo ?? "").trim() || !String(confrontoImporto.nota_manual || "").trim()} onClick={salvaImportoDaVerifica}>
+              {manualeBusy ? "Salvo…" : "Salva questo importo nel gestionale"}
+            </button>
+          </div>
+        </details>
+        <p className="dc-muted">Il valore confermato manualmente ha precedenza sui successivi import automatici. La fonte discordante resta nello storico, ma non modifica il dovuto.</p>
       </Modal>}
       {csvMsg && (
         <div className="dc-card" style={msgCard(csvMsg)}>
@@ -6021,19 +6136,17 @@ function PagheBonificiPage({ dipendenti = [] }) {
 
       {showStrumenti && (
         <div className="dc-card" style={{ marginBottom: 16 }}>
-          <h3 style={{ marginTop: 0 }}>🔎 Cerca nelle buste (qualsiasi voce)</h3>
+          <h3 style={{ marginTop: 0 }}>🔎 Cerca una voce nei cedolini</h3>
+          <p className="dc-muted" style={{ fontSize: 12.5, margin: "0 0 8px" }}>Serve a trovare una dicitura o un codice stampato nei cedolini, per esempio “tredicesima”, “730” o “F09081”. Non calcola imposte e non modifica i dati.</p>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
             <input className="dc-input" style={{ flex: "1 1 240px" }} placeholder="Codice (es. F09081) o testo (es. 730, 13ma, L.207)"
               value={cercaQ} onChange={e => setCercaQ(e.target.value)} onKeyDown={e => e.key === "Enter" && cercaVoce()} />
             <button className="dc-btn-primary" disabled={cercaBusy} onClick={cercaVoce}>{cercaBusy ? "Cerco…" : "Cerca"}</button>
-            <button className="dc-btn" onClick={riscansiona} disabled={rescanBusy} title="Rilegge voci, 13ª, 14ª e TFR dagli originali, senza cambiare netti o pagamenti">Riscansiona storico</button>
-            <button className="dc-btn" onClick={correggiAcconti} title="Toglie gli 'acconto dal cedolino' di poche decine di euro (probabile errore del parser) e ricalcola il saldo">🔧 Correggi acconti cedolino</button>
           </div>
-          {rescanMsg && <div className="dc-muted" style={{ marginTop: 8 }}>{rescanMsg}</div>}
           {cercaRes && (
             <div style={{ marginTop: 10, overflowX: "auto" }}>
               {cercaRes.errore ? <div className="dc-muted">⚠ {cercaRes.errore}</div>
-                : cercaRes.totale === 0 ? <div className="dc-muted">Nessun risultato. Per lo storico premi prima “Riscansiona storico”.</div>
+                : cercaRes.totale === 0 ? <div className="dc-muted">Nessun risultato nei cedolini indicizzati.</div>
                 : <table className="dc-table" style={{ minWidth: 560, whiteSpace: "nowrap" }}>
                     <thead><tr><th>Dipendente</th><th>Periodo</th><th>Codice</th><th>Descrizione</th><th style={{ textAlign: "right" }}>Importo</th></tr></thead>
                     <tbody>{cercaRes.risultati.map((x, i) => <tr key={i}><td>{x.dipendente}</td><td>{mesi[(x.mese || 1) - 1]} {x.anno}</td><td>{x.codice}</td><td>{x.descrizione}</td><td style={{ textAlign: "right" }}>{x.importo || "—"}</td></tr>)}</tbody>
@@ -6041,45 +6154,26 @@ function PagheBonificiPage({ dipendenti = [] }) {
               {cercaRes.totale > 0 && <p className="dc-muted" style={{ fontSize: 12, marginTop: 6 }}>{cercaRes.totale} risultati.</p>}
             </div>
           )}
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap", marginTop: 18 }}>
-            <h3 style={{ margin: 0 }}>🧾 Simulazione F24 e costo mensile — {mese ? `${mesi[mese - 1]} ${anno}` : "scegli un mese nel filtro"}</h3>
-            <button className="dc-btn-primary" disabled={f24Busy || !mese} onClick={calcolaF24}>{f24Busy ? "Calcolo…" : "Calcola F24 del mese"}</button>
-          </div>
-          <p className="dc-muted" style={{ fontSize: 12.5, margin: "6px 0 0" }}>
-            Per ogni dipendente legge il cedolino del mese: IRPEF e INPS reali dalle voci quando ci sono, altrimenti stimati dal netto con le regole CCNL.
-            INPS azienda 30%, quota TFR = lordo ÷ 13,5. È una simulazione: fa fede l'F24 del consulente.
-          </p>
-          {f24?.errore && <div style={{ marginTop: 8, color: "#d35f4e", fontWeight: 600 }}>⚠ {f24.errore}</div>}
-          {f24 && !f24.errore && (f24.righe.length === 0
-            ? <p className="dc-muted" style={{ marginTop: 10 }}>Nessun cedolino trovato per {mesi[mese - 1]} {anno}: importa prima le buste.</p>
-            : <div className="dc-scroll-x" style={{ marginTop: 10 }}>
-                <table className="dc-table" style={{ fontSize: 13 }}>
-                  <thead><tr><th>Dipendente</th><th style={{ textAlign: "right" }}>Lordo €</th><th style={{ textAlign: "right" }}>Netto €</th><th style={{ textAlign: "right" }}>IRPEF €</th><th style={{ textAlign: "right" }}>INPS dip. €</th><th style={{ textAlign: "right" }}>INPS azienda €</th><th style={{ textAlign: "right" }}>TFR mese €</th><th style={{ textAlign: "right" }}>F24 €</th><th style={{ textAlign: "right" }}>Costo azienda €</th><th>Fonte</th></tr></thead>
-                  <tbody>
-                    {f24.righe.map(r => (
-                      <tr key={r.dipendente_id || r.dipendente_nome}>
-                        <td style={{ fontWeight: 600 }}>{r.dipendente_nome}</td>
-                        <td style={{ textAlign: "right" }}>{eur(r.lordo)}</td><td style={{ textAlign: "right" }}>{eur(r.netto)}</td><td style={{ textAlign: "right" }}>{eur(r.irpef)}</td>
-                        <td style={{ textAlign: "right" }}>{eur(r.inps_dipendente)}</td><td style={{ textAlign: "right" }}>{eur(r.inps_azienda)}</td><td style={{ textAlign: "right" }}>{eur(r.tfr_mese)}</td>
-                        <td style={{ textAlign: "right", fontWeight: 700 }}>{eur(r.totale_f24)}</td><td style={{ textAlign: "right", fontWeight: 700 }}>{eur(r.costo_azienda)}</td>
-                        <td className="dc-muted" style={{ fontSize: 11.5 }}>{r.fonte}</td>
-                      </tr>
-                    ))}
-                    <tr style={{ fontWeight: 700, borderTop: "2px solid #e6e0d4", background: "#eef1ea" }}>
-                      <td>TOTALE ({f24.dipendenti} dipendenti)</td>
-                      <td style={{ textAlign: "right" }}>{eur(f24.totali.lordo)}</td><td style={{ textAlign: "right" }}>{eur(f24.totali.netto)}</td><td style={{ textAlign: "right" }}>{eur(f24.totali.irpef)}</td>
-                      <td style={{ textAlign: "right" }}>{eur(f24.totali.inps_dipendente)}</td><td style={{ textAlign: "right" }}>{eur(f24.totali.inps_azienda)}</td><td style={{ textAlign: "right" }}>{eur(f24.totali.tfr_mese)}</td>
-                      <td style={{ textAlign: "right", fontSize: 15 }}>{eur(f24.totali.totale_f24)}</td><td style={{ textAlign: "right", fontSize: 15 }}>{eur(f24.totali.costo_azienda)}</td><td></td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>)}
         </div>
       )}
 
       {/* Filtri */}
 
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", marginBottom: 16 }}>
+        <details ref={filtroDipendentiRef} style={{ position: "relative" }}>
+          <summary className="dc-btn" style={{ ...sel, listStyle: "none", cursor: "pointer" }}>
+            {dipendentiSelezionati.length === 0 ? "Tutti i dipendenti" : dipendentiSelezionati.length === 1
+              ? (dipendentiOrdinati.find(d => d.id === dipendentiSelezionati[0])?.nome_completo || "1 dipendente")
+              : `${dipendentiSelezionati.length} dipendenti selezionati`}
+          </summary>
+          <div style={{ position: "absolute", top: "calc(100% + 6px)", left: 0, zIndex: 40, width: 320, maxWidth: "85vw", maxHeight: 360, overflowY: "auto", background: "#fffefb", border: "1px solid #e6e0d4", borderRadius: 10, padding: 10, boxShadow: "0 8px 24px rgba(0,0,0,.14)" }}>
+            <button type="button" className="dc-btn" style={{ width: "100%", marginBottom: 8 }} onClick={() => { setDipendentiSelezionati([]); chiudiFiltroDipendenti(); }}>Mostra tutti</button>
+            {dipendentiOrdinati.map(d => <label key={d.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 4px", cursor: "pointer" }}>
+              <input type="checkbox" checked={dipendentiSelezionati.includes(d.id)} onChange={() => cambiaDipendente(d.id)} />
+              <span>{d.nome_completo || `${d.cognome || ""} ${d.nome || ""}`.trim()}{d.stato === "cessato" ? " (cessato)" : ""}</span>
+            </label>)}
+          </div>
+        </details>
         <select style={sel} aria-label="Anno" value={anno} onChange={e => setAnno(Number(e.target.value))}>
           <option value={0}>Tutti gli anni</option>
           {Array.from({ length: annoCorr + 2 - 2017 }, (_, i) => annoCorr + 1 - i).map(a => <option key={a} value={a}>{a}</option>)}
@@ -6102,7 +6196,15 @@ function PagheBonificiPage({ dipendenti = [] }) {
         <button className="dc-btn" onClick={load} style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
           <RefreshCw size={15} /> Aggiorna
         </button>
+        <button className="dc-btn dc-btn-primary" disabled={schedaBusy} onClick={apriSchedaContabile}>
+          {schedaBusy ? "Carico scheda…" : "📒 Scheda contabile"}
+        </button>
+        <button className="dc-btn" onClick={apriInserimentoManuale}>＋ Importo manuale</button>
       </div>
+
+      <p className="dc-muted" style={{ margin: "-8px 0 14px", fontSize: 12.5 }}>
+        La selezione aggiorna tabella, totali ed Excel. I riepiloghi usano lo stesso registro contabile: cedolini per competenza e pagamenti alla data effettiva. Gli importi senza cedolino restano visibili, non vengono nascosti.
+      </p>
 
       {loadError && <div role="alert" className="dc-card" style={{ color: "#b04a3a" }}>{loadError}</div>}
       {!loading && data.cedolini_da_verificare?.length > 0 && <details className="dc-card">
@@ -6115,8 +6217,8 @@ function PagheBonificiPage({ dipendenti = [] }) {
       </details>}
       {/* Riepilogo */}
       <div style={cardWrap}>
-        <div style={card}><div style={lbl}>Dovuto cedolini</div><div style={val}>€ {eur(t.buste)}</div></div>
-        <div style={card}><div style={lbl}>Bonifici attribuiti</div><div style={{ ...val, color: "#3d8168" }}>€ {eur(t.bonifici)}</div></div>
+        <div style={card}><div style={lbl}>Dovuto contabile</div><div style={val}>€ {eur(t.buste)}</div><div className="dc-muted" style={{ fontSize: 10 }}>cedolini + altri dovuti</div></div>
+        <div style={card}><div style={lbl}>Bonifici alla data effettiva</div><div style={{ ...val, color: "#3d8168" }}>€ {eur(t.bonifici)}</div></div>
         <div style={card}><div style={lbl}>Acconti registrati</div><div style={val}>€ {eur(t.acconti)}</div></div>
         <div style={card}><div style={lbl}>Residuo in registro</div><div style={{ ...val, color: (t.saldo > 0 ? "#b04a3a" : "#3d8168") }}>€ {eur(t.saldo)}</div></div>
         <div style={card}><div style={lbl}>Pagati</div><div style={{ ...val, color: "#3d8168" }}>{t.pagati || 0}</div></div>
@@ -6125,6 +6227,7 @@ function PagheBonificiPage({ dipendenti = [] }) {
       </div>
 
       {griglia && <GrigliaPaghe righe={data.righe} daLeggere={data.cedolini_da_verificare}
+        contabili={contabilitaVista.mensili_per_dipendente}
         loading={loading} onDipendente={apriPrimaNota} />}
 
       {/* Tabella */}
@@ -6136,9 +6239,10 @@ function PagheBonificiPage({ dipendenti = [] }) {
                 <th style={th}>Dipendente</th>
                 <th style={th}>Periodo</th>
                 <th style={{ ...th, textAlign: "right" }}>Dovuto cedolino</th>
-                <th style={{ ...th, textAlign: "right" }}>Bonifico</th>
+                <th style={{ ...th, textAlign: "right" }} title="Pagamenti attribuiti al cedolino, anche se eseguiti in un mese successivo">Pagamenti attribuiti</th>
                 <th style={{ ...th, textAlign: "right" }}>Acconti</th>
-                <th style={{ ...th, textAlign: "right" }}>Saldo</th>
+                <th style={{ ...th, textAlign: "right" }}>Saldo periodo</th>
+                <th style={{ ...th, textAlign: "right" }}>Saldo progressivo</th>
                 <th style={th}>Stato</th>
                 <th style={th}>Associazione</th>
                 <th style={th}>Cedolino</th>
@@ -6146,8 +6250,8 @@ function PagheBonificiPage({ dipendenti = [] }) {
               </tr>
             </thead>
             <tbody>
-              {loading && <tr><td style={td} colSpan={10}>Caricamento…</td></tr>}
-              {!loading && !loadError && data.righe.length === 0 && <tr><td style={td} colSpan={10}>Nessuna busta con importo letto per il periodo selezionato.</td></tr>}
+              {loading && <tr><td style={td} colSpan={11}>Caricamento…</td></tr>}
+              {!loading && !loadError && data.righe.length === 0 && <tr><td style={td} colSpan={11}>Nessuna busta con importo letto per il periodo selezionato.</td></tr>}
               {!loading && data.righe.map(r => {
                 const k = keyOf(r);
                 const exp = aperta === k;
@@ -6155,11 +6259,16 @@ function PagheBonificiPage({ dipendenti = [] }) {
                 const qInfo = r.qualita ? QUALITA[r.qualita] : null;
                 const periodoLbl = (r.mese >= 1 && r.mese <= 12) ? `${mesi[r.mese - 1]} ${r.anno}` : r.mese === 13 ? `13ª ${r.anno}` : r.mese === 14 ? `14ª ${r.anno}` : `${r.mese}/${r.anno}`;
                 const contantiAmmessi = r.anno < 2018 || (r.anno === 2018 && r.mese < 7) || Boolean(r.data_cessazione_rapporto);
+                const meseCompetenza = r.mese === 13 ? 12 : r.mese === 14 ? 7 : r.mese;
+                const includePagamentiSuccessivi = (r.bonifici || []).some(p => {
+                  const [annoPagamento, mesePagamento] = String(p.data || "").split("-").map(Number);
+                  return annoPagamento > r.anno || (annoPagamento === r.anno && mesePagamento > meseCompetenza);
+                });
                 return (
                   <Fragment key={k}>
                     <tr style={{ background: exp ? "#f7f4ec" : "transparent" }}>
                       <td style={{ ...td, fontWeight: 600 }}><button style={nomeBtn} title="Prima nota / saldo progressivo" onClick={() => apriPrimaNota(r.dipendente_id, r.dipendente)}>{r.dipendente}</button></td>
-                      <td style={td}>{periodoLbl}{r.avvisi_importo?.length > 0 && <div><button className="dc-btn" style={{ color: '#9a531b' }} onClick={() => setConfrontoImporto(r)}>⚠ Verifica importo ({r.avvisi_importo.length})</button></div>}</td>
+                      <td style={td}>{periodoLbl}{r.avvisi_importo?.length > 0 && <div><button className="dc-btn" style={{ color: '#9a531b' }} onClick={() => setConfrontoImporto({ ...r, nuovo_importo: r.busta ?? "", nota_manual: r.busta_nota || "" })}>⚠ Verifica importo ({r.avvisi_importo.length})</button></div>}</td>
                       <td style={{ ...td, textAlign: "right" }}>
                         {editBusta && editBusta.k === k ? (
                           <div style={{ display: "flex", flexDirection: "column", gap: 4, alignItems: "flex-end" }}>
@@ -6190,10 +6299,15 @@ function PagheBonificiPage({ dipendenti = [] }) {
                       <td style={{ ...td, textAlign: "right", color: r.bonifico > 0 ? "#3d8168" : "#9aa295", fontWeight: 600 }}>
                         {r.bonifico > 0 ? `€ ${eur(r.bonifico)}` : "—"}
                         {r.fonte && <div style={{ fontSize: 10, color: "#9aa295", fontWeight: 400 }}>{FONTI[r.fonte] || r.fonte}</div>}
+                        {includePagamentiSuccessivi && <div title="Il saldo progressivo li conteggia solo alla data effettiva" style={{ fontSize: 10, color: "#8a6f47", fontWeight: 400 }}>include date successive</div>}
                       </td>
                       <td style={{ ...td, textAlign: "right" }}>{r.acconti > 0 ? `€ ${eur(r.acconti)}` : "—"}</td>
                       <td style={{ ...td, textAlign: "right", color: r.saldo > 0 ? "#b04a3a" : "#3d8168" }}>
                         {r.saldo == null ? <span title="Saldo sconosciuto: la busta non è ancora arrivata">—</span> : r.saldo !== 0 ? `€ ${eur(r.saldo)}` : "✓"}
+                      </td>
+                      <td style={{ ...td, textAlign: "right", color: Number(saldoProgressivoRiga(r)) > 0 ? "#b04a3a" : "#3d8168" }}>
+                        {saldoProgressivoRiga(r) == null ? "—" : `€ ${eur(saldoProgressivoRiga(r))}`}
+                        <div><button className="dc-btn" style={{ fontSize: 11, padding: "3px 7px", marginTop: 4 }} onClick={() => apriPagamentoManualePeriodo(r)}>Registra pagamento</button></div>
                       </td>
                       <td style={td}><Badge variant={stInfo.variant}>{stInfo.label}</Badge>
                         {r.pagamenti_copertura?.map(p => <div key={p.id} style={{ fontSize: 12, marginTop: 4 }}>
@@ -6243,16 +6357,17 @@ function PagheBonificiPage({ dipendenti = [] }) {
                     </tr>
                     {exp && (
                       <tr>
-                        <td style={{ ...td, background: "#f7f4ec" }} colSpan={10}>
+                        <td style={{ ...td, background: "#f7f4ec" }} colSpan={11}>
                           {r.acconto_recuperato > 0 && <p style={{ fontSize: 13 }}>
                             Netto stampato € {eur(r.netto_stampato)} · recupero acconto € {eur(r.acconto_recuperato)} ({r.fonte_acconto_recuperato}) · dovuto del periodo € {eur(r.busta)}{r.busta_manuale ? " (corretto a mano)" : " (netto + recupero)"}.
                             Il recupero è una trattenuta del cedolino: i pagamenti si verificano separatamente con la banca.
                           </p>}
                           {r.bonifici.length > 0 && (<>
                             <div style={{ fontSize: 12, color: "#7a8576", marginBottom: 6 }}>
-                              Un bonifico arrivato nel mese sbagliato (es. il 1° gennaio per la busta di dicembre) si sposta con <b>Sposta / modifica</b>: il sistema ricalcola entrambi i mesi.
+                              Per correggere la competenza di un pagamento, usa <b>Cambia mese o importo</b>.
+                              Modifichi soltanto la registrazione del pagamento elencato qui sotto: il cedolino e il suo PDF non vengono spostati.
                             </div>
-                            <div style={{ fontSize: 11, color: "#7a8576", fontWeight: 700, textTransform: "uppercase", marginBottom: 6 }}>Bonifici realmente pagati</div>
+                            <div style={{ fontSize: 11, color: "#7a8576", fontWeight: 700, textTransform: "uppercase", marginBottom: 6 }}>Pagamenti registrati</div>
                             <table style={{ width: "100%", borderCollapse: "collapse" }}>
                               <thead>
                                 <tr>
@@ -6262,7 +6377,7 @@ function PagheBonificiPage({ dipendenti = [] }) {
                                   <th style={{ ...th, borderBottom: "1px solid #e6e0d4" }}>Beneficiario</th>
                                   <th style={{ ...th, borderBottom: "1px solid #e6e0d4" }}>Riferimento</th>
                                   <th style={{ ...th, borderBottom: "1px solid #e6e0d4" }}>PDF</th>
-                                  <th style={{ ...th, borderBottom: "1px solid #e6e0d4" }}>Periodo / importo</th>
+                                  <th style={{ ...th, borderBottom: "1px solid #e6e0d4" }}>Competenza del pagamento</th>
                                 </tr>
                               </thead>
                               <tbody>
@@ -6284,22 +6399,23 @@ function PagheBonificiPage({ dipendenti = [] }) {
                                     <td style={{ ...td, borderBottom: "none", fontSize: 12, whiteSpace: "nowrap" }}>
                                       {editPag && editPag.key === b.key ? (
                                         <div style={{ display: "flex", gap: 4, alignItems: "center", flexWrap: "wrap" }}>
-                                          <select value={editPag.mese} onChange={e => setEditPag({ ...editPag, mese: e.target.value })} style={{ ...sel, padding: "4px 6px", fontSize: 12 }}>
+                                          <select aria-label="Mese di competenza del pagamento" title="Mese di competenza del pagamento" value={editPag.mese} onChange={e => setEditPag({ ...editPag, mese: e.target.value })} style={{ ...sel, padding: "4px 6px", fontSize: 12 }}>
                                             {mesi.map((m, idx) => <option key={idx + 1} value={idx + 1}>{m}</option>)}
                                             <option value={13}>Tredicesima</option>
                                             <option value={14}>Quattordicesima</option>
                                           </select>
-                                          <input type="number" value={editPag.anno} onChange={e => setEditPag({ ...editPag, anno: e.target.value })} style={{ ...sel, width: 70, padding: "4px 6px", fontSize: 12 }} />
-                                          <input type="number" step="0.01" min="0" value={editPag.importo} onChange={e => setEditPag({ ...editPag, importo: e.target.value })} style={{ ...sel, width: 100, padding: "4px 6px", fontSize: 12, textAlign: "right" }} />
-                                          <input type="text" placeholder="nota" value={editPag.nota} onChange={e => setEditPag({ ...editPag, nota: e.target.value })} style={{ ...sel, width: 140, padding: "4px 6px", fontSize: 12 }} />
+                                          <input aria-label="Anno di competenza del pagamento" title="Anno di competenza del pagamento" type="number" value={editPag.anno} onChange={e => setEditPag({ ...editPag, anno: e.target.value })} style={{ ...sel, width: 70, padding: "4px 6px", fontSize: 12 }} />
+                                          <input aria-label="Importo del pagamento" title="Importo del pagamento" type="number" step="0.01" min="0" value={editPag.importo} onChange={e => setEditPag({ ...editPag, importo: e.target.value })} style={{ ...sel, width: 100, padding: "4px 6px", fontSize: 12, textAlign: "right" }} />
+                                          <input aria-label="Motivo della correzione" title="Motivo della correzione" type="text" placeholder="motivo della correzione" value={editPag.nota} onChange={e => setEditPag({ ...editPag, nota: e.target.value })} style={{ ...sel, width: 180, padding: "4px 6px", fontSize: 12 }} />
                                           <button className="dc-btn" disabled={busy === b.key} onClick={salvaPagamento} style={{ fontSize: 12, padding: "3px 8px" }}>Salva</button>
                                           <button className="dc-btn" onClick={() => setEditPag(null)} style={{ fontSize: 12, padding: "3px 8px" }}>Annulla</button>
                                         </div>
                                       ) : (
                                         b.key
-                                          ? <button className="dc-btn" title="Sposta questo pagamento a un altro mese (es. bonifico del 1° gennaio → dicembre) o correggi l'importo"
+                                          ? <span style={{ display: "inline-flex", gap: 4 }}><button className="dc-btn" title="Cambia il mese di competenza o l'importo di questo pagamento; il cedolino e il PDF non vengono spostati"
                                               onClick={() => setEditPag({ key: b.key, mese: r.mese, anno: r.anno, importo: b.importo, nota: "" })}
-                                              style={{ fontSize: 12, padding: "3px 8px" }}>Sposta / modifica</button>
+                                              style={{ fontSize: 12, padding: "3px 8px" }}>Cambia mese o importo</button>
+                                              {b.origine === "manuale" && <button className="dc-btn" disabled={busy === b.key} onClick={() => eliminaPagamentoManuale(b.key)} style={{ fontSize: 12, padding: "3px 8px", color: "#b04a3a" }}>Elimina</button>}</span>
                                           : <span style={{ color: "#9aa295" }}>—</span>
                                       )}
                                     </td>
@@ -6363,6 +6479,52 @@ function PagheBonificiPage({ dipendenti = [] }) {
                 </div>
               </details>
             )}
+          </div>
+        </Modal>
+      )}
+      {schedaContabile && (
+        <Modal title={`Scheda contabile paghe — ${schedaContabile.titolo}`} onClose={() => setSchedaContabile(null)} maxWidth={1120}>
+          <div className="dc-modal-body">
+            <p className="dc-muted">
+              {anno ? `Periodo visualizzato: ${mese ? `${mesi[mese - 1] || mese} ` : ""}${anno}. ` : "Intero archivio. "}
+              I totali rispettano lo stesso periodo della griglia; il saldo progressivo conserva il riporto precedente.
+            </p>
+            <PrimaNotaPaghe prospetto={schedaContabile} />
+          </div>
+        </Modal>
+      )}
+      {inserimentoManuale && (
+        <Modal title={inserimentoManuale.periodo_bloccato ? "Registra un pagamento per il periodo" : "Inserisci importo manuale"} onClose={() => !manualeBusy && setInserimentoManuale(null)} maxWidth={620}>
+          <div className="dc-modal-body">
+            <p className="dc-muted">Inserisci l'importo realmente versato. Verrà conservato nel registro anche dopo nuove importazioni e ricalcolerà il saldo progressivo; non sarà presentato come prova bancaria.</p>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))", gap: 12 }}>
+              <label><span className="dc-label">Dipendente</span>
+                <select className="dc-input" value={inserimentoManuale.dipendente_id} onChange={e => setInserimentoManuale(v => ({ ...v, dipendente_id: e.target.value }))}>
+                  <option value="">Seleziona dipendente</option>
+                  {dipendentiOrdinati.map(d => <option key={d.id} value={d.id}>{d.nome_completo || `${d.cognome || ""} ${d.nome || ""}`.trim()}</option>)}
+                </select>
+              </label>
+              {!inserimentoManuale.periodo_bloccato && <label><span className="dc-label">Tipo di importo</span>
+                <select className="dc-input" value={inserimentoManuale.tipo} onChange={e => setInserimentoManuale(v => ({ ...v, tipo: e.target.value }))}>
+                  <option value="dovuto">Dovuto del cedolino</option>
+                  <option value="pagamento">Pagamento effettuato</option>
+                </select>
+              </label>}
+              <label><span className="dc-label">Anno</span><input className="dc-input" type="number" min="2000" max="2100" value={inserimentoManuale.anno} onChange={e => setInserimentoManuale(v => ({ ...v, anno: Number(e.target.value) }))} /></label>
+              <label><span className="dc-label">Competenza</span>
+                <select className="dc-input" value={inserimentoManuale.mese} onChange={e => setInserimentoManuale(v => ({ ...v, mese: Number(e.target.value) }))}>
+                  {mesi.map((nome, i) => <option key={i + 1} value={i + 1}>{nome}</option>)}
+                  <option value={13}>Tredicesima</option><option value={14}>Quattordicesima</option>
+                </select>
+              </label>
+              <label><span className="dc-label">Importo €</span><input className="dc-input" inputMode="decimal" value={inserimentoManuale.importo} onChange={e => setInserimentoManuale(v => ({ ...v, importo: e.target.value }))} placeholder="0,00" /></label>
+              {inserimentoManuale.tipo === "pagamento" && <label><span className="dc-label">Data effettiva pagamento</span><input className="dc-input" type="date" value={inserimentoManuale.data} onChange={e => setInserimentoManuale(v => ({ ...v, data: e.target.value }))} /></label>}
+            </div>
+            <label style={{ display: "block", marginTop: 12 }}><span className="dc-label">Motivazione obbligatoria</span><textarea className="dc-input" rows={3} value={inserimentoManuale.nota} onChange={e => setInserimentoManuale(v => ({ ...v, nota: e.target.value }))} placeholder="Indica il documento o il motivo della correzione" /></label>
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 16 }}>
+              <button className="dc-btn" disabled={manualeBusy} onClick={() => setInserimentoManuale(null)}>Annulla</button>
+              <button className="dc-btn dc-btn-primary" disabled={manualeBusy || !inserimentoManuale.dipendente_id || !inserimentoManuale.importo || !inserimentoManuale.nota.trim()} onClick={salvaInserimentoManuale}>{manualeBusy ? "Salvo…" : "Registra importo"}</button>
+            </div>
           </div>
         </Modal>
       )}

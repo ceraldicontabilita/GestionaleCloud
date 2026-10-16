@@ -10,6 +10,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
+from pymongo import UpdateOne
 
 from app.lotti.auth import require_admin
 from app.lotti.db import database as db
@@ -75,6 +76,74 @@ async def preferiti_acquisti(fonte: str):
     elenco = sorted(prodotti.values(), key=lambda p: str(p.get("nome_display") or p.get("nome_completo") or p.get("nome") or "").casefold())
     return {"prodotti": elenco, "totale": len(elenco), "acquistati": len(acquistati),
             "preferiti_manuali": len(manuali), "fatture": len(fatture)}
+
+
+def _destinazione_catalogo(fonte: str) -> tuple[str, dict]:
+    if fonte in {"mepa", "saima"}:
+        return "dizionario_ingredienti", {"fonte": fonte}
+    if fonte in {"acquaviva", "alpha", "alfa"}:
+        fonti = ["acquaviva", "vandemoortele"] if fonte == "acquaviva" else ["alpha"]
+        return "acquaviva_prodotti", {"fonte": {"$in": fonti}}
+    return "catalogo_forno_prodotti", {"fornitore": fonte}
+
+
+@router.post("/sincronizza-fatture/{fonte}")
+async def sincronizza_fatture_catalogo(fonte: str, _admin=Depends(require_admin)):
+    """Materializza nel catalogo la proiezione delle fatture canoniche.
+
+    Le ricerche successive leggono solo il database del catalogo: non devono
+    ripercorrere l'intero archivio fatture a ogni battuta digitata. La
+    proiezione viene aggiornata esclusivamente dal comando Sync Fatture.
+    """
+    from app.lotti.servizi.preferiti_cataloghi import fatture_catalogo, articoli_acquistati, collega_preferiti
+
+    fonte = fonte.strip().lower()
+    catalogo = await _catalogo_fonte(fonte)
+    fatture = await fatture_catalogo(db, fonte)
+    acquistati = collega_preferiti(articoli_acquistati(fatture), catalogo, fonte)
+    collezione_nome, filtro_base = _destinazione_catalogo(fonte)
+    collezione = db[collezione_nome]
+    await collezione.update_many(filtro_base, {"$set": {
+        "gia_acquistato": False,
+        "prezzo_fattura": 0,
+        "prezzo_fattura_data": "",
+        "quantita_ultima_fattura": 0,
+        "unita_ultima_fattura": "",
+        "iva_pct": 0,
+    }})
+    operazioni = []
+    for prodotto in acquistati:
+        if prodotto.get("da_fattura_senza_catalogo"):
+            continue
+        filtro = dict(filtro_base)
+        if prodotto.get("id"):
+            filtro["id"] = prodotto["id"]
+        elif prodotto.get("codice_articolo"):
+            filtro["codice_articolo"] = prodotto["codice_articolo"]
+        else:
+            continue
+        operazioni.append(UpdateOne(filtro, {"$set": {
+            "gia_acquistato": True,
+            "prezzo_fattura": prodotto.get("prezzo_fattura") or 0,
+            "prezzo_fattura_data": prodotto.get("prezzo_fattura_data") or "",
+            "quantita_ultima_fattura": prodotto.get("quantita_ultima_fattura") or 0,
+            "unita_ultima_fattura": prodotto.get("unita_ultima_fattura") or "",
+            "iva_pct": prodotto.get("iva_pct") or 0,
+            "fattura_id": prodotto.get("fattura_id") or "",
+            "proiezione_fatture_aggiornata_il": datetime.now(timezone.utc).isoformat(),
+        }}))
+    persistiti = 0
+    if operazioni:
+        if type(collezione).__module__ == "app.lotti.supabase_document_store":
+            result = await collezione.bulk_write(operazioni, ordered=False)
+        else:
+            from app.lotti.bulk_compat import bulk_write_compat
+            result = await bulk_write_compat(collezione, operazioni, ordered=False)
+        persistiti = int(result.matched_count)
+
+    risposta = await preferiti_acquisti(fonte)
+    risposta["catalogo_aggiornato"] = persistiti
+    return risposta
 
 
 class PreferitoManualeUpdate(BaseModel):

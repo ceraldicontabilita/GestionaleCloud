@@ -758,18 +758,25 @@ async def confronto_fornitori(
 # Cache in-process per smart-search: è un autocomplete (una chiamata per
 # battitura da TabIngredienti) e ricaricare 3000 fatture con tutte le righe
 # da Atlas a ogni tasto era il collo di bottiglia peggiore percepito.
-_SMART_CACHE = {"righe": None, "scade": 0.0}
+_SMART_CACHE = {
+    "recenti": {"righe": None, "scade": 0.0},
+    "tutte": {"righe": None, "scade": 0.0},
+}
 
 
-async def _righe_fatture_recenti():
-    """Righe prodotto delle fatture degli ultimi 6 mesi (fornitori esclusi già
-    filtrati), appiattite e tenute in cache 120 secondi."""
+async def _righe_fatture_recenti(tutte: bool = False):
+    """Righe XML appiattite e in cache 120 secondi.
+
+    Lo smart search prezzi conserva la finestra recente; l'autocomplete delle
+    ricette usa ``tutte=True`` perché anche un acquisto storico resta una riga
+    valida da associare.
+    """
     import time as _t
-    if _SMART_CACHE["righe"] is not None and _t.monotonic() < _SMART_CACHE["scade"]:
-        return _SMART_CACHE["righe"]
+    cache = _SMART_CACHE["tutte" if tutte else "recenti"]
+    if cache["righe"] is not None and _t.monotonic() < cache["scade"]:
+        return cache["righe"]
     from app.lotti.routers.utils import parse_data_flessibile
     sei_mesi_fa = (datetime.now() - timedelta(days=180)).date()
-
     esclusi_doc = await db.fornitori.find({"escluso": True}, {"nome": 1, "_id": 0}).to_list(500)
     fornitori_esclusi = {
         f["nome"].strip().strip('"').strip("'").strip().lower() for f in esclusi_doc
@@ -782,10 +789,10 @@ async def _righe_fatture_recenti():
         fornitore = (fattura.get("fornitore") or "").strip().strip('"').strip("'").strip()
         if fornitore.lower() in fornitori_esclusi:
             continue
-        # data_fattura in formati misti: filtro su date vere (senza data → tengo)
-        d = parse_data_flessibile(fattura.get("data_fattura"))
-        if d and d < sei_mesi_fa:
-            continue
+        if not tutte:
+            data = parse_data_flessibile(fattura.get("data_fattura"))
+            if data and data < sei_mesi_fa:
+                continue
         data_fatt = fattura.get("data_fattura", "")
         num_fatt = fattura.get("numero_fattura", "")
         for prod in fattura.get("prodotti") or []:
@@ -794,8 +801,8 @@ async def _righe_fatture_recenti():
                 continue
             righe.append((desc, desc.lower(), fornitore, data_fatt, num_fatt, prod))
 
-    _SMART_CACHE["righe"] = righe
-    _SMART_CACHE["scade"] = _t.monotonic() + 120
+    cache["righe"] = righe
+    cache["scade"] = _t.monotonic() + 120
     return righe
 
 
@@ -806,7 +813,7 @@ async def smart_search_prodotti(
     """
     Ricerca INTELLIGENTE in TUTTE le fatture di TUTTI i fornitori.
     Cerca per parole chiave, raggruppa prodotti simili, mostra prezzi per unità e cartone.
-    Ignora fornitori esclusi. Mostra solo fatture ultimi 6 mesi.
+    Ignora fornitori esclusi. Mostra le fatture degli ultimi sei mesi.
     """
     # Parole chiave dalla query
     parole = [p.lower().strip() for p in q.split() if len(p) >= 2]

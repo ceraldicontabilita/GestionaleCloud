@@ -78,10 +78,9 @@ def riconosci(testo: str) -> bool:
 def riconosci_istanza(testo: str) -> bool:
     """Riconosce la domanda, che non prova ne' accoglimento ne' pagamento."""
     t = _testo(testo)
-    return all(m in t for m in (
-        "ISTANZA E ATTO DI IMPEGNO PER IL PAGAMENTO DILAZIONATO",
-        "PROTOCOLLO DOMANDA", "DI VOLERE CHIEDERE LA RATEAZIONE",
-    )) and not riconosci(t)
+    titolo = re.search(r"(?:ISTANZA|DOMANDA) E ATTO DI IMPEGNO PER IL PAGAMENTO DILAZIONATO", t)
+    richiesta = "DI VOLERE CHIEDERE LA RATEAZIONE" in t or "CHE GLI SIA CONCESSO DI REGOLARIZZARE" in t
+    return bool(titolo and richiesta and "PROTOCOLLO DOMANDA" in t and not riconosci(t))
 
 
 def _cents(valore: str) -> int:
@@ -113,6 +112,8 @@ def leggi_istanza(testo: str) -> Dict[str, Any]:
     rate = _RE_RATE_DA_A.search(t)
     totale = _RE_TOTALE_ISTANZA.search(t)
     inizio = t.find("DI VOLERE CHIEDERE LA RATEAZIONE PER I SEGUENTI PERIODI")
+    if inizio < 0:
+        inizio = t.find("NUMERO INADEMPIENZA")
     fine = t.find("TOTALE DA DILAZIONARE", inizio if inizio >= 0 else 0)
     sezione = t[inizio:fine] if inizio >= 0 and fine > inizio else ""
     periodi = []
@@ -130,12 +131,21 @@ def leggi_istanza(testo: str) -> Dict[str, Any]:
         data_domanda = _iso(data_match.group(1)) if data_match else None
     somma = sum(row["totale_cents"] for row in periodi)
     totale_cents = _cents(totale.group(1)) if totale else None
+    # Il modulo «DOMANDA» stampa due totali: contributi e sanzioni. Il
+    # vecchio modulo «ISTANZA» ne stampa uno comprensivo di entrambi.
+    doppio_totale = re.search(
+        rf"TOTALE DA DILAZIONARE\s+TOTALE DA DILAZIONARE\s+EURO\s+({_IMPORTO})\s+EURO\s+({_IMPORTO})", t,
+    )
+    if doppio_totale:
+        totale_cents = _cents(doppio_totale.group(1)) + _cents(doppio_totale.group(2))
+    rate_richieste = re.search(r"FINO A 24:\s*(\d{1,2})\b", t)
     istanza = {
         "rif": protocollo.group(1) if protocollo else None,
         "matricola": matricola.group(1) if matricola else None,
         "data_domanda": data_domanda,
         "rate_min": int(rate.group(1)) if rate else None,
         "rate_max": int(rate.group(2)) if rate else None,
+        "rate_richieste": int(rate_richieste.group(1)) if rate_richieste else None,
         "totale_richiesto_cents": totale_cents,
         "somma_periodi_cents": somma,
         "periodi": periodi,
@@ -244,8 +254,75 @@ def _cents_riga(riga: Dict[str, Any]) -> Optional[int]:
         return None
 
 
-def pagamenti_della_dilazione(piano: Dict[str, Any], quietanze: Iterable[Dict[str, Any]]) -> List[Dict[str, Any]]:
+def _piano_periodo_ridotto(riga: Dict[str, Any], data: str, piani: Iterable[Dict[str, Any]]) -> Optional[str]:
+    """RC01 storici riportano talvolta soltanto il primo o l'ultimo mese.
+
+    Non si allarga il periodo della quietanza: si accetta solo un piano
+    completo e univoco, con coordinate, importo rata e data compatibili.
+    Un altro piano con periodo esatto ha sempre precedenza.
+    """
+    da, a = _periodo_riga(riga)
+    if not da or da != a:
+        return None
+    candidati = []
+    for p in piani:
+        if not p.get("quadra") or p.get("mancanti") or not p.get("data_domanda") or data < p["data_domanda"]:
+            continue
+        if _riga_della_dilazione(riga, p):
+            return None
+        if p.get("periodo_da") == p.get("periodo_a") or da not in (p.get("periodo_da"), p.get("periodo_a")):
+            continue
+        coordinate = all(str(riga.get(k) or "").upper() == str(p.get(k) or "").upper()
+                         for k in ("codice_sede", "causale", "matricola"))
+        rate = p.get("piano") or p.get("rate") or []
+        if coordinate and _cents_riga(riga) in {r["importo_cents"] for r in rate}:
+            candidati.append(p.get("rif"))
+    return candidati[0] if len(candidati) == 1 else None
+
+
+def _firma_delega_pagata(q: Dict[str, Any]) -> Optional[tuple]:
+    """Stampa Cassetto e quietanza possono provare lo stesso versamento.
+
+    Servono contribuente, data, saldo e tutte le righe fiscali; per INPS
+    anche l'intervallo completo. Un protocollo diverso resta un altro
+    pagamento. Se mancano dati non si accorpano documenti per solo importo.
+    """
+    from app.services.f24_doppioni import identita_f24
+
+    data = q.get("data_pagamento")
+    saldo = q.get("saldo")
+    if not data or saldo is None:
+        return None
+    # L'identita' dei modelli non copre le coordinate INAIL/altri enti:
+    # con quelle sezioni presenti non basta per accorpare due quietanze.
+    if q.get("sezione_inail") or q.get("sezione_altri_enti"):
+        return None
+    firma = identita_f24({**q, "dati_generali": {
+        **(q.get("dati_generali") or {}), "data_versamento": data, "saldo_delega": saldo,
+    }})
+    if not firma:
+        return None
+    periodi = []
+    for riga in q.get("sezione_inps") or []:
+        da, a = _periodo_riga(riga)
+        if not da or not a or not riga.get("matricola") or not riga.get("codice_sede"):
+            return None
+        periodi.append((str(riga["codice_sede"]), str(riga["matricola"]),
+                        str(riga.get("causale") or ""), da, a, _cents_riga(riga)))
+    return firma, tuple(sorted(periodi))
+
+
+def pagamenti_della_dilazione(piano: Dict[str, Any], quietanze: Iterable[Dict[str, Any]],
+                             *, piani: Iterable[Dict[str, Any]] = ()) -> List[Dict[str, Any]]:
     """I versamenti della dilazione, uno per pagamento (le copie si uniscono)."""
+    quietanze = [q for q in quietanze if q.get("entity_status") != "deleted" and q.get("status") != "eliminato"]
+    firme = {str(q.get("id")): _firma_delega_pagata(q) for q in quietanze}
+    protocolli: Dict[tuple, set] = {}
+    for q in quietanze:
+        protocollo = q.get("protocollo_telematico") or (q.get("dati_generali") or {}).get("protocollo_telematico")
+        firma = firme[str(q.get("id"))]
+        if firma and protocollo:
+            protocolli.setdefault(firma, set()).add(protocollo)
     gruppi: Dict[str, Dict[str, Any]] = {}
     for q in quietanze:
         if q.get("entity_status") == "deleted" or q.get("status") == "eliminato":
@@ -253,16 +330,29 @@ def pagamenti_della_dilazione(piano: Dict[str, Any], quietanze: Iterable[Dict[st
         data = str(q.get("data_pagamento") or "")[:10]
         if not data or (piano.get("data_domanda") and data < piano["data_domanda"]):
             continue
-        righe = [r for r in (q.get("sezione_inps") or []) if _riga_della_dilazione(r, piano)]
+        righe = [r for r in (q.get("sezione_inps") or []) if (
+            _riga_della_dilazione(r, piano)
+            or _piano_periodo_ridotto(r, data, piani) == piano.get("rif") and bool(piano.get("rif"))
+        )]
         if len(righe) != 1:
             continue  # due righe della stessa dilazione nella stessa delega: da guardare a mano
         cents = _cents_riga(righe[0])
         protocollo = q.get("protocollo_telematico") or (q.get("dati_generali") or {}).get("protocollo_telematico")
+        firma = firme[str(q.get("id"))]
+        candidati = protocolli.get(firma, set())
+        ambigua = not protocollo and len(candidati) > 1
+        if not protocollo and len(candidati) == 1:
+            protocollo = next(iter(candidati))
         chiave = f"{protocollo}|{data}|{cents}" if protocollo else f"id:{q.get('id')}"
         p = gruppi.setdefault(chiave, {
             "chiave": chiave, "data": data, "protocollo": protocollo, "importo_cents": cents,
             "quietanza_ids": [], "movimento_id": None,
         })
+        if ambigua:
+            p["da_verificare"] = "Copia senza protocollo compatibile con piu' pagamenti: non conteggiata nuovamente"
+        if not _riga_della_dilazione(righe[0], piano):
+            p["periodo_ridotto"] = {"periodo_originale": list(_periodo_riga(righe[0])),
+                                     "motivo": "Coordinate e importo rata: unico piano compatibile"}
         p["quietanza_ids"].append(str(q.get("id")))
         riscontro = q.get("riscontro_banca") or {}
         if riscontro.get("stato") == "RISCONTRATO_BANCA" and riscontro.get("movimento_id"):
@@ -272,14 +362,16 @@ def pagamenti_della_dilazione(piano: Dict[str, Any], quietanze: Iterable[Dict[st
     return sorted(gruppi.values(), key=lambda p: (p["data"], p["chiave"]))
 
 
-def abbina_rate(piano: Dict[str, Any], quietanze: Iterable[Dict[str, Any]], oggi: Optional[str] = None) -> Dict[str, Any]:
+def abbina_rate(piano: Dict[str, Any], quietanze: Iterable[Dict[str, Any]], oggi: Optional[str] = None,
+                *, piani: Iterable[Dict[str, Any]] = ()) -> Dict[str, Any]:
     """Ogni rata col suo pagamento; i pagamenti in piu' restano elencati."""
     oggi = oggi or date.today().isoformat()
-    pagamenti = pagamenti_della_dilazione(piano, quietanze) if not piano.get("mancanti") and piano.get("quadra") else []
+    pagamenti = pagamenti_della_dilazione(piano, quietanze, piani=piani) if not piano.get("mancanti") and piano.get("quadra") else []
     usati: set = set()
     rate = []
     for rata in sorted(piano.get("rate") or [], key=lambda r: r["numero"]):
         scelto = next((p for p in pagamenti if p["chiave"] not in usati
+                       and not p.get("da_verificare")
                        and p["importo_cents"] == rata["importo_cents"]), None)
         esito = {**rata, "quietanza_ids": [], "movimento_id": None, "data_pagamento": None}
         if scelto:
@@ -288,12 +380,14 @@ def abbina_rate(piano: Dict[str, Any], quietanze: Iterable[Dict[str, Any]], oggi
                          movimento_id=scelto["movimento_id"], data_pagamento=scelto["data"],
                          protocollo=scelto["protocollo"],
                          oltre_scadenza=bool(rata["scadenza"] and scelto["data"] > rata["scadenza"]))
+            if scelto.get("periodo_ridotto"):
+                esito["periodo_ridotto"] = scelto["periodo_ridotto"]
         else:
             esito["stato"] = RATA_SCADUTA if rata["scadenza"] and rata["scadenza"] < oggi else RATA_DA_PAGARE
         rate.append(esito)
     # I versamenti della dilazione rimasti senza rata si affiancano, in ordine,
     # alle rate senza pagamento: e' un fatto da verificare, non un pagamento.
-    restanti = [p for p in pagamenti if p["chiave"] not in usati]
+    restanti = [p for p in pagamenti if p["chiave"] not in usati and not p.get("da_verificare")]
     aperte = [r for r in rate if r["stato"] != RATA_PAGATA]
     for rata, p in zip(aperte, restanti):
         rata.update(stato=RATA_IMPORTO_DIVERSO, versamento_diverso={
@@ -308,7 +402,9 @@ def abbina_rate(piano: Dict[str, Any], quietanze: Iterable[Dict[str, Any]], oggi
         "pagamenti_non_previsti": [p for p in pagamenti if p["chiave"] not in usati],
         "stato": "SALDATA" if rate and pagate == len(rate) else "IN_CORSO",
         "rate_pagate": pagate,
-        "residuo_cents": sum(r["importo_cents"] for r in rate if r["stato"] != RATA_PAGATA),
+        "residuo_cents": sum(max(0, r["importo_cents"] -
+                                 (r.get("versamento_diverso") or {}).get("importo_cents", 0))
+                              for r in rate if r["stato"] != RATA_PAGATA),
     }
 
 
@@ -403,7 +499,7 @@ def _etichetta(dil: Dict[str, Any], rata: Dict[str, Any]) -> Dict[str, Any]:
 
 async def collega_dilazioni(db, *, dry_run: bool = False, oggi: Optional[str] = None) -> Dict[str, Any]:
     """Abbina le rate di ogni piano; scrive solo cio' che cambia; apre e chiude alert."""
-    from app.services.alert_engine import genera_alert, risolvi_alert
+    from app.services.alert_engine import genera_alert, risolvi_alert_entita
 
     dilazioni = await db[COLL_DILAZIONI_INPS].find({}, {"_id": 0}).to_list(500)
     if not dilazioni:
@@ -416,9 +512,10 @@ async def collega_dilazioni(db, *, dry_run: bool = False, oggi: Optional[str] = 
     scritti = {"dilazioni": 0, "quietanze": 0, "alert_aperti": 0, "alert_chiusi": 0}
     esiti = []
     etichette: Dict[str, Dict[str, Any]] = {}
+    alert_da_chiudere: List[str] = []
     for dil in dilazioni:
         piano = {**dil, "rate": dil.get("piano") or [], "mancanti": []}
-        esito = abbina_rate(piano, quietanze, oggi=oggi)
+        esito = abbina_rate(piano, quietanze, oggi=oggi, piani=dilazioni)
         esiti.append({"id": dil["id"], "rif": dil.get("rif"), **esito})
         for r in esito["rate"]:
             for qid in r["quietanza_ids"]:
@@ -451,9 +548,10 @@ async def collega_dilazioni(db, *, dry_run: bool = False, oggi: Optional[str] = 
                 )
                 scritti["alert_aperti"] += int(bool(creato))
             else:
-                scritti["alert_chiusi"] += await risolvi_alert(ALERT_RATA_NON_PAGATA, entita, db)
+                alert_da_chiudere.append(entita)
 
     if not dry_run:
+        scritti["alert_chiusi"] = await risolvi_alert_entita(ALERT_RATA_NON_PAGATA, alert_da_chiudere, db)
         for q in quietanze:
             qid = str(q.get("id"))
             voluta = etichette.get(qid)

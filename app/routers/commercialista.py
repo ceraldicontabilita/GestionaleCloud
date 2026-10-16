@@ -703,6 +703,22 @@ async def completezza_pacchetto(anno: int, mese: int, dal: Optional[str] = None,
     return await completezza(Database.get_db(), anno, mese, dal=p.dal, al=p.al)
 
 
+@router.get("/checklist-documenti/{anno}/{mese}")
+@handle_errors
+async def checklist_documenti(anno: int, mese: int, dal: Optional[str] = None,
+                              al: Optional[str] = None) -> Dict[str, Any]:
+    """Risponde con ciò che esiste già nel Gestionale/Drive e ciò che manca.
+
+    La lettura è sempre non distruttiva: non importa, non sposta e non collega
+    documenti. Il registro Drive cambia con lo smistatore della cartella unica,
+    quindi un successivo aggiornamento della pagina riflette i nuovi originali.
+    """
+    from app.services.checklist_commercialista import genera_checklist
+
+    p = _intervallo(anno, mese, dal, al)
+    return await genera_checklist(Database.get_db(), anno, dal=p.dal, al=p.al)
+
+
 @router.get("/export-completo/{anno}/{mese}")
 @handle_errors
 async def export_dati_completi(anno: int, mese: int, dal: Optional[str] = None, al: Optional[str] = None):

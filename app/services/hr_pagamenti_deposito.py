@@ -167,6 +167,15 @@ LOTTO_PAGHE_MIN_DIPENDENTI = 3
 _avviso_non_configurato_emesso = False
 
 
+def deposito_automatico_abilitato() -> bool:
+    """Vero solo quando il ponte automatico gestionale -> HR e' autorizzato."""
+    import os
+
+    return os.environ.get("HR_AUTOMATIC_DEPOSITS_ENABLED", "false").strip().lower() in {
+        "1", "true", "yes", "on",
+    }
+
+
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
@@ -687,6 +696,9 @@ async def deposita_bonifico_transfer_in_hr(db, transfer: Dict[str, Any],
                                           ctx: Optional[ContestoHR] = None,
                                           dry_run: bool = False) -> Dict[str, Any]:
     """Porta in HR un documento di ``bonifici_transfers``; ritorna il marcatore."""
+    if not deposito_automatico_abilitato():
+        return _marcatore("automatico_disabilitato")
+
     if e_confermato_manuale(transfer):
         marca = _marcatore(ESITO_CONFERMATO_MANUALE)
         await _marca(db, "bonifici_transfers", transfer.get("id"), marca, dry_run)
@@ -779,6 +791,9 @@ async def deposita_movimento_banca_in_hr(db, mov: Dict[str, Any],
     """Porta in HR una riga di ``estratto_conto_movimenti``; ritorna il marcatore.
 
     ``segnale_esplicito="lotto_paghe"`` quando la data e' in ``date_lotti_paghe``."""
+    if not deposito_automatico_abilitato():
+        return _marcatore("automatico_disabilitato")
+
     if e_confermato_manuale(mov):
         marca = _marcatore(ESITO_CONFERMATO_MANUALE)
         await _marca(db, "estratto_conto_movimenti", mov.get("id"), marca, dry_run)
@@ -826,6 +841,12 @@ async def deposita_pagamenti_in_hr(db, *, dry_run: bool = False, limit: int = 20
     Usato dal job scheduler ``hr_pagamenti_deposito`` e dall'endpoint di
     backfill ``POST /api/prima-nota-salari/deposita-pagamenti-hr``.
     """
+    if not deposito_automatico_abilitato():
+        return {
+            "status": "automatico_disabilitato", "dry_run": dry_run,
+            "bonifici_pdf": {}, "estratto_conto": {}, "dettaglio": [], "letti": {},
+        }
+
     ctx = await carica_contesto_hr()
     if ctx is None:
         return {"status": ESITO_HR_NON_CONFIGURATO, "dry_run": dry_run,

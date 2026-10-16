@@ -40,6 +40,31 @@ def test_fatture_erp_mepa_popolano_preferiti_oltre_prima_pagina_e_acquisti_futur
     run(scenario())
 
 
+def test_sync_fatture_materializza_prezzi_nel_catalogo_database(monkeypatch):
+    async def scenario():
+        erp, lotti = AsyncMongoMockClient().erp, AsyncMongoMockClient().lotti
+        monkeypatch.setattr(Database, "db", erp)
+        monkeypatch.setattr(cataloghi_prezzi, "db", lotti)
+        await erp.invoices.insert_one(fattura())
+        await lotti.dizionario_ingredienti.insert_many([
+            {"id": "mix", "nome": "Dolce forno", "codice_articolo": "IRCA240", "fonte": "mepa"},
+            {"id": "mai", "nome": "Mai acquistato", "codice_articolo": "NEW01", "fonte": "mepa", "gia_acquistato": True, "prezzo_fattura": 99},
+        ])
+
+        out = await cataloghi_prezzi.sincronizza_fatture_catalogo("mepa", _admin={})
+        comprato = await lotti.dizionario_ingredienti.find_one({"id": "mix"}, {"_id": 0})
+        mai = await lotti.dizionario_ingredienti.find_one({"id": "mai"}, {"_id": 0})
+
+        assert out["catalogo_aggiornato"] == 1
+        assert comprato["gia_acquistato"] is True
+        assert comprato["prezzo_fattura"] == 66.56
+        assert comprato["iva_pct"] == 0
+        assert mai["gia_acquistato"] is False
+        assert mai["prezzo_fattura"] == 0
+
+    run(scenario())
+
+
 def test_preferito_manuale_compare_con_gli_acquistati_senza_diventare_acquisto(monkeypatch):
     async def scenario():
         erp, lotti = AsyncMongoMockClient().erp, AsyncMongoMockClient().lotti

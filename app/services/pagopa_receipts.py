@@ -814,6 +814,33 @@ def _parse_bonifico_eseguito(text: str, content: bytes | None = None) -> dict[st
             "importo_source_text": str(principal).replace(".", ",")}
 
 
+def _parse_bnl_mav(text: str) -> dict[str, Any]:
+    """Addebito consolidato BNL, con codice MAV e data effettiva."""
+    compact = re.sub(r"\s+", " ", text).upper()
+    if not (re.search(r'MOVIMENTI\s*CONSOLIDATI', compact) and 'BWAY-' in compact and 'MAV' in compact):
+        return {}
+    # Nell'OCR l'etichetta Importo puo' seguire il valore. Un solo addebito
+    # negativo in EUR, all'interno della singola contabile, resta inequivoco.
+    amounts = list(re.finditer(r'-\s*([\d.]+,\d{2})\s*EUR', compact))
+    amount = amounts[0] if len(amounts) == 1 and 'IMPORTO' in compact else None
+    date = re.search(r'DATA\s*OPERAZIONE\s*(\d{2}/\d{2}/\d{4})', compact)
+    codes = {re.sub(r'\s', '', x) for x in re.findall(r'MAV\s*(\d(?:\s*\d){16,17})(?!\s*\d)', compact)}
+    reference = re.search(r'BWAY-\d+', compact)
+    if not (amount and date and reference and len(codes) == 1):
+        return {'document_kind': 'RICEVUTA_MAV', 'is_payment_receipt': False}
+    try:
+        payment_date = datetime.strptime(date[1], '%d/%m/%Y').date().isoformat()
+    except ValueError:
+        return {'document_kind': 'RICEVUTA_MAV', 'is_payment_receipt': False}
+    value = _money_decimal(amount[1])
+    return {'document_kind': 'RICEVUTA_MAV', 'identificativo_bolletta': codes.pop(),
+            'operation_amount': float(value), 'importo': float(value),
+            'data_pagamento': payment_date, 'bank_debit_total': float(value),
+            'operation_code': reference[0], 'intermediario': 'BNL',
+            'metodo_pagamento': 'MAV', 'is_payment_receipt': True,
+            'importo_source_text': amount[0]}
+
+
 def parse_receipt_pdf(content: bytes, filename: str | None = None) -> dict[str, Any]:
     text, ocr_used = _extract_receipt_text(content)
     text = _receipt_text(text)
@@ -821,8 +848,19 @@ def parse_receipt_pdf(content: bytes, filename: str | None = None) -> dict[str, 
     compact = re.sub(r"\s+", " ", text)
     upper = compact.upper()
     marker_text = re.sub(r"[^A-Z0-9]", "", upper)
+    # Un fascicolo BNL puo' contenere piu' contabili, una per pagina. Nessuna
+    # delle singole operazioni va persa o fusa in un pagamento cumulativo.
+    pieces = re.split(r"(?=MOVIMENTI\s*CONSOLIDATI)", text.upper())
+    pieces = [part for part in pieces if re.match(r"MOVIMENTI\s*CONSOLIDATI", part)]
+    if len(pieces) > 1:
+        receipts = [_parse_bnl_mav(part) for part in pieces]
+        valid = len(receipts) == page_count and all(r.get("is_payment_receipt") for r in receipts)
+        return {"document_kind": "RICEVUTE_MAV_MULTIPLE", "is_payment_receipt": valid,
+                "multiple_receipts": receipts, "page_count": page_count, "ocr_used": ocr_used,
+                "parser_version": PARSER_VERSION,
+                **({} if valid else {"error": "Contabili BNL multiple: verificare pagine e dati di ciascun pagamento"})}
     email_payment = _parse_email_pagopa(text)
-    bpm_payment = (email_payment or _parse_bpm_payment(text) or _parse_bonifico_eseguito(text, content) or _parse_mooney_payment(text)
+    bpm_payment = (email_payment or _parse_bnl_mav(text) or _parse_bpm_payment(text) or _parse_bonifico_eseguito(text, content) or _parse_mooney_payment(text)
                    or _parse_ader_attestazione(text))
     if bpm_payment:
         _attach_pdf_coordinates(content, bpm_payment)
@@ -1378,6 +1416,52 @@ async def import_receipt(
             "document_kind": parsed.get("document_kind"),
             "parsed": parsed,
         }
+    if parsed.get("multiple_receipts"):
+        import fitz
+        from app.services.fiscal_evidence import register_document, stable_id
+
+        # Conserva il fascicolo originale; le contabili estratte mantengono
+        # documento padre, impronta e pagina. La deduplica usa codice/data/importo.
+        digest = hashlib.sha256(content).hexdigest()
+        original = await register_document(
+            db, company_id=company_id, content=content, filename=filename,
+            source=source, source_ref=digest, category="riscossione",
+            page_count=len(parsed["multiple_receipts"]),
+            metadata={"kind": "fascicolo_contabili_bnl"},
+        )
+        # register_document registra metadati/versioni, non conserva i byte.
+        # Il deposito canonico instrada il PDF intero su Drive; le singole
+        # pagine restano le prove dei due pagamenti, senza una terza ricevuta.
+        inbox = await db["documents_inbox"].find_one(
+            {"company_id": company_id, "sha256": digest}, {"id": 1, "_id": 0})
+        if not inbox:
+            await db["documents_inbox"].insert_one({
+                "id": stable_id("document", company_id, digest), "company_id": company_id,
+                "filename": filename, "sha256": digest, "file_hash": digest,
+                "file_size": len(content), "pdf_data": base64.b64encode(content).decode("ascii"),
+                "category": "ricevuta_mav", "document_type": "fascicolo_contabili_bnl",
+                "category_label": "Contabili MAV BNL", "source": source,
+                "status": "archiviato", "processed": True, "processed_to": "ricevute_pagopa",
+                "fiscal_document_id": original["document_id"], "fiscal_version_id": original["id"],
+                "created_at": datetime.now(timezone.utc).isoformat(),
+            })
+        outcomes = []
+        with fitz.open(stream=content, filetype="pdf") as document:
+            for page_number in range(len(document)):
+                with fitz.open() as single:
+                    single.insert_pdf(document, from_page=page_number, to_page=page_number)
+                    payload = single.tobytes()
+                outcomes.append(await import_receipt(
+                    db, content=payload, filename=f"{filename} - pagina {page_number + 1}.pdf",
+                    company_id=company_id, source=source,
+                    source_metadata={**(source_metadata or {}), "original_document_id": original.get("document_id"),
+                                     "original_sha256": hashlib.sha256(content).hexdigest(), "source_page": page_number + 1},
+                ))
+        return {"success": all(r.get("success") for r in outcomes),
+                "duplicate": all(r.get("duplicate") for r in outcomes),
+                "imported": sum(bool(r.get("success") and not r.get("duplicate")) for r in outcomes),
+                "receipts": outcomes, "original_document_id": original.get("document_id")}
+
     values = {**parsed, **{key: value for key, value in (overrides or {}).items() if value not in (None, "")}}
     code = str(values.get("identificativo_bolletta") or "").strip()
     amount = values.get("importo")

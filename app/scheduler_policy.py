@@ -35,16 +35,21 @@ ERP_RETIRED_JOBS = frozenset({
 HR_RETIRED_JOBS = frozenset({"sincronizza_paghe", "scadenze"})
 LOTTI_RETIRED_JOBS = frozenset({
     "aggiorna_riferimenti_fatture", "pulizia_lotti_scaduti",
-    "haccp_daily_generation", "digest_mattutino", "backup_notturno",
+    "digest_mattutino", "backup_notturno",
     "pipeline_aggiornamento", "normalizza_nuovi_prodotti",
     "sincronizza_operatori_hr", "sync_gestionale_fatture", "lettura_articoli_ai",
 })
 RETIRED_PERIODIC_JOBS = ERP_RETIRED_JOBS | HR_RETIRED_JOBS | LOTTI_RETIRED_JOBS
+ALWAYS_ENABLED_JOBS = frozenset({"haccp_daily_generation"})
 
 
 def scheduler_job_enabled(job_id: str) -> bool:
     if job_id in RETIRED_PERIODIC_JOBS:
         return False
+    # Il controllo HACCP delle 07:00 e' una registrazione operativa richiesta:
+    # non deve sparire solo perche' l'ERP usa una allowlist per altri job.
+    if job_id in ALWAYS_ENABLED_JOBS:
+        return True
     selected = {
         value.strip()
         for value in os.getenv("SCHEDULER_JOB_ALLOWLIST", "").split(",")

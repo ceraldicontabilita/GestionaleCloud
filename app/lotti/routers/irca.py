@@ -74,8 +74,26 @@ def normalizza_nome_irca(value: str) -> str:
     return " ".join(testo.split())
 
 
-def _candidati_nome_mepa(value: str) -> list[str]:
+def _normalizza_nome_associazione(value: str) -> str:
+    """Normalizza solo le varianti ortografiche documentate tra IRCA e MePA."""
     nome = normalizza_nome_irca(value)
+    # Nel catalogo ufficiale il prodotto e' "TRIAL THERMOTECH", mentre nel
+    # catalogo MePA importato compare come "IRCA TRIAL TERMOTECH".
+    nome = re.sub(r"\bTHERMOTECH\b", "TERMOTECH", nome)
+    # La ricetta ufficiale usa "RENO CONCERTO FONDENTE 72%", mentre catalogo
+    # e scheda tecnica IRCA riportano anche la denominazione estesa
+    # "RENO CONCERTO CIOCCOLATO EXTRA FONDENTE 72%". Sono la stessa referenza
+    # documentata, non una somiglianza dedotta.
+    nome = re.sub(
+        r"\bRENO CONCERTO CIOCCOLATO EXTRA FONDENTE\b",
+        "RENO CONCERTO FONDENTE",
+        nome,
+    )
+    return nome
+
+
+def _candidati_nome_mepa(value: str) -> list[str]:
+    nome = _normalizza_nome_associazione(value)
     if not nome.startswith("IRCA "):
         return []
     senza_marchio = nome[5:].strip()
@@ -235,6 +253,11 @@ def estrai_cataloghi_irca(html: str, pagina: int = 0) -> list[dict]:
             "stato_accesso": "accesso_riservato" if premium and not url else "pubblico",
             "pagina_elenco": pagina,
             "fonte_url": PUBBLICAZIONI_URL,
+            # Copia locale del riferimento, della copertina e dei metadati. Il
+            # file integrale e' marcato separatamente: molti viewer Flipsnack
+            # non pubblicano un PDF scaricabile e non vanno aggirati.
+            "archiviato_nel_database": True,
+            "download_stato": "accesso_riservato" if premium and not url else "collegamento_pubblico_archiviato",
         })
     return out
 
@@ -251,15 +274,23 @@ async def _arricchisci_flipsnack(doc: dict, client: httpx.AsyncClient) -> dict:
             return doc
         soup = BeautifulSoup(response.text, "html.parser")
         meta = lambda prop: soup.select_one(f'meta[property="{prop}"]')
+        title = meta("og:title")
         desc = meta("og:description")
         cover = meta("og:image")
         iframe = soup.select_one("iframe[src]")
         hash_match = re.search(r"window\.flipbookHash\s*=\s*['\"]([^'\"]+)", response.text)
         doc["descrizione"] = desc.get("content", "").strip() if desc else ""
+        doc["titolo_originale"] = title.get("content", "").strip() if title else ""
         doc["copertina_flipsnack_url"] = cover.get("content", "").strip() if cover else ""
         doc["player_url"] = iframe.get("src", "").strip() if iframe else ""
         doc["flipbook_hash"] = hash_match.group(1) if hash_match else ""
         doc["sha256_html_flipsnack"] = hashlib.sha256(response.content).hexdigest()
+        testo_lingua = " ".join((
+            doc.get("titolo_originale", ""), doc.get("descrizione", ""), url,
+        )).lower()
+        doc["lingua"] = "en" if any(indizio in testo_lingua for indizio in (
+            "vegan pastry", "catalog by", "recipe book", "-en-", "/en/",
+        )) else "it"
     except httpx.HTTPError:
         pass
     return doc
@@ -341,7 +372,7 @@ async def _bulk_upsert(collection, documents: list[dict], chiave: str = "id") ->
     ]
     # L'adattatore Supabase persiste l'intero lotto con poche chiamate; il mock
     # di test usa la compatibilita' una operazione alla volta.
-    if hasattr(collection, "database") and hasattr(collection.database, "store"):
+    if collection.__class__.__module__ == "app.lotti.supabase_document_store":
         await collection.bulk_write(richieste, ordered=False)
     else:
         from app.lotti.bulk_compat import bulk_write_compat
@@ -353,7 +384,7 @@ async def _bulk_upsert_ricette(documents: list[dict]) -> None:
     if not documents:
         return
     richieste = [UpdateOne({"id": d["id"]}, {"$set": d}, upsert=True) for d in documents]
-    if hasattr(db["irca_ricette"], "database") and hasattr(db["irca_ricette"].database, "store"):
+    if db["irca_ricette"].__class__.__module__ == "app.lotti.supabase_document_store":
         await db["irca_ricette"].bulk_write(richieste, ordered=False)
     else:
         from app.lotti.bulk_compat import bulk_write_compat
@@ -365,7 +396,7 @@ async def _bulk_upsert_cataloghi(documents: list[dict]) -> None:
     if not documents:
         return
     richieste = [UpdateOne({"id": d["id"]}, {"$set": d}, upsert=True) for d in documents]
-    if hasattr(db["irca_cataloghi"], "database") and hasattr(db["irca_cataloghi"].database, "store"):
+    if db["irca_cataloghi"].__class__.__module__ == "app.lotti.supabase_document_store":
         await db["irca_cataloghi"].bulk_write(richieste, ordered=False)
     else:
         from app.lotti.bulk_compat import bulk_write_compat
@@ -426,7 +457,7 @@ async def _collega_ricette_ai_prodotti(ricette: list[dict]) -> None:
         for p in prodotti
     ]
     if updates:
-        if hasattr(db[COLL_PRODOTTI], "database") and hasattr(db[COLL_PRODOTTI].database, "store"):
+        if db[COLL_PRODOTTI].__class__.__module__ == "app.lotti.supabase_document_store":
             await db[COLL_PRODOTTI].bulk_write(updates, ordered=False)
         else:
             from app.lotti.bulk_compat import bulk_write_compat
@@ -439,7 +470,7 @@ async def associa_prodotti_mepa() -> dict:
     ).to_list(None)
     indice: dict[str, list[dict]] = defaultdict(list)
     for prodotto in prodotti_irca:
-        indice[normalizza_nome_irca(prodotto.get("nome"))].append(prodotto)
+        indice[_normalizza_nome_associazione(prodotto.get("nome"))].append(prodotto)
 
     mepa = await db.dizionario_ingredienti.find(
         {"fonte": "mepa"}, {"_id": 1, "nome": 1, "nome_display": 1}
@@ -465,7 +496,7 @@ async def associa_prodotti_mepa() -> dict:
         elif len(unici) > 1:
             ambigui += 1
     if updates:
-        if hasattr(db.dizionario_ingredienti, "database") and hasattr(db.dizionario_ingredienti.database, "store"):
+        if db.dizionario_ingredienti.__class__.__module__ == "app.lotti.supabase_document_store":
             await db.dizionario_ingredienti.bulk_write(updates, ordered=False)
         else:
             from app.lotti.bulk_compat import bulk_write_compat
@@ -586,6 +617,10 @@ class RicettaSelezionata(BaseModel):
 
 class DistintaPayload(BaseModel):
     ricette: list[RicettaSelezionata] = Field(min_length=1, max_length=100)
+
+
+class PreferitoRicettaPayload(BaseModel):
+    preferito: bool = True
 
 
 class ProgettoDolcePayload(BaseModel):
@@ -934,49 +969,82 @@ async def _genera_distinta(payload: DistintaPayload) -> dict:
         {"fornitore": "irca", "slug": {"$in": slugs}}, {"_id": 0}
     ).to_list(None) if slugs else []
     per_slug = {p["slug"]: p for p in prodotti}
+    # Carichiamo l'indice MePA anche per le righe senza hyperlink IRCA. Alcune
+    # ricette ufficiali (es. RENO CONCERTO FONDENTE 72%) mostrano infatti il
+    # prodotto nell'impasto ma non gli assegnano un link /it/prodotti/. In tal
+    # caso e' ammesso soltanto il nome IRCA esplicito, esatto e univoco.
     mepa = await db.dizionario_ingredienti.find(
-        {"fonte": "mepa", "irca_slug": {"$in": slugs}}, {"_id": 0}
-    ).to_list(None) if slugs else []
+        {"fonte": "mepa"}, {"_id": 0}
+    ).to_list(None)
+    # Lo stato "gia' acquistato" e' la proiezione delle fatture XML MEPA
+    # materializzata nel catalogo dal comando Sync Fatture. La consultazione
+    # della ricetta resta quindi una lettura veloce del solo database.
     mepa_per_slug: dict[str, list[dict]] = defaultdict(list)
+    mepa_per_nome_irca: dict[str, list[dict]] = defaultdict(list)
     for prodotto in mepa:
-        mepa_per_slug[prodotto.get("irca_slug", "")].append(prodotto)
+        if prodotto.get("irca_slug"):
+            mepa_per_slug[prodotto["irca_slug"]].append(prodotto)
+        for nome_irca in _candidati_nome_mepa(
+            prodotto.get("nome_display") or prodotto.get("nome")
+        ):
+            mepa_per_nome_irca[nome_irca].append(prodotto)
 
     righe = []
     for riga in aggregati.values():
         slug = riga["prodotto_irca_slug"]
         irca = per_slug.get(slug, {})
-        fornitori = mepa_per_slug.get(slug, [])
+        fornitori = mepa_per_slug.get(slug, []) if slug else []
+        associazione = "slug_irca_esatto_univoco"
+        if len(fornitori) != 1:
+            fornitori = mepa_per_nome_irca.get(
+                _normalizza_nome_associazione(riga["ingrediente"]), []
+            )
+            associazione = "nome_irca_esatto_univoco"
         fornitore = None
         if len(fornitori) == 1:
             p = fornitori[0]
+            gia_acquistato = bool(p.get("gia_acquistato"))
+            prezzo_fattura = p.get("prezzo_fattura") or 0
+            prezzo_catalogo = p.get("prezzo_fornitore") or p.get("prezzo") or 0
             fornitore = {
                 "nome": "MEPA Alimentari",
                 "fonte": "mepa",
                 "codice": p.get("codice_articolo") or p.get("codice") or "",
                 "prodotto_nome": p.get("nome_display") or p.get("nome") or "",
-                "prezzo": p.get("prezzo_fornitore") or p.get("prezzo") or 0,
-                "associazione": "nome_esatto_univoco",
+                "prezzo": prezzo_fattura or prezzo_catalogo,
+                "prezzo_fattura": prezzo_fattura,
+                "prezzo_fattura_data": p.get("prezzo_fattura_data") or "",
+                "iva_pct": p.get("iva_pct") or 0,
+                "gia_acquistato": gia_acquistato,
+                "associazione": associazione,
             }
+        stato = "DA_VERIFICARE"
+        if fornitore:
+            stato = "gia_acquistato" if fornitore["gia_acquistato"] else "da_acquistare"
         riga.update({
             "codici_irca": irca.get("codici_irca", []),
             "descrizione": irca.get("descrizione", ""),
             "immagine_url": irca.get("immagine_url", ""),
             "fornitore": fornitore,
-            "stato": "pronto" if fornitore else "DA_VERIFICARE",
+            "stato_associazione": "pronto" if fornitore else "DA_VERIFICARE",
+            "stato": stato,
             "motivo": "" if fornitore else (
                 "Nessun prodotto MePA associato in modo esatto e univoco."
                 if slug else "Ingrediente generico: prodotto e fornitore da scegliere."
             ),
         })
         righe.append(riga)
-    righe.sort(key=lambda x: (x["stato"] != "pronto", x["ingrediente"].lower()))
+    ordine_stati = {"da_acquistare": 0, "gia_acquistato": 1, "DA_VERIFICARE": 2}
+    righe.sort(key=lambda x: (ordine_stati.get(x["stato"], 3), x["ingrediente"].lower()))
     return {
         "ricette": [{"slug": r["slug"], "nome": r["nome"], "moltiplicatore": richiesti[r["slug"]]} for r in ricette],
         "righe": righe,
         "totali": {
             "ingredienti": len(righe),
-            "pronti": sum(r["stato"] == "pronto" for r in righe),
-            "da_verificare": sum(r["stato"] != "pronto" for r in righe),
+            "pronti": sum(r["stato_associazione"] == "pronto" for r in righe),
+            "gia_acquistati": sum(r["stato"] == "gia_acquistato" for r in righe),
+            "da_acquistare": sum(r["stato"] == "da_acquistare" for r in righe),
+            "da_verificare": sum(r["stato"] == "DA_VERIFICARE" for r in righe),
         },
     }
 
@@ -991,25 +1059,35 @@ async def aggiungi_distinta_carrello(
     payload: DistintaPayload, _admin=Depends(require_admin)
 ):
     distinta = await _genera_distinta(payload)
-    pronti = [r for r in distinta["righe"] if r["stato"] == "pronto"]
+    # Tutto cio' che manca deve comparire nell'ordine. Se il collegamento MEPA
+    # non e' ancora univoco lo inseriamo come riga "Da associare", senza
+    # inventare fornitore, codice o prezzo; i gia' acquistati restano esclusi.
+    da_acquistare = [
+        r for r in distinta["righe"]
+        if r["stato"] in {"da_acquistare", "DA_VERIFICARE"}
+    ]
     doc = await db.carrello_sospesi.find_one({"_id": "default"}, {"_id": 0}) or {}
     current = list(doc.get("righe") or [])
     ids = {item.get("id") for item in current}
     aggiunti = []
-    for riga in pronti:
-        codice = riga["fornitore"].get("codice", "")
+    for riga in da_acquistare:
+        fornitore = riga.get("fornitore") or {}
+        da_associare = riga["stato"] == "DA_VERIFICARE"
+        codice = fornitore.get("codice", "")
         item_id = f"irca-ricetta-mepa:{codice or riga['prodotto_irca_slug']}"
+        if not codice and not riga.get("prodotto_irca_slug"):
+            item_id = f"irca-ricetta-da-associare:{normalizza_nome_irca(riga['ingrediente']).lower()}"
         if item_id in ids:
             continue
         quantita = riga.get("quantita_max")
         unita = riga.get("unita") or ""
         item = {
             "id": item_id,
-            "nome": riga["fornitore"]["prodotto_nome"] or riga["ingrediente"],
+            "nome": fornitore.get("prodotto_nome") or riga["ingrediente"],
             "codici": [codice] if codice else [],
-            "fornitore": riga["fornitore"]["nome"],
-            "prezzo": riga["fornitore"].get("prezzo") or 0,
-            "prezzo_fonte": "catalogo_mepa" if riga["fornitore"].get("prezzo") else "non_disponibile",
+            "fornitore": fornitore.get("nome") or "Da assegnare",
+            "prezzo": fornitore.get("prezzo") or 0,
+            "prezzo_fonte": "catalogo_mepa" if fornitore.get("prezzo") else "non_disponibile",
             "prezzo_iva_esclusa": True,
             "quantita": 1,
             "unita_misura": "conf",
@@ -1017,8 +1095,12 @@ async def aggiungi_distinta_carrello(
             "note": (
                 f"Fabbisogno ricette IRCA: {quantita:g}{unita}. " if quantita is not None else
                 "Fabbisogno ricette IRCA: quantità quanto basta. "
+            ) + (
+                "Prodotto da associare a un articolo/fornitore prima dell'invio. "
+                if da_associare else ""
             ) + "Numero confezioni da confermare in base al formato di vendita.",
             "quantita_ordine_da_confermare": True,
+            "richiede_associazione": da_associare,
             "sospeso": False,
         }
         current.append(item)
@@ -1030,8 +1112,10 @@ async def aggiungi_distinta_carrello(
     return {
         "success": True,
         "aggiunti": len(aggiunti),
-        "gia_presenti": len(pronti) - len(aggiunti),
+        "gia_presenti": len(da_acquistare) - len(aggiunti),
+        "gia_acquistati": distinta["totali"]["gia_acquistati"],
         "da_verificare": distinta["totali"]["da_verificare"],
+        "da_verificare_aggiunti": sum(bool(r.get("richiede_associazione")) for r in aggiunti),
         "righe": aggiunti,
     }
 
@@ -1059,8 +1143,23 @@ async def lista_ricette(
         ]
     if prodotto:
         filtro["prodotti_irca.slug"] = prodotto
-    items = await db[COLL_RICETTE].find(filtro, {"_id": 0}).sort("nome", 1).skip(skip).limit(limit).to_list(limit)
+    items = await db[COLL_RICETTE].find(filtro, {"_id": 0}).sort([
+        ("preferito", -1), ("nome", 1),
+    ]).skip(skip).limit(limit).to_list(limit)
     return {"ricette": items, "totale": await db[COLL_RICETTE].count_documents(filtro)}
+
+
+@router.put("/ricette/{slug}/preferito")
+async def imposta_ricetta_preferita(
+    slug: str, payload: PreferitoRicettaPayload, _admin=Depends(require_admin),
+):
+    risultato = await db[COLL_RICETTE].update_one(
+        {"slug": slug},
+        {"$set": {"preferito": payload.preferito, "preferito_aggiornato_il": _ora()}},
+    )
+    if risultato.matched_count == 0:
+        raise HTTPException(404, "Ricetta IRCA non trovata")
+    return {"slug": slug, "preferito": payload.preferito}
 
 
 @router.get("/ricette/{slug}")

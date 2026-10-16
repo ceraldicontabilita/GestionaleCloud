@@ -23,12 +23,23 @@ beforeEach(() => {
   window.history.replaceState(null, "", "#prodotti/mepa");
   axios.get.mockReset();
   axios.post.mockReset();
-  axios.post.mockResolvedValue({ data: { righe_aggiornate: 2, carrello_aggiornate: 1 } });
+  axios.post.mockImplementation(async url => url.includes("/cataloghi/sincronizza-fatture/mepa") ? { data: {
+    fatture: 10,
+    prodotti: [
+      { id: "mandorle", gia_acquistato: true, prezzo_fattura: 10.1299 },
+      { id: "omaggio", gia_acquistato: true, prezzo_fattura: 0 },
+    ],
+  } } : { data: { righe_aggiornate: 2, carrello_aggiornate: 1 } });
   toast.success.mockReset();
   toast.error.mockReset();
   axios.get.mockImplementation(async url => {
     if (url.endsWith("/fonti-catalogo")) return { data: [] };
     if (url.includes("prodotti-senza-peso")) return { data: { total: 0 } };
+    if (url.includes("/prodotti-vendita/?solo_attivi=false")) return { data: [
+      { id: "con-prezzo", fonte: "ricetta", prezzo_vendita: 5 },
+      { id: "senza-prezzo", fonte: "ricetta", prezzo_vendita: 0 },
+    ] };
+    if (url.endsWith("/ricette")) return { data: [] };
     if (url.endsWith("/cataloghi/preferiti/mepa")) return { data: {
       fatture: 10,
       prodotti: [
@@ -53,8 +64,16 @@ test("Sync Fatture nella scheda MEPA rilegge le fatture canoniche e non Acquaviv
   const sync = [...node.querySelectorAll("button")].find(b => b.textContent.includes("Sync Fatture"));
   await act(async () => sync.click());
 
-  expect(axios.get).toHaveBeenCalledWith(expect.stringContaining("/cataloghi/preferiti/mepa"));
+  expect(axios.post).toHaveBeenCalledWith(expect.stringContaining("/cataloghi/sincronizza-fatture/mepa"));
   expect(axios.post).not.toHaveBeenCalledWith(expect.stringContaining("sync-acquaviva"));
   expect(axios.post).toHaveBeenCalledWith(expect.stringContaining("/ordini-fornitori/aggiorna-prezzi-aperti"), null, { params: { fonte: "mepa" } });
   expect(toast.success).toHaveBeenCalledWith("Fatture lette: 10 · 2 prodotti · 1 prezzo · 1 senza prezzo in fattura · 2 prezzi in bozze aggiornati");
+});
+
+test("aprendo direttamente MEPA carica i contatori condivisi dei prodotti", async () => {
+  await act(async () => root.render(<ProdottiVenditaView defaultTab="mepa" />));
+
+  expect(axios.get).toHaveBeenCalledWith(expect.stringContaining("/prodotti-vendita/?solo_attivi=false"));
+  expect([...node.querySelectorAll("button")].some(b => b.textContent.includes("Imposta Prezzi (1)"))).toBe(true);
+  expect([...node.querySelectorAll("button")].some(b => b.textContent.includes("Miei Prodotti2"))).toBe(true);
 });

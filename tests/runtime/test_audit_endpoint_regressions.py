@@ -32,7 +32,6 @@ def test_rotte_statiche_raggiungono_le_funzioni_corrette(monkeypatch):
             'file_data': base64.b64encode(b'regolamento di test').decode()})
         async with AsyncClient(transport=ASGITransport(app=app), base_url='http://test') as client:
             for url in ['/turni/disponibilita-bar', '/turni/preferenza-riposo',
-                        '/cedolini/simulazione-f24?anno=2026&mese=1',
                         '/anomalie/report-pdf-range?start_anno=2025&end_anno=2026']:
                 response = await client.get(url)
                 assert response.status_code == 200, (url, response.text)

@@ -47,7 +47,7 @@ describe("navigazione reale dei cataloghi fornitori", () => {
     container.remove();
   });
 
-  test.each(["acquaviva", "cartelli_bar", "saima", "mepa", "irca", "irca_spunti"])(
+  test.each(["acquaviva", "cartelli_bar", "saima", "mepa", "irca"])(
     "#prodotti/%s monta davvero la vista cataloghi",
     async (fornitore) => {
       window.history.replaceState(null, "", `#prodotti/${fornitore}`);
@@ -58,6 +58,15 @@ describe("navigazione reale dei cataloghi fornitori", () => {
       expect(container.querySelector('[data-testid="prodotti-sub-cataloghi"]').getAttribute("aria-selected")).toBe("true");
     }
   );
+
+  test.each([
+    ["irca_spunti", "irca"],
+    ["saima_ricettari", "saima"],
+  ])("il vecchio catalogo %s reindirizza ai ricettari fornitori", async (catalogo, fornitore) => {
+    window.history.replaceState(null, "", `#prodotti/${catalogo}`);
+    await act(async () => root.render(<ProdottiConTabFornitore />));
+    expect(window.location.hash).toBe(`#ricette/fornitori/${fornitore}`);
+  });
 
   test("Indietro/Avanti sincronizza cataloghi e Listino", async () => {
     window.history.replaceState(null, "", "#prodotti/saima");

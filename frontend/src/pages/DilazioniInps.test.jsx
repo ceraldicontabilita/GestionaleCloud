@@ -1,10 +1,11 @@
 import React from 'react';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import api from '../api';
 import DilazioniInps from './DilazioniInps';
 
 vi.mock('../api', () => ({ default: { get: vi.fn() } }));
+vi.mock('../components/ApriOriginale', () => ({ VisoreOriginale: ({ url }) => <div role="dialog" data-url={url} /> }));
 
 describe('Dilazioni INPS', () => {
   beforeEach(() => vi.clearAllMocks());
@@ -42,5 +43,21 @@ describe('Dilazioni INPS', () => {
     expect(await screen.findByText('Rate del piano accolto')).toBeInTheDocument();
     expect(screen.getByText('Pagata con quietanza il 10/12/2012')).toBeInTheDocument();
     expect(screen.getByText('Scaduta · quietanza non trovata')).toBeInTheDocument();
+  });
+
+  it('apre la quietanza del pagamento parziale e mostra il residuo effettivo', async () => {
+    api.get.mockResolvedValue({ data: { sources: {}, items: [{
+      id: 'parziale', rif: 'INPS.2025', stato_richiesta: 'ACCOLTA', residuo_cents: 500,
+      rate: [{ numero: 2, scadenza: '2025-10-22', importo_cents: 147700,
+        stato: 'VERSATA_IMPORTO_DIVERSO', quietanza_ids: [],
+        versamento_diverso: { importo_cents: 147200, data: '2025-10-22', quietanza_ids: ['quietanza-2'] },
+      }],
+    }] } });
+    render(<DilazioniInps />);
+    const open = await screen.findByRole('button', { name: 'Apri quietanza rata 2' });
+    expect(screen.getByText(/Residuo del piano: 5,00/)).toBeInTheDocument();
+    expect(screen.getByText(/Versati 1\.?472,00.*residuo 5,00/)).toBeInTheDocument();
+    fireEvent.click(open);
+    expect(screen.getByRole('dialog')).toHaveAttribute('data-url', '/api/originale/quietanza/quietanza-2');
   });
 });

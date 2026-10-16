@@ -49,7 +49,7 @@ def quadro_lipe(doc):
     }
 
 
-async def arricchisci_piano_iva(db, griglia, oggi):
+async def arricchisci_piano_iva(db, griglia, oggi, *, ricalcola_mancanti=True):
     righe = [r for r in griglia["voci"] if r["voce"]["id"] == "iva_mensile"]
     if not righe:
         return griglia
@@ -72,6 +72,22 @@ async def arricchisci_piano_iva(db, griglia, oggi):
         .to_list(None)
     )
     by_period = {}
+    confermate = {}
+    originali = {}
+    if not ricalcola_mancanti:
+        from app.engines import liquidazione_iva_engine as liq
+        saved = await db['liquidazioni_iva'].find(
+            {'periodo': {'$regex': f'^{anno}-'}, 'stato': {'$in': [liq.CONFERMATA, liq.TRASMESSA]}},
+            {'_id': 0},
+        ).to_list(None)
+        for item in sorted(saved, key=lambda x: int(x.get('versione') or 0)):
+            confermate[item['periodo']] = item
+        digests = sorted({d['source_sha256'] for d in docs if d.get('source_sha256')})
+        if digests:
+            originals = await db['documents_inbox'].find(
+                {'sha256': {'$in': digests}}, {'id': 1, 'sha256': 1, '_id': 0},
+            ).to_list(None)
+            originali = {d['sha256']: d for d in originals}
     for d in sorted(
         docs,
         key=lambda d: (
@@ -107,7 +123,7 @@ async def arricchisci_piano_iva(db, griglia, oggi):
                 if digest:
                     original = await db["documents_inbox"].find_one(
                         {"sha256": digest}, {"id": 1}
-                    )
+                    ) if ricalcola_mancanti else originali.get(digest)
                     if original and original.get("id"):
                         q["documento"]["pdf_url"] = "/api/originale/documento/" + quote(
                             str(original["id"]), safe=""
@@ -129,7 +145,14 @@ async def arricchisci_piano_iva(db, griglia, oggi):
                     else q["credito_mese_precedente_cents"]
                     == pq["credito_residuo_cents"]
                 )
-            elif (anno, mese) < (oggi.year, oggi.month):
+            elif not ricalcola_mancanti and periodo in confermate:
+                saved = confermate[periodo]
+                saldo = money_cents(saved['saldo']) if saved.get('saldo') is not None else None
+                q = {'fonte': 'Gestione IVA', 'verificato': saldo is not None,
+                     'documento': None, 'liquidazione_id': saved.get('id'),
+                     'da_versare_cents': max(0, saldo) if saldo is not None else None,
+                     'credito_residuo_cents': max(0, -saldo) if saldo is not None else None}
+            elif ricalcola_mancanti and (anno, mese) < (oggi.year, oggi.month):
                 snap = await get_iva_period_snapshot(
                     db, anno=anno, mese=mese, today=oggi
                 )
@@ -156,7 +179,7 @@ async def arricchisci_piano_iva(db, griglia, oggi):
                 }
             if not q:
                 c["iva"] = {
-                    "fonte": "periodo_non_concluso",
+                    "fonte": "periodo_non_concluso" if (anno, mese) >= (oggi.year, oggi.month) else "liquidazione_non_disponibile",
                     "documento": None,
                     "credito_residuo_cents": None,
                     "da_versare_cents": None,
@@ -164,7 +187,7 @@ async def arricchisci_piano_iva(db, griglia, oggi):
                 }
                 continue
             q["presentazione_lipe"] = calendario_lipe
-            if q.get("fonte") == "LIPE" and calendario_lipe["confronto_abilitato"]:
+            if ricalcola_mancanti and q.get("fonte") == "LIPE" and calendario_lipe["confronto_abilitato"]:
                 from app.services.confronto_iva_commercialista import confronta_periodo
                 snap = await get_iva_period_snapshot(db, anno=anno, mese=mese, today=oggi)
                 nostro = {"stato_calcolo": snap.get("stato_calcolo") if snap.get("attendibile") else "DATI_MANCANTI",
@@ -192,6 +215,11 @@ async def arricchisci_piano_iva(db, griglia, oggi):
                         giorni_scaduto=None,
                     )
                 continue
+            # Il dovuto LIPE può differire dal modello; il pagamento provato
+            # rimane quello delle quietanze/banca, anche con LIPE a credito.
+            due_before, residual_before = c.get('debito_cents'), c.get('residuo_cents')
+            paid = max(0, due_before - residual_before) if due_before is not None and residual_before is not None else None
+            c['pagato_cents'] = paid
             if amount == 0:
                 c.update(
                     stato="iva_a_credito",
@@ -202,6 +230,7 @@ async def arricchisci_piano_iva(db, griglia, oggi):
                     ),
                     credito=str((q.get("credito_residuo_cents") or 0) / 100),
                     importo=None,
+                    debito_cents=0,
                     residuo_cents=0,
                     giorni_scaduto=None,
                     giorni_ritardo=None,
@@ -212,10 +241,7 @@ async def arricchisci_piano_iva(db, griglia, oggi):
                     q["versamento_da_verificare"] = True
             elif amount is not None:
                 # La LIPE definisce il dovuto; banca/quietanze definiscono il pagato.
-                paid = max(
-                    0, (c.get("debito_cents") or 0) - (c.get("residuo_cents") or 0)
-                )
-                residual = max(0, amount - paid)
+                residual = max(0, amount - (paid or 0))
                 c.update(
                     debito_cents=amount,
                     residuo_cents=residual,
@@ -238,6 +264,11 @@ async def arricchisci_piano_iva(db, griglia, oggi):
                         ),
                         expectation_status=ExpectationStatus.ATTESO.value,
                     )
+                elif paid is not None:
+                    from app.services.piano_tributi import PAGATO, PAGATO_QUIETANZA, ETICHETTE
+                    state = PAGATO_QUIETANZA if c.get('quietanze_pagamento') else PAGATO
+                    c.update(stato=state, etichetta_stato=ETICHETTE[state],
+                             expectation_status=ExpectationStatus.SODDISFATTO.value)
     # Ricostruire i riepiloghi dopo l'arricchimento, anche per la vista multianno.
     all_cells = [c for r in griglia["voci"] for c in r["caselle"]]
     griglia["conteggi"] = {

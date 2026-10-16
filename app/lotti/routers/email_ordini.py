@@ -12,6 +12,7 @@ from fastapi import Depends, APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 import io
+from html import escape
 from datetime import datetime, timezone
 from reportlab.lib.pagesizes import A4
 from reportlab.lib import colors
@@ -88,6 +89,10 @@ def genera_pdf_ordine_fornitore(ordine: dict, fornitore_nome: str, prodotti: lis
         textColor=colors.HexColor("#374151"),
         fontName="Helvetica-Bold",
     )
+    prodotto_style = ParagraphStyle(
+        "ProdottoOrdine", parent=styles["Normal"], fontSize=8, leading=10,
+        textColor=colors.HexColor("#2a3329"),
+    )
 
     story.append(Paragraph("ORDINE D'ACQUISTO", titolo_style))
     story.append(Paragraph(f"{nome_az} — {ind_az}", sottotest_style))
@@ -140,10 +145,15 @@ def genera_pdf_ordine_fornitore(ordine: dict, fornitore_nome: str, prodotti: lis
             iva_tot += riga_imp * aliquota / 100.0
         elif riga_imp > 0:
             righe_senza_iva += 1
+        codici = p.get("codici") if isinstance(p.get("codici"), list) else []
+        codice = str(p.get("codice_articolo") or p.get("codice") or next((c for c in codici if c), "")).strip()
+        nome = escape(str(p.get("nome") or "—").title())
+        codice_html = f'<br/><font size="7">COD: {escape(codice)}</font>' if codice else ""
+        prodotto = Paragraph(f"{nome}{codice_html}", prodotto_style)
         table_data.append(
             [
                 str(i),
-                (p.get("nome") or "—").title(),
+                prodotto,
                 str(p.get("quantita", "1")),
                 p.get("unita", "kg"),
                 f"€{prezzo:.2f}" if prezzo > 0 else "—",

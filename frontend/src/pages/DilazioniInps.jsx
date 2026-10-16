@@ -73,6 +73,7 @@ export default function DilazioniInps() {
             </table>
           </div>}
           {item.data_accoglimento && <div style={{ marginTop: 8 }}>Accoglimento documentato il {dataIt(item.data_accoglimento)} · piano {item.stato_piano || 'da verificare'}</div>}
+          {item.residuo_cents != null && <div style={{ marginTop: 6 }}><strong>Residuo del piano: {euro(item.residuo_cents)}</strong></div>}
           {(item.rate || []).length > 0 && <div style={{ overflowX: 'auto', marginTop: 10 }}>
             <strong>Rate del piano accolto</strong>
             <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: 6 }}>
@@ -83,7 +84,18 @@ export default function DilazioniInps() {
                 <td align="right">{euro(rata.importo_cents)}</td>
                 <td>{rata.stato === 'PAGATA' ? `Pagata con quietanza${rata.data_pagamento ? ` il ${dataIt(rata.data_pagamento)}` : ''}` :
                   rata.stato === 'SCADUTA_NON_PAGATA' ? 'Scaduta · quietanza non trovata' :
-                  rata.stato === 'VERSATA_IMPORTO_DIVERSO' ? 'Versamento diverso · rata ancora aperta' : 'Da pagare'}</td>
+                  rata.stato === 'VERSATA_IMPORTO_DIVERSO' ? 'Versamento diverso · rata ancora aperta' : 'Da pagare'}
+                  {rata.versamento_diverso && <div>
+                    Versati {euro(rata.versamento_diverso.importo_cents)} il {dataIt(rata.versamento_diverso.data)}
+                    {' · '}residuo {euro(Math.max(0, rata.importo_cents - rata.versamento_diverso.importo_cents))}
+                  </div>}
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 4 }}>
+                    {[...new Set([...(rata.quietanza_ids || []), ...(rata.versamento_diverso?.quietanza_ids || [])])].map(id =>
+                      <Button key={id} size="sm" variant="secondary" onClick={() => setOriginale({
+                        url: urlOriginale({ tipo: 'quietanza', id }), titolo: `Quietanza rata ${rata.numero}`,
+                      })}>Apri quietanza rata {rata.numero}</Button>)}
+                  </div>
+                </td>
               </tr>)}</tbody>
             </table>
           </div>}

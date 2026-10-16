@@ -69,6 +69,33 @@ _ALIAS_FATTURA_PER_CODICE = {
 }
 
 
+def _applica_prezzo_listino_confezione(prodotto: dict) -> dict:
+    """Espone il prezzo netto dell'intera confezione dal listino ufficiale.
+
+    Nel file Acquaviva/VDM ``prezzo_ct`` e' il prezzo dell'unita' indicata
+    (pezzo, kg o confezione), mentre ``qty_cartone`` e' il numero di unita'
+    ordinabili in un cartone. Il carrello ordina cartoni interi.
+    """
+    if prodotto.get("gia_acquistato"):
+        return prodotto
+    try:
+        prezzo_unitario = float(prodotto.get("prezzo_listino_riferimento") or 0)
+        quantita_cartone = float(
+            prodotto.get("qty_cartone") or prodotto.get("pz_confezione") or 0
+        )
+    except (TypeError, ValueError):
+        return prodotto
+    if prezzo_unitario <= 0 or quantita_cartone <= 0:
+        return prodotto
+    unita = str(prodotto.get("unita_misura") or "PZ").strip().lower()
+    quantita_label = int(quantita_cartone) if quantita_cartone.is_integer() else quantita_cartone
+    prodotto["prezzo_listino_fornitore"] = round(prezzo_unitario * quantita_cartone, 4)
+    prodotto["prezzo_listino_unitario"] = prezzo_unitario
+    prodotto["unita_vendita"] = f"ct {quantita_label} {unita}"
+    prodotto["prezzo_fonte"] = "listino_fornitore"
+    return prodotto
+
+
 async def inizializza_mapping_vandemoortele_2026() -> dict:
     """Arricchisce idempotentemente il catalogo web con i codici di migrazione 2025/2026.
 
@@ -645,14 +672,11 @@ async def get_acquaviva_prodotti(
         pid = str(prodotto.get("id") or "")
         prodotto["in_ricette"] = pid in usati_ids
         prodotto["disponibile_ricette"] = pid in disponibili_ids
-    # Prezzo e flag "già acquistato" SOLO dalle fatture reali (match per nome ufficiale),
-    # stesso meccanismo di SAIMA/MEPA. I prodotti mai comprati restano senza prezzo.
-    try:
-        from app.lotti.routers.utils import prezzi_fatture_per_fornitore, applica_prezzo_da_fatture
-        prezzi = await prezzi_fatture_per_fornitore(db, "acquaviva|vandemoortele|alpha")
-        items = applica_prezzo_da_fatture(items, prezzi)
-    except Exception:
-        logger.debug("[acquaviva] errore non bloccante ignorato")
+    # Prezzo e flag "già acquistato" sono materializzati dal comando Sync
+    # Fatture; consultazione e ricerca non rileggono l'archivio XML.
+    # Se non esiste ancora una fattura, usa il listino ufficiale come fallback.
+    # Il valore esposto e' sempre quello dell'intero cartone ordinabile.
+    items = [_applica_prezzo_listino_confezione(prodotto) for prodotto in items]
     return items
 
 

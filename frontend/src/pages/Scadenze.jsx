@@ -1,1020 +1,188 @@
-import React, { useState, useEffect } from 'react';
-import { Plus, TriangleAlert, RefreshCw, ClipboardList, CalendarDays, Check, Trash2, Eye, X } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { Plus, X } from 'lucide-react';
+import { Link, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import api from '../api';
 import { useAnnoGlobale } from '../contexts/AnnoContext';
-import { formatEuro, formatDateIT, formatDateGGMM, COLORS, SHADOWS, BORDER_RADIUS, useIsMobile } from '../lib/utils';
+import { formatEuro, formatDateIT, COLORS, BORDER_RADIUS } from '../lib/utils';
 import { PageLayout } from '../components/PageLayout';
+import ApriOriginale from '../components/ApriOriginale';
 import ModalFattura from '../components/ModalFattura';
 import LinkContropartita, { ROTTE_CONTROPARTITA } from '../components/LinkContropartita';
 import { useConfirm } from '../components/ui/ConfirmDialog';
-import { Button, Badge, StatCard, Input, Select, RowActions, RowActionButton, ListaAdattiva } from '../components/ds';
+import { Button, Badge, StatCard, Input, Select, ListaAdattiva } from '../components/ds';
+
+const emptyForm = () => ({ data_scadenza: '', descrizione: '', tipo: 'CUSTOM', importo: '', priorita: 'media', note: '' });
+const chiusa = s => Boolean(s.completata || s.pagata);
+const euroCents = n => n == null ? 'Non disponibile' : formatEuro(n / 100);
+const errorText = e => {
+  const detail = e.response?.data?.detail;
+  return Array.isArray(detail) ? detail.map(x => x.msg).join('; ') : detail || e.message || 'Errore di caricamento';
+};
+const box = { background: COLORS.card, border: `1px solid ${COLORS.border}`, borderRadius: BORDER_RADIUS.lg, padding: 16, marginBottom: 16, minWidth: 0 };
+const flex = { display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'center' };
+const nomiMesi = ['Gennaio', 'Febbraio', 'Marzo', 'Aprile', 'Maggio', 'Giugno', 'Luglio', 'Agosto', 'Settembre', 'Ottobre', 'Novembre', 'Dicembre'];
 
 export default function Scadenze() {
-  const isMobile = useIsMobile();
   const { anno } = useAnnoGlobale();
-  const navigate = useNavigate();
   const confirm = useConfirm();
-  const [scadenze, setScadenze] = useState([]);
-  const [totaleScadenze, setTotaleScadenze] = useState(0);
-  const [alertWidget, setAlertWidget] = useState(null);
+  const navigate = useNavigate();
+  const [tipo, setTipo] = useState('');
+  const [stato, setStato] = useState('aperte');
+  const [mese, setMese] = useState('');
+  const [result, setResult] = useState(null);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
-  const [loadError, setLoadError] = useState('');
-  const [filtroTipo, setFiltroTipo] = useState('');
-  const [includePassate, setIncludePassate] = useState(false);
+  const [error, setError] = useState('');
   const [showModal, setShowModal] = useState(false);
+  const [form, setForm] = useState(emptyForm);
+  const [saving, setSaving] = useState(false);
   const [viewingInvoice, setViewingInvoice] = useState(null);
-  const [documentiRiconciliare, setDocumentiRiconciliare] = useState(null);
-  const [pagaModal, setPagaModal] = useState(null);
-  const [processing, setProcessing] = useState(false);
-  const [paidIds, setPaidIds] = useState(new Set());
-  const [nuovaScadenza, setNuovaScadenza] = useState({
-    data_scadenza: '',
-    descrizione: '',
-    tipo: 'CUSTOM',
-    importo: '',
-    priorita: 'media',
-    note: '',
-  });
+  const request = useRef(0);
+  const filters = `${anno}|${tipo}|${stato}|${mese}`;
+  const visible = result?.filters === filters ? result : null;
+  const rows = visible?.scadenze || [];
+
+  const load = useCallback(async (offset = 0) => {
+    const version = ++request.current;
+    if (offset) setLoadingMore(true);
+    else { setLoading(true); setError(''); setResult(null); setLoadingMore(false); }
+    const params = new URLSearchParams({ anno, stato, limit: '50', offset: String(offset) });
+    if (tipo) params.set('tipo', tipo);
+    if (mese) params.set('mese', mese);
+    try {
+      const { data } = await api.get(`/api/scadenze/tutte?${params}`);
+      if (request.current !== version) return;
+      setResult(previous => ({ ...data, filters,
+        scadenze: offset && previous?.filters === filters ? [...previous.scadenze, ...data.scadenze] : data.scadenze || [],
+      }));
+    } catch (e) {
+      if (request.current !== version) return;
+      if (offset) toast.error(`Altre scadenze non disponibili: ${errorText(e)}`);
+      else { setResult(null); setError(errorText(e)); }
+    } finally {
+      if (request.current === version) { setLoading(false); setLoadingMore(false); }
+    }
+  }, [anno, tipo, stato, mese, filters]);
 
   useEffect(() => {
-    loadData();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [anno, filtroTipo, includePassate]);
+    load();
+    return () => { request.current += 1; };
+  }, [load]);
 
-  const loadData = async (append = false) => {
+  const completa = async s => {
+    if (chiusa(s)) return;
+    try { await api.put(`/api/scadenze/completa/${encodeURIComponent(s.id)}`); load(); }
+    catch (e) { toast.error(errorText(e)); }
+  };
+  const elimina = async s => {
+    if (!await confirm({ title: 'Elimina promemoria', message: s.descrizione, confirmText: 'Elimina', cancelText: 'Annulla', variant: 'danger' })) return;
+    try { await api.delete(`/api/scadenze/${encodeURIComponent(s.id)}`); load(); }
+    catch (e) { toast.error(errorText(e)); }
+  };
+  const crea = async e => {
+    e.preventDefault();
+    setSaving(true);
     try {
-      if (append) setLoadingMore(true);
-      else {
-        setLoading(true);
-        setLoadError('');
-      }
-      const params = new URLSearchParams();
-      params.append('anno', anno);
-      if (filtroTipo) params.append('tipo', filtroTipo);
-      params.append('include_passate', includePassate);
-      params.append('limit', '50');
-      params.append('offset', append ? String(scadenze.length) : '0');
-
-      const [scadenzeRes, alertRes, docRiconcRes] = await Promise.all([
-        api.get(`/api/scadenze/tutte?${params}`),
-        api.get('/api/scadenze/dashboard-widget').catch(() => ({ data: null })),
-        api.get('/api/email-scanner/statistiche').catch(() => ({ data: null })),
-      ]);
-
-      const nuoveScadenze = scadenzeRes.data.scadenze || [];
-      setScadenze(precedenti => append ? [...precedenti, ...nuoveScadenze] : nuoveScadenze);
-      setTotaleScadenze(Number(scadenzeRes.data.totale || 0));
-      setAlertWidget(alertRes.data);
-      setDocumentiRiconciliare(docRiconcRes.data);
-    } catch (error) {
-      console.error('Error loading scadenze:', error);
-      const dettaglio = error.response?.data?.detail || error.message || 'Errore sconosciuto';
-      if (append) {
-        toast.error(`Impossibile caricare altre scadenze: ${dettaglio}`);
-      } else {
-        // Anno e filtri possono essere appena cambiati: non lasciare a video
-        // righe del periodo precedente sotto la nuova intestazione.
-        setScadenze([]);
-        setTotaleScadenze(0);
-        setLoadError(dettaglio);
-      }
-    } finally {
-      if (append) setLoadingMore(false);
-      else setLoading(false);
-    }
+      await api.post('/api/scadenze/crea', { ...form, importo: form.importo === '' ? null : Number(form.importo) });
+      setShowModal(false); setForm(emptyForm()); load();
+    } catch (err) { toast.error(errorText(err)); }
+    finally { setSaving(false); }
   };
-
-  const handlePagaScadenza = async (scadenza, metodo) => {
-    setProcessing(true);
-    try {
-      await api.post('/api/fatture-ricevute/paga-manuale', {
-        fattura_id: scadenza.fattura_id || scadenza.id,
-        scadenza_id: scadenza.id,
-        importo: Math.abs(scadenza.importo),
-        metodo: metodo,
-        data_pagamento: new Date().toISOString().split('T')[0],
-        fornitore: scadenza.fornitore || '',
-        numero_fattura: scadenza.numero_fattura || '',
-      });
-      setPagaModal(null);
-      setPaidIds(prev => new Set([...prev, scadenza.id]));
-      loadData();
-    } catch (e) {
-      toast.error('Errore pagamento: ' + (e.response?.data?.detail || e.message));
-    } finally {
-      setProcessing(false);
-    }
+  const paga = async s => {
+    // Il tipo del promemoria non è l'identità di una fattura.
+    if (!s.fattura_id || chiusa(s)) return;
+    navigate(ROTTE_CONTROPARTITA.fattura(s.fattura_id));
   };
+  const azioni = s => <div style={flex}>
+    {(s.documenti || []).map(d => <ApriOriginale key={d.url} url={d.url} titolo={d.titolo}>{d.titolo}</ApriOriginale>)}
+    {s.dettaglio_url && (s.dettaglio_url.startsWith('/hr/') ? <a href={s.dettaglio_url}>Apri dipendente</a> : <Link to={s.dettaglio_url}>Apri dettaglio</Link>)}
+    {s.fattura_id && <>
+      <Button size="sm" onClick={() => setViewingInvoice({ id: s.fattura_id, numero: s.numero_fattura || s.descrizione })}>Apri fattura</Button>
+      {!chiusa(s) && <Button size="sm" onClick={() => paga(s)}>Paga</Button>}
+    </>}
+    {s.pagamento?.movimento_bancario_id && <LinkContropartita
+      to={ROTTE_CONTROPARTITA.movimentoBanca(s.pagamento.movimento_bancario_id)} compatto
+      testId={`link-movimento-pagante-${s.id}`} title={`Movimento del ${formatDateIT(s.pagamento.data_pagamento || '')}`}>
+      Movimento che l'ha pagata
+    </LinkContropartita>}
+    {s.source === 'custom' && <>
+      {!chiusa(s) && <Button size="sm" onClick={() => completa(s)}>Segna come completata</Button>}
+      <Button variant="danger" size="sm" onClick={() => elimina(s)}>Elimina promemoria</Button>
+    </>}
+  </div>;
 
-  const handleCreaScadenza = async () => {
-    if (!nuovaScadenza.data_scadenza || !nuovaScadenza.descrizione) {
-      toast.error('Compila data e descrizione');
-      return;
-    }
-
-    try {
-      await api.post('/api/scadenze/crea', {
-        ...nuovaScadenza,
-        importo: parseFloat(nuovaScadenza.importo) || 0,
-      });
-      setShowModal(false);
-      setNuovaScadenza({
-        data_scadenza: '',
-        descrizione: '',
-        tipo: 'CUSTOM',
-        importo: '',
-        priorita: 'media',
-        note: '',
-      });
-      loadData();
-    } catch (error) {
-      toast.error('Errore: ' + (error.response?.data?.detail || error.message));
-    }
-  };
-
-  const handleCompleta = async id => {
-    try {
-      await api.put(`/api/scadenze/completa/${id}`);
-      loadData();
-    } catch (error) {
-      toast.error('Errore: ' + (error.response?.data?.detail || error.message));
-    }
-  };
-
-  const handleElimina = async id => {
-    const confirmed = await confirm({
-      title: 'Elimina scadenza',
-      message: 'Eliminare questa scadenza?',
-      confirmText: 'Elimina',
-      cancelText: 'Annulla',
-      variant: 'danger',
-    });
-    if (!confirmed) return;
-    try {
-      await api.delete(`/api/scadenze/${id}`);
-      loadData();
-    } catch (error) {
-      toast.error('Errore: ' + (error.response?.data?.detail || error.message));
-    }
-  };
-
-  const formatDate = dateStr => (dateStr ? formatDateIT(dateStr) : '-');
-
-  const getPriorityStyle = (priorita, urgente) => {
-    if (urgente || priorita === 'critica')
-      return { variant: 'danger', bg: COLORS.dangerLight, border: COLORS.danger, text: COLORS.danger };
-    switch (priorita) {
-      case 'alta':
-      case 'media':
-        return { variant: 'warning', bg: COLORS.warningLight, border: COLORS.warning, text: COLORS.warning };
-      default:
-        return { variant: 'success', bg: COLORS.successLight, border: COLORS.success, text: COLORS.success };
-    }
-  };
-
-  // Semaforo di urgenza per riga (desktop): sfondo colorato, bordo sinistro
-  // e attenuazione delle scadenze passate — replicato via tdStyle per cella.
-  const isScadenzaPassata = s => s.giorni_mancanti !== undefined && s.giorni_mancanti < 0;
-  const tdStyleScadenza = (s, extra = {}) => {
-    const st = getPriorityStyle(s.priorita, s.urgente);
-    const passata = isScadenzaPassata(s);
-    return {
-      background: passata ? COLORS.gray[50] : st.bg,
-      opacity: passata ? 0.6 : 1,
-      ...extra,
-    };
-  };
-
-  const testoGiorni = s =>
-    s.giorni_mancanti === undefined
-      ? ''
-      : s.giorni_mancanti === 0
-        ? 'OGGI'
-        : s.giorni_mancanti === 1
-          ? '1g'
-          : s.giorni_mancanti < 0
-            ? `-${Math.abs(s.giorni_mancanti)}g`
-            : `${s.giorni_mancanti}g`;
-
-  return (
-    <PageLayout
-      title="Scadenze e Notifiche"
-      subtitle="Gestione scadenze fiscali, pagamenti e promemoria"
-      actions={
-        <Button variant="info" size="lg" iconLeft={<Plus size={16} aria-hidden="true" />} onClick={() => setShowModal(true)}>
-          Nuova Scadenza
-        </Button>
-      }
-    >
-      <div style={{ position: 'relative' }}>
-        {/* Page Info Card */}
-        {/* Alert Widget - Notifiche Urgenti */}
-        {alertWidget && alertWidget.totale_alert > 0 && (
-          <div
-            style={{
-              background: COLORS.danger,
-              borderRadius: BORDER_RADIUS.xl,
-              padding: 20,
-              marginBottom: 20,
-              color: 'white',
-            }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 15 }}>
-              <TriangleAlert size={24} aria-hidden="true" />
-              <h3 style={{ margin: 0 }}>{alertWidget.totale_alert} Alert Attivi</h3>
-            </div>
-            <div
-              style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
-                gap: 12,
-              }}
-            >
-              {alertWidget.f24?.da_pagare_30gg > 0 && (
-                <StatCard
-                  icon={<ClipboardList size={18} aria-hidden="true" />}
-                  label="F24 da Pagare"
-                  value={alertWidget?.f24?.da_pagare_30gg}
-                  accent="danger"
-                  onClick={() => navigate('/situazione-fiscale/piano')}
-                />
-              )}
-              {alertWidget.fiscali?.prossime > 0 && (
-                <StatCard
-                  icon={<CalendarDays size={18} aria-hidden="true" />}
-                  label="Scadenze Fiscali"
-                  value={alertWidget?.fiscali?.prossime}
-                  accent="warning"
-                />
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* Sezione Documenti da Riconciliare */}
-        {documentiRiconciliare &&
-          (documentiRiconciliare.verbali?.in_attesa_fattura > 0 ||
-            documentiRiconciliare.verbali?.estratti_da_fatture -
-              documentiRiconciliare.verbali?.con_pdf_scaricato >
-              0) && (
-            <div
-              style={{
-                background: COLORS.info,
-                borderRadius: BORDER_RADIUS.xl,
-                padding: 20,
-                marginBottom: 20,
-                color: 'white',
-              }}
-            >
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 15 }}>
-                <RefreshCw size={24} aria-hidden="true" />
-                <h3 style={{ margin: 0 }}>Documenti da Riconciliare</h3>
-              </div>
-
-              <div
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-                  gap: 12,
-                }}
-              >
-                {/* Verbali in attesa di fattura */}
-                {documentiRiconciliare.verbali?.in_attesa_fattura > 0 && (
-                  <div
-                    onClick={() => navigate('/noleggio')}
-                    style={{
-                      background: 'rgba(255,255,255,0.15)',
-                      padding: 15,
-                      borderRadius: BORDER_RADIUS.md,
-                      cursor: 'pointer',
-                      transition: 'all 0.2s',
-                      borderLeft: `4px solid ${COLORS.warning}`,
-                    }}
-                    onMouseEnter={e =>
-                      (e.currentTarget.style.background = 'rgba(255,255,255,0.25)')
-                    }
-                    onMouseLeave={e =>
-                      (e.currentTarget.style.background = 'rgba(255,255,255,0.15)')
-                    }
-                    data-testid="verbali-attesa-fattura-card"
-                  >
-                    <div style={{ fontSize: 32, fontWeight: 700 }}>
-                      {documentiRiconciliare?.verbali?.in_attesa_fattura}
-                    </div>
-                    <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 4 }}>
-                      Verbali in Attesa Fattura
-                    </div>
-                    <div style={{ fontSize: 11, opacity: 0.8 }}>
-                      PDF arrivati via email, fattura non ancora ricevuta
-                    </div>
-                  </div>
-                )}
-
-                {/* Fatture in attesa di verbale (PDF) */}
-                {documentiRiconciliare.verbali?.estratti_da_fatture -
-                  documentiRiconciliare.verbali?.con_pdf_scaricato >
-                  0 && (
-                  <div
-                    onClick={() => navigate('/noleggio')}
-                    style={{
-                      background: 'rgba(255,255,255,0.15)',
-                      padding: 15,
-                      borderRadius: BORDER_RADIUS.md,
-                      cursor: 'pointer',
-                      transition: 'all 0.2s',
-                      borderLeft: `4px solid ${COLORS.success}`,
-                    }}
-                    onMouseEnter={e =>
-                      (e.currentTarget.style.background = 'rgba(255,255,255,0.25)')
-                    }
-                    onMouseLeave={e =>
-                      (e.currentTarget.style.background = 'rgba(255,255,255,0.15)')
-                    }
-                    data-testid="fatture-attesa-verbale-card"
-                  >
-                    <div style={{ fontSize: 32, fontWeight: 700 }}>
-                      {documentiRiconciliare?.verbali?.estratti_da_fatture -
-                        documentiRiconciliare.verbali.con_pdf_scaricato}
-                    </div>
-                    <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 4 }}>
-                      Fatture in Attesa Verbale
-                    </div>
-                    <div style={{ fontSize: 11, opacity: 0.8 }}>
-                      Fattura ricevuta, PDF verbale non ancora scaricato
-                    </div>
-                  </div>
-                )}
-
-                {/* Esattoriali da processare */}
-                {documentiRiconciliare.esattoriali > 0 && (
-                  <StatCard
-                    label="Cartelle Esattoriali"
-                    value={documentiRiconciliare.esattoriali}
-                    subtext="Da verificare e processare"
-                    accent="danger"
-                  />
-                )}
-
-                {/* F24/Tributi */}
-                {documentiRiconciliare.f24_tributi > 0 && (
-                  <StatCard
-                    icon={<ClipboardList size={18} aria-hidden="true" />}
-                    label="F24/Tributi"
-                    value={documentiRiconciliare.f24_tributi}
-                    subtext="Documenti da posta"
-                    accent="info"
-                  />
-                )}
-              </div>
-
-              {/* Riepilogo totale */}
-              <div
-                style={{
-                  marginTop: 15,
-                  paddingTop: 15,
-                  borderTop: '1px solid rgba(255,255,255,0.2)',
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                }}
-              >
-                <div style={{ fontSize: 13, opacity: 0.9 }}>
-                  Totale documenti scaricati dalla posta:{' '}
-                  <strong>{documentiRiconciliare.totale_documenti_email}</strong>
-                </div>
-                <Button
-                  variant="secondary"
-                  onClick={async () => {
-                    try {
-                      await api.post('/api/email-scanner/associa');
-                      loadData();
-                      toast.success('Associazione completata!');
-                    } catch (err) {
-                      toast.error('Errore: ' + (err.response?.data?.detail || err.message));
-                    }
-                  }}
-                  style={{
-                    background: 'rgba(255,255,255,0.2)',
-                    color: '#fff',
-                    borderColor: 'rgba(255,255,255,0.3)',
-                  }}
-                  data-testid="btn-riconci-automatica"
-                >
-                  Riconcilia Automaticamente
-                </Button>
-              </div>
-            </div>
-          )}
-
-        {/* Filtri */}
-        <div
-          style={{
-            display: 'flex',
-            gap: 12,
-            marginBottom: 20,
-            flexWrap: 'wrap',
-            alignItems: 'center',
-            background: COLORS.bgAlt,
-            padding: 15,
-            borderRadius: BORDER_RADIUS.lg,
-          }}
-        >
-          <Select value={filtroTipo} onChange={e => setFiltroTipo(e.target.value)} style={{ width: 'auto' }}>
-            <option value="">Tutti i tipi</option>
-            <option value="IVA">IVA</option>
-            <option value="F24">F24</option>
-            <option value="FATTURA">Fatture</option>
-            <option value="INPS">INPS</option>
-            <option value="CUSTOM">Personalizzate</option>
-          </Select>
-
-          <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
-            <input
-              type="checkbox"
-              checked={includePassate}
-              onChange={e => setIncludePassate(e.target.checked)}
-            />
-            <span>Mostra scadenze passate</span>
-          </label>
-
-          <Button variant="secondary" onClick={() => loadData()}>
-            Aggiorna
-          </Button>
+  const stats = visible?.statistiche;
+  return <PageLayout title="Scadenze" subtitle={`Scadenze dell'anno ${anno}: tributi, rate e adempimenti`} actions={
+    <Button iconLeft={<Plus size={16} />} onClick={() => setShowModal(true)}>Nuova scadenza</Button>
+  }>
+    <div style={{ ...box, ...flex }}>
+      <label>Tipo <Select aria-label="Tipo" value={tipo} onChange={e => setTipo(e.target.value)}>
+        <option value="">Tutti i tipi</option>
+        {[...new Set([...(visible?.tipi || []), tipo, 'CUSTOM', 'F24', 'IVA', 'INPS', 'ADER', 'ADEMPIMENTO'])].filter(Boolean).sort().map(t =>
+          <option key={t} value={t}>{t === 'CUSTOM' ? 'Tutti i promemoria' : t}</option>)}
+      </Select></label>
+      <label>Stato <Select aria-label="Stato" value={stato} onChange={e => setStato(e.target.value)}>
+        <option value="aperte">Aperte, comprese le scadute</option><option value="scadute">Scadute aperte</option>
+        <option value="da_verificare">Da verificare</option><option value="chiuse">Pagate o completate</option><option value="tutte">Tutti gli stati</option>
+      </Select></label>
+      <label>Mese di scadenza <Select aria-label="Mese di scadenza" value={mese} onChange={e => setMese(e.target.value)}>
+        <option value="">Tutto l'anno</option>{nomiMesi.map((n, i) => <option key={n} value={i + 1}>{n}</option>)}
+      </Select></label>
+      <Button onClick={() => load()} disabled={loading}>Aggiorna</Button>
+    </div>
+    {loading || (!visible && !error) ? <p role="status">Caricamento delle scadenze e delle prove…</p> : error ?
+      <div role="alert" style={box}><p>Scadenze non disponibili. I dati non sono stati caricati.</p><p>{error}</p><Button onClick={() => load()}>Riprova</Button></div> : <>
+      {stats && <div style={{ ...box }}>
+        <p style={{ marginTop: 0 }}>Riepilogo dell'anno {anno}, con i filtri selezionati</p>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 185px), 1fr))', gap: 12 }}>
+          <StatCard label="Residuo documentato" value={formatEuro(stats.totale_importo)} accent="warning" />
+          <StatCard label="Aperte" value={stats.aperte} />
+          <StatCard label="Scadute o entro 3 giorni" value={stats.urgenti} accent="danger" />
+          <StatCard label="Da verificare" value={stats.da_verificare} accent="warning" />
         </div>
-
-        {/* Lista Scadenze */}
-        <div
-          style={{
-            background: COLORS.card,
-            borderRadius: BORDER_RADIUS.md,
-            overflow: 'hidden',
-            border: `1px solid ${COLORS.border}`,
-          }}
-        >
-          <div
-            style={{
-              padding: '16px 20px',
-              background: COLORS.bgAlt,
-              borderBottom: `1px solid ${COLORS.border}`,
-              fontWeight: 'bold',
-            }}
-          >
-            Tutte le Scadenze ({totaleScadenze})
-          </div>
-
-          {loading ? (
-            <div style={{ padding: 40, textAlign: 'center', color: COLORS.textMuted }}>
-              Caricamento...
-            </div>
-          ) : loadError ? (
-            <div
-              role="alert"
-              style={{ padding: 40, textAlign: 'center', color: COLORS.danger }}
-            >
-              <div style={{ marginBottom: 12 }}>
-                Scadenze non disponibili per l'anno e i filtri selezionati.
-              </div>
-              <div style={{ marginBottom: 16, color: COLORS.textMuted, fontSize: 13 }}>
-                {loadError}
-              </div>
-              <Button variant="secondary" onClick={() => loadData()}>
-                Riprova
-              </Button>
-            </div>
-          ) : scadenze.length === 0 ? (
-            <div style={{ padding: 40, textAlign: 'center', color: COLORS.textMuted }}>
-              Nessuna scadenza trovata per i filtri selezionati.
-            </div>
-          ) : (
-            <div
-              style={{
-                maxHeight: '60vh',
-                overflow: 'auto',
-                padding: isMobile ? '10px' : 0,
-              }}
-            >
-              <ListaAdattiva
-                testId="scadenze-table"
-                dati={scadenze}
-                pageSize={50}
-                chiave={(s, idx) => s.id || `scad-${idx}`}
-                colonne={[
-                  {
-                    // Su mobile il badge Tipo (semaforo urgenza) è riportato
-                    // nel titolo della card, quindi qui è 'omesso'.
-                    key: 'tipo',
-                    label: 'Tipo',
-                    align: 'center',
-                    ruoloCard: 'omesso',
-                    render: s => (
-                      <Badge variant={getPriorityStyle(s.priorita, s.urgente).variant}>
-                        {s.tipo}
-                      </Badge>
-                    ),
-                    tdStyle: s =>
-                      tdStyleScadenza(s, {
-                        borderLeft: `4px solid ${getPriorityStyle(s.priorita, s.urgente).border}`,
-                      }),
-                  },
-                  {
-                    key: 'importo',
-                    label: 'Importo',
-                    align: 'right',
-                    mono: true,
-                    ruoloCard: 'importo',
-                    render: s => (s.importo > 0 ? formatEuro(s.importo) : '-'),
-                    tdStyle: s =>
-                      tdStyleScadenza(s, {
-                        fontWeight: 'bold',
-                        color: getPriorityStyle(s.priorita, s.urgente).text,
-                      }),
-                  },
-                  {
-                    key: 'data',
-                    label: 'Data',
-                    align: 'center',
-                    ruoloCard: 'dettaglio',
-                    // Su mobile solo gg/mm: l'anno è nel selettore globale
-                    render: s => (isMobile ? formatDateGGMM(s.data) || '-' : formatDate(s.data)),
-                    tdStyle: s => tdStyleScadenza(s, { color: COLORS.textMuted }),
-                  },
-                  {
-                    key: 'giorni_mancanti',
-                    label: 'Giorni',
-                    align: 'center',
-                    ruoloCard: 'dettaglio',
-                    render: s => (
-                      <span
-                        style={{
-                          fontWeight: 'bold',
-                          color:
-                            isScadenzaPassata(s) || s.urgente ? COLORS.danger : COLORS.textMuted,
-                        }}
-                      >
-                        {testoGiorni(s)}
-                      </span>
-                    ),
-                    tdStyle: s => tdStyleScadenza(s),
-                  },
-                  {
-                    key: 'descrizione',
-                    label: 'Descrizione',
-                    align: 'left',
-                    ruoloCard: 'titolo',
-                    render: s => (
-                      <>
-                        {/* Badge urgenza visibile anche nella card mobile */}
-                        {isMobile && (
-                          <Badge variant={getPriorityStyle(s.priorita, s.urgente).variant}>
-                            {s.tipo}
-                          </Badge>
-                        )}
-                        {isMobile ? ' ' : null}
-                        {s.descrizione}
-                        {s.fornitore && (
-                          <span style={{ color: COLORS.textSubtle, marginLeft: 8 }}>
-                            • {s.fornitore}
-                          </span>
-                        )}
-                      </>
-                    ),
-                    tdStyle: s =>
-                      tdStyleScadenza(s, {
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                        whiteSpace: 'nowrap',
-                        maxWidth: 250,
-                      }),
-                  },
-                  {
-                    key: 'azioni',
-                    label: 'Azioni',
-                    align: 'center',
-                    ruoloCard: 'azioni',
-                    tdStyle: s => tdStyleScadenza(s),
-                    render: s => (
-                      <>
-                        {s.source === 'custom' && (
-                          <RowActions style={{ justifyContent: isMobile ? 'flex-end' : 'center' }}>
-                            <RowActionButton
-                              variant="success"
-                              onClick={() => handleCompleta(s.id)}
-                              title="Segna come completata"
-                            >
-                              <Check size={14} aria-hidden="true" />
-                            </RowActionButton>
-                            <RowActionButton
-                              variant="danger"
-                              onClick={() => handleElimina(s.id)}
-                              title="Elimina"
-                            >
-                              <Trash2 size={14} aria-hidden="true" />
-                            </RowActionButton>
-                          </RowActions>
-                        )}
-
-                        {/* Pulsanti Visualizza Fattura per scadenze tipo FATTURA */}
-                        {(s.tipo === 'FATTURA' || s.source === 'fattura') &&
-                          (s.fattura_id || s.id) && (
-                            <RowActions
-                              style={{
-                                justifyContent: isMobile ? 'flex-end' : 'center',
-                                marginTop: s.source === 'custom' ? 6 : 0,
-                              }}
-                            >
-                              <RowActionButton
-                                variant="info"
-                                onClick={() => {
-                                  setViewingInvoice({
-                                    id: s.fattura_id || s.id,
-                                    numero: s.numero_fattura || s.numero || s.descrizione,
-                                  });
-                                }}
-                                title="Visualizza Dettagli Fattura"
-                                data-testid={`view-invoice-${s.fattura_id || s.id}`}
-                              >
-                                <Eye size={14} aria-hidden="true" />
-                              </RowActionButton>
-                            </RowActions>
-                          )}
-
-                        {/* Bottone Paga: SOLO per le fatture. L'endpoint di
-                            pagamento è /api/fatture-ricevute/paga-manuale e vuole
-                            una fattura vera; su scadenze fiscali (IVA/F24/INPS,
-                            senza fattura_id) passava un id inesistente e falliva. */}
-                        {/* Scadenza → movimento bancario che l'ha pagata (audit
-                            03/09/2026 §6, PR 16): il backend espone
-                            `pagamento.movimento_bancario_id` letto dalle evidenze
-                            dello scadenzario o dalla fattura riconciliata. */}
-                        {s.pagamento?.movimento_bancario_id && (
-                          <div style={{ marginTop: 4 }}>
-                            <LinkContropartita
-                              to={ROTTE_CONTROPARTITA.movimentoBanca(s.pagamento.movimento_bancario_id)}
-                              compatto
-                              testId={`link-movimento-pagante-${s.id}`}
-                              title={`Movimento estratto conto ${s.pagamento.movimento_bancario_id} · ${formatDateIT(s.pagamento.data_pagamento || '')} · ${s.pagamento.metodo || 'banca'} · pagamento della fattura ${s.numero_fattura || ''}`}
-                            >
-                              Movimento che l'ha pagata
-                            </LinkContropartita>
-                          </div>
-                        )}
-                        {s.pagata && !paidIds.has(s.id) && (
-                          <Badge variant="success" style={{ marginTop: 4 }}>
-                            Pagata{s.pagamento?.data_pagamento ? ` il ${formatDateIT(s.pagamento.data_pagamento)}` : ''}
-                          </Badge>
-                        )}
-                        {!paidIds.has(s.id) && !s.pagata &&
-                          (s.tipo === 'FATTURA' || s.source === 'fattura') &&
-                          (s.fattura_id || s.id) && (
-                            <Button
-                              variant="warning"
-                              size="sm"
-                              onClick={() => setPagaModal(s)}
-                              title="Registra Pagamento"
-                              style={{ marginTop: 4, fontSize: 11, padding: '4px 10px' }}
-                            >
-                              Paga
-                            </Button>
-                          )}
-                        {paidIds.has(s.id) && <Badge variant="success">Pagato</Badge>}
-                      </>
-                    ),
-                  },
-                ]}
-              />
-              {scadenze.length < totaleScadenze && (
-                <div style={{ padding: 14, textAlign: 'center' }}>
-                  <Button variant="secondary" onClick={() => loadData(true)} disabled={loadingMore}>
-                    {loadingMore
-                      ? 'Caricamento…'
-                      : `Mostra altre ${Math.min(50, totaleScadenze - scadenze.length)} scadenze`}
-                  </Button>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-
-        {/* Modal Nuova Scadenza */}
-        {showModal && (
-          <div
-            style={{
-              position: 'fixed',
-              top: 0,
-              left: 0,
-              right: 0,
-              bottom: 0,
-              background: 'rgba(0,0,0,0.5)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              zIndex: 1000,
-            }}
-            onClick={() => setShowModal(false)}
-          >
-            <div
-              style={{
-                background: COLORS.card,
-                borderRadius: BORDER_RADIUS.xl,
-                padding: 24,
-                width: '90%',
-                maxWidth: 500,
-                boxShadow: SHADOWS.modal,
-              }}
-              onClick={e => e.stopPropagation()}
-            >
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  marginBottom: 20,
-                }}
-              >
-                <h3 style={{ margin: 0 }}>Nuova Scadenza</h3>
-                <Button
-                  variant="ghost"
-                  onClick={() => setShowModal(false)}
-                  aria-label="Chiudi"
-                  style={{
-                    width: 32,
-                    height: 32,
-                    padding: 0,
-                    background: COLORS.bgAlt,
-                    color: COLORS.textMuted,
-                    fontSize: 16,
-                  }}
-                >
-                  <X size={16} aria-hidden="true" />
-                </Button>
-              </div>
-
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 15 }}>
-                <div>
-                  <label
-                    style={{ display: 'block', marginBottom: 4, fontSize: 13, fontWeight: '500' }}
-                  >
-                    Data Scadenza *
-                  </label>
-                  <Input
-                    type="date"
-                    value={nuovaScadenza.data_scadenza}
-                    onChange={e =>
-                      setNuovaScadenza({ ...nuovaScadenza, data_scadenza: e.target.value })
-                    }
-                  />
-                </div>
-
-                <div>
-                  <label
-                    style={{ display: 'block', marginBottom: 4, fontSize: 13, fontWeight: '500' }}
-                  >
-                    Descrizione *
-                  </label>
-                  <Input
-                    type="text"
-                    value={nuovaScadenza.descrizione}
-                    onChange={e =>
-                      setNuovaScadenza({ ...nuovaScadenza, descrizione: e.target.value })
-                    }
-                    placeholder="Es: Pagamento fornitore XYZ"
-                  />
-                </div>
-
-                <div
-                  style={{
-                    display: 'grid',
-                    gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr',
-                    gap: 15,
-                  }}
-                >
-                  <div>
-                    <label
-                      style={{ display: 'block', marginBottom: 4, fontSize: 13, fontWeight: '500' }}
-                    >
-                      Tipo
-                    </label>
-                    <Select
-                      value={nuovaScadenza.tipo}
-                      onChange={e => setNuovaScadenza({ ...nuovaScadenza, tipo: e.target.value })}
-                      style={{ width: '100%' }}
-                    >
-                      <option value="CUSTOM">Personalizzata</option>
-                      <option value="FATTURA">Fattura</option>
-                      <option value="F24">F24</option>
-                      <option value="IVA">IVA</option>
-                      <option value="INPS">INPS</option>
-                    </Select>
-                  </div>
-
-                  <div>
-                    <label
-                      style={{ display: 'block', marginBottom: 4, fontSize: 13, fontWeight: '500' }}
-                    >
-                      Priorità
-                    </label>
-                    <Select
-                      value={nuovaScadenza.priorita}
-                      onChange={e =>
-                        setNuovaScadenza({ ...nuovaScadenza, priorita: e.target.value })
-                      }
-                      style={{ width: '100%' }}
-                    >
-                      <option value="bassa">Bassa</option>
-                      <option value="media">Media</option>
-                      <option value="alta">Alta</option>
-                      <option value="critica">Critica</option>
-                    </Select>
-                  </div>
-                </div>
-
-                <div>
-                  <label
-                    style={{ display: 'block', marginBottom: 4, fontSize: 13, fontWeight: '500' }}
-                  >
-                    Importo (opzionale)
-                  </label>
-                  <Input
-                    type="number"
-                    step="0.01"
-                    value={nuovaScadenza.importo}
-                    onChange={e => setNuovaScadenza({ ...nuovaScadenza, importo: e.target.value })}
-                    placeholder="0.00"
-                  />
-                </div>
-
-                <div>
-                  <label
-                    style={{ display: 'block', marginBottom: 4, fontSize: 13, fontWeight: '500' }}
-                  >
-                    Note (opzionale)
-                  </label>
-                  <textarea
-                    value={nuovaScadenza.note}
-                    onChange={e => setNuovaScadenza({ ...nuovaScadenza, note: e.target.value })}
-                    rows={2}
-                    style={{
-                      width: '100%',
-                      padding: '10px 12px',
-                      borderRadius: BORDER_RADIUS.sm,
-                      border: `1px solid ${COLORS.border}`,
-                      resize: 'vertical',
-                      boxSizing: 'border-box',
-                    }}
-                  />
-                </div>
-              </div>
-
-              <div style={{ display: 'flex', gap: 10, marginTop: 20, justifyContent: 'flex-end' }}>
-                <Button variant="secondary" onClick={() => setShowModal(false)}>
-                  Annulla
-                </Button>
-                <Button variant="info" onClick={handleCreaScadenza}>
-                  Salva Scadenza
-                </Button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Modal Visualizzazione Fattura AssoInvoice */}
-        {viewingInvoice && (
-          <ModalFattura
-            fatturaId={viewingInvoice.id}
-            numero={viewingInvoice.numero}
-            onClose={() => {
-              setViewingInvoice(null);
-            }}
-          />
-        )}
-
-        {/* Modal Pagamento Cassa/Banca */}
-        {pagaModal && (
-          <div
-            style={{
-              position: 'fixed',
-              inset: 0,
-              background: 'rgba(0,0,0,0.5)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              zIndex: 1000,
-            }}
-            onClick={() => setPagaModal(null)}
-          >
-            <div
-              style={{
-                background: COLORS.card,
-                borderRadius: BORDER_RADIUS.xl,
-                padding: 24,
-                maxWidth: 420,
-                width: '90%',
-                boxShadow: SHADOWS.modal,
-              }}
-              onClick={e => e.stopPropagation()}
-            >
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'flex-start',
-                  justifyContent: 'space-between',
-                  gap: 12,
-                }}
-              >
-                <h3 style={{ margin: '0 0 8px', fontSize: 18, color: COLORS.primaryLight }}>
-                  Registra Pagamento
-                </h3>
-                <Button
-                  variant="ghost"
-                  onClick={() => setPagaModal(null)}
-                  aria-label="Chiudi"
-                  style={{
-                    width: 32,
-                    height: 32,
-                    padding: 0,
-                    background: COLORS.bgAlt,
-                    color: COLORS.textMuted,
-                    fontSize: 16,
-                  }}
-                >
-                  <X size={16} aria-hidden="true" />
-                </Button>
-              </div>
-              <div
-                style={{
-                  fontSize: 13,
-                  color: COLORS.textMuted,
-                  marginBottom: 16,
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 8,
-                }}
-              >
-                <span>{pagaModal.fornitore || pagaModal.descrizione}</span>
-                {(pagaModal.tipo === 'FATTURA' || pagaModal.source === 'fattura') &&
-                  (pagaModal.fattura_id || pagaModal.id) && (
-                    <Button
-                      variant="success"
-                      size="sm"
-                      style={{ fontSize: 10 }}
-                      onClick={() => {
-                        setViewingInvoice({
-                          id: pagaModal.fattura_id || pagaModal.id,
-                          numero: pagaModal.numero_fattura || pagaModal.numero || pagaModal.descrizione,
-                        });
-                        setPagaModal(null);
-                      }}
-                      title="Visualizza PDF Fattura"
-                    >
-                      Vedi
-                    </Button>
-                  )}
-              </div>
-              <div
-                style={{
-                  fontSize: 24,
-                  fontWeight: 700,
-                  color: COLORS.primaryLight,
-                  marginBottom: 20,
-                  textAlign: 'center',
-                }}
-              >
-                {pagaModal.importo > 0 ? `€ ${pagaModal.importo.toFixed(2)}` : '—'}
-              </div>
-              <div style={{ display: 'flex', gap: 12, marginBottom: 12 }}>
-                <Button
-                  variant="warning"
-                  size="lg"
-                  disabled={processing}
-                  onClick={() => handlePagaScadenza(pagaModal, 'cassa')}
-                  style={{ flex: 1 }}
-                >
-                  Paga in CASSA
-                </Button>
-                <Button
-                  variant="info"
-                  size="lg"
-                  disabled={processing}
-                  onClick={() => handlePagaScadenza(pagaModal, 'banca')}
-                  style={{ flex: 1 }}
-                >
-                  Paga in BANCA
-                </Button>
-              </div>
-              <Button
-                variant="secondary"
-                onClick={() => setPagaModal(null)}
-                style={{ width: '100%' }}
-              >
-                Annulla
-              </Button>
-            </div>
-          </div>
-        )}
-      </div>
-    </PageLayout>
-  );
+        <p style={{ marginBottom: 0 }}>Il residuo esclude importi non disponibili e voci con incongruenze. {stats.importi_non_disponibili || 0} importi non disponibili. Le chiusure dei promemoria non certificano un pagamento.</p>
+      </div>}
+      <section aria-label="Scadenze dell'anno" style={box}>
+        <p>{visible.totale || 0} scadenze · ordinate per data</p>
+        {rows.length ? <ListaAdattiva testId="scadenze-table" dati={rows} chiave={s => s.id} pageSize={rows.length || 50} cardBreakpoint={1100} resetKey={filters}
+          colonne={[
+            { key: 'descrizione', label: 'Obbligo e periodo', ruoloCard: 'titolo', render: s => <div style={{ overflowWrap: 'anywhere' }}>
+              <strong>{s.descrizione}</strong><div>{s.tipo}{s.codici?.length ? ` · ${s.codici.join(', ')}` : ''}{s.periodo ? ` · ${s.periodo}` : ''}</div>
+              {s.atteso_da_buste && <p>Prospetto paghe: {euroCents(s.atteso_da_buste.importo_cents)}{s.atteso_da_buste.differenza_cents ? ` · differenza con F24: ${euroCents(s.atteso_da_buste.differenza_cents)}` : ''}</p>}
+              {s.note && <details style={{ marginTop: 8 }}><summary>Note</summary><p style={{ whiteSpace: 'pre-wrap' }}>{s.note}</p></details>}
+            </div> },
+            { key: 'data', label: 'Scadenza', ruoloCard: 'dettaglio', render: s => s.data ? formatDateIT(s.data) : 'Data da verificare' },
+            { key: 'stato', label: 'Stato', ruoloCard: 'dettaglio', render: s => <Badge variant={chiusa(s) ? 'success' : s.da_verificare ? 'warning' : s.urgente ? 'danger' : 'info'}>
+              {s.pagata && s.pagamento?.data_pagamento ? `Pagata il ${formatDateIT(s.pagamento.data_pagamento)}` : s.stato_label || (chiusa(s) ? 'Completata' : 'Aperta')}
+            </Badge> },
+            { key: 'importo_cents', label: 'Dovuto', ruoloCard: 'dettaglio', render: s => s.monetaria === false ? 'Adempimento' : euroCents(s.importo_cents ?? (s.importo != null ? Math.round(s.importo * 100) : null)) },
+            { key: 'pagato_cents', label: 'Pagato', ruoloCard: 'dettaglio', render: s => s.monetaria === false ? '—' : euroCents(s.pagato_cents) },
+            { key: 'residuo_cents', label: 'Residuo', ruoloCard: 'importo', render: s => s.monetaria === false ? '—' : <span>{euroCents(s.residuo_cents)}{s.conteggiabile === false && !chiusa(s) && <small style={{ display: 'block' }}>Escluso dal totale: da verificare</small>}</span> },
+            { key: 'azioni', label: 'Documenti e azioni', ruoloCard: 'azioni', render: azioni },
+          ]} /> : <p>Nessuna scadenza per i filtri selezionati.</p>}
+        {rows.length < visible.totale && <Button onClick={() => load(rows.length)} disabled={loadingMore}>{loadingMore ? 'Caricamento…' : 'Carica altre scadenze'}</Button>}
+      </section>
+      <section aria-label="Documenti da verificare" style={box}>
+        <h3 style={{ marginTop: 0 }}>Documenti da verificare</h3><p>{visible.documenti_periodo || 'Archivio completo, tutti gli anni'}</p>
+        <div style={flex}>{(visible.documenti_da_verificare || []).map(p => <Link key={p.id} to={p.url}>{p.titolo}: {p.conteggio}</Link>)}</div>
+        {visible.segnalazioni?.length > 0 && <details style={{ marginTop: 12 }}><summary>Segnalazioni sui piani ({visible.segnalazioni.length})</summary>
+          <ul>{visible.segnalazioni.map(s => <li key={s.id}>{s.messaggio} · <Link to={s.url}>Apri piano</Link></li>)}</ul>
+        </details>}
+      </section>
+    </>}
+    {showModal && <div role="dialog" aria-modal="true" aria-label="Nuova scadenza" style={{ position: 'fixed', inset: 0, zIndex: 200, background: '#0008', display: 'grid', placeItems: 'center', padding: 12 }}>
+      <form onSubmit={crea} style={{ ...box, width: 'min(100%, 520px)', maxHeight: '90dvh', overflowY: 'auto', margin: 0 }}>
+        <div style={{ ...flex, justifyContent: 'space-between' }}><h3>Nuovo promemoria</h3><Button type="button" aria-label="Chiudi" onClick={() => setShowModal(false)}><X size={18} /></Button></div>
+        <label>Data di scadenza<Input type="date" required min="2000-01-01" max="2100-12-31" value={form.data_scadenza} onChange={e => setForm({ ...form, data_scadenza: e.target.value })} /></label>
+        <label>Descrizione<Input required maxLength={2000} value={form.descrizione} onChange={e => setForm({ ...form, descrizione: e.target.value })} /></label>
+        <label>Tipo<Select value={form.tipo} onChange={e => setForm({ ...form, tipo: e.target.value })}>{['CUSTOM', 'IVA', 'F24', 'INPS', 'INAIL', 'IMU', 'IRES', 'IRAP', 'FATTURA', 'ALTRO'].map(t => <option key={t} value={t}>{t === 'CUSTOM' ? 'Personalizzata' : t}</option>)}</Select></label>
+        <label>Importo, se noto<Input type="number" min="0" step="0.01" value={form.importo} onChange={e => setForm({ ...form, importo: e.target.value })} /></label>
+        <label>Note<Input maxLength={10000} value={form.note} onChange={e => setForm({ ...form, note: e.target.value })} /></label>
+        <p>Questo promemoria non crea fatture o versamenti.</p>
+        <Button type="submit" disabled={saving}>{saving ? 'Salvataggio…' : 'Salva promemoria'}</Button>
+      </form>
+    </div>}
+    {viewingInvoice && <ModalFattura fatturaId={viewingInvoice.id} numero={viewingInvoice.numero} onClose={() => setViewingInvoice(null)} />}
+  </PageLayout>;
 }

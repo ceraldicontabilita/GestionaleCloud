@@ -1208,7 +1208,7 @@ async def download_cedolino_pdf(cedolino_id: str):
     db = Database.get_db()
     doc = await db["cedolini"].find_one({"id": cedolino_id}, {
         "_id": 0, "pdf_data": 1, "drive_file_id": 1, "drive_md5": 1,
-        "_drive_payloads": 1, "pdf_filename": 1, "filename": 1,
+        "_drive_payloads": 1, "blob_key": 1, "pdf_filename": 1, "filename": 1,
         "gestionale_cedolino_id": 1,
         "source_page_start": 1, "source_page_end": 1, "source_document_pages": 1,
     })
@@ -1216,7 +1216,8 @@ async def download_cedolino_pdf(cedolino_id: str):
         raise HTTPException(status_code=404, detail="Cedolino non trovato")
     pdf_data = doc.get("pdf_data")
     filename = doc.get("pdf_filename") or doc.get("filename")
-    if not pdf_data and not doc.get("drive_file_id") and not doc.get("_drive_payloads"):
+    if (not pdf_data and not doc.get("drive_file_id") and not doc.get("_drive_payloads")
+            and not doc.get("blob_key")):
         # Solo un collegamento esplicito prova quale allegato appartiene alla
         # busta. Il vecchio OR nome/periodo prendeva anche PDF di altre persone
         # e li associava scrivendo nel database durante un semplice download.
@@ -1434,130 +1435,6 @@ async def lista_acconti_dipendente(dipendente_id: str, anno: Optional[int] = Non
     from app.hr.services.acconti_auto_linker import get_pagamenti_dipendente
     from app.hr.database import Database as _DB
     return await get_pagamenti_dipendente(_DB.get_db(), dipendente_id, anno=anno)
-
-
-# ============================================
-# SIMULAZIONE F24 MENSILE + IMPORT CEDOLINI DA GOOGLE DRIVE
-# ============================================
-import re as _re
-
-
-def _voci_somma(voci, pattern: str) -> float:
-    """Somma gli importi delle voci di busta la cui descrizione combacia col pattern."""
-    tot = 0.0
-    for v in voci or []:
-        desc = str(v.get("descrizione") or v.get("voce") or v.get("codice") or "").lower()
-        if not _re.search(pattern, desc):
-            continue
-        for k in ("importo", "trattenuta", "ritenuta", "competenze", "valore"):
-            try:
-                x = float(str(v.get(k)).replace(".", "").replace(",", ".")) if isinstance(v.get(k), str) else float(v.get(k) or 0)
-                if x:
-                    tot += abs(x)
-                    break
-            except (TypeError, ValueError):
-                continue
-    return round(tot, 2)
-
-
-def _stima_mensile_da_lordo(lordo: float) -> Dict[str, float]:
-    """Trattenute mensili stimate dal lordo mensile (stesse regole della stima
-    cedolino: INPS dipendente 9,19%, IRPEF a scaglioni annualizzata con
-    detrazione lavoro dipendente)."""
-    inps_dip = lordo * INPS_DIPENDENTE_PERCENT / 100
-    imponibile_annuo = (lordo - inps_dip) * 12
-    irpef_annua = max(0.0, calcola_irpef_annua(imponibile_annuo) - calcola_detrazioni_lavoro(imponibile_annuo))
-    irpef_mese = irpef_annua / 12
-    return {"inps_dipendente": round(inps_dip, 2), "irpef": round(irpef_mese, 2),
-            "netto": round(lordo - inps_dip - irpef_mese, 2)}
-
-
-def _lordo_da_netto_mensile(netto: float) -> float:
-    """Inverte per bisezione la stima mensile: dal netto in busta al lordo."""
-    lo, hi = 1.0, 4000.0
-    while _stima_mensile_da_lordo(hi)["netto"] < netto:
-        hi *= 2
-        if hi > 1_000_000:
-            break
-    for _ in range(60):
-        mid = (lo + hi) / 2
-        if _stima_mensile_da_lordo(mid)["netto"] < netto:
-            lo = mid
-        else:
-            hi = mid
-    return round(hi, 2)
-
-
-@router.get("/simulazione-f24")
-@handle_errors
-async def simulazione_f24(anno: int, mese: int) -> Dict[str, Any]:
-    """Simulazione F24 e costo mensile per ogni dipendente, dai cedolini del mese.
-
-    Per ogni cedolino: usa lordo/IRPEF/INPS reali quando presenti nelle voci di
-    busta; altrimenti li stima dal netto (bisezione con le stesse regole della
-    stima cedolino). INPS azienda = aliquota unica dell'app (30%), TFR mese =
-    lordo ÷ 13,5. F24 del mese = IRPEF trattenuta + INPS dipendente + INPS
-    azienda. Costo azienda = lordo + INPS azienda + quota TFR. È una SIMULAZIONE:
-    fa fede il modello F24 del consulente."""
-    db = Database.get_db()
-    cedolini = await db["cedolini"].find(
-        {"anno": anno, "mese": mese}, {"_id": 0, "pdf_data": 0}).to_list(500)
-    nomi = {d["id"]: (d.get("nome_completo") or f"{d.get('cognome', '')} {d.get('nome', '')}".strip())
-            for d in await db["dipendenti"].find({}, {"_id": 0, "id": 1, "nome": 1, "cognome": 1, "nome_completo": 1}).to_list(1000)}
-
-    righe = []
-    for c in cedolini:
-        netto = None
-        for k in ("netto", "netto_mese", "netto_in_busta", "netto_pagato"):
-            try:
-                if c.get(k) is not None:
-                    netto = float(c[k])
-                    break
-            except (TypeError, ValueError):
-                continue
-        lordo = None
-        for k in ("lordo", "lordo_totale", "totale_competenze", "retribuzione_lorda"):
-            try:
-                if c.get(k):
-                    lordo = float(c[k])
-                    break
-            except (TypeError, ValueError):
-                continue
-        voci = c.get("voci") or []
-        irpef_busta = _voci_somma(voci, r"irpef")
-        inps_busta = _voci_somma(voci, r"f\.?a\.?p|ivs|contributi?\s|inps")
-        fonte = "cedolino"
-        if lordo is None and netto is not None and netto > 0:
-            lordo = _lordo_da_netto_mensile(netto)
-            fonte = "stima dal netto"
-        if lordo is None:
-            continue
-        stima = _stima_mensile_da_lordo(lordo)
-        irpef = irpef_busta if irpef_busta > 0 else stima["irpef"]
-        inps_dip = inps_busta if inps_busta > 0 else stima["inps_dipendente"]
-        if netto is None:
-            netto = round(lordo - inps_dip - irpef, 2)
-        inps_azienda = round(lordo * INPS_AZIENDA_PERCENT / 100, 2)
-        tfr_mese = round(lordo / 13.5, 2)
-        totale_f24 = round(irpef + inps_dip + inps_azienda, 2)
-        costo_azienda = round(lordo + inps_azienda + tfr_mese, 2)
-        righe.append({
-            "dipendente_id": c.get("dipendente_id"),
-            "dipendente_nome": c.get("dipendente_nome") or nomi.get(c.get("dipendente_id"), "?"),
-            "fonte": fonte,
-            "lordo": round(lordo, 2), "netto": round(netto, 2) if netto is not None else None,
-            "irpef": round(irpef, 2), "inps_dipendente": round(inps_dip, 2),
-            "inps_azienda": inps_azienda, "tfr_mese": tfr_mese,
-            "totale_f24": totale_f24, "costo_azienda": costo_azienda,
-        })
-
-    righe.sort(key=lambda r: (r["dipendente_nome"] or "").lower())
-    tot = {k: round(sum(r[k] or 0 for r in righe), 2)
-           for k in ("lordo", "netto", "irpef", "inps_dipendente", "inps_azienda", "tfr_mese", "totale_f24", "costo_azienda")}
-    return {"anno": anno, "mese": mese, "dipendenti": len(righe), "righe": righe, "totali": tot,
-            "parametri": {"inps_azienda_percento": INPS_AZIENDA_PERCENT,
-                          "inps_dipendente_percento": INPS_DIPENDENTE_PERCENT,
-                          "nota": "Simulazione: fa fede il modello F24 del consulente."}}
 
 
 @router.get("/{cedolino_id}")
