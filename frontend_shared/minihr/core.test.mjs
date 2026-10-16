@@ -16,3 +16,25 @@ test('Link sicuri',()=>{for(const u of ['javascript:alert(1)','//evil.example/a'
 test('Vecchio rapporto aperto non riattiva un dipendente cessato successivamente',()=>{const e=employee({events:[event({start:'2018-01-01'}),event(),event({kind:'cessazione',effective:'2023-03-01'})]});assert.equal(employmentInMonth(e,'2023-04').code,'ceased');});
 test('Rimborsi negativi conservati e nessun riporto implicito nel periodo scelto',()=>{const e=employee({payments:[{date:'2022-12-01',amountCents:10000,counted:true},{date:'2023-01-15',amountCents:-2500,counted:true}]});assert.equal(buildMonthly(e,{from:'2023-01',to:'2023-01'})[0].balanceCents,-2500);});
 test('Manifest del codice condiviso aggiornato',()=>{const manifest=JSON.parse(readFileSync(new URL('./manifest.json',import.meta.url)));for(const [name,hash] of Object.entries(manifest.files))assert.equal(createHash('sha256').update(readFileSync(new URL('./'+name,import.meta.url))).digest('hex'),hash,name);});
+test('Vista compatta: intestazione esterna allo scorrimento e colonne sincronizzate',async()=>{
+  const saved={HTMLElement:globalThis.HTMLElement,customElements:globalThis.customElements,ResizeObserver:globalThis.ResizeObserver};
+  const elements=new Map();
+  const element=id=>{if(!elements.has(id))elements.set(id,{scrollLeft:0,listeners:{},getBoundingClientRect:()=>({height:54}),addEventListener(type,fn){this.listeners[type]=fn;}});return elements.get(id);};
+  try{
+    globalThis.HTMLElement=class{constructor(){this.values={};this.style={setProperty:(k,v)=>{this.values[k]=v;}};}attachShadow(){return this.shadowRoot={innerHTML:'',getElementById:element,querySelector:element,querySelectorAll:()=>[]};}};
+    globalThis.customElements={get:()=>undefined,define:()=>{}};
+    globalThis.ResizeObserver=class{constructor(cb){this.cb=cb;}observe(){this.cb();}disconnect(){}};
+    const {MiniHRFascicolo}=await import('./view.mjs');const widget=new MiniHRFascicolo();
+    const data={employees:[employee()],today:'2023-02-15',notices:['Nota di prova']},snapshot=JSON.stringify(data);widget.data=data;
+    const html=widget.shadowRoot.innerHTML;
+    assert.match(html,/\.table-heading\{position:sticky;top:calc/);
+    assert.match(html,/var\(--minihr-filter-height,0px\)/);
+    assert.match(html,/class="table-heading"[\s\S]*id="headingScroll"[\s\S]*<\/table><\/div><\/div><div class="wrap" id="bodyScroll"/);
+    assert.equal((html.match(/<colgroup>/g)||[]).length,2);
+    assert.match(html,/<thead class="sr-only">/);assert.match(html,/scope="col">Mese/);
+    assert.match(html,/overflow-y:hidden/);assert.doesNotMatch(html,/max-height:/);
+    assert.match(html,/<details class="notes">/);assert.equal(widget.values['--minihr-filter-height'],'54px');
+    const body=element('bodyScroll'),head=element('headingScroll');body.scrollLeft=320;body.listeners.scroll();assert.equal(head.scrollLeft,320);head.scrollLeft=80;head.listeners.scroll();assert.equal(body.scrollLeft,80);
+    assert.equal(JSON.stringify(data),snapshot);widget.disconnectedCallback();
+  }finally{for(const [key,value]of Object.entries(saved)){if(value===undefined)delete globalThis[key];else globalThis[key]=value;}}
+});
