@@ -1,0 +1,9 @@
+{
+  "coreVersion": "1.0.0",
+  "files": {
+    "core.mjs": "619e35d8f7aafc685d858991f42ebf54a0934592581655c4d0f511eebda388a2",
+    "view.mjs": "5e2e909f8a92fa658245ccafa100a0f545368ed504a12231d23aff1fb8367aad",
+    "core.test.mjs": "8e9e08403b11cc7388a0da3eb430a2e28eb4cb2e200fd55eb64cbba4e30fbb76"
+  },
+  "scope": "Generic source only; no private data or host adapters"
+}

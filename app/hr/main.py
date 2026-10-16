@@ -114,6 +114,8 @@ def register_routers():
     from .routers import posizione_dipendente
     app.include_router(posizione_dipendente.router, prefix="/api/posizione-dipendente",
                        tags=["Posizione dipendente"], dependencies=ADMIN)
+    from .routers import minihr
+    app.include_router(minihr.router, prefix="/api/minihr")  # GET-only, admin inside router
     app.include_router(attendance.router, prefix="/api/attendance", tags=["Presenze"], dependencies=ADMIN)
 
     # Cedolini e Libro Unico ERP: un solo motore, `app/services/cedolini_motore.py`,

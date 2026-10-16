@@ -14,6 +14,7 @@ import GrigliaPaghe from "./GrigliaPaghe";
 import PrimaNotaPaghe from "./PrimaNotaPaghe";
 import { sceltaIniziale, sceltaCandidato, propostaIntatta } from "./sceltaBonifico";
 import MissioniPage from "./MissioniPage";
+import MiniHRPage from "./MiniHRPage";
 import { normalizzaEsitoImportPaghe } from "./esitoImportPaghe";
 import { apriFinestraPdfAttesa, mostraPdfNellaFinestra } from "./pdfWindow";
 import { 
@@ -227,6 +228,7 @@ export default function DipendentiCloudApp({ page: pageProp }) {
     { id: "paghe-bonifici", label: "Archivio paghe", icon: Link2, section: "DIPENDENTI" },
     { id: "bonifici-da-associare", label: "Bonifici da associare", icon: Inbox, section: "DIPENDENTI" },
     { id: "posizione-dipendente", label: "Posizione dipendente", icon: Scale, section: "DIPENDENTI" },
+    ...(isAdmin ? [{ id: "fascicolo-mensile", label: "Fascicolo mensile · MiniHR", icon: FolderOpen, section: "DIPENDENTI" }] : []),
     { id: "mensilita-aggiuntive", label: "13ª e 14ª", icon: Euro, section: "DIPENDENTI" },
     { id: "tfr", label: "TFR", icon: Wallet, section: "DIPENDENTI" },
     { id: "documenti", label: "Documenti", icon: FolderOpen, section: "DIPENDENTI" },
@@ -245,6 +247,7 @@ export default function DipendentiCloudApp({ page: pageProp }) {
     "paghe-bonifici": "Archivio paghe",
     "bonifici-da-associare": "Bonifici da associare",
     "posizione-dipendente": "Posizione dipendente",
+    "fascicolo-mensile": "Fascicolo mensile · MiniHR",
     "mensilita-aggiuntive": "13ª e 14ª",
     tfr: "TFR",
     missioni: "Missioni",
@@ -285,6 +288,8 @@ export default function DipendentiCloudApp({ page: pageProp }) {
         return <BonificiDaAssociarePage dipendenti={dipendenti} />;
       case "posizione-dipendente":
         return <PosizioneDipendentePage dipendenti={dipendenti} />;
+      case "fascicolo-mensile":
+        return isAdmin ? <MiniHRPage /> : <div className="dc-card">Accesso riservato all’amministratore.</div>;
       case "mensilita-aggiuntive":
         return <MensilitaAggiuntivePage />;
       case "tfr":
