@@ -1,6 +1,5 @@
 import React, {useEffect, useRef, useState} from 'react';
 import axios from 'axios';
-import '../../frontend_shared/minihr/view.mjs';
 import {safeHref} from '../../frontend_shared/minihr/core.mjs';
 import {apriFinestraPdfAttesa, mostraPdfNellaFinestra} from './pdfWindow';
 
@@ -20,9 +19,16 @@ export default function MiniHRPage(){
     if(!popup){setError('Consentire l’apertura delle finestre PDF e riprovare.');return;}
     try{const r=await axios.get(href,{responseType:'blob'});const url=URL.createObjectURL(r.data);mostraPdfNellaFinestra(popup,url);setTimeout(()=>URL.revokeObjectURL(url),60000);}catch(e){popup.close();setError('Documento non disponibile o accesso non consentito. Nessun dato modificato.');}
   }
-  useEffect(()=>{const el=widget.current;if(!el||!payload)return;
-    el.data={employees:[payload.employee],today:new Date().toISOString().slice(0,10),sourceLabel:'GestionaleCloud · archivi propri · vista parallela',notices:payload.notices};
-    const click=e=>{e.preventDefault();openDocument(e.detail.href);};el.addEventListener('minihr-document',click);return()=>el.removeEventListener('minihr-document',click);
+  useEffect(()=>{const el=widget.current;if(!el||!payload)return;let cancelled=false;
+    const click=e=>{e.preventDefault();openDocument(e.detail.href);};
+    // Register the browser-only custom element after mount, not while the
+    // existing HR routes are imported by Node/SSR permission checks.
+    import('../../frontend_shared/minihr/view.mjs').then(()=>{
+      if(cancelled)return;
+      el.data={employees:[payload.employee],today:new Date().toISOString().slice(0,10),sourceLabel:'GestionaleCloud · archivi propri · vista parallela',notices:payload.notices};
+      el.addEventListener('minihr-document',click);
+    }).catch(()=>{if(!cancelled)setError('Vista documentale non disponibile. Ricaricare la pagina. Nessun dato modificato.');});
+    return()=>{cancelled=true;el.removeEventListener('minihr-document',click);};
   },[payload]);
   const fiscalRequest=useRef(0);
   useEffect(()=>{fiscalRequest.current++;setFiscalLoading(false);},[selected,cf]);
