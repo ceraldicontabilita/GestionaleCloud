@@ -33,6 +33,10 @@ describe('Dilazioni INPS', () => {
       sources: { istanze_dilazioni_inps: 1, dilazioni_inps: 1 },
       items: [{ id: 'i2', rif: 'INPS.5100.X', matricola: '5124776507',
         periodo_da: '03/2012', periodo_a: '10/2012', stato_richiesta: 'ACCOLTA',
+        causale: 'RC01', provenienza: { status: 'RECORDED', email_sources: [{
+          email_from: 'posta-certificata@legalmail.it', email_date: '2026-02-26',
+          email_subject: 'Sede INPS 5100, Dilazione amministrativa', email_message_id: 'gmail-1',
+        }] },
         data_accoglimento: '2012-12-01', stato_piano: 'IN_CORSO', periodi: [],
         rate: [
           { numero: 1, scadenza: '2012-12-10', importo_cents: 10000, stato: 'PAGATA', data_pagamento: '2012-12-10' },
@@ -41,6 +45,8 @@ describe('Dilazioni INPS', () => {
     } });
     render(<DilazioniInps />);
     expect(await screen.findByText('Rate del piano accolto')).toBeInTheDocument();
+    expect(screen.getByText(/causale F24 RC01/)).toBeInTheDocument();
+    expect(screen.getByText('posta-certificata@legalmail.it', { exact: false })).toBeInTheDocument();
     expect(screen.getByText('Pagata con quietanza il 10/12/2012')).toBeInTheDocument();
     expect(screen.getByText('Scaduta · quietanza non trovata')).toBeInTheDocument();
   });

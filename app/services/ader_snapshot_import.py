@@ -16,6 +16,7 @@ from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from pathlib import PurePosixPath
 from typing import Any
 
+from app.db_collections import COLL_TAX_COLLECTION_CLAIMS
 from app.services.fiscal_document_ingestion import FiscalDocumentIngestionService, extract_pdf_pages
 from app.services.fiscal_evidence import link_evidence, normalize_evidence, stable_id
 
@@ -182,6 +183,42 @@ def _business_status(*, net_cents: int, suspended_cents: int, paid_cents: int,
     if portal_bucket == "SALDATI":
         return "PORTAL_CLOSED_PENDING_EVIDENCE", "PORTAL_BUCKET_ONLY"
     return "REVIEW_REQUIRED", None
+
+
+async def _link_exact_original_notices(db, *, company_id: str, document_number: str,
+                                       claim_id: str, snapshot_id: str,
+                                       business_status: str, residual_cents: int,
+                                       now: str) -> int:
+    """Collega l'avviso originale gia' acquisito usando il numero integrale.
+
+    Il collegamento non e' una prova di pagamento: conserva soltanto la
+    relazione tra l'atto INPS/AdeR e la fotografia corrente del portale.
+    """
+    originals = await db["documents_inbox"].find({
+        "parsed_metadata.numero_atto": document_number,
+    }, {"_id": 0, "id": 1, "sha256": 1, "file_hash": 1, "filename": 1,
+        "drive_file_id": 1, "source_context": 1}).to_list(100)
+    for original in originals:
+        await db["documents_inbox"].update_one({"id": original["id"]}, {"$set": {
+            "tax_collection_claim_id": claim_id,
+            "ader_latest_snapshot_id": snapshot_id,
+            "ader_business_status": business_status,
+            "ader_residual_cents": residual_cents,
+            "ader_link_basis": "EXACT_DOCUMENT_NUMBER",
+            "updated_at": now,
+        }})
+        source_context = original.get("source_context") or {}
+        await db[COLL_TAX_COLLECTION_CLAIMS].update_one(
+            {"company_id": company_id, "id": claim_id},
+            {"$addToSet": {"original_notice_sources": {
+                "inbox_document_id": original["id"],
+                "filename": original.get("filename"),
+                "sha256": original.get("sha256") or original.get("file_hash"),
+                "drive_file_id": original.get("drive_file_id") or source_context.get("drive_file_id"),
+                "link_basis": "EXACT_DOCUMENT_NUMBER",
+            }}},
+        )
+    return len(originals)
 
 
 def parse_analytic_pdf(*, content: bytes, filename: str, source_archive_id: str,
@@ -693,6 +730,12 @@ async def apply_ader_archive_plan(*, db, plan: dict[str, Any], actor: str | None
                       "business_status": row["calculated_business_status"],
                       "residual_cents": row["amounts_cents"]["net"],
                       "source_document_id": row["source_document_id"], "updated_at": now}},
+        )
+        await _link_exact_original_notices(
+            db, company_id=row["company_id"], document_number=row["document_number"],
+            claim_id=claim_id, snapshot_id=row["id"],
+            business_status=row["calculated_business_status"],
+            residual_cents=row["amounts_cents"]["net"], now=now,
         )
         await link_source(entity_type="ader_snapshot", entity_id=row["id"],
                           source_filename=row["source_filename"])

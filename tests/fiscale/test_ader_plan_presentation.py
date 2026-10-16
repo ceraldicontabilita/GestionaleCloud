@@ -74,3 +74,21 @@ def test_vista_piano_non_inventa_email_o_f24_mancanti():
     assert plan["f24_link_status"] == "NOT_FOUND_WITH_EXACT_PLAN_REFERENCE"
     assert plan["related_claims"][0]["link_status"] == "UNRESOLVED_REFERENCE"
     assert plan["related_claims"][0]["tributes"] == []
+
+
+def test_vista_legge_anche_la_provenienza_email_dell_inbox():
+    from app.services.ader_plan_presentation import _email_provenance
+
+    provenienza = _email_provenance({
+        "filename": "accoglimento.pdf", "source": "upload_automatico",
+        "source_context": {
+            "email_from": "inps@example.it", "email_subject": "Dilazione amministrativa",
+            "email_date": "2026-02-26", "gmail_message_id": "gmail-1",
+        },
+    }, None)
+
+    assert provenienza["status"] == "RECORDED"
+    assert provenienza["email_sources"] == [{
+        "email_from": "inps@example.it", "email_subject": "Dilazione amministrativa",
+        "email_date": "2026-02-26", "email_message_id": "gmail-1",
+    }]

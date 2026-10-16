@@ -172,6 +172,7 @@ def test_upload_auto_cbill_collega_rata_e_cartella(monkeypatch):
     assert match["linked_claim_ids"] == ["claim-1"]
     receipt = asyncio.run(db["ricevute_pagopa"].find_one({}))
     assert receipt["cartelle_collegate"] == ["claim-1"]
+    assert receipt["stato"] == "associata"
     claim = asyncio.run(db[COLL_TAX_COLLECTION_CLAIMS].find_one({"id": "claim-1"}))
     assert len(claim["payment_evidence_ids"]) == 1
 

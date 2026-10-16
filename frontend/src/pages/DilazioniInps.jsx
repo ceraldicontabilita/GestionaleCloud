@@ -59,8 +59,17 @@ export default function DilazioniInps() {
           <div style={{ marginTop: 10 }}>
             {item.data_domanda && <>Domanda del {dataIt(item.data_domanda)} · </>}
             periodi {item.periodo_da || '?'} - {item.periodo_a || '?'}
+            {item.causale && <> · causale F24 {item.causale}</>}
             {item.totale_richiesto_cents != null && <> · totale richiesto {euro(item.totale_richiesto_cents)}</>}
           </div>
+          {(item.provenienza?.email_sources || []).map((fonte, index) => <div key={`${fonte.email_message_id || fonte.email_date || index}`} style={{ marginTop: 8 }}>
+            <strong>Email associata:</strong> {fonte.email_from || 'mittente non registrato'}
+            {fonte.email_date && <> · {dataIt(fonte.email_date)}</>}
+            {fonte.email_subject && <> · oggetto “{fonte.email_subject}”</>}
+          </div>)}
+          {item.provenienza?.status === 'NOT_RECORDED' && <div style={{ marginTop: 8 }}>
+            Email di provenienza non registrata: nessuna associazione inventata.
+          </div>}
           {item.stato_richiesta === 'PRESENTATA_DA_VERIFICARE' && <div role="status" style={{ marginTop: 8 }}>
             I periodi non sono marcati come pagati: manca il provvedimento INPS di accoglimento con il piano di ammortamento.
           </div>}

@@ -343,6 +343,9 @@ def pagamenti_della_dilazione(piano: Dict[str, Any], quietanze: Iterable[Dict[st
         ambigua = not protocollo and len(candidati) > 1
         if not protocollo and len(candidati) == 1:
             protocollo = next(iter(candidati))
+        riscontro = q.get("riscontro_banca") or {}
+        movimento_id = (riscontro.get("movimento_id")
+                         if riscontro.get("stato") == "RISCONTRATO_BANCA" else None)
         chiave = f"{protocollo}|{data}|{cents}" if protocollo else f"id:{q.get('id')}"
         p = gruppi.setdefault(chiave, {
             "chiave": chiave, "data": data, "protocollo": protocollo, "importo_cents": cents,
@@ -350,13 +353,17 @@ def pagamenti_della_dilazione(piano: Dict[str, Any], quietanze: Iterable[Dict[st
         })
         if ambigua:
             p["da_verificare"] = "Copia senza protocollo compatibile con piu' pagamenti: non conteggiata nuovamente"
+        elif not protocollo and not movimento_id:
+            p["da_verificare"] = (
+                "Documento F24 senza protocollo e senza riscontro bancario: "
+                "non prova il pagamento della rata"
+            )
         if not _riga_della_dilazione(righe[0], piano):
             p["periodo_ridotto"] = {"periodo_originale": list(_periodo_riga(righe[0])),
                                      "motivo": "Coordinate e importo rata: unico piano compatibile"}
         p["quietanza_ids"].append(str(q.get("id")))
-        riscontro = q.get("riscontro_banca") or {}
-        if riscontro.get("stato") == "RISCONTRATO_BANCA" and riscontro.get("movimento_id"):
-            p["movimento_id"] = riscontro["movimento_id"]
+        if movimento_id:
+            p["movimento_id"] = movimento_id
     for p in gruppi.values():
         p["quietanza_ids"].sort()
     return sorted(gruppi.values(), key=lambda p: (p["data"], p["chiave"]))

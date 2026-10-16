@@ -252,6 +252,21 @@ async def dilazioni_inps(_admin: Dict[str, Any] = Depends(get_current_admin_user
         db[COLL_DILAZIONI_INPS].find({}, {"_id": 0}).sort("data_delibera", -1).to_list(2000),
     )
     piani_per_id = {p.get("id"): p for p in piani}
+    document_ids = {
+        str(row.get("documento_id"))
+        for row in [*istanze, *piani]
+        if row.get("documento_id")
+    }
+    documents = await db["documents_inbox"].find(
+        {"id": {"$in": list(document_ids)}},
+        {"_id": 0, "id": 1, "filename": 1, "source": 1, "source_context": 1,
+         "source_occurrences": 1},
+    ).to_list(max(1, len(document_ids))) if document_ids else []
+    documents_by_id = {row["id"]: row for row in documents if row.get("id")}
+    from app.services.ader_plan_presentation import _email_provenance
+
+    def provenienza(row):
+        return _email_provenance(documents_by_id.get(row.get("documento_id")), row.get("filename"))
     items = []
     for istanza in istanze:
         piano = piani_per_id.get(istanza.get("dilazione_id"))
@@ -264,6 +279,8 @@ async def dilazioni_inps(_admin: Dict[str, Any] = Depends(get_current_admin_user
             "rate_min": istanza.get("rate_min"), "rate_max": istanza.get("rate_max"),
             "stato_richiesta": istanza.get("stato_richiesta") or "PRESENTATA_DA_VERIFICARE",
             "documento_id": istanza.get("documento_id"), "filename": istanza.get("filename"),
+            "causale": piano.get("causale") if piano else None,
+            "provenienza": provenienza(istanza),
             "dilazione_id": istanza.get("dilazione_id"),
             "data_accoglimento": piano.get("data_delibera") if piano else None,
             "stato_piano": piano.get("stato") if piano else None,
@@ -283,6 +300,7 @@ async def dilazioni_inps(_admin: Dict[str, Any] = Depends(get_current_admin_user
             "stato_piano": piano.get("stato"), "rate": piano.get("rate") or piano.get("piano") or [],
             "residuo_cents": piano.get("residuo_cents"),
             "documento_id": piano.get("documento_id"), "filename": piano.get("filename"),
+            "causale": piano.get("causale"), "provenienza": provenienza(piano),
         })
     items.sort(key=lambda row: (row.get("data_domanda") or row.get("data_accoglimento") or "", row.get("id") or ""), reverse=True)
     return {
