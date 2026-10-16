@@ -1931,6 +1931,18 @@ def detect_document_type(filename: str, file_content: bytes) -> str:
             "istanza", "rimborso", "compensazione",
         )):
             return "tari_istanza_compensazione"
+        # L'esportazione ufficiale AdeR assegna alle analitiche un nome
+        # rigidamente strutturato (data, CF/P.IVA, numero posizione a 20 cifre
+        # e contenitore DaSaldare/Saldati). Alcune copie sono scansioni senza
+        # testo nativo: il riconoscimento preliminare non esegue OCR e prima le
+        # lasciava in ERRORI. Il nome serve soltanto a scegliere il parser
+        # AdeR; il parser successivo rilegge il PDF con OCR e convalida
+        # contribuente, numero e importi, senza trasformare «Saldati» in prova
+        # bancaria.
+        from app.services.ader_snapshot_import import ANALYTIC_FILENAME, TIPO_ANALITICA
+
+        if ANALYTIC_FILENAME.match(Path(filename or "documento").name):
+            return TIPO_ANALITICA
 
     # Prima del nome file prevale la natura probatoria del contenuto. Una
     # nota INPS puo citare il modello F24 senza essere un F24; un avviso

@@ -1288,7 +1288,14 @@ async def archivia_documento_ader(db, *, filename: str, content: bytes, testo: s
 
     sha = hashlib.sha256(content).hexdigest()
     compatto = re.sub(r"\s+", " ", testo or "")
+    # Le analitiche esportate dall'area riservata possono essere scansioni:
+    # in quel caso lo smistatore non ha ancora testo, ma il nome ufficiale e'
+    # sufficiente per inoltrare il file a questo parser. La validazione resta
+    # fail-closed in ``parse_analytic_pdf``, che usa OCR e verifica anche il
+    # contribuente presente nel documento.
     tipo = riconosci(compatto)
+    if not tipo and ANALYTIC_FILENAME.match(PurePosixPath(filename).name):
+        tipo = TIPO_ANALITICA
     if not tipo:
         raise ValueError("Documento Agenzia delle entrate-Riscossione non riconosciuto dal contenuto")
     if tipo == TIPO_RICHIESTA_INFORMAZIONI:
