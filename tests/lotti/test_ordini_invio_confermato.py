@@ -29,12 +29,12 @@ def test_pdf_ordine_mostra_codice_articolo_senza_inventarlo():
         {"id": "abcdef12", "data_ordine": "2026-10-16"},
         "SAIMA S.p.a.",
         [
-            {"nome": "Farina di mandorle pelate", "codice_articolo": "SAIMA 1069", "quantita": 1, "unita": "kg"},
+            {"nome": "Farina", "codice_articolo": "ELEN004", "quantita": 1, "unita": "kg"},
             {"nome": "Prodotto senza codice", "quantita": 2, "unita": "pz"},
         ],
     )
     testo = "\n".join(page.extract_text() or "" for page in PdfReader(io.BytesIO(pdf)).pages)
-    assert "COD: SAIMA 1069" in testo
+    assert "COD: ELEN004" in testo
     assert "COD: cat_" not in testo
 
 
