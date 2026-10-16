@@ -448,5 +448,50 @@ describe('Situazione fiscale a pagine di 200 documenti', () => {
     expect(rate[1]).toHaveAttribute('data-stato', 'attesa');
     expect(rate[1]).toHaveTextContent('Rata 2: attesa, nessuna prova di pagamento');
     expect(rate[1]).not.toHaveTextContent('documentato');
+    expect(screen.getByText(/Nessun modulo F24 con riferimento esatto AR071904285 trovato/)).toBeInTheDocument();
+    expect(screen.getByText(/Nessun abbinamento viene creato per solo importo o data/)).toBeInTheDocument();
+  });
+
+  it('spiega email, F24 agganciato e tributi del piano senza chiamarlo pagamento', async () => {
+    api.get.mockImplementation(path => Promise.resolve({ data: path === '/api/fiscal/summary'
+      ? { counts: {} }
+      : path.startsWith('/api/fiscal/ader-snapshots')
+        ? {
+          items: [], total: 0, latest_import: null, settlements: [],
+          rate_plans: [{
+            id: 'piano-1', plan_reference: 'AR071904285', installment_count: 6,
+            total_plan_amount: 7566.83, first_installment_amount: 1272.66,
+            first_installment_due_date: '2025-10-13', reconciled_installments: [],
+            source_provenance: {
+              status: 'RECORDED', source_filename: 'Accoglimento_AR071904285.pdf',
+              email_sources: [{
+                email_account: 'fiscale@example.it', email_from: 'ader@example.it',
+                email_subject: 'Accoglimento rateizzazione', email_date: '2025-09-20',
+              }],
+            },
+            payment_modules: [{
+              id: 'm1', document_number: '07198308127062530701', source_document_id: 'doc-f24',
+              installments: [{ number: 1, due_date: '2025-10-13', amount: 1272.66 }],
+              payment_evidence: false, link_basis: 'EXACT_PLAN_REFERENCE',
+            }],
+            related_claims: [{
+              printed_reference: '07120250145650421', document_number: '07120250145650421000',
+              plan_amount_cents: 749040, link_status: 'CONFIRMED_WITH_TAX_DETAIL',
+              document_type: 'CARTELLA_ESATTORIALE', creditor: 'AGENZIA ENTRATE',
+              tribute_status: 'AVAILABLE', tax_detail_source_document_id: 'doc-tributi',
+              tributes: [{ tax_code: '380A', year: 2022, description: 'IRAP', initial_cents: 404064, residual_cents: 125514 }],
+            }],
+          }],
+        }
+        : { items: [] } }));
+
+    render(<MemoryRouter initialEntries={['/situazione-fiscale/ader']}><SituazioneFiscale /></MemoryRouter>);
+
+    expect(await screen.findByText(/Casella email:/)).toHaveTextContent('fiscale@example.it');
+    expect(screen.getByText(/Collegamento verificato sul riferimento AR071904285/)).toBeInTheDocument();
+    expect(screen.getByText(/Questo F24 predisposto non prova il pagamento/)).toBeInTheDocument();
+    expect(screen.getByText(/Codice/)).toHaveTextContent('380A');
+    expect(screen.getByRole('button', { name: 'Apri F24 del piano' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Apri dettaglio tributi' })).toBeInTheDocument();
   });
 });

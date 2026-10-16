@@ -29,6 +29,7 @@ from app.services.declaration_registry import DECLARATION_TYPES, list_declaratio
 from app.services.ravvedimento_engine import RavvedimentoEngine
 from app.services.tax_collection_service import build_snapshot
 from app.services.ader_snapshot_import import apply_ader_archive_plan, build_ader_archive_plan
+from app.services.ader_plan_presentation import enrich_rate_plans
 from app.utils.dependencies import get_current_admin_mfa_user, get_current_admin_user
 
 
@@ -578,6 +579,7 @@ async def ader_snapshots(
         installments_by_plan.setdefault(installment.get("rate_plan_id") or "", []).append(installment)
     for plan in rate_plans:
         plan["reconciled_installments"] = installments_by_plan.get(plan.get("id") or "", [])
+    rate_plans = await enrich_rate_plans(db, company_id=_company(), plans=rate_plans)
     settlements = await (
         db[COLL_TAX_SETTLEMENT_APPLICATIONS]
         .find({"company_id": _company()}, {"_id": 0})

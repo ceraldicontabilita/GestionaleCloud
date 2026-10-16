@@ -42,6 +42,31 @@ CATEGORY_DOCUMENT_TYPES = {
 }
 
 
+_SOURCE_OCCURRENCE_FIELDS = (
+    "drive_file_id", "drive_document_id", "drive_parent_id",
+    "email_account", "email_from", "email_to", "email_subject", "email_date",
+    "email_message_id", "gmail_message_id", "message_id", "mailbox", "account",
+)
+
+
+def _source_occurrence(source: str, metadata: dict[str, Any] | None, digest: str) -> dict[str, Any]:
+    """Conserva la provenienza di ogni copia, inclusa quella email.
+
+    Il documento fiscale puo' essere deduplicato per SHA-256: in quel caso i
+    metadati della nuova email non devono andare persi e non devono nemmeno
+    sovrascrivere la prima provenienza.
+    """
+    metadata = dict(metadata or {})
+    occurrence = {"source": source, "sha256": digest}
+    for field in _SOURCE_OCCURRENCE_FIELDS:
+        if metadata.get(field) not in (None, ""):
+            occurrence[field] = metadata[field]
+    source_path = metadata.get("source_path") or metadata.get("drive_path")
+    if source_path not in (None, ""):
+        occurrence["source_path"] = source_path
+    return occurrence
+
+
 def _layout_word(box, text: str) -> dict[str, Any]:
     return {
         "x0": round(float(box[0]), 2),
@@ -190,15 +215,7 @@ class FiscalDocumentIngestionService:
                 refreshed = True
                 await self._estrai_quadri(existing_version["document_id"])
             source_metadata = dict(source_metadata or {})
-            source_occurrence = {
-                "source": source,
-                "drive_file_id": source_metadata.get("drive_file_id"),
-                "drive_document_id": source_metadata.get("drive_document_id"),
-                "drive_parent_id": source_metadata.get("drive_parent_id"),
-                "source_path": source_metadata.get("source_path") or source_metadata.get("drive_path"),
-                "sha256": digest,
-            }
-            source_occurrence = {k: v for k, v in source_occurrence.items() if v not in (None, "")}
+            source_occurrence = _source_occurrence(source, source_metadata, digest)
             await self.db[COLL_FISCAL_DOCUMENTS].update_one(
                 {"company_id": self.company_id, "id": existing_version["document_id"]},
                 {"$addToSet": {"source_occurrences": source_occurrence}, "$set": {"updated_at": utc_now()}},
@@ -289,16 +306,7 @@ class FiscalDocumentIngestionService:
             "current_version_id": version_id,
             "source": source,
             "source_metadata": source_metadata,
-            "source_occurrences": [{
-                k: v for k, v in {
-                    "source": source,
-                    "drive_file_id": source_metadata.get("drive_file_id"),
-                    "drive_document_id": source_metadata.get("drive_document_id"),
-                    "drive_parent_id": source_metadata.get("drive_parent_id"),
-                    "source_path": source_metadata.get("source_path") or source_metadata.get("drive_path"),
-                    "sha256": digest,
-                }.items() if v not in (None, "")
-            }],
+            "source_occurrences": [_source_occurrence(source, source_metadata, digest)],
             "updated_at": now,
             "created_at": now,
             "review_status": "TO_VERIFY" if classification["requires_review"] else "CLASSIFIED",

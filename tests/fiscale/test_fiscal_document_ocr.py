@@ -16,6 +16,23 @@ def _blank_pdf() -> bytes:
     return content
 
 
+def test_occorrenza_documento_fiscale_conserva_la_provenienza_email():
+    occurrence = ingestion._source_occurrence("posta", {
+        "email_account": "archivio@example.it",
+        "email_from": "mittente@example.it",
+        "email_to": "destinatario@example.it",
+        "email_subject": "Piano rateale",
+        "email_date": "2026-10-01",
+        "email_message_id": "<messaggio@example.it>",
+    }, "a" * 64)
+
+    assert occurrence["email_account"] == "archivio@example.it"
+    assert occurrence["email_from"] == "mittente@example.it"
+    assert occurrence["email_to"] == "destinatario@example.it"
+    assert occurrence["email_subject"] == "Piano rateale"
+    assert occurrence["email_message_id"] == "<messaggio@example.it>"
+
+
 def test_pagina_fiscale_raster_usa_ocr_locale_con_confidenza(monkeypatch):
     import contextlib
 
