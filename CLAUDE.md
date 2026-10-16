@@ -2,7 +2,7 @@
 
 <!-- gestionalecloud-doc
 status: current
-reviewed_at: 2026-10-06
+reviewed_at: 2026-10-16
 storage_architecture: supabase
 consolidated_source: single-claude-md
 -->
@@ -83,6 +83,22 @@ Se codice e questo file non concordano:
 - correggere il codice se viola una regola;
 - correggere questo file se descrive uno stato non più vero;
 - fare entrambe le modifiche nello stesso intervento quando necessario.
+
+**Mappa architetturale viva.** In questa postazione la descrizione leggibile e il
+diagramma interattivo sono conservati rispettivamente in
+`C:\Users\ceral\Documents\ChatGPT\architettura\MAPPA_GESTIONALE_CLOUD.md` e
+`C:\Users\ceral\Documents\ChatGPT\architettura\gestionalecloud-flussi-pagine-database.html`.
+Ogni intervento che aggiunge, elimina o rinomina una pagina o una rotta, cambia
+la navigazione, modifica un endpoint usato dall'interfaccia, introduce o
+sostituisce una tabella, collezione, archivio, RPC oppure cambia un flusso tra
+ERP, HR, Lotti, Menu e Convenzioni deve aggiornare entrambi i file nello stesso
+intervento. La mappa deve indicare data e commit sorgente, collegare ogni pagina
+agli archivi realmente letti o scritti e mostrare i passaggi verso le altre
+pagine. Prima dell'aggiornamento confrontare il checkout con `origin/main` e
+ricavare i collegamenti dal codice corrente; non inventare relazioni. Dichiarare
+un comportamento come attivo in produzione soltanto dopo aver verificato il
+`deploy_commit`. Il diagramma HTML deve restare autonomo e apribile senza
+dipendenze esterne.
 
 Non creare altri documenti permanenti di stato, audit, roadmap o memoria.
 
