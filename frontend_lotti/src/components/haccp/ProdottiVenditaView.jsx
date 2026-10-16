@@ -195,7 +195,11 @@ export default function ProdottiVenditaView({ defaultTab = "acquaviva" }) {
     requestAnimationFrame(() => window.scrollTo(0, scrollPosRef.current));
   }, []);
 
-  useEffect(() => { if (paginaTab === "miei") load(); }, [load, paginaTab]);
+  // I contatori in testata sono condivisi da tutte le schede catalogo.
+  // Caricali anche quando si entra direttamente in MEPA/SAIMA: altrimenti,
+  // dopo un refresh, "Miei Prodotti" e "Imposta Prezzi" mostrano 0 fino a
+  // quando l'utente apre manualmente la scheda "Miei Prodotti".
+  useEffect(() => { load(); }, [load]);
 
   const syncFatture = async () => {
     try {

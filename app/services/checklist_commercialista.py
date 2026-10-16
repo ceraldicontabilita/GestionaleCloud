@@ -15,9 +15,13 @@ file non crea associazioni contabili e non prova pagamenti.
 from __future__ import annotations
 
 import asyncio
+import logging
 import re
 from datetime import datetime, timezone
 from typing import Any, Iterable
+
+
+logger = logging.getLogger(__name__)
 
 
 ESISTENTE = "dato_esistente"
@@ -146,7 +150,10 @@ async def genera_checklist(db, anno: int, *, dal: str, al: str) -> dict[str, Any
                 "percorso_categoria": [record.get("drive_path")],
             })
     except Exception:
-        pass
+        logger.warning(
+            "Indice documentale Drive non disponibile: la checklist usa solo il registro operativo",
+            exc_info=True,
+        )
 
     counts = dict(zip(
         (
