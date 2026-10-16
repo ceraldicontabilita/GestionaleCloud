@@ -652,20 +652,20 @@ function ElenchiFiscali() {
                 <div style={{ marginTop: 4, color: '#5f5c55' }}>File sorgente: {plan.source_provenance?.source_filename || plan.source_filename || 'non disponibile'}</div>
               </div>
               <div style={{ marginTop: 8, padding: '8px 10px', borderRadius: 7, background: (plan.payment_modules || []).length ? '#eff6ff' : '#fff7ed', border: `1px solid ${(plan.payment_modules || []).length ? '#93c5fd' : '#fdba74'}` }}>
-                <strong>F24 del piano</strong>
+                <strong>Moduli di pagamento del piano (RAV/pagoPA)</strong>
                 {(plan.payment_modules || []).length === 0 && <div style={{ marginTop: 4, color: '#9a3412' }}>
-                  Nessun modulo F24 con riferimento esatto {plan.plan_reference} trovato. Nessun abbinamento viene creato per solo importo o data.
+                  Nessun modulo di pagamento con riferimento esatto {plan.plan_reference} trovato. Nessun abbinamento viene creato per solo importo o data.
                 </div>}
                 {(plan.payment_modules || []).map(module => <div key={module.id || module.source_document_id} style={{ marginTop: 7, color: '#1e3a5f' }}>
                   <strong>Collegamento verificato sul riferimento {plan.plan_reference}</strong> · modulo {module.document_number || module.source_filename || 'senza numero leggibile'}.
-                  <div>{(module.installments || []).map(rate => `${rate.number}ª rata · ${rate.due_date} · ${euro(rate.amount)}`).join(' · ') || 'Rate non leggibili nel modulo'}.</div>
+                  <div>{(module.installments || []).map(rate => `${rate.number}ª rata · ${rate.due_date} · ${euro(rate.amount)}${rate.payment_module_code ? ` · codice modulo ${rate.payment_module_code}` : ' · codice modulo non leggibile'}`).join(' · ') || 'Rate non leggibili nel modulo'}.</div>
                   {(module.source_provenance?.email_sources || []).map((source, index) => <div key={`${source.email_message_id || source.email_from || 'email-f24'}-${index}`}>
                     {source.email_account && <>Casella email F24: <strong>{source.email_account}</strong>. </>}
                     {source.email_from && <>Mittente F24: <strong>{source.email_from}</strong>.</>}
                   </div>)}
-                  {module.source_provenance?.status === 'NOT_RECORDED' && <div>Email del modulo F24 non registrata nei metadati dell’originale.</div>}
-                  <div>Questo F24 predisposto non prova il pagamento della rata.</div>
-                  {module.source_document_id && <Button size="sm" variant="secondary" style={{ marginTop: 6 }} onClick={() => openDocument(module.source_document_id)}>Apri F24 del piano</Button>}
+                  {module.source_provenance?.status === 'NOT_RECORDED' && <div>Email del modulo non registrata nei metadati dell’originale.</div>}
+                  <div>Questo modulo predisposto non prova il pagamento della rata.</div>
+                  {module.source_document_id && <Button size="sm" variant="secondary" style={{ marginTop: 6 }} onClick={() => openDocument(module.source_document_id)}>Apri modulo del piano</Button>}
                 </div>)}
               </div>
               <details style={{ marginTop: 8 }}>

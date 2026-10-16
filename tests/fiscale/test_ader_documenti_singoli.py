@@ -309,11 +309,19 @@ def test_modulo_f24_singolo_si_collega_solo_al_riferimento_esatto_del_piano(monk
     modulo = (
         "AGENZIA DELLE ENTRATE-RISCOSSIONE DOCUMENTO N. 07198308127062530701 "
         "ISTANZA DI RATEIZZAZIONE N. AR071 - 904285 "
-        "1° RATA entro il 13/10/2025 Euro 644,11"
+        "1° RATA entro il 13/10/2025 Euro 644,11 "
+        "Codice modulo di pagamento 180071115560088852"
     )
     modulo_altro = modulo.replace("AR071 - 904285", "AR071 - 999999")
 
     async def scenario():
+        # La ricevuta puo' precedere sia il RAV sia l'accoglimento: deve essere
+        # ripresa quando il riferimento completo diventa disponibile.
+        await db["ricevute_pagopa"].insert_one({
+            "id": "ricevuta-rata-1", "document_kind": "RICEVUTA_CBILL",
+            "identificativo_bolletta": "180071115560088852",
+            "importo": 644.11, "data_pagamento": "2025-10-13",
+        })
         # Il modulo puo' arrivare prima della lettera: resta registrato senza
         # essere forzato su un piano simile per data o importo.
         prima = await ader.archivia_documento_ader(
@@ -326,6 +334,22 @@ def test_modulo_f24_singolo_si_collega_solo_al_riferimento_esatto_del_piano(monk
         estraneo = await ader.archivia_documento_ader(
             db, filename="F24_altro_piano.pdf", content=_pdf(modulo_altro), testo=modulo_altro,
         )
+        # Simula il dato scritto dal vecchio parser: il reimport dello stesso
+        # originale deve arricchirlo col codice rata, non essere scartato come
+        # semplice doppione.
+        salvato = await db[COLL_TAX_RATE_PLANS].find_one(
+            {"plan_reference": "AR071904285"}, {"_id": 0},
+        )
+        legacy_module = dict(salvato["payment_modules"][0])
+        legacy_module.pop("payment_module_codes", None)
+        legacy_module.pop("payment_module_code_mapping_status", None)
+        legacy_module["installments"] = [
+            {key: value for key, value in rate.items() if key != "payment_module_code"}
+            for rate in legacy_module["installments"]
+        ]
+        await db[COLL_TAX_RATE_PLANS].update_one(
+            {"id": salvato["id"]}, {"$set": {"payment_modules": [legacy_module]}},
+        )
         duplicato = await ader.archivia_documento_ader(
             db, filename="F24_rata_1.pdf", content=_pdf(modulo), testo=modulo,
         )
@@ -333,6 +357,8 @@ def test_modulo_f24_singolo_si_collega_solo_al_riferimento_esatto_del_piano(monk
 
     prima, piano, estraneo, duplicato = asyncio.run(scenario())
     salvato = asyncio.run(db[COLL_TAX_RATE_PLANS].find_one({"plan_reference": "AR071904285"}, {"_id": 0}))
+    rata = asyncio.run(db["tax_rate_installments"].find_one({"installment_number": 1}, {"_id": 0}))
+    ricevuta = asyncio.run(db["ricevute_pagopa"].find_one({"id": "ricevuta-rata-1"}, {"_id": 0}))
 
     assert prima["tipo"] == ader.TIPO_MODULO_PAGAMENTO and prima["piani_collegati"] == 0
     assert piano["tipo"] == ader.TIPO_PIANO
@@ -342,3 +368,6 @@ def test_modulo_f24_singolo_si_collega_solo_al_riferimento_esatto_del_piano(monk
     assert salvato["payment_modules"][0]["plan_reference"] == "AR071904285"
     assert salvato["payment_modules"][0]["payment_evidence"] is False
     assert salvato["payment_modules"][0]["source_document_id"]
+    assert salvato["payment_modules"][0]["installments"][0]["payment_module_code"] == "180071115560088852"
+    assert rata["status"] == "PAID_DOCUMENTED" and rata["installment_number"] == 1
+    assert ricevuta["fiscal_target_id"] == rata["id"]

@@ -448,7 +448,7 @@ describe('Situazione fiscale a pagine di 200 documenti', () => {
     expect(rate[1]).toHaveAttribute('data-stato', 'attesa');
     expect(rate[1]).toHaveTextContent('Rata 2: attesa, nessuna prova di pagamento');
     expect(rate[1]).not.toHaveTextContent('documentato');
-    expect(screen.getByText(/Nessun modulo F24 con riferimento esatto AR071904285 trovato/)).toBeInTheDocument();
+    expect(screen.getByText(/Nessun modulo di pagamento con riferimento esatto AR071904285 trovato/)).toBeInTheDocument();
     expect(screen.getByText(/Nessun abbinamento viene creato per solo importo o data/)).toBeInTheDocument();
   });
 
@@ -471,7 +471,7 @@ describe('Situazione fiscale a pagine di 200 documenti', () => {
             },
             payment_modules: [{
               id: 'm1', document_number: '07198308127062530701', source_document_id: 'doc-f24',
-              installments: [{ number: 1, due_date: '2025-10-13', amount: 1272.66 }],
+              installments: [{ number: 1, due_date: '2025-10-13', amount: 1272.66, payment_module_code: '180071115560088852' }],
               payment_evidence: false, link_basis: 'EXACT_PLAN_REFERENCE',
             }],
             related_claims: [{
@@ -489,9 +489,10 @@ describe('Situazione fiscale a pagine di 200 documenti', () => {
 
     expect(await screen.findByText(/Casella email:/)).toHaveTextContent('fiscale@example.it');
     expect(screen.getByText(/Collegamento verificato sul riferimento AR071904285/)).toBeInTheDocument();
-    expect(screen.getByText(/Questo F24 predisposto non prova il pagamento/)).toBeInTheDocument();
+    expect(screen.getByText(/codice modulo 180071115560088852/)).toBeInTheDocument();
+    expect(screen.getByText(/Questo modulo predisposto non prova il pagamento/)).toBeInTheDocument();
     expect(screen.getByText(/Codice/)).toHaveTextContent('380A');
-    expect(screen.getByRole('button', { name: 'Apri F24 del piano' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Apri modulo del piano' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Apri dettaglio tributi' })).toBeInTheDocument();
   });
 });

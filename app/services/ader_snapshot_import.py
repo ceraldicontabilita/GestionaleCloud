@@ -487,6 +487,25 @@ def parse_payment_module(*, content: bytes, filename: str, company_id: str,
         }
         if item not in installments:
             installments.append(item)
+
+    # Il RAV AdeR assegna un codice univoco a ciascuna rata. Nei PDF multipagina
+    # lo stesso codice puo' comparire piu volte (bollettino e istruzioni): si
+    # conserva quindi l'ordine della prima occorrenza. Il collegamento posizione
+    # per posizione viene accettato solo quando il numero dei codici coincide
+    # esattamente con quello delle rate lette; in caso contrario non si inventa
+    # alcuna associazione.
+    payment_module_codes = list(dict.fromkeys(
+        re.sub(r"\D", "", match.group(1))
+        for match in re.finditer(
+            r"Codice\s+modulo\s+di\s+pagamento\s*((?:\d[\s-]?){18})",
+            text,
+            re.IGNORECASE,
+        )
+    ))
+    codes_mapped = bool(installments) and len(payment_module_codes) == len(installments)
+    if codes_mapped:
+        for installment, payment_module_code in zip(installments, payment_module_codes):
+            installment["payment_module_code"] = payment_module_code
     return {
         "id": stable_id("aderpaymentmodule", company_id, filename, dataset_sha256),
         "company_id": company_id,
@@ -494,6 +513,8 @@ def parse_payment_module(*, content: bytes, filename: str, company_id: str,
         "plan_reference": plan_reference,
         "installment_numbers": [item["number"] for item in installments],
         "installments": installments,
+        "payment_module_codes": payment_module_codes,
+        "payment_module_code_mapping_status": "EXACT_ORDER" if codes_mapped else "UNRESOLVED",
         "source_filename": filename,
         "source_document_id": stable_id("aderpdf", dataset_sha256, filename),
         "payment_evidence": False,
@@ -709,7 +730,7 @@ async def apply_ader_archive_plan(*, db, plan: dict[str, Any], actor: str | None
 
     def merge_modules(*groups: list[dict[str, Any]]) -> list[dict[str, Any]]:
         merged: list[dict[str, Any]] = []
-        seen: set[tuple[Any, ...]] = set()
+        positions: dict[tuple[Any, ...], int] = {}
         for group in groups:
             for module in group or []:
                 key = (("document_number", module.get("document_number"),
@@ -717,10 +738,36 @@ async def apply_ader_archive_plan(*, db, plan: dict[str, Any], actor: str | None
                        if module.get("document_number") else
                        ("source_document", module.get("source_document_id"),
                         tuple(module.get("installment_numbers") or [])))
-                if key in seen:
+                if key in positions:
+                    # Un modulo gia' registrato da una versione precedente del
+                    # parser puo' non avere i codici delle singole rate. Una
+                    # nuova lettura dello stesso documento arricchisce quella
+                    # entita', senza crearne una seconda e senza cancellare i
+                    # campi gia' verificati.
+                    position = positions[key]
+                    previous = merged[position]
+                    enriched = dict(previous)
+                    for field, value in module.items():
+                        if field != "installments" and value not in (None, "", [], {}):
+                            enriched[field] = value
+                    previous_rates = {
+                        item.get("number"): dict(item)
+                        for item in previous.get("installments") or []
+                        if item.get("number") is not None
+                    }
+                    enriched_rates: list[dict[str, Any]] = []
+                    for item in module.get("installments") or []:
+                        rate = previous_rates.pop(item.get("number"), {})
+                        rate.update({field: value for field, value in item.items()
+                                     if value not in (None, "", [], {})})
+                        enriched_rates.append(rate)
+                    enriched_rates.extend(previous_rates.values())
+                    if enriched_rates:
+                        enriched["installments"] = enriched_rates
+                    merged[position] = enriched
                     continue
-                seen.add(key)
-                merged.append(module)
+                positions[key] = len(merged)
+                merged.append(dict(module))
         return merged
 
     inserted_plans = 0
@@ -798,6 +845,32 @@ async def apply_ader_archive_plan(*, db, plan: dict[str, Any], actor: str | None
                 source_filename=module["source_filename"], relation_type="payment_module",
             )
             linked_payment_modules += 1
+
+    # Le ricevute possono essere gia' in archivio quando arriva il modulo RAV
+    # (o quando arriva, per ultimo, l'accoglimento). Riprova soltanto i codici
+    # univoci stampati sulle rate: la routine di riconciliazione richiede poi
+    # anche l'importo esatto e lascia ambigui i casi non dimostrabili.
+    references_to_reconcile = {
+        reference for reference in modules_by_plan if reference
+    } | {
+        item.get("plan_reference") for item in plan["rate_plans"] if item.get("plan_reference")
+    }
+    modules_to_reconcile: list[dict[str, Any]] = []
+    for reference in references_to_reconcile:
+        stored_plan = await db[COLL_TAX_RATE_PLANS].find_one(
+            {"company_id": plan["company_id"], "plan_reference": reference},
+            {"_id": 0, "payment_modules": 1},
+        )
+        modules_to_reconcile.extend((stored_plan or {}).get("payment_modules") or [])
+    receipt_reconciliation = {"examined": 0, "matched": 0, "receipt_ids": []}
+    if modules_to_reconcile:
+        from app.services.fiscal_payment_reconciliation import (
+            reconcile_existing_receipts_for_payment_modules,
+        )
+
+        receipt_reconciliation = await reconcile_existing_receipts_for_payment_modules(
+            db, company_id=plan["company_id"], payment_modules=modules_to_reconcile,
+        )
     archive_record = {key: value for key, value in plan.items()
                       if key not in {"analytics", "rate_plans", "settlements", "pdfs", "payment_modules"}}
     archive_record.update({"created_at": now, "created_by": actor})
@@ -813,6 +886,7 @@ async def apply_ader_archive_plan(*, db, plan: dict[str, Any], actor: str | None
             "existing_rate_plans": len(plan["rate_plans"]) - inserted_plans,
             "linked_payment_modules": linked_payment_modules,
             "unlinked_payment_modules": len(plan["payment_modules"]) - linked_payment_modules,
+            "reconciled_existing_receipts": receipt_reconciliation["matched"],
             "analytic_count": len(plan["analytics"]), "pdf_count": len(plan["pdfs"]),
             "documents": {name: {k: ref.get(k) for k in ("document_id", "version_id", "status")}
                           for name, ref in document_refs.items()}}
@@ -1245,7 +1319,7 @@ async def archivia_documento_ader(db, *, filename: str, content: bytes, testo: s
         modulo = plan["payment_modules"][0]
         collegato = bool(esito.get("linked_payment_modules"))
         risultato["message"] = (
-            f"Modulo F24 AdeR del piano {modulo['plan_reference']} archiviato: "
+            f"Modulo di pagamento AdeR (RAV/pagoPA) del piano {modulo['plan_reference']} archiviato: "
             + ("collegamento verificato sul riferimento del piano" if collegato
                else "piano non ancora presente; collegamento lasciato in attesa")
             + ". Il modulo predisposto non prova il pagamento."
