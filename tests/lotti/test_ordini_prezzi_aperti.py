@@ -169,9 +169,12 @@ def test_recupero_bozza_nel_carrello_e_annullamento_conservano_lo_storico(monkey
         monkeypatch.setattr(ordini, "db", database)
         await database.ordini_fornitori.insert_one({"id": "o1", "stato": "bozza", "prodotti": [
             {"prodotto_id": "cat_saima-N031", "nome": "Crema", "fornitore": "SAIMA",
+             "codice_articolo": "SAIMA N031", "codici": ["SAIMA N031"],
              "quantita": 2, "unita": "13 KG", "prezzo_ultimo": 53.43, "iva_pct": 10}]})
         recuperato = await ordini.riporta_ordine_al_carrello("o1", _admin=True)
         assert recuperato["righe"][0]["id"] == "saima-N031"
+        assert recuperato["righe"][0]["codice_articolo"] == "SAIMA N031"
+        assert recuperato["righe"][0]["codici"] == ["SAIMA N031"]
         assert (await database.ordini_fornitori.find_one({"id": "o1"}))["stato"] == "in_modifica"
         await ordini.elimina_ordine("o1", _admin=True)
         assert (await database.ordini_fornitori.find_one({"id": "o1"}))["stato"] == "annullato"

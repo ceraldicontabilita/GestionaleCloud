@@ -1,9 +1,11 @@
 import asyncio
+import io
 import os
 
 import pytest
 from fastapi import HTTPException
 from mongomock_motor import AsyncMongoMockClient
+from pypdf import PdfReader
 
 os.environ.setdefault("AUTH_SECRET", "test-secret-non-usare-in-prod")
 os.environ.setdefault("MONGO_URL", "mongodb://localhost:27017")
@@ -20,6 +22,20 @@ def run(coro):
         return loop.run_until_complete(coro)
     finally:
         loop.close()
+
+
+def test_pdf_ordine_mostra_codice_articolo_senza_inventarlo():
+    pdf = email_ordini.genera_pdf_ordine_fornitore(
+        {"id": "abcdef12", "data_ordine": "2026-10-16"},
+        "SAIMA S.p.a.",
+        [
+            {"nome": "Farina", "codice_articolo": "ELEN004", "quantita": 1, "unita": "kg"},
+            {"nome": "Prodotto senza codice", "quantita": 2, "unita": "pz"},
+        ],
+    )
+    testo = "\n".join(page.extract_text() or "" for page in PdfReader(io.BytesIO(pdf)).pages)
+    assert "COD: ELEN004" in testo
+    assert "COD: cat_" not in testo
 
 
 def test_conferma_non_segna_inviato_e_invio_registra_canale_e_destinatario(monkeypatch):
