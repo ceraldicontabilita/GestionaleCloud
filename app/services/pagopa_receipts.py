@@ -1631,7 +1631,10 @@ async def import_receipt(
         await segna_ricevuta_senza_verbale(db, receipt, verbale_match)
 
     from app.services.fiscal_evidence import register_document
-    from app.services.fiscal_payment_reconciliation import reconcile_fiscal_payment
+    from app.services.fiscal_payment_reconciliation import (
+        reconcile_direct_collection_receipt,
+        reconcile_fiscal_payment,
+    )
 
     document = await register_document(
         db, company_id=company_id, content=content, filename=filename, source=source,
@@ -1652,17 +1655,29 @@ async def import_receipt(
         source_type=source_type,
         source_id=receipt_id, document_id=document.get("document_id"), version_id=document.get("id"),
     )
-    if fiscal_match.get("matched"):
+    direct_collection_match = await reconcile_direct_collection_receipt(
+        db, company_id=company_id,
+        payment={**receipt, "amount": amount, "payment_date": receipt.get("data_pagamento")},
+        source_type=source_type,
+        source_id=receipt_id, document_id=document.get("document_id"), version_id=document.get("id"),
+    )
+    effective_fiscal_match = fiscal_match if fiscal_match.get("matched") else direct_collection_match
+    if effective_fiscal_match.get("matched"):
+        linked_claim_ids = list(dict.fromkeys([
+            *(receipt.get("cartelle_collegate") or []),
+            *(effective_fiscal_match.get("linked_claim_ids") or []),
+        ]))
         patch = {
-            "fiscal_payment_id": fiscal_match["payment_id"],
-            "fiscal_target_id": fiscal_match["target_id"],
-            "fiscal_target_type": fiscal_match["target_type"],
-            "cartelle_collegate": fiscal_match["linked_claim_ids"],
-            "riconciliazione_fiscale": fiscal_match,
+            "fiscal_payment_id": effective_fiscal_match["payment_id"],
+            "fiscal_target_id": effective_fiscal_match.get("target_id"),
+            "fiscal_target_type": effective_fiscal_match["target_type"],
+            "cartelle_collegate": linked_claim_ids,
+            "riconciliazione_fiscale": effective_fiscal_match,
             "stato": "associata",
         }
         receipt.update(patch)
         await db[COLLECTION_RICEVUTE].update_one({"id": receipt_id}, {"$set": patch})
     return {"success": True, "duplicate": duplicate, "duplicate_motivo": "stesso_iuv_importo_data" if duplicate else None, "receipt": receipt,
-            "riconciliazione_fiscale": fiscal_match,
+            "riconciliazione_fiscale": effective_fiscal_match,
+            "riconciliazioni_fiscali": [match for match in (fiscal_match, direct_collection_match) if match.get("matched")],
             "riconciliazione_verbale": verbale_match}
