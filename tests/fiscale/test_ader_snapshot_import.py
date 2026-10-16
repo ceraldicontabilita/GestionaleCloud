@@ -118,7 +118,8 @@ def test_payment_module_rejoins_split_plan_reference(monkeypatch):
     monkeypatch.setattr(ader, "_pdf_text", lambda _content: (
         "DOCUMENTO N. 07198308127062530701 "
         "ISTANZA DI RATEIZZAZIONE N. AR071 - 812706 "
-        "18 RATA entro il 17/05/2026 Euro 781,60"
+        "18 RATA entro il 17/05/2026 Euro 781,60 "
+        "Codice modulo di pagamento 180071110618697515"
     ))
     module = ader.parse_payment_module(
         content=b"pdf",
@@ -128,6 +129,41 @@ def test_payment_module_rejoins_split_plan_reference(monkeypatch):
     )
     assert module["plan_reference"] == "AR071812706"
     assert module["installment_numbers"] == [18]
+    assert module["installments"][0]["payment_module_code"] == "180071110618697515"
+    assert module["payment_module_code_mapping_status"] == "EXACT_ORDER"
+
+
+def test_payment_module_maps_each_unique_code_to_its_rate_and_fails_closed_on_mismatch(monkeypatch):
+    monkeypatch.setattr(ader, "_pdf_text", lambda _content: (
+        "DOCUMENTO N. 07198309042852527402 "
+        "ISTANZA DI RATEIZZAZIONE N. AR071 - 904285 "
+        "1 RATA entro il 13/10/2025 Euro 1.272,66 "
+        "Codice modulo di pagamento 180071115560088852 "
+        "Codice modulo di pagamento 180071115560088852 "
+        "2 RATA entro il 13/11/2025 Euro 1.253,79 "
+        "Codice modulo di pagamento 180071115560089862"
+    ))
+    module = ader.parse_payment_module(
+        content=b"pdf", filename="RAV_AR071904285_DA_1_A_2.pdf",
+        company_id=COMPANY, dataset_sha256=DATASET_SHA,
+    )
+    assert module["payment_module_codes"] == ["180071115560088852", "180071115560089862"]
+    assert [rate["payment_module_code"] for rate in module["installments"]] == [
+        "180071115560088852", "180071115560089862",
+    ]
+
+    monkeypatch.setattr(ader, "_pdf_text", lambda _content: (
+        "ISTANZA DI RATEIZZAZIONE N. AR071904285 "
+        "1 RATA entro il 13/10/2025 Euro 1.272,66 "
+        "2 RATA entro il 13/11/2025 Euro 1.253,79 "
+        "Codice modulo di pagamento 180071115560088852"
+    ))
+    unresolved = ader.parse_payment_module(
+        content=b"pdf", filename="incompleto.pdf", company_id=COMPANY,
+        dataset_sha256=DATASET_SHA,
+    )
+    assert unresolved["payment_module_code_mapping_status"] == "UNRESOLVED"
+    assert all("payment_module_code" not in rate for rate in unresolved["installments"])
 
 
 def test_unsafe_zip_member_is_rejected():

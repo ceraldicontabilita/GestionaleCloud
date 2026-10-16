@@ -49,6 +49,34 @@ def test_match_rata_ader_richiede_codice_forte_e_importo_esatto():
     )["matched"] is False
 
 
+def test_codice_modulo_della_singola_rata_distingue_importi_uguali():
+    plan = _plan()
+    plan["payment_modules"] = [{
+        "document_number": "07198309042852527402",
+        "installments": [
+            {"number": 4, "amount": "1260.09", "payment_module_code": "180071115560091983"},
+            {"number": 5, "amount": "1260.09", "payment_module_code": "180071115560092791"},
+            {"number": 6, "amount": "1260.09", "payment_module_code": "180071115560093506"},
+        ],
+    }]
+    result = find_ader_payment_target(
+        payment={"identificativo_bolletta": "180071115560092791", "importo": "1260.09"},
+        rate_plans=[plan], settlements=[],
+    )
+    assert result["matched"] is True
+    assert result["installment_number"] == 5
+    assert result["matched_identifier"] == "180071115560092791"
+
+    # Stesso importo e solo numero generale del documento: tre bersagli possibili,
+    # quindi nessuna associazione automatica.
+    ambiguous = find_ader_payment_target(
+        payment={"document_number": "07198309042852527402", "importo": "1260.09"},
+        rate_plans=[plan], settlements=[],
+    )
+    assert ambiguous["matched"] is False
+    assert ambiguous["reason"] == "bersagli_ader_ambigui"
+
+
 def test_pagamento_cbill_collega_rata_e_cartelle_senza_duplicare_importo():
     async def scenario():
         db = ClientArchivioMemoria()["fiscal-payment-test"]

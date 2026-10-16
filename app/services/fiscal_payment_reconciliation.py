@@ -75,25 +75,26 @@ def find_ader_payment_target(
                 _identifier(module.get(field))
                 for field in ("document_number", "payment_module_code", "iuv", "cbill_code")
             } - {""}
-            if not identifiers.intersection(module_ids):
-                continue
-            installments = [
-                item for item in (module.get("installments") or [])
-                if _money(item.get("amount")) == amount
-            ]
-            if len(installments) != 1:
-                continue
-            installment = installments[0]
-            candidates.append({
-                "target_type": "rate_installment",
-                "plan_id": plan.get("id"),
-                "plan_reference": plan.get("plan_reference"),
-                "installment_number": installment.get("number"),
-                "installment_due_date": installment.get("due_date"),
-                "amount": str(amount),
-                "claim_numbers": _claim_numbers(plan),
-                "matched_identifier": sorted(identifiers.intersection(module_ids))[0],
-            })
+            for installment in module.get("installments") or []:
+                if _money(installment.get("amount")) != amount:
+                    continue
+                installment_ids = {
+                    _identifier(installment.get(field))
+                    for field in ("payment_module_code", "iuv", "cbill_code", "code")
+                } - {""}
+                matched_ids = identifiers.intersection(module_ids | installment_ids)
+                if not matched_ids:
+                    continue
+                candidates.append({
+                    "target_type": "rate_installment",
+                    "plan_id": plan.get("id"),
+                    "plan_reference": plan.get("plan_reference"),
+                    "installment_number": installment.get("number"),
+                    "installment_due_date": installment.get("due_date"),
+                    "amount": str(amount),
+                    "claim_numbers": _claim_numbers(plan),
+                    "matched_identifier": sorted(matched_ids)[0],
+                })
 
     for settlement in settlements:
         settlement_ids = {
@@ -279,4 +280,86 @@ async def reconcile_fiscal_payment(
         **target, "payment_id": payment_id, "allocation_id": allocation_id,
         "target_id": target_id, "linked_claim_ids": linked_claim_ids,
         "bank_verified": payment_record["bank_verified"],
+    }
+
+
+async def reconcile_existing_receipts_for_payment_modules(
+    db, *, company_id: str, payment_modules: Iterable[dict[str, Any]],
+) -> dict[str, Any]:
+    """Riprova le ricevute arrivate prima del RAV, solo per codice esatto.
+
+    L'import del modulo puo' avvenire mesi dopo quello delle ricevute.  Si
+    interroga il deposito esclusivamente con i codici stampati sulle singole
+    rate e la riconciliazione continua a richiedere anche l'importo esatto.
+    """
+    module_codes = {
+        _identifier(installment.get(field))
+        for module in payment_modules
+        for installment in (module.get("installments") or [])
+        for field in ("payment_module_code", "iuv", "cbill_code", "code")
+        if _identifier(installment.get(field))
+    }
+    if not module_codes:
+        return {"examined": 0, "matched": 0, "receipt_ids": []}
+
+    identifier_fields = (
+        "identificativo_bolletta", "iuv", "codice_cbill", "cbill_code", "payment_module_code",
+    )
+    receipts = await db["ricevute_pagopa"].find(
+        {
+            "duplicate_of": {"$exists": False},
+            "$or": [{field: {"$in": sorted(module_codes)}} for field in identifier_fields],
+        },
+        {"_id": 0, "pdf_data": 0},
+    ).to_list(500)
+
+    matched_receipt_ids: list[str] = []
+    for receipt in receipts:
+        source_id = receipt.get("id")
+        if not source_id:
+            continue
+        document_sources = receipt.get("document_sources") or []
+        source_document = next((item for item in document_sources if isinstance(item, dict)), {})
+        source_type = {
+            "RICEVUTA_CBILL": "RICEVUTA_CBILL",
+            "RICEVUTA_MAV": "RICEVUTA_MAV",
+            "RICEVUTA_RAV": "RICEVUTA_RAV",
+            "RICEVUTA_BOLLETTINO_POSTALE": "RICEVUTA_BOLLETTINO_POSTALE",
+        }.get(receipt.get("document_kind"), "RICEVUTA_PAGOPA")
+        match = await reconcile_fiscal_payment(
+            db,
+            company_id=company_id,
+            payment={
+                **receipt,
+                "amount": receipt.get("importo"),
+                "payment_date": receipt.get("data_pagamento"),
+                "bank_verified": bool(receipt.get("movimento_id")),
+            },
+            source_type=source_type,
+            source_id=source_id,
+            document_id=(
+                receipt.get("fiscal_document_id") or receipt.get("document_id")
+                or source_document.get("document_id")
+            ),
+            version_id=(
+                receipt.get("fiscal_version_id") or receipt.get("version_id")
+                or source_document.get("version_id")
+            ),
+        )
+        if not match.get("matched"):
+            continue
+        patch = {
+            "fiscal_payment_id": match["payment_id"],
+            "fiscal_target_id": match["target_id"],
+            "fiscal_target_type": match["target_type"],
+            "cartelle_collegate": match["linked_claim_ids"],
+            "riconciliazione_fiscale": match,
+        }
+        await db["ricevute_pagopa"].update_one({"id": source_id}, {"$set": patch})
+        matched_receipt_ids.append(source_id)
+
+    return {
+        "examined": len(receipts),
+        "matched": len(matched_receipt_ids),
+        "receipt_ids": matched_receipt_ids,
     }
