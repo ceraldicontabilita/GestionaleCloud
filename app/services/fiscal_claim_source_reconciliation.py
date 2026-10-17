@@ -21,6 +21,7 @@ from typing import Any, Iterable
 
 from app.db_collections import (
     COLL_DOCUMENTS_INBOX,
+    COLL_F24,
     COLL_QUIETANZE_F24,
     COLL_TAX_COLLECTION_CLAIMS,
 )
@@ -161,6 +162,48 @@ def match_quietanza_for_obligation(
     return list(matches.values())
 
 
+def match_f24_models_for_obligation(
+    obligation: dict[str, Any], models: Iterable[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Collega il modello esatto, senza trasformarlo in prova di pagamento.
+
+    Si applicano gli stessi vincoli della quietanza (identita' contributiva,
+    periodo e importo al centesimo). La presenza del modello spiega quale F24
+    si riferisce alla riga dell'avviso, ma ``payment_evidence`` resta sempre
+    falso: soltanto quietanza e banca possono dimostrare il versamento.
+    """
+    period = _period(obligation.get("periodo_da") or obligation.get("periodo"))
+    amount = obligation.get("importo_richiesto_cents")
+    if amount is None:
+        amount = obligation.get("importo_cents")
+    identity = _identifier(obligation.get("matricola_inps"))
+    source_code = str(obligation.get("codice_tributo") or "").upper()
+    if source_code == "8055" or not period or amount is None:
+        return []
+    allowed_codes = {"DM10", "RC01"} if source_code == "8050" else {source_code}
+    matches: dict[str, dict[str, Any]] = {}
+    for document in models:
+        for row in _quietanza_rows(document):
+            if row["tax_code"] not in allowed_codes or row["period"] != period:
+                continue
+            if row["debit_cents"] != amount:
+                continue
+            if identity and row["identity"] != identity:
+                continue
+            key = str(document.get("id") or "")
+            if not key:
+                continue
+            matches.setdefault(key, {
+                "f24_id": key,
+                "filename": document.get("filename") or document.get("file_name") or document.get("nome"),
+                "drive_file_id": document.get("drive_file_id"),
+                "matched_row": row["row"],
+                "basis": "F24_MODEL_EXACT_IDENTITY_PERIOD_AMOUNT_NO_PAYMENT_PROOF",
+                "payment_evidence": False,
+            })
+    return list(matches.values())
+
+
 async def _find_exact_verbale(db, *, numero: str, targa: str) -> tuple[str, list[dict[str, Any]]]:
     found: list[dict[str, Any]] = []
     for collection in ("verbali_noleggio", "verbali_noleggio_completi"):
@@ -219,6 +262,7 @@ async def _cartella_links(db, claim: dict[str, Any]) -> list[dict[str, Any]]:
 
 async def _notice_links(
     db, claim: dict[str, Any], quietanze: list[dict[str, Any]],
+    f24_models: list[dict[str, Any]],
 ) -> list[dict[str, Any]]:
     number = _identifier(claim.get("collection_number"))
     originals = await db[COLL_DOCUMENTS_INBOX].find(
@@ -243,6 +287,7 @@ async def _notice_links(
         for row in rows:
             obligation = {**row, "matricola_inps": matricola}
             payment_matches = match_quietanza_for_obligation(obligation, quietanze)
+            f24_model_matches = match_f24_models_for_obligation(obligation, f24_models)
             enriched.append({
                 **obligation,
                 "payment_evidence_status": (
@@ -251,6 +296,7 @@ async def _notice_links(
                     "NO_PAYMENT_EVIDENCE"
                 ),
                 "payment_matches": payment_matches,
+                "f24_model_matches": f24_model_matches,
             })
         links.append({
             "source_type": "AVVISO_ADDEBITO_INPS",
@@ -306,9 +352,20 @@ async def build_claim_source_plan(db, *, company_id: str) -> list[dict[str, Any]
         {"$or": [{"codice_fiscale": company_id}, {"dati_generali.codice_fiscale": company_id}]},
         {"_id": 0, "pdf_data": 0, "contenuto_b64": 0},
     ).to_list(10000)
+    f24_models = await db[COLL_F24].find(
+        {"$or": [
+            {"codice_fiscale": company_id},
+            {"dati_generali.codice_fiscale": company_id},
+            {"dati_generali.taxpayer_id": company_id},
+        ]},
+        {"_id": 0, "pdf_data": 0, "contenuto_b64": 0},
+    ).to_list(10000)
     plan: list[dict[str, Any]] = []
     for claim in claims:
-        links = [*(await _cartella_links(db, claim)), *(await _notice_links(db, claim, quietanze))]
+        links = [
+            *(await _cartella_links(db, claim)),
+            *(await _notice_links(db, claim, quietanze, f24_models)),
+        ]
         if not links:
             continue
         plan.append({

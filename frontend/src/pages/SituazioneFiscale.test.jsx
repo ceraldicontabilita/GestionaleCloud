@@ -602,4 +602,29 @@ describe('Situazione fiscale a pagine di 200 documenti', () => {
     expect(screen.getByText(/nessuna quietanza esatta prova il pagamento/)).toBeInTheDocument();
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
+
+  it('mostra l F24 non pagato collegato senza scambiarlo per quietanza', async () => {
+    api.get.mockImplementation(path => Promise.resolve({ data: path === '/api/fiscal/summary'
+      ? { counts: {} }
+      : path === '/api/fiscal/collections'
+        ? { items: [{
+          id: 'claim-model', collection_number: '37120240006692253000', business_status: 'PAYABLE',
+          source_reconciliation_status: 'LINKED_NO_ACTION_WITHOUT_PAYMENT_EVIDENCE',
+          source_obligation_links: [{
+            source_type: 'AVVISO_ADDEBITO_INPS', relation_status: 'CONFIRMED',
+            document_number: '37120240006692253000', tax_lines: [{
+              codice_tributo: '8050', periodo_da: '06/2024', importo_richiesto_cents: 248500,
+              payment_evidence_status: 'NO_PAYMENT_EVIDENCE', payment_matches: [],
+              f24_model_matches: [{ f24_id: 'f24-1', filename: 'F24 giugno 2024.pdf', payment_evidence: false }],
+            }],
+          }],
+        }], total: 1 }
+        : { items: [] } }));
+
+    render(<MemoryRouter initialEntries={['/situazione-fiscale/riscossione']}><SituazioneFiscale /></MemoryRouter>);
+
+    fireEvent.click(await screen.findByText('Apri dettagli cartella'));
+    expect(screen.getByText(/Modello F24 F24 giugno 2024.pdf/)).toHaveTextContent('il modello non prova il pagamento');
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
 });

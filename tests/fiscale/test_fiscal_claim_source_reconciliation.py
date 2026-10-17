@@ -2,6 +2,7 @@ import asyncio
 
 from app.db_collections import (
     COLL_DOCUMENTS_INBOX,
+    COLL_F24,
     COLL_QUIETANZE_F24,
     COLL_TAX_COLLECTION_CLAIMS,
 )
@@ -11,6 +12,7 @@ from app.services.fiscal_claim_source_reconciliation import (
     apply_claim_source_plan,
     build_claim_source_plan,
     match_quietanza_for_obligation,
+    match_f24_models_for_obligation,
     parse_inps_notice_lines,
 )
 
@@ -60,6 +62,59 @@ def test_quietanza_inps_richiede_matricola_periodo_e_importo_esatti():
     assert match_quietanza_for_obligation({**obligation, "periodo_da": "07/2024"}, [quietanza]) == []
     # Una quietanza DM10/RC01 aggregata non prova automaticamente le sanzioni 8055.
     assert match_quietanza_for_obligation({**obligation, "codice_tributo": "8055"}, [quietanza]) == []
+
+
+def test_modello_f24_esatto_si_collega_ma_non_diventa_prova_di_pagamento():
+    obligation = {
+        "codice_tributo": "8050", "periodo_da": "06/2024",
+        "matricola_inps": "5124776507", "importo_richiesto_cents": 248500,
+    }
+    model = {
+        "id": "f24-1", "filename": "F24 giugno 2024.pdf",
+        "sezione_inps": [{
+            "causale": "DM10", "matricola": "5124776507", "periodo_riferimento": "06/2024",
+            "importo_debito_cents": 248500,
+        }],
+    }
+
+    matches = match_f24_models_for_obligation(obligation, [model])
+
+    assert len(matches) == 1
+    assert matches[0]["f24_id"] == "f24-1"
+    assert matches[0]["payment_evidence"] is False
+    assert match_f24_models_for_obligation({**obligation, "importo_richiesto_cents": 248499}, [model]) == []
+
+
+def test_modello_f24_senza_quietanza_resta_non_pagato_e_non_genera_sgravio():
+    async def scenario():
+        db = ClientArchivioMemoria()["claim-source-model-only"]
+        await db[COLL_TAX_COLLECTION_CLAIMS].insert_one({
+            "id": "claim-model", "company_id": "04523831214",
+            "collection_number": "37120240006692253000", "business_status": "PAYABLE",
+        })
+        await db[COLL_DOCUMENTS_INBOX].insert_one({
+            "id": "notice-model", "tax_collection_claim_id": "claim-model",
+            "parsed_metadata": {
+                "numero_atto": "37120240006692253000", "matricola_inps": "5124776507",
+                "testo_estratto": INPS_TEXT.split("002", 1)[0],
+            },
+        })
+        await db[COLL_F24].insert_one({
+            "id": "f24-model", "dati_generali": {"codice_fiscale": "04523831214"},
+            "filename": "F24 giugno 2024.pdf", "sezione_inps": [{
+                "causale": "DM10", "matricola": "5124776507", "periodo_riferimento": "06/2024",
+                "importo_debito_cents": 248500,
+            }],
+        })
+
+        plan = await build_claim_source_plan(db, company_id="04523831214")
+        row = plan[0]["source_obligation_links"][0]["tax_lines"][0]
+
+        assert len(row["f24_model_matches"]) == 1
+        assert row["payment_evidence_status"] == "NO_PAYMENT_EVIDENCE"
+        assert plan[0]["remediation_alert"] is None
+
+    _run(scenario())
 
 
 def test_avviso_collegato_senza_quietanza_non_inventa_sgravio():
