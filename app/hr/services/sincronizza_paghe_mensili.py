@@ -109,19 +109,68 @@ def _priorita_pagamento(e: Dict[str, Any]) -> Tuple[int, int, str]:
     )
 
 
+def _prove_identita_pagamento(e: Dict[str, Any]) -> set:
+    """Identificatori condivisi che provano la stessa operazione bancaria.
+
+    L'hash del documento non basta: un estratto conto puo' contenere piu'
+    operazioni uguali. Dipendente, data e importo restano solo una chiave di
+    ricerca e non autorizzano da soli una deduplicazione.
+    """
+    prove = set()
+    for campo in ("cro", "gestionale_transfer_id", "gestionale_movimento_id"):
+        valore = str(e.get(campo) or "").strip().upper()
+        if valore:
+            prove.add((campo, valore))
+    return prove
+
+
 def deduplica_pagamenti(esiti: Iterable[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """Collassa il doppio caricamento elenco/PDF conservando la prova migliore."""
+    """Collassa fonti diverse solo se condividono la prova dell'operazione."""
     gruppi: Dict[Optional[Tuple[str, str, float]], List[Dict[str, Any]]] = defaultdict(list)
     for esito in esiti:
         gruppi[_chiave_pagamento(esito)].append(esito)
 
     risultato: List[Dict[str, Any]] = []
     for chiave, gruppo in gruppi.items():
-        origini = {_origine_pagamento(e) for e in gruppo}
-        if chiave is not None and len(origini) >= 2:
-            risultato.append(min(gruppo, key=_priorita_pagamento))
-        else:
+        if chiave is None or len(gruppo) < 2:
             risultato.extend(gruppo)
+            continue
+
+        parent = list(range(len(gruppo)))
+        prove = [_prove_identita_pagamento(e) for e in gruppo]
+        origini = [{_origine_pagamento(e)} for e in gruppo]
+
+        def find(index: int) -> int:
+            while parent[index] != index:
+                parent[index] = parent[parent[index]]
+                index = parent[index]
+            return index
+
+        def union(left: int, right: int) -> None:
+            left, right = find(left), find(right)
+            if left == right:
+                return
+            # Mantiene separate due operazioni provenienti dalla stessa fonte,
+            # anche se una terza fonte riporta un identificatore comune.
+            if origini[left] & origini[right]:
+                return
+            parent[right] = left
+            prove[left] |= prove[right]
+            origini[left] |= origini[right]
+
+        for left in range(len(gruppo)):
+            for right in range(left + 1, len(gruppo)):
+                if prove[find(left)] & prove[find(right)]:
+                    union(left, right)
+
+        componenti: Dict[int, List[Dict[str, Any]]] = defaultdict(list)
+        for index, esito in enumerate(gruppo):
+            componenti[find(index)].append(esito)
+        for componente in componenti.values():
+            if len(componente) > 1:
+                risultato.append(min(componente, key=_priorita_pagamento))
+            else:
+                risultato.extend(componente)
     return risultato
 
 
