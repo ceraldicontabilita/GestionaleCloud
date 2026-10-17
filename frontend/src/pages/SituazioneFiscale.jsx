@@ -770,15 +770,18 @@ function ElenchiFiscali() {
             : tab === 'dichiarazioni' ? `${item.document_type} · ${item.filing_year || 'anno da verificare'}`
               : (tab === 'tributi' && item.source_kind === F24_ROW) ? `${item.tax_code || 'Codice non indicato'} · ${item.description || item.section || 'Tributo F24'}`
                 : (technicalLabel.startsWith('drive-f24-row:') ? (item.description || item.tax_code || 'Tributo F24') : (technicalLabel || item.code || item.version_id || 'Record fiscale'));
-          const riscossioneOriginaleId = tab === 'riscossione'
-            ? (item.original_document_id || item.source_document_id)
+          // La fonte importata e' il documento effettivamente servibile dal visualizzatore.
+          // Alcuni original_document_id storici conservano i dati estratti ma non hanno piu'
+          // il blob; in quel caso usarli per primi aprirebbe un popup vuoto.
+          const riscossioneDocumentoId = tab === 'riscossione'
+            ? (item.source_document_id || item.original_document_id)
             : null;
           return <article key={entityId} className="fiscal-record">
-            <div className="fiscal-record-header"><strong>{tab === 'riscossione' && riscossioneOriginaleId
+            <div className="fiscal-record-header"><strong>{tab === 'riscossione' && riscossioneDocumentoId
               ? <button
                 type="button"
                 className="fiscal-record-title-button"
-                onClick={() => openDocument(riscossioneOriginaleId, `Cartella ${title}`)}
+                onClick={() => openDocument(riscossioneDocumentoId, `Cartella ${title}`)}
                 aria-label={`Apri cartella ${title}`}
               >{title}</button>
               : title}</strong>
@@ -847,10 +850,10 @@ function ElenchiFiscali() {
                 </div>)}
               </div>}
               <div className="fiscal-actions fiscal-collection-actions">
-                {riscossioneOriginaleId
-                  ? <Button size="sm" variant="secondary" onClick={() => openDocument(riscossioneOriginaleId, `Cartella ${title}`)}>Apri cartella originale</Button>
+                {riscossioneDocumentoId
+                  ? <Button size="sm" variant="secondary" onClick={() => openDocument(riscossioneDocumentoId, `Cartella ${title}`)}>Apri cartella</Button>
                   : <span className="fiscal-muted">Originale della cartella non disponibile</span>}
-                {item.source_document_id && item.source_document_id !== riscossioneOriginaleId && <Button size="sm" variant="secondary" onClick={() => openDocument(item.source_document_id, `Fonte della cartella ${title}`)}>Apri fonte importata</Button>}
+                {item.original_document_id && item.original_document_id !== riscossioneDocumentoId && <Button size="sm" variant="secondary" onClick={() => openDocument(item.original_document_id, `Originale archiviato della cartella ${title}`)}>Apri originale archiviato</Button>}
               </div>
             </details>}
             {tab === 'f24' && item.pdf_url && <Button size="sm" variant="secondary" style={{ marginTop: 8 }} onClick={() => openF24Pdf(item.pdf_url)}>Apri PDF</Button>}

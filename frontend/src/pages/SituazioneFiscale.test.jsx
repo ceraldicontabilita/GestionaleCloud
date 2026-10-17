@@ -504,12 +504,12 @@ describe('Situazione fiscale a pagine di 200 documenti', () => {
       if (path === '/api/fiscal/collections') return Promise.resolve({ data: { items: [{
         id: 'claim-1', collection_number: '07120220159367366000',
         business_status: 'PORTAL_CLOSED_PENDING_EVIDENCE',
-        original_document_id: 'doc-cartella-1', original_creditor: 'Camera di commercio',
+        source_document_id: 'doc-fonte-1', original_document_id: 'doc-cartella-1', original_creditor: 'Camera di commercio',
         original_total_cents: 4694, documentary_payment_status: 'PAID_DOCUMENTED',
         bank_payment_verified: false, payment_evidence_ids: ['ev-1'],
         original_tax_lines: [{ codice_tributo: '0961', anno: '2018', descrizione: 'Diritto annuale', importo: '31.12' }],
       }], total: 1 } });
-      if (path === '/api/originale/documento_fiscale/doc-cartella-1' && options?.responseType === 'blob') {
+      if (path === '/api/originale/documento_fiscale/doc-fonte-1' && options?.responseType === 'blob') {
         return Promise.resolve({ data: new Blob(['pdf'], { type: 'application/pdf' }), headers: { 'content-type': 'application/pdf' } });
       }
       return Promise.resolve({ data: { items: [] } });
@@ -521,11 +521,12 @@ describe('Situazione fiscale a pagine di 200 documenti', () => {
     fireEvent.click(screen.getByText('Apri dettagli cartella'));
     expect(screen.getByText('Camera di commercio')).toBeInTheDocument();
     expect(screen.getByText('0961')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Apri cartella originale' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Apri cartella' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Apri originale archiviato' })).toBeInTheDocument();
     fireEvent.click(openByNumber);
     expect(await screen.findByRole('dialog', { name: 'Cartella 07120220159367366000' })).toBeInTheDocument();
     await waitFor(() => expect(api.get).toHaveBeenCalledWith(
-      '/api/originale/documento_fiscale/doc-cartella-1',
+      '/api/originale/documento_fiscale/doc-fonte-1',
       { responseType: 'blob' },
     ));
   });
