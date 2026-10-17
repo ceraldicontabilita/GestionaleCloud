@@ -870,15 +870,23 @@ function ElenchiFiscali() {
                     Codice <strong>{row.codice_tributo || 'non leggibile'}</strong>
                     {row.periodo_da ? ` · periodo ${row.periodo_da}${row.periodo_a && row.periodo_a !== row.periodo_da ? `–${row.periodo_a}` : ''}` : row.anno ? ` · anno ${row.anno}` : ''}
                     {row.importo_richiesto_cents != null ? ` · richiesto ${euroCents(row.importo_richiesto_cents)}` : row.importo ? ` · ${euro(row.importo)}` : ''}
-                    {' · '}{row.payment_evidence_status === 'PAID_DOCUMENTED' ? 'quietanza esatta trovata' : 'nessuna quietanza esatta trovata'}
+                    {' · '}{row.payment_evidence_status === 'PAID_DOCUMENTED'
+                      ? (row.payment_matches || []).some(match => match.ravvedimento) ? 'quietanza di ravvedimento trovata' : 'quietanza esatta trovata'
+                      : 'nessuna quietanza esatta o di ravvedimento trovata'}
                     {(row.payment_matches || []).map(match => <div key={match.protocollo || match.quietanza_id} style={{ marginLeft: 12, color: '#166534' }}>
-                      Quietanza {match.protocollo || match.quietanza_id} · {match.data_pagamento || 'data non indicata'} · {match.bank_verified ? 'banca verificata' : 'banca da verificare'}
+                      Quietanza {match.protocollo || match.quietanza_id}
+                      {match.ravvedimento ? ` · ravvedimento ${euroCents(match.original_amount_cents)} → ${euroCents(match.paid_amount_cents)}` : ''}
+                      {' · '}{match.data_pagamento || 'data non indicata'} · {match.bank_verified ? 'banca verificata' : 'banca da verificare'}
                     </div>)}
                     {(row.f24_model_matches || []).map(match => <div key={match.f24_id} style={{ marginLeft: 12, color: '#92400e' }}>
-                      Modello F24 {match.filename || match.f24_id} · matricola, periodo e importo coincidenti · il modello non prova il pagamento
+                      Modello F24 {match.filename || match.f24_id}
+                      {match.ravvedimento
+                        ? ` · RC01 di ravvedimento: ${euroCents(match.original_amount_cents)} → ${euroCents(match.model_amount_cents)}`
+                        : ' · matricola, periodo e importo coincidenti'}
+                      {' · '}il modello non prova il pagamento
                     </div>)}
                     {link.source_type === 'AVVISO_ADDEBITO_INPS' && (row.f24_model_matches || []).length === 0 && <div className="fiscal-muted" style={{ marginLeft: 12 }}>
-                      Nessun modello F24 con matricola, periodo e importo esatti trovato.
+                      Nessun modello F24 esatto o RC01 di ravvedimento trovato per matricola e periodo.
                     </div>}
                   </div>)}
                   {link.drive_file_id && <Button size="sm" variant="secondary" style={{ marginTop: 6 }} onClick={() => openDriveDocument(link.drive_file_id, link.filename || 'Documento originario')}>Apri documento originario</Button>}
@@ -887,9 +895,12 @@ function ElenchiFiscali() {
               {item.remediation_alert && <div role="alert" style={{ marginTop: 10, padding: 10, borderRadius: 8, background: '#fff1f2', border: '1px solid #fda4af', color: '#881337' }}>
                 <strong>{item.remediation_alert.action === 'VERIFY_REFUND_REQUEST' ? 'Possibile doppio pagamento: verificare rimborso o compensazione' : 'Pagamento originario documentato: verificare richiesta di sgravio'}</strong>
                 <div style={{ marginTop: 4 }}>{item.remediation_alert.reason}</div>
+                {(item.remediation_alert.direct_collection_payments || []).map(payment => <div key={payment.payment_id || `${payment.source_type}-${payment.source_id}`} style={{ marginTop: 4 }}>
+                  Pagamento della cartella: {payment.source_type || 'ricevuta'} · {payment.payment_date || 'data non indicata'} · {payment.amount != null ? euro(payment.amount) : 'importo non indicato'} · {payment.bank_verified ? 'banca verificata' : 'banca da verificare'}
+                </div>)}
               </div>}
               {item.source_reconciliation_status === 'LINKED_NO_ACTION_WITHOUT_PAYMENT_EVIDENCE' && <div style={{ marginTop: 8, color: '#92400e' }}>
-                Collegamento documentale registrato, ma nessuna quietanza esatta prova il pagamento: nessuna richiesta di sgravio o rimborso viene suggerita.
+                Collegamento documentale registrato, ma nessuna quietanza esatta o di ravvedimento prova il pagamento: nessuna richiesta di sgravio o rimborso viene suggerita.
               </div>}
               <div className="fiscal-actions fiscal-collection-actions">
                 {riscossioneDocumentoId

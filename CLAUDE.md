@@ -1086,6 +1086,17 @@ Il sistema deve collegare:
 
 **Obbligazione originaria → Ravvedimento → F24 → righe tributo → pagamento bancario**
 
+Per i contributi INPS, una riga originaria DM10 e una successiva RC01 con la
+stessa matricola e lo stesso periodo, ma importo maggiore, rappresentano la
+catena del ravvedimento e devono essere collegate conservando separati importo
+originario e incremento. Se il codice RC01 non è stato inserito e modello F24 e
+quietanza mantengono invece gli stessi codici, il ravvedimento è riconoscibile
+soltanto quando coincidono tutte le posizioni fiscali e le sole differenze sono
+importi uguali o aumentati, con almeno un aumento. La quietanza documenta il
+versamento; il riscontro bancario resta una prova distinta. Non attribuire
+automaticamente la differenza alla sanzione 8055 e non collegare per solo
+importo, data o nome file.
+
 Quindi non deve confondere:
 
 - imposta principale;
