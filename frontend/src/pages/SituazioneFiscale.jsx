@@ -874,6 +874,12 @@ function ElenchiFiscali() {
                     {(row.payment_matches || []).map(match => <div key={match.protocollo || match.quietanza_id} style={{ marginLeft: 12, color: '#166534' }}>
                       Quietanza {match.protocollo || match.quietanza_id} · {match.data_pagamento || 'data non indicata'} · {match.bank_verified ? 'banca verificata' : 'banca da verificare'}
                     </div>)}
+                    {(row.f24_model_matches || []).map(match => <div key={match.f24_id} style={{ marginLeft: 12, color: '#92400e' }}>
+                      Modello F24 {match.filename || match.f24_id} · matricola, periodo e importo coincidenti · il modello non prova il pagamento
+                    </div>)}
+                    {link.source_type === 'AVVISO_ADDEBITO_INPS' && (row.f24_model_matches || []).length === 0 && <div className="fiscal-muted" style={{ marginLeft: 12 }}>
+                      Nessun modello F24 con matricola, periodo e importo esatti trovato.
+                    </div>}
                   </div>)}
                   {link.drive_file_id && <Button size="sm" variant="secondary" style={{ marginTop: 6 }} onClick={() => openDriveDocument(link.drive_file_id, link.filename || 'Documento originario')}>Apri documento originario</Button>}
                 </div>)}
