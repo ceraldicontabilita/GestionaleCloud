@@ -14,8 +14,10 @@ import GrigliaPaghe from "./GrigliaPaghe";
 import PrimaNotaPaghe from "./PrimaNotaPaghe";
 import { sceltaIniziale, sceltaCandidato, propostaIntatta } from "./sceltaBonifico";
 import MissioniPage from "./MissioniPage";
+import MiniHRPage from "./MiniHRPage";
 import { normalizzaEsitoImportPaghe } from "./esitoImportPaghe";
 import { apriFinestraPdfAttesa, mostraPdfNellaFinestra } from "./pdfWindow";
+import { datiDimissioniAlert, isAlertDimissioni, ordinaAlertDashboard } from "./dashboardAlerts";
 import { 
   Users, Calendar, Clock, FileText, Briefcase, Home, 
   ChevronRight, Plus, Check, X, Edit2, Trash2, 
@@ -227,6 +229,7 @@ export default function DipendentiCloudApp({ page: pageProp }) {
     { id: "paghe-bonifici", label: "Archivio paghe", icon: Link2, section: "DIPENDENTI" },
     { id: "bonifici-da-associare", label: "Bonifici da associare", icon: Inbox, section: "DIPENDENTI" },
     { id: "posizione-dipendente", label: "Posizione dipendente", icon: Scale, section: "DIPENDENTI" },
+    ...(isAdmin ? [{ id: "fascicolo-mensile", label: "Fascicolo mensile · MiniHR", icon: FolderOpen, section: "DIPENDENTI" }] : []),
     { id: "mensilita-aggiuntive", label: "13ª e 14ª", icon: Euro, section: "DIPENDENTI" },
     { id: "tfr", label: "TFR", icon: Wallet, section: "DIPENDENTI" },
     { id: "documenti", label: "Documenti", icon: FolderOpen, section: "DIPENDENTI" },
@@ -245,6 +248,7 @@ export default function DipendentiCloudApp({ page: pageProp }) {
     "paghe-bonifici": "Archivio paghe",
     "bonifici-da-associare": "Bonifici da associare",
     "posizione-dipendente": "Posizione dipendente",
+    "fascicolo-mensile": "Fascicolo mensile · MiniHR",
     "mensilita-aggiuntive": "13ª e 14ª",
     tfr: "TFR",
     missioni: "Missioni",
@@ -285,6 +289,8 @@ export default function DipendentiCloudApp({ page: pageProp }) {
         return <BonificiDaAssociarePage dipendenti={dipendenti} />;
       case "posizione-dipendente":
         return <PosizioneDipendentePage dipendenti={dipendenti} />;
+      case "fascicolo-mensile":
+        return isAdmin ? <MiniHRPage /> : <div className="dc-card">Accesso riservato all’amministratore.</div>;
       case "mensilita-aggiuntive":
         return <MensilitaAggiuntivePage />;
       case "tfr":
@@ -666,9 +672,17 @@ function DashboardPage({ stats, dipendenti, ferie, missioni, getDipendente }) {
   useEffect(() => { loadAlerts(); axios.get(`${API}/paghe/in-attesa`).then(r => setPendenze(r.data)).catch(() => {}); }, []);
   const mesiIt = ["Gen", "Feb", "Mar", "Apr", "Mag", "Giu", "Lug", "Ago", "Set", "Ott", "Nov", "Dic"];
   const risolviAlert = async (id) => {
-    try { await axios.post(`${API}/alerts/${id}/risolvi`); loadAlerts(); } catch {}
+    if (!window.confirm("Confermi che l'avviso è stato gestito? Sarà archiviato, ma questa azione non esegue l'adempimento indicato.")) return;
+    try {
+      await axios.post(`${API}/alerts/${id}/risolvi`);
+      toast("Avviso archiviato come gestito.");
+      loadAlerts();
+    } catch {
+      toast("Non è stato possibile archiviare l'avviso.", "err");
+    }
   };
-  const sevColor = (s) => ({ critico: "danger", alto: "danger", warning: "warning", media: "warning" }[s] || "default");
+  const sevColor = (s) => ({ critical: "danger", critico: "danger", alto: "danger", warning: "warning", media: "warning" }[s] || "default");
+  const alertsOrdinati = ordinaAlertDashboard(alerts);
 
   return (
     <div className="dc-page">
@@ -731,16 +745,35 @@ function DashboardPage({ stats, dipendenti, ferie, missioni, getDipendente }) {
           <p className="dc-empty">Nessun avviso aperto</p>
         ) : (
           <div className="dc-list">
-            {alerts.slice(0, 12).map((a) => (
-              <div key={a.id} className="dc-list-item">
-                <Badge variant={sevColor(a.severita)}>{a.severita}</Badge>
-                <div className="dc-list-info" style={{ flex: 1 }}>
-                  <span className="dc-list-name">{a.titolo}</span>
-                  <span className="dc-list-sub">{a.dettaglio}</span>
+            {alertsOrdinati.slice(0, 12).map((a) => {
+              const dimissioni = isAlertDimissioni(a);
+              const dati = dimissioni ? datiDimissioniAlert(a) : null;
+              const dettaglio = a.dettaglio || a.messaggio || "";
+              return (
+                <div key={a.id} className="dc-list-item dc-alert-item">
+                  <Badge variant={sevColor(a.severita)}>{a.severita}</Badge>
+                  <div className="dc-list-info">
+                    <span className="dc-list-name">{dimissioni ? dati.nome : a.titolo}</span>
+                    {dimissioni ? (
+                      <>
+                        <span className="dc-list-sub dc-alert-summary">
+                          Decorrenza {formatDate(dati.decorrenza)} · UNILAV entro {formatDate(dati.scadenzaUnilav)}
+                        </span>
+                        <details className="dc-alert-details">
+                          <summary>Vedi adempimenti e testo completo</summary>
+                          <p>{dettaglio}</p>
+                        </details>
+                      </>
+                    ) : <span className="dc-list-sub">{dettaglio}</span>}
+                  </div>
+                  <button
+                    className="dc-btn dc-alert-resolve"
+                    onClick={() => risolviAlert(a.id)}
+                    title="Archivia soltanto l'avviso: non esegue l'adempimento e non modifica il dipendente"
+                  >Segna gestito</button>
                 </div>
-                <button className="dc-btn" onClick={() => risolviAlert(a.id)}>Risolvi</button>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>

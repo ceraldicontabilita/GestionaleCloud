@@ -5593,6 +5593,36 @@ Identità dipendente da CF, nome completo o cognome univoco; ambiguità in verif
 
 L'Archivio paghe è una vista di consultazione e riconciliazione: non espone i ponti tecnici «Sincronizza da cedolini» e «Recupera bonifici storici», perché gli ingressi canonici riallineano già il registro e un clic manuale non deve avviare riscritture massive. La vecchia simulazione F24 da percentuali stimate non appartiene alla pagina salari e non è un documento fiscale. I filtri permettono tutti, uno o più dipendenti e governano tabella, totali ed Excel. La scheda contabile costruisce prima il Dare/Avere separato di ciascun dipendente e somma solo dopo: espone per mese cedolini, altri dovuti, bonifici, acconti, pagato totale e saldo progressivo alla data effettiva, con riporto; il totale cedolini non incorpora conciliazioni o altri titoli.
 
+### MiniHR parallelo e contratto condiviso
+
+La vista `Fascicolo mensile · MiniHR` resta amministrativa, GET-only e
+separata dalle funzioni HR operative. Legge il motore Posizione dipendente già
+presente, apre i PDF tramite endpoint autenticati e consulta gli F24 dal
+registro fiscale principale filtrato per codice fiscale aziendale esplicito.
+Non crea una copia HR degli F24 e non attribuisce quietanze, addebiti o modelli
+al saldo netto del singolo dipendente.
+
+Il minisito privato resta attivo e non viene incorporato nel repository
+pubblico. Non sono autorizzate migrazioni automatiche di saldi, esclusioni,
+associazioni manuali o documenti. Ordinari, tredicesime, quattordicesime, TFR e
+documenti finali restano distinti; un importo non leggibile resta assente, non
+zero. Un PDF informativo non modifica il saldo e una data finale legacy non
+diventa automaticamente una dimissione.
+
+`frontend_shared/minihr` contiene soltanto moduli generici sincronizzati dal
+minisito. Ogni modifica condivisa deve essere applicata e testata in entrambi
+gli host con lo script allowlistato del Site e il successivo controllo
+`--check`; non si modifica il manifest a mano. Il repository pubblico non deve
+ricevere PDF, JSON paghe, codici fiscali reali, snapshot del Site, esportazioni
+Supabase o credenziali. Core e vista non scrivono sul database; solo gli
+adattatori host possono eseguire rete o storage.
+
+I checkpoint successivi richiedono approvazione separata: confronto riga per
+riga con identità, competenza, tipo e ID; migrazione controllata con backup e
+conteggi prima/dopo; importazione documentale o scritture operative; verifica
+visuale autenticata e attivazione ERP. Nessuno di questi passaggi è incluso
+nella fase di consultazione parallela.
+
 ### Lettura cedolini: requisiti del titolare del 09/10/2026
 
 Riconoscere le pagine dal contenuto, non dal solo numero: solo presenze da escludere dall'import contabile; due pagine presenze + retribuzioni, lettura dalla seconda; tre pagine prima presenze, seconda retribuzioni e terza da includere quando è continuazione o contiene totali; PDF collettivi da separare per CF, periodo e tipo, senza mescolare persone o mensilità; modelli a una pagina da leggere integralmente secondo intestazioni e colonne. Conservare il PDF originale; escludere presenze dall'estrazione salariale non significa cancellare l'originale.

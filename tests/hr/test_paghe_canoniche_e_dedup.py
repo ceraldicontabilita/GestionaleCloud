@@ -8,7 +8,7 @@ from app.hr.services.sincronizza_paghe_mensili import (
 def test_deduplica_elenco_e_pdf_conserva_evidenza_bancaria():
     elenco = {
         "id": "elenco", "dipendente_id": "dip-1", "data": "2025-06-05",
-        "importo": 1056, "origine": "elenco-pagamenti-titolare",
+        "importo": 1056, "origine": "elenco-pagamenti-titolare", "cro": "CRO-1",
     }
     banca = {
         "id": "banca", "dipendente_id": "dip-1", "data": "2025-06-05",
@@ -16,6 +16,28 @@ def test_deduplica_elenco_e_pdf_conserva_evidenza_bancaria():
     }
 
     assert deduplica_pagamenti([elenco, banca]) == [banca]
+
+
+def test_non_collassa_fonti_diverse_senza_prova_comune():
+    elenco = {
+        "id": "elenco", "dipendente_id": "dip-1", "data": "2025-06-05",
+        "importo": 1056, "origine": "elenco-pagamenti-titolare",
+    }
+    banca = {
+        "id": "banca", "dipendente_id": "dip-1", "data": "2025-06-05",
+        "importo": 1056, "origine": "gestionale-bonifico-pdf", "cro": "CRO-1",
+    }
+
+    assert deduplica_pagamenti([elenco, banca]) == [elenco, banca]
+
+
+def test_hash_documento_comune_non_prova_un_pagamento_duplicato():
+    base = {"dipendente_id": "dip-1", "data": "2025-06-05", "importo": 100,
+            "hash": "HASH-ESTRATTO-CONTO"}
+    elenco = {**base, "id": "1", "origine": "elenco-pagamenti-titolare"}
+    banca = {**base, "id": "2", "origine": "gestionale-bonifico-pdf"}
+
+    assert deduplica_pagamenti([elenco, banca]) == [elenco, banca]
 
 
 def test_non_collassa_due_pagamenti_della_stessa_fonte():

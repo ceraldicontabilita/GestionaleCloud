@@ -125,6 +125,8 @@ jobs:
         run: CI=true npm --prefix frontend_lotti test -- --watchAll=false
       - name: Test HR
         run: npm --prefix frontend_hr test
+      - name: Test MiniHR condiviso e manifest di versione
+        run: node --test frontend_shared/minihr/core.test.mjs
       - name: Test Menu
         run: CI=true npm --prefix frontend_menu test -- --watchAll=false
 
