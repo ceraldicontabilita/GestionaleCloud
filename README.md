@@ -54,6 +54,28 @@ Il vecchio percorso `/colazioni` reindirizza a `/convenzioni`.
 
 `frontend_colazioni` è una pagina statica e non segue la stessa build React degli altri frontend.
 
+## MiniHR parallelo
+
+La voce HR `Fascicolo mensile · MiniHR` è una vista amministrativa GET-only.
+Non sostituisce Anagrafica, Archivio paghe, Posizione dipendente o TFR e non
+importa automaticamente saldi, esclusioni o associazioni dal minisito privato.
+
+Il nucleo generico in `frontend_shared/minihr` è sincronizzato dal minisito e
+usa DTO con importi in centesimi, eventi del rapporto espliciti e identificatori
+stabili. Il repository pubblico non deve contenere PDF, JSON paghe, codici
+fiscali reali, snapshot del minisito o credenziali. Gli adattatori e le fonti
+contabili specifiche dei due host restano separati.
+
+Per una modifica al nucleo condiviso:
+
+1. aggiornare prima `shared/minihr` nel minisito privato;
+2. eseguire lo script allowlistato `sync_minihr_to_gestionale.py` e poi `--check`;
+3. eseguire i test Node del core, i test HR e la build frontend;
+4. pubblicare il minisito e mantenere l'ERP in PR finché l'attivazione non è approvata.
+
+Nessuna migrazione DB, fusione degli archivi o scrittura operativa è implicita
+in questa procedura.
+
 ---
 
 # Routing
