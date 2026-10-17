@@ -79,6 +79,7 @@ def test_legacy_layout_preserves_unavailable_amounts_as_null():
 def test_rate_plan_resolves_only_unique_document_prefix(monkeypatch):
     monkeypatch.setattr(ader, "_pdf_text", lambda _content: (
         "identificativo 071812706 del 05/12/2024 Numero rate accordato: 18 "
+        f"presentata dal C.F. {COMPANY} "
         "07120240057143449 Importo Prima Rata imponibile € 5,88 € 777,98 17/12/2024 "
         "Successive scadenze Totale piano € 14.065,29 Per i carichi"
     ))

@@ -27,6 +27,7 @@ def _plan(*, two_claims=False):
     return {
         "id": "plan-1",
         "company_id": "company-1",
+        "taxpayer_identity_status": "CONFIRMED",
         "plan_reference": "AR071123456",
         "document_references": references,
         "payment_modules": [{

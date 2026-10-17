@@ -1,4 +1,7 @@
 import asyncio
+from copy import deepcopy
+
+import pytest
 
 from app.db_collections import (
     COLL_DOCUMENTS_INBOX,
@@ -15,6 +18,7 @@ from app.services.fiscal_claim_source_reconciliation import (
     build_claim_source_plan,
     match_quietanza_for_obligation,
     match_f24_models_for_obligation,
+    partial_quietanza_candidates_for_obligation,
     parse_inps_notice_lines,
 )
 
@@ -87,6 +91,236 @@ def test_modello_f24_esatto_si_collega_ma_non_diventa_prova_di_pagamento():
     assert matches[0]["f24_id"] == "f24-1"
     assert matches[0]["payment_evidence"] is False
     assert match_f24_models_for_obligation({**obligation, "importo_richiesto_cents": 248499}, [model]) == []
+
+
+@pytest.mark.parametrize("identity,end,amount,deleted,expected", [
+    ("5124776507", "07/2024", 100000, False, True),
+    ("5124776507", "07/2024", 0, False, False),
+    ("5124776507", "07/2024", 248500, False, False),
+    ("5124776507", "07/2024", 250000, False, False),
+    (None, "07/2024", 100000, False, False),
+    ("ALTRA", "07/2024", 100000, False, False),
+    ("5124776507", "06/2024", 100000, False, False),
+    ("5124776507", "07/2024", 100000, True, False),
+])
+def test_quietanza_parziale_e_solo_proposta_con_identita_e_periodo_completi(
+    identity, end, amount, deleted, expected,
+):
+    obligation = {
+        "codice_tributo": "8050", "periodo_da": "06/2024", "periodo_a": "07/2024",
+        "matricola_inps": identity, "importo_richiesto_cents": 248500,
+    }
+    receipt = {
+        "id": "q-parziale", "protocollo_telematico": "PROTO-PARTIAL",
+        "entity_status": "deleted" if deleted else "active",
+        "riscontro_banca": {"stato": "RISCONTRATO_BANCA", "movimento_id": "bank-parziale"},
+        "sezione_inps": [{
+            "causale": "DM10", "matricola": "5124776507",
+            "periodo_da": "06/2024", "periodo_a": end,
+            "importo_debito_cents": amount,
+        }],
+    }
+    before = deepcopy(receipt)
+    proposals = partial_quietanza_candidates_for_obligation(obligation, [receipt, receipt])
+    assert bool(proposals) is expected
+    assert receipt == before
+    if expected:
+        assert len(proposals) == 1
+        assert proposals[0]["payment_evidence"] is False
+        assert proposals[0]["relation_status"] == "REVIEW_REQUIRED"
+        assert proposals[0]["paid_amount_cents"] == 100000
+        assert proposals[0]["bank_verified"] is True
+        assert match_quietanza_for_obligation(obligation, [receipt]) == []
+
+
+def test_quietanza_parziale_non_paga_la_pretesa_ne_genero_sgravio():
+    async def scenario():
+        db = ClientArchivioMemoria()["partial-source-no-inferred-payment"]
+        await db[COLL_TAX_COLLECTION_CLAIMS].insert_one({
+            "id": "claim-partial", "company_id": "04523831214",
+            "collection_number": "37120240006692253000", "business_status": "PAYABLE",
+            "residual_cents": 248500,
+        })
+        await db[COLL_DOCUMENTS_INBOX].insert_one({
+            "id": "notice-partial", "tax_collection_claim_id": "claim-partial",
+            "parsed_metadata": {
+                "numero_atto": "37120240006692253000", "matricola_inps": "5124776507",
+                "testo_estratto": INPS_TEXT.split("002", 1)[0],
+            },
+        })
+        await db[COLL_QUIETANZE_F24].insert_one({
+            "id": "q-partial", "codice_fiscale": "04523831214",
+            "protocollo_telematico": "PROTO-PARTIAL", "data_pagamento": "2024-07-16",
+            "sezione_inps": [{
+                "causale": "DM10", "matricola": "5124776507",
+                "periodo_riferimento": "06/2024", "importo_debito_cents": 100000,
+            }],
+        })
+        result = await apply_claim_source_plan(db, company_id="04523831214", actor="test")
+        claim = await db[COLL_TAX_COLLECTION_CLAIMS].find_one({"id": "claim-partial"})
+        row = claim["source_obligation_links"][0]["tax_lines"][0]
+        assert row["partial_payment_candidates"][0]["quietanza_id"] == "q-partial"
+        assert row["payment_matches"] == []
+        assert row["payment_evidence_status"] == "NO_PAYMENT_EVIDENCE"
+        assert claim["residual_cents"] == 248500
+        assert claim["business_status"] == "PAYABLE"
+        assert claim["remediation_alert"] is None
+        assert result["alerts_created"] == 0
+        assert await db[COLL_TAX_PAYMENTS].find({}).to_list(10) == []
+    _run(scenario())
+
+
+@pytest.mark.parametrize("source_field", ["testo_sorgente", "raw_text"])
+def test_righe_inps_storiche_in_erario_usano_la_normalizzazione_canonica(source_field):
+    obligation = {
+        "codice_tributo": "8050", "periodo_da": "06/2003", "periodo_a": "07/2003",
+        "matricola_inps": "5124776507", "importo_richiesto_cents": 248500,
+    }
+    # Il vecchio parser aveva scambiato l'anno per il codice tributo Erario.
+    historical_row = {
+        "codice_tributo": "2003", "mese": "06", "anno": "2003",
+        "importo_debito": "2.485,00",
+        source_field: "5100 DM10 5124776507 06 2003 07 2003 2.485,00 , 0,00 ,",
+    }
+    model = {"id": "f24-storico", "sezione_erario": [historical_row]}
+    receipt = {**model, "id": "q-storica", "protocollo_telematico": "PROTO-STORICO"}
+    before = deepcopy((model, receipt))
+
+    [model_match] = match_f24_models_for_obligation(obligation, [model])
+    [payment_match] = match_quietanza_for_obligation(obligation, [receipt])
+
+    assert model_match["model_amount_cents"] == 248500
+    assert model_match["payment_evidence"] is False
+    assert payment_match["paid_amount_cents"] == 248500
+    assert payment_match["bank_verified"] is False
+    assert payment_match["bank_movement_id"] is None
+    assert (model, receipt) == before
+
+
+@pytest.mark.parametrize("identity", [None, "", "   ", " - "])
+@pytest.mark.parametrize("causale, amount", [("DM10", 248500), ("RC01", 250000)])
+def test_matricola_avviso_mancante_non_conferma_modelli_o_quietanze(identity, causale, amount):
+    obligation = {
+        "codice_tributo": "8050", "periodo_da": "06/2024", "periodo_a": "06/2024",
+        "matricola_inps": identity, "importo_richiesto_cents": 248500,
+    }
+    model = {
+        "id": "f24-senza-identita-avviso", "sezione_inps": [{
+            "causale": causale, "matricola": "5124776507",
+            "periodo_riferimento": "06/2024", "importo_debito_cents": amount,
+        }],
+    }
+    receipt = {**model, "id": "q-senza-identita-avviso", "protocollo_telematico": "PROTO-1"}
+
+    assert match_f24_models_for_obligation(obligation, [model]) == []
+    assert match_quietanza_for_obligation(obligation, [receipt], [model]) == []
+
+
+INACTIVE_MODEL_MARKERS = [
+    pytest.param({"status": "eliminato"}, id="eliminato"),
+    pytest.param({"entity_status": "deleted"}, id="deleted"),
+    pytest.param({"motivo_quarantena": "doppione", "doppione_di": "f24-vigente"}, id="doppione"),
+    pytest.param({"motivo_quarantena": "verifica_manuale"}, id="quarantena"),
+    pytest.param({"superato_da": "f24-vigente"}, id="superato"),
+    pytest.param({
+        "status": "eliminato", "sostituito": True, "sostituito_da_f24_id": "f24-vigente",
+    }, id="sostituito"),
+]
+
+
+@pytest.mark.parametrize("inactive", INACTIVE_MODEL_MARKERS)
+def test_modello_inattivo_non_si_collega_ne_supporta_una_quietanza_dm10_aumentata(inactive):
+    obligation = {
+        "codice_tributo": "8050", "periodo_da": "06/2024", "periodo_a": "06/2024",
+        "matricola_inps": "5124776507", "importo_richiesto_cents": 248500,
+    }
+    original_row = {
+        "causale": "DM10", "matricola": "5124776507",
+        "periodo_riferimento": "06/2024", "importo_debito_cents": 248500,
+    }
+    model = {"id": "f24-inattivo", "sezione_inps": [original_row], **inactive}
+    receipt = {
+        "id": "q-dm10-aumentata", "protocollo_telematico": "PROTO-1",
+        "sezione_inps": [{**original_row, "importo_debito_cents": 250000}],
+    }
+
+    assert match_f24_models_for_obligation(obligation, [model]) == []
+    assert match_quietanza_for_obligation(obligation, [receipt], [model]) == []
+
+
+@pytest.mark.parametrize("causale, amount", [("DM10", 248500), ("RC01", 250000)])
+@pytest.mark.parametrize("period_from, period_to, expected", [
+    ("06/2024", "07/2024", True),
+    ("2024-06", "072024", True),
+    ("062024", "2024-07", True),
+    ("06/2024", "06/2024", False),
+    ("06/2024", "05/2024", False),
+    ("06/2024", "08/2024", False),
+    ("06/2024", None, False),
+    ("06/2024", "illeggibile", False),
+    ("05/2024", "07/2024", False),
+])
+def test_intero_periodo_contributivo_deve_coincidere_anche_nel_ravvedimento(
+    causale, amount, period_from, period_to, expected,
+):
+    obligation = {
+        "codice_tributo": "8050", "periodo_da": "06/2024", "periodo_a": "07/2024",
+        "matricola_inps": "5124776507", "importo_richiesto_cents": 248500,
+    }
+    row = {
+        "causale": causale, "matricola": "5124776507",
+        "periodo_riferimento": period_from, "periodo_da": period_from,
+        "importo_debito_cents": amount,
+    }
+    if period_to is not None:
+        row["periodo_a"] = period_to
+    model = {"id": "f24-periodo", "sezione_inps": [row]}
+    receipt = {**model, "id": "q-periodo", "protocollo_telematico": "PROTO-PERIODO"}
+
+    model_matches = match_f24_models_for_obligation(obligation, [model])
+    payment_matches = match_quietanza_for_obligation(obligation, [receipt])
+
+    assert bool(model_matches) is expected
+    assert bool(payment_matches) is expected
+    if expected:
+        assert model_matches[0]["payment_evidence"] is False
+        assert payment_matches[0]["bank_verified"] is False
+
+
+def test_periodo_singolo_non_corrisponde_a_un_modello_che_si_estende_ad_altri_mesi():
+    obligation = {
+        "codice_tributo": "8050", "periodo_da": "06/2024",
+        "matricola_inps": "5124776507", "importo_richiesto_cents": 248500,
+    }
+    model = {
+        "id": "f24-periodo-esteso", "sezione_inps": [{
+            "causale": "DM10", "matricola": "5124776507",
+            "periodo_da": "06/2024", "periodo_a": "07/2024",
+            "importo_debito_cents": 248500,
+        }],
+    }
+    receipt = {**model, "id": "q-periodo-esteso", "protocollo_telematico": "PROTO-1"}
+
+    assert match_f24_models_for_obligation(obligation, [model]) == []
+    assert match_quietanza_for_obligation(obligation, [receipt]) == []
+
+
+@pytest.mark.parametrize("end", ["05/2024", "illeggibile"])
+def test_periodo_avviso_invalido_non_conferma_modelli_o_quietanze(end):
+    obligation = {
+        "codice_tributo": "8050", "periodo_da": "06/2024", "periodo_a": end,
+        "matricola_inps": "5124776507", "importo_richiesto_cents": 248500,
+    }
+    model = {
+        "id": "f24-periodo-avviso-invalido", "sezione_inps": [{
+            "causale": "DM10", "matricola": "5124776507",
+            "periodo_riferimento": "06/2024", "importo_debito_cents": 248500,
+        }],
+    }
+    receipt = {**model, "id": "q-periodo-avviso-invalido", "protocollo_telematico": "PROTO-1"}
+
+    assert match_f24_models_for_obligation(obligation, [model]) == []
+    assert match_quietanza_for_obligation(obligation, [receipt]) == []
 
 
 def test_rc01_maggiore_collega_il_ravvedimento_senza_fingere_un_pagamento_del_modello():
@@ -174,6 +408,97 @@ def test_dm10_aumentato_e_ravvedimento_solo_se_f24_e_quietanza_hanno_tutte_le_ri
     assert match_quietanza_for_obligation(
         obligation, [quietanza], [model_con_riga_diversa],
     ) == []
+
+
+def test_supporto_dm10_richiede_anche_la_fine_periodo_delle_altre_righe():
+    obligation = {
+        "codice_tributo": "8050", "periodo_da": "11/2024", "periodo_a": "11/2024",
+        "matricola_inps": "5124776507", "importo_richiesto_cents": 392100,
+    }
+    target_row = {
+        "causale": "DM10", "matricola": "5124776507",
+        "periodo_riferimento": "11/2024", "importo_debito_cents": 392100,
+    }
+    other_row = {
+        "causale": "DM10", "matricola": "5124776507",
+        "periodo_da": "06/2024", "periodo_a": "07/2024", "importo_debito_cents": 10000,
+    }
+    model = {"id": "f24-originario", "sezione_inps": [target_row, other_row]}
+    receipt = {
+        "id": "q-dm10", "protocollo_telematico": "PROTO-DM10-PERIODO",
+        "sezione_inps": [
+            {**target_row, "importo_debito_cents": 409000},
+            {**other_row, "periodo_a": "08/2024"},
+        ],
+    }
+
+    assert match_quietanza_for_obligation(obligation, [receipt], [model]) == []
+    receipt["sezione_inps"][1]["periodo_a"] = "07/2024"
+    [match] = match_quietanza_for_obligation(obligation, [receipt], [model])
+    assert match["ravvedimento"] is True
+    assert match["supporting_f24"]["f24_id"] == "f24-originario"
+    assert match["bank_verified"] is False
+
+
+@pytest.mark.parametrize("amount_fields, expected", [
+    ({}, False),
+    ({"importo_debito": None}, False),
+    ({"importo_debito": ""}, False),
+    ({"importo_debito": "illeggibile"}, False),
+    ({"importo_debito_cents": "illeggibile"}, False),
+    ({"importo_debito": 0}, True),
+    ({"importo_debito_cents": 0}, True),
+])
+def test_supporto_dm10_non_scambia_un_importo_illeggibile_per_zero(amount_fields, expected):
+    obligation = {
+        "codice_tributo": "8050", "periodo_da": "06/2024", "periodo_a": "06/2024",
+        "matricola_inps": "5124776507", "importo_richiesto_cents": 248500,
+    }
+    target_row = {
+        "causale": "DM10", "matricola": "5124776507",
+        "periodo_riferimento": "06/2024", "importo_debito_cents": 248500,
+    }
+    other_row = {
+        "codice_tributo": "1001", "periodo_riferimento": "06/2024", **amount_fields,
+    }
+    model = {
+        "id": "f24-importo-da-verificare", "sezione_inps": [target_row],
+        "sezione_erario": [other_row],
+    }
+    receipt = {
+        "id": "q-importo-da-verificare", "protocollo_telematico": "PROTO-IMPORTO",
+        "sezione_inps": [{**target_row, "importo_debito_cents": 250000}],
+        "sezione_erario": [dict(other_row)],
+    }
+
+    matches = match_quietanza_for_obligation(obligation, [receipt], [model])
+
+    assert bool(matches) is expected
+    if expected:
+        assert matches[0]["ravvedimento"] is True
+        assert matches[0]["supporting_f24"]["f24_id"] == "f24-importo-da-verificare"
+        assert matches[0]["bank_verified"] is False
+
+
+@pytest.mark.parametrize("amount_fields", [
+    {}, {"importo_debito": None}, {"importo_debito": ""},
+    {"importo_debito": "illeggibile"}, {"importo_debito_cents": "illeggibile"},
+])
+def test_importo_assente_o_invalido_non_corrisponde_a_un_obbligo_zero(amount_fields):
+    obligation = {
+        "codice_tributo": "8050", "periodo_da": "06/2024", "periodo_a": "06/2024",
+        "matricola_inps": "5124776507", "importo_richiesto_cents": 0,
+    }
+    model = {
+        "id": "f24-senza-importo", "sezione_inps": [{
+            "causale": "DM10", "matricola": "5124776507",
+            "periodo_riferimento": "06/2024", **amount_fields,
+        }],
+    }
+    receipt = {**model, "id": "q-senza-importo", "protocollo_telematico": "PROTO-ZERO"}
+
+    assert match_f24_models_for_obligation(obligation, [model]) == []
+    assert match_quietanza_for_obligation(obligation, [receipt]) == []
 
 
 def test_quietanza_ravveduta_su_pretesa_esigibile_genera_verifica_sgravio():
@@ -312,6 +637,8 @@ def test_modello_f24_senza_quietanza_resta_non_pagato_e_non_genera_sgravio():
         await db[COLL_TAX_COLLECTION_CLAIMS].insert_one({
             "id": "claim-model", "company_id": "04523831214",
             "collection_number": "37120240006692253000", "business_status": "PAYABLE",
+            "documentary_payment_status": "NO_PAYMENT_EVIDENCE",
+            "residual_cents": 248500, "linked_payment_ids": [],
         })
         await db[COLL_DOCUMENTS_INBOX].insert_one({
             "id": "notice-model", "tax_collection_claim_id": "claim-model",
@@ -322,18 +649,89 @@ def test_modello_f24_senza_quietanza_resta_non_pagato_e_non_genera_sgravio():
         })
         await db[COLL_F24].insert_one({
             "id": "f24-model", "dati_generali": {"codice_fiscale": "04523831214"},
+            "pagato": False, "status": "da_pagare",
             "filename": "F24 giugno 2024.pdf", "sezione_inps": [{
                 "causale": "DM10", "matricola": "5124776507", "periodo_riferimento": "06/2024",
                 "importo_debito_cents": 248500,
             }],
         })
 
-        plan = await build_claim_source_plan(db, company_id="04523831214")
-        row = plan[0]["source_obligation_links"][0]["tax_lines"][0]
+        model_before = await db[COLL_F24].find_one({"id": "f24-model"})
+        for index, marker in enumerate((
+            {"status": "eliminato"}, {"entity_status": "deleted"},
+            {"motivo_quarantena": "doppione", "doppione_di": "f24-model"},
+            {"superato_da": "f24-model"},
+        )):
+            await db[COLL_F24].insert_one({
+                **{key: value for key, value in model_before.items() if key != "_id"},
+                "id": f"f24-escluso-{index}", **marker,
+            })
 
-        assert len(row["f24_model_matches"]) == 1
+        result = await apply_claim_source_plan(db, company_id="04523831214", actor="test")
+        claim = await db[COLL_TAX_COLLECTION_CLAIMS].find_one({"id": "claim-model"})
+        row = claim["source_obligation_links"][0]["tax_lines"][0]
+
+        assert [match["f24_id"] for match in row["f24_model_matches"]] == ["f24-model"]
+        assert row["f24_model_matches"][0]["payment_evidence"] is False
+        assert row["payment_matches"] == []
         assert row["payment_evidence_status"] == "NO_PAYMENT_EVIDENCE"
-        assert plan[0]["remediation_alert"] is None
+        assert claim["source_reconciliation_status"] == "LINKED_NO_ACTION_WITHOUT_PAYMENT_EVIDENCE"
+        assert claim["remediation_alert"] is None
+        assert claim["business_status"] == "PAYABLE"
+        assert claim["documentary_payment_status"] == "NO_PAYMENT_EVIDENCE"
+        assert claim["residual_cents"] == 248500
+        assert claim["linked_payment_ids"] == []
+        assert result["alerts_created"] == 0
+        assert await db[COLL_F24].find_one({"id": "f24-model"}) == model_before
+        assert await db[COLL_TAX_PAYMENTS].find({}).to_list(10) == []
+
+    _run(scenario())
+
+
+@pytest.mark.parametrize("notice_identity", [None, "   "])
+def test_avviso_senza_matricola_non_diventa_pagato_neppure_con_quietanza_e_banca(notice_identity):
+    async def scenario():
+        db = ClientArchivioMemoria()["claim-source-missing-identity"]
+        await db[COLL_TAX_COLLECTION_CLAIMS].insert_one({
+            "id": "claim-no-identity", "company_id": "04523831214",
+            "collection_number": "37120240006692253000", "business_status": "PAYABLE",
+            "residual_cents": 248500,
+        })
+        metadata = {
+            "numero_atto": "37120240006692253000",
+            "testo_estratto": INPS_TEXT.split("002", 1)[0],
+        }
+        if notice_identity is not None:
+            metadata["matricola_inps"] = notice_identity
+        await db[COLL_DOCUMENTS_INBOX].insert_one({
+            "id": "notice-no-identity", "tax_collection_claim_id": "claim-no-identity",
+            "parsed_metadata": metadata,
+        })
+        model = {
+            "id": "f24-no-identity", "codice_fiscale": "04523831214",
+            "sezione_inps": [{
+                "causale": "DM10", "matricola": "5124776507",
+                "periodo_riferimento": "06/2024", "importo_debito_cents": 248500,
+            }],
+        }
+        await db[COLL_F24].insert_one(model)
+        await db[COLL_QUIETANZE_F24].insert_one({
+            **model, "id": "q-no-identity", "protocollo_telematico": "PROTO-NO-IDENTITY",
+            "riscontro_banca": {"stato": "RISCONTRATO_BANCA", "movimento_id": "bank-2485"},
+        })
+
+        result = await apply_claim_source_plan(db, company_id="04523831214", actor="test")
+        claim = await db[COLL_TAX_COLLECTION_CLAIMS].find_one({"id": "claim-no-identity"})
+        row = claim["source_obligation_links"][0]["tax_lines"][0]
+
+        assert row["payment_evidence_status"] == "NO_PAYMENT_EVIDENCE"
+        assert row["f24_model_matches"] == []
+        assert row["payment_matches"] == []
+        assert claim["business_status"] == "PAYABLE"
+        assert claim["residual_cents"] == 248500
+        assert claim["remediation_alert"] is None
+        assert result["alerts_created"] == 0
+        assert await db[COLL_TAX_PAYMENTS].find({}).to_list(10) == []
 
     _run(scenario())
 

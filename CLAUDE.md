@@ -5021,12 +5021,14 @@ Senza verbale compatibile resta in attesa.
 
 # 93. Cartella di pagamento
 
-La cartella crea l'obbligo.
+La cartella documenta una pretesa di riscossione riferita a una o piu' partite
+originarie. Non crea di nuovo il costo o l'obbligazione gia' documentati dalla
+dichiarazione, dalla denuncia contributiva o dall'atto dell'ente.
 
-La ricevuta lo soddisfa se:
+Una ricevuta documenta il versamento della quota identificata se:
 
-- stesso IUV;
-- importo al centesimo.
+- l'identificativo forte e' coerente (IUV, protocollo o riferimento ammesso dalla fonte);
+- l'importo della quota e' confermato al centesimo.
 
 La scadenza dipende dalla notifica reale.
 
@@ -5044,6 +5046,145 @@ uscita. Le affermazioni contenute (piano saldato, ultima rata, importo contestat
 restano dichiarazioni del richiedente finche' non arrivano la risposta dell'ente
 e le prove pertinenti. Il collegamento a un piano e' automatico solo se protocollo
 e data individuano un'unica entita'; negli altri casi resta da verificare.
+
+## Fascicolo cronologico e formazione della pretesa
+
+Regole richieste dal titolare il 17/10/2026 e confrontate con le fonti ufficiali
+elencate sotto. Sono regole di dominio; la loro presenza nel branch non certifica
+il rilascio in produzione o l'avvenuta ricostruzione dei fascicoli reali.
+
+La radice e' la **partita debitoria identificata**: contribuente, ente/gestione,
+identita' fiscale o contributiva, tributo/causale e periodo completo. Il PDF F24
+e' una delega con piu' righe: non e' la radice del debito e non prova il pagamento.
+Una cartella puo' raccogliere piu' partite e ruoli; una delega puo' pagare piu'
+partite; una rata puo' riguardare piu' cartelle. Le relazioni conservano le quote
+confermate, senza sommare l'intera operazione su ogni destinazione.
+
+| Percorso | Fasi possibili, da attestare con documenti |
+| --- | --- |
+| Controllo dichiarazioni Agenzia Entrate | Obbligazione/dichiarazione → eventuale F24 → controllo → comunicazione di irregolarita' → chiarimenti/rettifica o pagamento/piano → eventuale ruolo del dovuto → cartella notificata |
+| INPS, avviso di addebito esecutivo | Denuncia/accertamento e contribuzione → eventuale bonario → avviso di addebito, notifica e affidamento → riscossione; dal 2011 l'avviso sostituisce ruolo e cartella |
+| INPS, cartella storica | Se formazione e consegna del ruolo sono avvenute entro il 31/12/2010, resta il percorso della cartella; la sola annualita' del contributo non sceglie il percorso |
+| Accertamento esecutivo | Atto esecutivo → affidamento → eventuale presa in carico e riscossione; non inserire una cartella o un bonario inesistenti |
+| Percorso non ricostruibile | Documenti esistenti, con fasi non documentate e dati da acquisire; nessuna sequenza presunta |
+
+Il bonario non e' una fase universale. Il fascicolo non deve dichiarare
+"omesso pagamento" dalla sola assenza della quietanza nell'archivio.
+
+### Cause e rami da conservare
+
+| Caso documentato o da verificare | Trattamento del fascicolo |
+| --- | --- |
+| F24 predisposto, ricevuto dal consulente o inviato | Conservare i fatti effettivamente provati; predisposizione, invio ed esito sono eventi distinti |
+| Controllo automatico o formale della dichiarazione | Conservare prospetto analitico, comunicazione, codice atto, tributi, periodi e documenti richiesti |
+| Versamento omesso, insufficiente o tardivo | Distinguere i tre motivi quando sono espliciti nell'atto; separare capitale, sanzioni e interessi |
+| Credito/detrazione non riconosciuti o imponibile rettificato | Conservare dichiarazione, prospetto dell'ente, giustificativi e rettifiche; non presumere che mancasse solo un F24 |
+| Pagamento non riconosciuto per codice, anno, sede o matricola | Quietanza da riallocare/correggere; nessun abbinamento certo per il solo importo |
+| Ordine annullato, scartato, addebito rifiutato o stornato | Mostrare l'esito negativo; il PDF di trasmissione non soddisfa il debito |
+| Compensazione anche a saldo zero | Conservare crediti, righe compensate ed esito fiscale accettato; non inventare un movimento bancario |
+| Quietanza inferiore al dovuto con stessa identita' e periodo INPS | Proposta di imputazione parziale, da verificare; non entra nei match esatti o nei totali pagati senza quota confermata |
+| Piu' versamenti per una partita | Conservare tutti i versamenti e le quote; non sommarli automaticamente se imputazione o unicita' non sono confermate |
+| Un versamento per piu' cartelle o rate | Mostrare l'importo dell'operazione separatamente dalla quota della singola partita |
+| Pagamento originario prima del ruolo | Verificare sgravio/rideterminazione presso il creditore e i presupposti della sospensione legale AdeR; serve la data reale di formazione del ruolo |
+| Pagamento originario dopo il ruolo o dopo la notifica | Evidenziare il disallineamento e la verifica con l'ente creditore; il solo pagamento non dimostra lo sgravio integrale ne' il presupposto "prima del ruolo" |
+| Data di formazione del ruolo ignota o coincidente con il giorno del versamento | Non affermare la precedenza; acquisire la fonte e, se necessario, l'ordine temporale |
+| Pagamento del solo capitale | Verificare residui, accessori e relativa causale; non cancellare sanzioni/interessi per inferenza |
+| Quietanza originaria e successivo pagamento della riscossione | Segnalare una possibile duplicazione per verifica del rimborso; niente credito/rimborso automatico |
+| Richiesta di chiarimenti, autotutela, sgravio o sospensione | Registrare domanda, protocollo, ricevuta e risposte; domanda e provvedimento restano fatti distinti |
+| Sgravio o annullamento totale/parziale concesso | Conservare il provvedimento e le quote interessate; non trasformarlo in pagamento |
+| Sospensione amministrativa o giudiziale | Conservare oggetto, decorrenza ed eventuale cessazione; sospensione non equivale ad annullamento |
+| Ricorso e decisioni | Tenere deposito, notifiche, provvedimenti e impugnazioni separati; nessuna sospensione automatica dedotta dal solo ricorso |
+| Piano Agenzia Entrate, amministrativo INPS o AdeR | Tenere i tre regimi distinti: domanda, accoglimento, rate, versamenti, accessori e possibile decadenza |
+| Lieve inadempimento o decadenza | Verificare rata iniziale/successiva/ultima, carenza e ritardo secondo la regola temporale applicabile; nessuna decadenza da una semplice differenza di importo |
+| Definizione agevolata/rottamazione | Conservare domanda, carichi inclusi/esclusi, accoglimento, piano, moduli e ricevute; richiesta, concessione e perfezionamento sono diversi |
+| Residuo portale zero | Fotografia del portale alla data della consultazione, con causa della chiusura da verificare; non prova di pagamento |
+| Doppione o versione sostituita | Conservare provenienza e storico; usare soltanto il modello attivo per gli abbinamenti correnti |
+| Bonario, notifica, quietanza o altri atti mancanti | Elencare i documenti mancanti senza inventare le fasi intermedie |
+
+Le causali INPS e le gestioni determinano l'identita' e la semantica del periodo:
+il mese DM10 puo' avere la colonna finale non compilata; un intervallo effettivo
+non viene troncato al mese iniziale. Periodi speciali o codici rata non vengono
+interpretati come mesi per somiglianza. Il matcher oggi gestisce le causali
+esplicitamente supportate; gli altri casi restano da verificare.
+
+### Date, prove e cronologia
+
+Ogni voce espone data effettiva, significato della data, tipo di documento,
+identificativo, fonte originale e importo/quota quando documentati. Data di
+predisposizione, invio del consulente, trasmissione F24, esecuzione, notifica,
+formazione del ruolo, esecutivita', consegna ad AdeR, scadenza e acquisizione
+rimangono distinti. La data di acquisizione non sostituisce una data fiscale.
+Le voci senza data documentata stanno in un gruppo separato, non in fondo alla
+cronologia con una data fittizia. La fotografia portale non sostituisce gli
+eventi di pagamento o un provvedimento dell'ente.
+
+Il confronto pagamento/ruolo usa la **formazione**, non la consegna, la data di
+notifica o l'annualita' del tributo. Un esito di confronto e' un invito alla
+verifica, non un'istanza inviata o un provvedimento ottenuto. La sospensione
+legale AdeR per versamento antecedente al ruolo e' distinta dalle istanze
+dirette all'ente creditore; un avviso INPS notificato dall'Istituto ha il suo
+percorso. Scadenze e sospensioni dei termini richiedono fonte e versione
+temporale: non introdurre un unico numero di giorni per tutti gli avvisi.
+
+| Vista / servizio | Fonte autorevole e comportamento |
+| --- | --- |
+| Situazione fiscale → Riscossione → dettagli → Cronologia del fascicolo | Lettura all'apertura di `GET /api/fiscal/collections/{claim_id}/dossier`, admin e contribuente corrente |
+| Proiezione del fascicolo | Legge `tax_collection_claims`, eventi, relazioni/prove e soli documenti, pagamenti, quote, piani e fotografie collegati; non crea un secondo archivio |
+| Riconciliazione fonti | Mantiene match esatti e proposte parziali separati; la proposta non paga il debito |
+| Richieste agli enti | La vista non invia istanze, non concede sgravi e non modifica dati o saldi |
+
+### Riscontro dei contenuti e completezza documentale
+
+Il nome file e la cartella di provenienza servono a ritrovare il documento,
+non ne provano natura, destinatario, data o pagamento. Leggere il contenuto
+con CF del debitore, ente/gestione, riferimento dell'atto, periodo completo,
+importi e riferimenti alla corrispondenza precedente. Il CF del rappresentante
+firmatario non sostituisce quello del contribuente. Richieste, preavvisi,
+rigetti, risposte interlocutorie, concessioni e attivazioni restano distinti.
+Una legenda o istruzione che cita uno sgravio non e' un provvedimento.
+
+La quietanza ufficiale F24 con esito positivo e attribuzione verificata prova
+il versamento delle righe e degli importi quietanzati anche senza estratto
+conto bancario disponibile. Il riscontro bancario e' una prova separata,
+non una condizione aggiuntiva per riconoscere il pagamento fiscale.
+Ricezione, controllo formale, invio, scarto e quietanza positiva non sono
+equivalenti; le ricevute PEC provano il trasporto del messaggio.
+
+Un PDF puo' contenere piu' atti o quietanze di partite diverse: mantenere
+versione, pagine e riferimenti di ciascuna componente, senza estendere
+pagamento o sgravio all'intero fascicolo. Confrontare gli importi dei fogli
+elettronici con il testo della fonte; una differenza di scala richiede
+verifica, non una divisione automatica di tutti i numeri. Gli identificativi
+lunghi restano stringhe. Causali non supportate non vengono scartate.
+
+Il fascicolo e' una proiezione dei collegamenti canonici registrati, inclusi
+corrispondenza, piani, notifiche, eventi legali e definizioni agevolate.
+Non certifica la copertura di Drive. Il riscontro separato per file distingue
+censito, contenuto letto, originale/ricostruzione, copia per hash, registrato,
+collegato, importo quietanzato e banca riscontrata. Una nota d'archivio puo'
+essere superata dai file attuali. Date segnaposto dell'anno 0001 non entrano
+nella cronologia fiscale.
+
+Per i piani AdeR il CF stampato del contribuente va verificato nei dati
+dell'istanza e del prospetto: il tenant scelto per l'importazione e il CF di
+un rappresentante non bastano. Un originale con identita' mancante, ambigua
+o diversa resta archiviato da verificare senza associazioni certe al piano.
+Stesso protocollo con rate o condizioni discordanti conserva tutte le varianti
+e sospende la riconciliazione automatica; nome file e data di caricamento non
+decidono quale concessione prevale. L'eventuale quietanza positiva resta prova
+del proprio versamento, anche quando la sua imputazione a un piano e' incerta.
+
+### Fonti ufficiali consultate il 17/10/2026
+
+- [AdeR: formazione del ruolo e cartella](https://www.agenziaentrateriscossione.gov.it/it/Per-saperne-di-piu/documenti-della-riscossione/cartella/index.html).
+- [AdeR: riferimenti del ruolo e partita](https://www.agenziaentrateriscossione.gov.it/it/la-guida-alla-cartella-di-pagamento/la-cartella-di-pagamento/le-informazioni-degli-enti-creditori/index.html).
+- [AdeR: sospensione legale e presupposti](https://www.agenziaentrateriscossione.gov.it/it/imprese/Sospensione/) e [annullamento totale/parziale presso il creditore](https://www.agenziaentrateriscossione.gov.it/it/imprese/AnnullamentoDelDebito/index.html).
+- [INPS, circolare 168/2010: transizione all'avviso esecutivo, omissione, parziale e tardivo](https://servizi2.inps.it/servizi/Bussola/visualizzadoc.aspx?svirtualurl=/circolari/circolare+numero+168+del+30-12-2010.htm).
+- [INPS: avviso di addebito, annullamento e sospensione](https://www.inps.it/it/it/dettaglio-scheda.it.schede-servizio-strumento.schede-servizi.avviso-di-addebito-informativa-sospensione-annullamento-e-rateazione-50129.avviso-di-addebito-informativa-sospensione-annullamento-e-rateazione.html).
+- [INPS, 10/09/2026: bonari Artigiani/Commercianti e invio quietanza di versamento](https://www.inps.it/it/it/inps-comunica/notizie/dettaglio-news-page.news.2026.09.gestioni-artigiani-e-commercianti-emissione-avvisi-bonari.html).
+- [Agenzia Entrate / FiscoOggi: guida aggiornata comunicazioni di irregolarita'](https://www.fiscooggi.it/print/pdf/node/104710). Le comunicazioni elaborate dal 2025 hanno regole diverse dalle precedenti; categoria e destinatario distinguono i termini. Non riusare indiscriminatamente le guide precedenti.
+- [Agenzia Entrate: esiti distinti F24 cumulativo](https://telematici.agenziaentrate.gov.it/Main/Adesione.jsp) e [F24 Web](https://telematici.agenziaentrate.gov.it/Main/F24web.jsp).
+- [Agenzia Entrate: ricevute dei versamenti, controllo formale F24A0 ed esito addebito/consolidamento I24A0](https://infoprecompilata.agenziaentrate.gov.it/portale/ricevute1).
 
 ---
 

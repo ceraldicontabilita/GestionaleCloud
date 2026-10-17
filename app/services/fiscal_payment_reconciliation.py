@@ -22,6 +22,7 @@ from app.db_collections import (
     COLL_TAX_SETTLEMENT_APPLICATIONS,
 )
 from app.services.fiscal_evidence import link_evidence, normalize_evidence, stable_id
+from app.services.ader_rate_plan_guards import plan_can_reconcile
 
 
 CENT = Decimal("0.01")
@@ -70,6 +71,8 @@ def find_ader_payment_target(
 
     candidates: list[dict[str, Any]] = []
     for plan in rate_plans:
+        if not plan_can_reconcile(plan):
+            continue
         for module in plan.get("payment_modules") or []:
             module_ids = {
                 _identifier(module.get(field))

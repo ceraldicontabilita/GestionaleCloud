@@ -19,6 +19,9 @@ from typing import Any
 from app.db_collections import COLL_TAX_COLLECTION_CLAIMS
 from app.services.fiscal_document_ingestion import FiscalDocumentIngestionService, extract_pdf_pages
 from app.services.fiscal_evidence import link_evidence, normalize_evidence, stable_id
+from app.services.ader_rate_plan_guards import (
+    plan_source_variant, plan_taxpayer_identity,
+)
 
 
 ANALYTIC_FILENAME = re.compile(
@@ -323,16 +326,18 @@ def _resolve_document_reference(reference: str, document_numbers: list[str]) -> 
 def parse_rate_plan(*, content: bytes, filename: str, company_id: str,
                     document_numbers: list[str], dataset_sha256: str) -> dict[str, Any]:
     text = re.sub(r"\s+", " ", _pdf_text(content))
+    identity = plan_taxpayer_identity(text, company_id)
     match = re.search(r"identificativo\s+(\d+)\s+del\s+(\d{2}/\d{2}/\d{4})", text, re.IGNORECASE)
-    equitalia = False
-    if not match and "EQUITALIA" in text.upper():
-        match = re.search(r"istanza di rateizzazione protocollo n\.\s*(\d+)\s+del\s+(\d{2}/\d{2}/\d{4})", text, re.I)
-        equitalia = bool(match)
+    historical_protocol = False
+    if not match:
+        match = re.search(r"istanza di rate(?:izzazione|azione) protocollo n\.\s*(\d+)\s+del\s+(\d{2}/\d{2}/\d{4})", text, re.I)
+        historical_protocol = bool(match)
     if not match:
         raise ValueError(f"Identificativo rateizzazione non leggibile: {filename}")
     filename_plan = re.search(r"(AR\d+)", filename, re.IGNORECASE)
-    plan_id = (f"EQUITALIA-{match.group(1)}-{match.group(2).replace('/', '')}" if equitalia else
-               filename_plan.group(1).upper() if filename_plan else f"AR{match.group(1)}")
+    plan_id = (f"EQUITALIA-{match.group(1)}-{match.group(2).replace('/', '')}"
+               if historical_protocol else f"AR{match.group(1)}")
+    filename_reference = filename_plan.group(1).upper() if filename_plan else None
     references = re.findall(r"\b[0137]\d{16,19}\b", text)
     unique_references = list(dict.fromkeys(references))
     resolved = [{"printed_reference": ref, "document_number": _resolve_document_reference(ref, document_numbers)}
@@ -359,14 +364,23 @@ def parse_rate_plan(*, content: bytes, filename: str, company_id: str,
     rateizzato_cents = _cents(_decimal(rateizzato.group(1))) if rateizzato else None
     somma_rate = sum(i["amount_cents"] for i in installments) if installments else None
     somma_documenti = sum(d["amount_cents"] for d in documents) if documents else None
+    # An explicitly dated letter has a separate date from the application it
+    # answers. Neither its filename nor the archive upload time dates a grant.
+    letter_date = re.search(r"\b(?:NAPOLI|SALVATORE)\s*,\s*(\d{2}/\d{2}/\d{4})", text, re.I)
     return {
         # Un piano e' uno per identificativo: la stessa lettera arriva anche in
         # piu' copie PDF (byte diversi, «(1)», «(2)»), e deve restare una riga
         # con le sue rate; la copia si vede dalle fonti, non da un secondo piano.
         "id": stable_id("aderrateplan", company_id, plan_id),
         "company_id": company_id,
+        "taxpayer_identity_status": identity["status"],
+        "taxpayer_identity": identity,
         "plan_reference": plan_id,
+        "printed_plan_reference": match.group(1),
+        "filename_plan_reference_hint": filename_reference,
+        "filename_reference_discrepancy": bool(filename_reference and filename_reference != plan_id),
         "application_date": datetime.strptime(match.group(2), "%d/%m/%Y").date().isoformat(),
+        "document_date": datetime.strptime(letter_date.group(1), "%d/%m/%Y").date().isoformat() if letter_date else None,
         "installment_count": int(count_match.group(1)) if count_match else None,
         "first_installment_amount": (
             _money(_decimal(first_summary.group(2))) if first_summary
@@ -392,7 +406,7 @@ def parse_rate_plan(*, content: bytes, filename: str, company_id: str,
             "somma_rate_cents": somma_rate, "somma_documenti_cents": somma_documenti,
         },
         "document_references": resolved,
-        "requires_review": bool(unresolved),
+        "requires_review": bool(unresolved) or identity["status"] != "CONFIRMED",
         "unresolved_references": unresolved,
         "source_filename": filename,
         "source_document_id": stable_id("aderpdf", dataset_sha256, filename),
@@ -406,7 +420,7 @@ _IMPORTO_ADER = r"[\d.'’]+,\d{2}"
 def _rate_plan_documents(text: str) -> list[dict[str, Any]]:
     """«Documento n. / Importo» della lettera di accoglimento: il numero come
     stampato (17 cifre, senza il suffisso del portale) e l'importo rateizzato."""
-    segmento = re.search(r"relativa ai seguenti documenti:(.*?)Le comunichiamo", text, re.IGNORECASE | re.DOTALL)
+    segmento = re.search(r"relativa ai seguenti documenti(?: di pagamento)?:(.*?)Le comunichiamo", text, re.IGNORECASE | re.DOTALL)
     if not segmento:
         return []
     return [{"printed_reference": numero, "amount_cents": _cents(_decimal(importo))}
@@ -641,7 +655,7 @@ async def apply_ader_archive_plan(*, db, plan: dict[str, Any], actor: str | None
     from app.db_collections import (
         COLL_ADER_ARCHIVE_IMPORTS, COLL_ADER_POSITION_SNAPSHOTS,
         COLL_FISCAL_DOCUMENTS, COLL_TAX_COLLECTION_CLAIMS, COLL_TAX_RATE_PLANS,
-        COLL_TAX_SETTLEMENT_APPLICATIONS,
+        COLL_TAX_COLLECTION_DOCUMENTS, COLL_TAX_SETTLEMENT_APPLICATIONS,
     )
 
     now = _now_iso()
@@ -823,12 +837,35 @@ async def apply_ader_archive_plan(*, db, plan: dict[str, Any], actor: str | None
         return merged
 
     inserted_plans = 0
+    identity_review_documents = 0
+    conflicting_rate_plans: set[str] = set()
     for collection, items in ((COLL_TAX_RATE_PLANS, plan["rate_plans"]),
                               (COLL_TAX_SETTLEMENT_APPLICATIONS, plan["settlements"])):
         for original in items:
             item = dict(original)
             item["source_document_id"] = document_refs[item["source_filename"]]["document_id"]
             if collection == COLL_TAX_RATE_PLANS:
+                if item.get("taxpayer_identity_status") != "CONFIRMED":
+                    # Keep the uploaded original and its extraction. The tenant
+                    # chosen by the caller cannot certify the printed debtor.
+                    identity_review_documents += 1
+                    await db[COLL_FISCAL_DOCUMENTS].update_one(
+                        {"company_id": item["company_id"], "id": item["source_document_id"]},
+                        {"$set": {"review_status": "TO_VERIFY", "taxpayer_identity": item.get("taxpayer_identity"),
+                                  "taxpayer_identity_status": item.get("taxpayer_identity_status", "MISSING")}},
+                    )
+                    await db[COLL_TAX_COLLECTION_DOCUMENTS].update_one(
+                        {"company_id": item["company_id"], "id": stable_id("aderidentityreview", item["company_id"], item["source_document_id"])},
+                        {"$setOnInsert": {"company_id": item["company_id"],
+                            "id": stable_id("aderidentityreview", item["company_id"], item["source_document_id"]),
+                            "source_document_id": item["source_document_id"],
+                            "document_type": "PIANO_RATEIZZAZIONE", "status": "TAXPAYER_IDENTITY_REVIEW_REQUIRED",
+                            "taxpayer_identity": item.get("taxpayer_identity"),
+                            "taxpayer_identity_status": item.get("taxpayer_identity_status", "MISSING"),
+                            "asserted_plan_reference": item.get("plan_reference"), "created_at": now}},
+                        upsert=True,
+                    )
+                    continue
                 item["payment_modules"] = merge_modules(
                     available_modules_by_plan.get(item.get("plan_reference") or "", []),
                 )
@@ -843,21 +880,40 @@ async def apply_ader_archive_plan(*, db, plan: dict[str, Any], actor: str | None
                 stored_plan = await db[collection].find_one(
                     {"company_id": item["company_id"], "id": item["id"]}, {"_id": 0},
                 ) or item
+                variants = list(stored_plan.get("source_variants") or [])
+                for candidate in (stored_plan, item):
+                    variant = plan_source_variant(candidate)
+                    if candidate.get("source_document_id") and not any(
+                        existing.get("source_document_id") == variant.get("source_document_id")
+                        and existing.get("terms_signature") == variant["terms_signature"] for existing in variants
+                    ):
+                        variants.append(variant)
+                signatures = {variant["terms_signature"] for variant in variants}
+                conflict = bool(stored_plan.get("terms_conflict")) or len(signatures) > 1
+                if conflict:
+                    conflicting_rate_plans.add(str(item["id"]))
                 merged_modules = merge_modules(
                     stored_plan.get("payment_modules") or [], item.get("payment_modules") or [],
                 )
                 await db[collection].update_one(
                     {"company_id": item["company_id"], "id": item["id"]},
-                    {"$set": {"payment_modules": merged_modules, "updated_at": now},
+                    {"$set": {"payment_modules": merged_modules, "updated_at": now,
+                              "source_variants": variants, "terms_conflict": conflict,
+                              "filename_reference_discrepancy": bool(stored_plan.get("filename_reference_discrepancy") or item.get("filename_reference_discrepancy")),
+                              "requires_review": bool(stored_plan.get("requires_review")) or item.get("requires_review", False) or conflict,
+                              "taxpayer_identity_status": item["taxpayer_identity_status"],
+                              "taxpayer_identity": item.get("taxpayer_identity")},
                      "$addToSet": {"source_document_ids": item["source_document_id"]}},
                 )
                 item["payment_modules"] = merged_modules
+                item["terms_conflict"] = conflict
             entity_type = ("tax_rate_plan" if collection == COLL_TAX_RATE_PLANS
                            else "tax_settlement_application")
             await link_source(entity_type=entity_type, entity_id=item["id"],
                               source_filename=item["source_filename"])
             if collection == COLL_TAX_RATE_PLANS:
-                await _deposita_rate_attese(db, item, now=now)
+                if not item.get("terms_conflict"):
+                    await _deposita_rate_attese(db, item, now=now)
                 for module in item["payment_modules"]:
                     await link_source(entity_type=entity_type, entity_id=item["id"],
                                       source_filename=module["source_filename"],
@@ -935,7 +991,10 @@ async def apply_ader_archive_plan(*, db, plan: dict[str, Any], actor: str | None
     return {"archive_id": plan["id"], "inserted_snapshots": inserted,
             "existing_snapshots": len(plan["analytics"]) - inserted,
             "inserted_rate_plans": inserted_plans,
-            "existing_rate_plans": len(plan["rate_plans"]) - inserted_plans,
+            "existing_rate_plans": len(plan["rate_plans"]) - inserted_plans - identity_review_documents,
+            "identity_review_documents": identity_review_documents,
+            "conflicting_rate_plan_ids": sorted(conflicting_rate_plans),
+            "requires_review": bool(identity_review_documents or conflicting_rate_plans or plan.get("requires_review")),
             "linked_payment_modules": linked_payment_modules,
             "unlinked_payment_modules": len(plan["payment_modules"]) - linked_payment_modules,
             "reconciled_existing_receipts": receipt_reconciliation["matched"],
@@ -1260,6 +1319,8 @@ async def _risolvi_piani_in_attesa(db, company_id: str, document_number: str, *,
         {"company_id": company_id, "unresolved_references": {"$exists": True, "$ne": []}}, {"_id": 0}).to_list(500)
     risolti = 0
     for piano in piani:
+        if piano.get("terms_conflict") or piano.get("taxpayer_identity_status") != "CONFIRMED":
+            continue
         irrisolti = [r for r in piano.get("unresolved_references") or [] if document_number.startswith(r)]
         if not irrisolti:
             continue
@@ -1352,7 +1413,7 @@ async def archivia_documento_ader(db, *, filename: str, content: bytes, testo: s
             if tipo in {TIPO_ANALITICA, TIPO_DETTAGLIO}
             else (
                 documento.get("status") == "duplicate"
-                if tipo == TIPO_MODULO_PAGAMENTO
+                if tipo == TIPO_MODULO_PAGAMENTO or esito.get("identity_review_documents")
                 else bool(esito.get("existing_rate_plans"))
             )
         ),
@@ -1396,7 +1457,14 @@ async def archivia_documento_ader(db, *, filename: str, content: bytes, testo: s
             + (f", {len(piano['unresolved_references'])} documenti senza posizione in archivio"
                if piano["unresolved_references"] else "")
             + (" (piano gia' presente)" if risultato["duplicate"] else "")
+            + (" (identità del contribuente da verificare: nessuna associazione al piano o alla pretesa)"
+               if esito.get("identity_review_documents") else "")
+            + (" (lettere con condizioni discordanti: piano da verificare, riconciliazione sospesa)"
+               if esito.get("conflicting_rate_plan_ids") else "")
         )
         risultato["data"] = {k: piano[k] for k in ("plan_reference", "application_date", "installment_count",
                                                     "total_plan_amount", "quadratura", "unresolved_references")}
+        risultato["requires_review"] = esito.get("requires_review", False)
+        risultato["data"]["taxpayer_identity_status"] = piano.get("taxpayer_identity_status")
+        risultato["data"]["terms_conflict"] = bool(esito.get("conflicting_rate_plan_ids"))
     return risultato

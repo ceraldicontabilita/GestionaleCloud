@@ -71,14 +71,14 @@ def _dettaglio(numero="07120250137550929000", tipo="Cartella", ente="CAMERA DI C
 
 ACCOGLIMENTO = (
     "Agenzia delle entrate-Riscossione\nVia R. Bracco, 20 80133 NAPOLI (NA)\nSpett.le PROVA S.R.L.\n"
-    "Oggetto: Accoglimento dell'istanza di rateizzazione ex art. 19 del D.P.R. n. 602/1973, con identificativo 904285 "
+    "Oggetto: Accoglimento dell'istanza di rateizzazione ex art. 19 del D.P.R. n. 602/1973, con identificativo 071904285 "
     f"del 01/10/2025 presentata dal C.F. {SOCIETA}\n"
-    "Con riferimento all'istanza di rateizzazione di somme iscritte a ruolo con identificativo 904285 da Lei presentata "
+    "Con riferimento all'istanza di rateizzazione di somme iscritte a ruolo con identificativo 071904285 da Lei presentata "
     "il 01/10/2025, relativa ai seguenti documenti:\nDocumento n. Importo\n"
     "37120250002792001 € 6,90\n07120250137550929 € 32,20\n07120250145650421 € 3'720,19\n"
     "Le comunichiamo di averLe accordato la suddivisione del pagamento in n. 6 rate mensili.\n"
     "Il pagamento delle singole rate deve avvenire, a decorrere dal 13/10/2025, alle scadenze indicate nel piano allegato.\n"
-    "Prospetto del piano di ammortamento\nIdentificativo istanza 904285 del 01/10/2025\n"
+    "Prospetto del piano di ammortamento\nIdentificativo istanza 071904285 del 01/10/2025\n"
     f"C.F.: {SOCIETA}\nN. Documenti: 1 37120250002792001 2 07120250137550929 3 07120250145650421\n"
     "Numero rate accordato: 6\nImporto complessivo rateizzato: € 3'759,29\ndi cui iscritto a ruolo: € 3'759,29\n"
     "di cui mora: € 0,00\ndi cui oneri di riscossione3: € 0,00\n"
@@ -362,6 +362,10 @@ def test_modulo_f24_singolo_si_collega_solo_al_riferimento_esatto_del_piano(monk
     async def scenario():
         # La ricevuta puo' precedere sia il RAV sia l'accoglimento: deve essere
         # ripresa quando il riferimento completo diventa disponibile.
+        for number in ("37120250002792001000", "07120250137550929000", "07120250145650421000"):
+            await db["tax_collection_claims"].insert_one({
+                "id": "claim:" + number, "company_id": SOCIETA, "collection_number": number,
+            })
         await db["ricevute_pagopa"].insert_one({
             "id": "ricevuta-rata-1", "document_kind": "RICEVUTA_CBILL",
             "identificativo_bolletta": "180071115560088852",
