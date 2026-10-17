@@ -27,6 +27,9 @@ from app.db_collections import (
     COLL_TAX_COLLECTION_CLAIMS,
     COLL_TAX_PAYMENTS,
 )
+from app.services.f24_canonico import normalizza_righe_tributo
+from app.services.f24_controllo_incrociato import modello_attivo, parse_periodo_avviso
+from app.services.f24_fiscal_evidence import normalize_reference_period
 
 
 CENT = Decimal("0.01")
@@ -56,9 +59,29 @@ def _money_cents(value: Any) -> int | None:
 
 
 def _period(value: Any) -> str | None:
-    text = str(value or "").strip()
-    match = re.search(r"\b(0?[1-9]|1[0-2])[/.-](20\d{2})\b", text)
-    return f"{int(match.group(1)):02d}/{match.group(2)}" if match else None
+    try:
+        period = parse_periodo_avviso(value)
+    except ValueError:
+        return normalize_reference_period({"periodo_riferimento": value})
+    if not period["mese"]:
+        return None
+    return f"{period['anno']:04d}-{period['mese']:02d}"
+
+
+def _period_range(source: dict[str, Any]) -> tuple[str, str] | None:
+    """Un mese singolo storico vale da=a; una fine esplicita va verificata."""
+    start = _period(source.get("periodo_da") or source.get("periodo")
+                    or source.get("periodo_riferimento"))
+    raw_end = source.get("periodo_a")
+    end = _period(raw_end) if raw_end not in (None, "") else start
+    if not start or not end or end < start:
+        return None
+    return start, end
+
+
+def _active_model(document: dict[str, Any]) -> bool:
+    # Stesse due condizioni di carica_registro(), anche per i matcher diretti.
+    return document.get("status") != "eliminato" and modello_attivo(document)
 
 
 _INPS_ROW = re.compile(
@@ -88,29 +111,43 @@ def parse_inps_notice_lines(text: str) -> list[dict[str, Any]]:
 
 
 def _quietanza_rows(document: dict[str, Any]) -> Iterable[dict[str, Any]]:
-    for row in document.get("sezione_inps") or []:
+    # La vista canonica recupera anche le righe INPS archiviate in Erario.
+    # Si normalizza in memoria: il documento fiscale originale resta intatto.
+    try:
+        normalized_rows = normalizza_righe_tributo(document)
+    except (InvalidOperation, TypeError, ValueError, OverflowError):
+        # Un documento con importi illeggibili non certifica un abbinamento.
+        return
+    for normalized in normalized_rows:
+        row = dict(normalized["source_fields"])
+        # La vista canonica usa zero anche per un importo non letto. Qui una
+        # delega incompleta non puo' certificare l'identita' del ravvedimento.
+        raw_debit = next((row[key] for key in ("importo_debito", "debito", "importo")
+                          if row.get(key) not in (None, "")), None)
+        if isinstance(raw_debit, str):
+            raw_debit = raw_debit.replace("€", "").replace(" ", "")
+        debit_known = isinstance(row.get("importo_debito_cents"), int) or (
+            _money_cents(raw_debit) is not None
+        )
+        debit_cents = normalized["debit_cents"] if debit_known else None
+        row["importo_debito_cents"] = debit_cents
+        if normalized["section"] == "INPS":
+            row.update({
+                "causale": normalized["tax_code"],
+                "matricola": normalized["matricola"],
+                "periodo_da": normalized["periodo_da"] or normalized["reference_period"],
+                "periodo_a": normalized["periodo_a"],
+            })
+        else:
+            row["periodo_riferimento"] = normalized["reference_period"]
         yield {
-            "section": "INPS",
-            "tax_code": str(row.get("causale") or "").upper(),
-            "period": _period(row.get("periodo_riferimento") or row.get("periodo_da")),
-            "identity": _identifier(row.get("matricola")),
-            "debit_cents": row.get("importo_debito_cents") if isinstance(
-                row.get("importo_debito_cents"), int
-            ) else _money_cents(row.get("importo_debito")),
+            "section": normalized["section"],
+            "tax_code": normalized["tax_code"],
+            "period": _period_range(row),
+            "identity": _identifier(normalized.get("matricola")),
+            "debit_cents": debit_cents,
             "row": row,
         }
-    for section in ("sezione_erario", "sezione_regioni", "sezione_tributi_locali"):
-        for row in document.get(section) or []:
-            yield {
-                "section": section,
-                "tax_code": str(row.get("codice_tributo") or "").upper(),
-                "period": _period(row.get("periodo_riferimento")),
-                "identity": None,
-                "debit_cents": row.get("importo_debito_cents") if isinstance(
-                    row.get("importo_debito_cents"), int
-                ) else _money_cents(row.get("importo_debito")),
-                "row": row,
-            }
 
 
 def _payment_reference(
@@ -145,9 +182,9 @@ def _payment_reference(
     }
 
 
-def _rows_by_semantic_key(document: dict[str, Any]) -> dict[tuple[str, str, str, str], list[int]] | None:
+def _rows_by_semantic_key(document: dict[str, Any]) -> dict[tuple[str, ...], list[int]] | None:
     """Raggruppa tutte le righe di una delega per identita' fiscale verificabile."""
-    grouped: dict[tuple[str, str, str, str], list[int]] = {}
+    grouped: dict[tuple[str, ...], list[int]] = {}
     rows = list(_quietanza_rows(document))
     if not rows:
         return None
@@ -159,7 +196,7 @@ def _rows_by_semantic_key(document: dict[str, Any]) -> dict[tuple[str, str, str,
             str(row.get("section") or ""),
             str(row.get("tax_code") or ""),
             str(row.get("identity") or ""),
-            str(row.get("period") or ""),
+            *row["period"],
         )
         grouped.setdefault(key, []).append(int(amount))
     for amounts in grouped.values():
@@ -192,18 +229,20 @@ def _same_codes_only_higher_amounts(
 
 
 def _wrong_code_ravvedimento_support(
-    *, obligation_amount: int, period: str, identity: str,
+    *, obligation_amount: int, period: tuple[str, str], identity: str,
     quietanza: dict[str, Any], models: Iterable[dict[str, Any]],
 ) -> dict[str, Any] | None:
     """Trova il modello DM10 originario quando la quietanza aumentata resta DM10."""
     for model in models:
+        if not _active_model(model):
+            continue
         if not _same_codes_only_higher_amounts(model, quietanza):
             continue
         exact_original = any(
             row["tax_code"] == "DM10"
             and row["period"] == period
             and row["debit_cents"] == obligation_amount
-            and (not identity or row["identity"] == identity)
+            and row["identity"] == identity
             for row in _quietanza_rows(model)
         )
         if not exact_original:
@@ -223,7 +262,7 @@ def match_quietanza_for_obligation(
 ) -> list[dict[str, Any]]:
     """Trova quietanze esatte o ravvedimenti univoci e documentati."""
     matches: dict[str, dict[str, Any]] = {}
-    period = _period(obligation.get("periodo_da") or obligation.get("periodo"))
+    period = _period_range(obligation)
     amount = obligation.get("importo_richiesto_cents")
     if amount is None:
         amount = obligation.get("importo_cents")
@@ -236,10 +275,12 @@ def match_quietanza_for_obligation(
     # aggregata: serve una prova che le identifichi separatamente.
     if source_code == "8055":
         return []
-    if not period or amount is None:
+    if not period or amount is None or (source_code in {"8050", "DM10", "RC01"} and not identity):
         return []
     model_list = list(models)
     for document in quietanze:
+        if document.get("entity_status") == "deleted":
+            continue
         for row in _quietanza_rows(document):
             if row["tax_code"] not in allowed_codes or row["period"] != period:
                 continue
@@ -295,17 +336,21 @@ def match_f24_models_for_obligation(
     modello spiega la regolarizzazione, ma ``payment_evidence`` resta sempre
     falso: soltanto quietanza e banca possono dimostrare il versamento.
     """
-    period = _period(obligation.get("periodo_da") or obligation.get("periodo"))
+    period = _period_range(obligation)
     amount = obligation.get("importo_richiesto_cents")
     if amount is None:
         amount = obligation.get("importo_cents")
     identity = _identifier(obligation.get("matricola_inps"))
     source_code = str(obligation.get("codice_tributo") or "").upper()
-    if source_code == "8055" or not period or amount is None:
+    if source_code == "8055" or not period or amount is None or (
+        source_code in {"8050", "DM10", "RC01"} and not identity
+    ):
         return []
     allowed_codes = {"DM10", "RC01"} if source_code == "8050" else {source_code}
     matches: dict[str, dict[str, Any]] = {}
     for document in models:
+        if not _active_model(document):
+            continue
         for row in _quietanza_rows(document):
             if row["tax_code"] not in allowed_codes or row["period"] != period:
                 continue
@@ -531,13 +576,14 @@ async def build_claim_source_plan(db, *, company_id: str) -> list[dict[str, Any]
         {"_id": 0, "pdf_data": 0, "contenuto_b64": 0},
     ).to_list(10000)
     f24_models = await db[COLL_F24].find(
-        {"$or": [
+        {"status": {"$ne": "eliminato"}, "$or": [
             {"codice_fiscale": company_id},
             {"dati_generali.codice_fiscale": company_id},
             {"dati_generali.taxpayer_id": company_id},
         ]},
         {"_id": 0, "pdf_data": 0, "contenuto_b64": 0},
     ).to_list(10000)
+    f24_models = [document for document in f24_models if _active_model(document)]
     tax_payments = await db[COLL_TAX_PAYMENTS].find(
         {"company_id": company_id}, {"_id": 0, "pdf_data": 0, "contenuto_b64": 0},
     ).to_list(10000)
