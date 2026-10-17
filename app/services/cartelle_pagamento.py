@@ -52,6 +52,11 @@ _RIGA = re.compile(
     r"(?:\s*VER\.\s*(\S+)\s+(\d{2}/\d{2}/\d{4})\s+NOT\.\s*IL\s+(\d{2}/\d{2}/\d{4})\s+TG\.\s*([A-Z0-9]+))?",
     re.MULTILINE,
 )
+_VERBALE_STORICO = re.compile(
+    r"VER\.\s*(\S+)\s*-\s*(\d{2}/\d{2}/\d{2,4})\s+"
+    r"NOTIF\.\s*IL\s+(\d{2}/\d{2}/\d{2,4})\s+TARGA\s*:\s*([A-Z0-9]+)",
+    re.IGNORECASE,
+)
 
 
 def e_cartella_pagamento(testo: str) -> bool:
@@ -87,6 +92,14 @@ def _normalizza_numero(numero: str) -> str:
 def _numero_fiscale(numero: str) -> str:
     """Numero canonico AdeR a 20 cifre, senza cambiare quello stampato."""
     return re.sub(r"\D", "", numero or "")
+
+
+def _data_quattro_cifre(value: str) -> str:
+    """Normalizza le date dei vecchi ruoli senza inventare il secolo."""
+    parts = str(value or "").split("/")
+    if len(parts) == 3 and len(parts[2]) == 2:
+        parts[2] = "20" + parts[2]
+    return "/".join(parts)
 
 
 async def _deposita_posizione_fiscale(
@@ -155,7 +168,7 @@ async def _deposita_posizione_fiscale(
     evidence = normalize_evidence(
         document_id=reference["document_id"], version_id=reference["version_id"],
         page_number=1, field="collection_number", raw_value=dati["numero_cartella"],
-        normalized_value=numero, parser_version="cartella-riepilogo-v2",
+        normalized_value=numero, parser_version="cartella-riepilogo-v3",
         reason="original_collection_notice",
     )
     await link_evidence(
@@ -234,7 +247,8 @@ def leggi_cartella(testo: str) -> Optional[Dict[str, Any]]:
     cbill = _CBILL.search(testo)
     cf = _CF.search(testo)
     righe: List[Dict[str, Any]] = []
-    for m in _RIGA.finditer(testo):
+    matches = list(_RIGA.finditer(testo))
+    for index, m in enumerate(matches):
         riga = {
             "progressivo": m.group(1), "anno": m.group(2), "codice_tributo": m.group(3),
             "descrizione": m.group(4).strip(), "importo": str(_importo(m.group(5))),
@@ -242,6 +256,21 @@ def leggi_cartella(testo: str) -> Optional[Dict[str, Any]]:
         if m.group(6):
             riga.update({"numero_verbale": m.group(6).upper(), "data_verbale": m.group(7),
                          "data_notifica_verbale": m.group(8), "targa": m.group(9).upper()})
+        else:
+            # Le cartelle storiche stampano «VER.<numero> - gg/mm/aa
+            # NOTIF.IL ... TARGA:...», formato diverso da quello recente.
+            # Si cerca soltanto nel blocco della riga corrente, prima della
+            # successiva riga di ruolo, cosi' il verbale non migra su un altro
+            # tributo per prossimita' generica nel PDF.
+            fine = matches[index + 1].start() if index + 1 < len(matches) else len(testo)
+            storico = _VERBALE_STORICO.search(testo[m.end():fine])
+            if storico:
+                riga.update({
+                    "numero_verbale": storico.group(1).upper(),
+                    "data_verbale": _data_quattro_cifre(storico.group(2)),
+                    "data_notifica_verbale": _data_quattro_cifre(storico.group(3)),
+                    "targa": storico.group(4).upper(),
+                })
         righe.append(riga)
     ente_importo, diritti, oneri, totale, riepilogo_quadra = _riepilogo_importi(testo)
     somma_righe = sum((Decimal(r["importo"]) for r in righe), Decimal("0"))
@@ -259,7 +288,7 @@ def leggi_cartella(testo: str) -> Optional[Dict[str, Any]]:
         "diritti_notifica": str(diritti) if diritti is not None else None,
         "oneri_riscossione": str(oneri) if oneri is not None else None,
         "totale": str(totale) if totale is not None else None,
-        "parser_version": "cartella-riepilogo-v2",
+        "parser_version": "cartella-riepilogo-v3",
         "importi_quadrano": quadra,
         "codice_avviso": avviso.group(1) if avviso else None,
         # Lo IUV e' il codice avviso senza la cifra iniziale (aux digit).
@@ -336,12 +365,17 @@ async def registra_cartella(
     esistente = await db[COLL].find_one({"id": id_cartella}, {"_id": 0, "contenuto_b64": 0})
     if esistente:
         aggiornati = False
-        if (esistente.get("sha256") == impronta and not esistente.get("parser_version")
+        if (esistente.get("sha256") == impronta
+                and esistente.get("parser_version") != dati.get("parser_version")
                 and dati.get("totale") is not None):
-            campi = ("importo_ente", "diritti_notifica", "oneri_riscossione", "totale",
-                     "importi_quadrano", "parser_version", "codice_fiscale_destinatario")
+            campi = (
+                "importo_ente", "diritti_notifica", "oneri_riscossione", "totale",
+                "importi_quadrano", "parser_version", "codice_fiscale_destinatario",
+                "righe", "verbali", "codice_avviso", "iuv", "codice_cbill",
+            )
             result = await db[COLL].update_one(
-                {"id": id_cartella, "sha256": impronta, "parser_version": None},
+                {"id": id_cartella, "sha256": impronta,
+                 "parser_version": esistente.get("parser_version")},
                 {"$set": {**{k: dati[k] for k in campi}, "ultimo_caricamento": ora,
                           "parser_precedente": {k: esistente.get(k) for k in campi},
                           "parser_aggiornato_il": ora}},
@@ -353,6 +387,7 @@ async def registra_cartella(
             db, nome=nome, contenuto=contenuto, dati=dati,
             drive_file_id=esistente.get("drive_file_id"), drive_md5=esistente.get("drive_md5"),
         )
+        verbali = await collega_verbali(db, id_cartella)
         ricevuta = await chiudi_da_ricevuta_esistente(db, id_cartella)
         if not ricevuta and _snapshot_supera_attesa(fiscal):
             await db[COLL].update_one(
@@ -365,7 +400,7 @@ async def registra_cartella(
             )
         return {"success": True, "duplicate": True, "id": id_cartella, **dati,
                 "metadati_aggiornati": aggiornati, "ricevuta": ricevuta,
-                "fiscal": fiscal}
+                "verbali_collegamento": verbali, "fiscal": fiscal}
     documento: Dict[str, Any] = {
         "id": id_cartella, "sha256": impronta, "nome": nome, "dimensione": len(contenuto),
         "mime": "application/pdf", "caricato_il": ora, "ultimo_caricamento": ora,

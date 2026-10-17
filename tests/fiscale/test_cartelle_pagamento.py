@@ -64,6 +64,21 @@ def test_legge_numero_ente_righe_verbale_e_iuv_e_i_conti_tornano():
     assert dati["verbali"] == [{"numero_verbale": "111/V/2025", "targa": "AB123CD"}]
 
 
+def test_cartella_storica_legge_verbale_notif_e_targa_senza_spazi_moderni():
+    testo = "\n".join(RIGHE[:7] + [
+        "1", "2018", "5242 Contrav.cod.strada l.689/81", "32,50",
+        "VER.18111329886/A/18 - 30/11/18 NOTIF.IL 09/02/19 TARGA:FR788JG ART.7 CDS",
+        "2", "2018", "5243 Contrav.cod.strada mag.l.689/81", "19,50",
+        "VER.18111329886/A/18 - 30/11/18 NOTIF.IL 09/02/19 TARGA:FR788JG ART.7 CDS",
+    ])
+
+    dati = cp.leggi_cartella(testo)
+
+    assert dati["verbali"] == [{"numero_verbale": "18111329886/A/18", "targa": "FR788JG"}]
+    assert dati["righe"][0]["data_verbale"] == "30/11/2018"
+    assert dati["righe"][0]["data_notifica_verbale"] == "09/02/2019"
+
+
 def test_somme_che_non_tornano_lasciano_la_cartella_da_verificare():
     righe = [r.replace("13,00", "14,00") for r in RIGHE]
 
@@ -197,8 +212,8 @@ def test_rilettura_stesso_originale_corregge_importi_e_riconcilia_senza_duplicar
     primo = _run(cp.registra_cartella(db, "a.pdf", _pdf()))
     # Rappresenta una scheda storica generata dal vecchio parser.
     _run(db[cp.COLL].update_one({"id": primo["id"]}, {
-        "$unset": {"parser_version": ""},
-        "$set": {"totale": "5.88", "data_notifica": "2026-07-01"},
+        "$set": {"parser_version": "cartella-riepilogo-v2", "totale": "5.88",
+                 "data_notifica": "2026-07-01", "verbali": [], "righe": []},
     }))
     _run(db["ricevute_pagopa"].insert_one({
         "id": "r-storica", "identificativo_bolletta": IUV, "importo": 118.88,
@@ -209,6 +224,8 @@ def test_rilettura_stesso_originale_corregge_importi_e_riconcilia_senza_duplicar
     result = _run(cp.registra_cartella(db, "altra-copia.pdf", base64.b64decode(vecchio["contenuto_b64"])))
     doc = _run(db[cp.COLL].find_one({"id": primo["id"]}))
     assert result["duplicate"] and result["metadati_aggiornati"]
+    assert doc["parser_version"] == "cartella-riepilogo-v3"
+    assert doc["verbali"] == [{"numero_verbale": "111/V/2025", "targa": "AB123CD"}]
     assert doc["totale"] == "118.88" and doc["parser_precedente"]["totale"] == "5.88"
     assert doc["data_notifica"] == "2026-07-01"
     assert doc["expectation_status"] == "SODDISFATTO"

@@ -545,4 +545,61 @@ describe('Situazione fiscale a pagine di 200 documenti', () => {
     expect(screen.getByText('Originale della cartella non disponibile')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Apri cartella 37120240006692253000' })).not.toBeInTheDocument();
   });
+
+  it('mostra obbligazioni originarie e propone sgravio solo con quietanza esatta', async () => {
+    api.get.mockImplementation(path => Promise.resolve({ data: path === '/api/fiscal/summary'
+      ? { counts: {} }
+      : path === '/api/fiscal/collections'
+        ? { items: [{
+          id: 'claim-inps', collection_number: '37120240006692253000', business_status: 'PAYABLE',
+          source_document_id: 'snapshot-1', source_reconciliation_status: 'ACTION_REQUIRED',
+          source_obligation_links: [{
+            source_type: 'AVVISO_ADDEBITO_INPS', relation_status: 'CONFIRMED',
+            document_number: '37120240006692253000', filename: '24C00OAOB21456.pdf', drive_file_id: 'drive-inps',
+            tax_lines: [{
+              codice_tributo: '8050', periodo_da: '06/2024', periodo_a: '06/2024',
+              importo_richiesto_cents: 248500, payment_evidence_status: 'PAID_DOCUMENTED',
+              payment_matches: [{ protocollo: '2407160001/000001', data_pagamento: '2024-07-16', bank_verified: false }],
+            }],
+          }],
+          remediation_alert: {
+            action: 'VERIFY_RELIEF_REQUEST',
+            reason: 'Quietanza esatta trovata; verificare la pretesa con l’ente impositore.',
+          },
+        }], total: 1 }
+        : { items: [] } }));
+
+    render(<MemoryRouter initialEntries={['/situazione-fiscale/riscossione']}><SituazioneFiscale /></MemoryRouter>);
+
+    expect(await screen.findByText('37120240006692253000')).toBeInTheDocument();
+    fireEvent.click(screen.getByText('Apri dettagli cartella'));
+    expect(screen.getByText('Avviso INPS 37120240006692253000')).toBeInTheDocument();
+    expect(screen.getByText(/periodo 06\/2024/)).toHaveTextContent('quietanza esatta trovata');
+    expect(screen.getByText(/Quietanza 2407160001\/000001/)).toHaveTextContent('banca da verificare');
+    expect(screen.getByRole('alert')).toHaveTextContent('verificare richiesta di sgravio');
+    expect(screen.getByRole('button', { name: 'Apri documento originario' })).toBeInTheDocument();
+  });
+
+  it('non suggerisce rimborso quando il collegamento esiste ma manca la prova di pagamento', async () => {
+    api.get.mockImplementation(path => Promise.resolve({ data: path === '/api/fiscal/summary'
+      ? { counts: {} }
+      : path === '/api/fiscal/collections'
+        ? { items: [{
+          id: 'claim-verbale', collection_number: '07120260117439961000', business_status: 'PAYABLE',
+          source_document_id: 'snapshot-2', source_reconciliation_status: 'LINKED_NO_ACTION_WITHOUT_PAYMENT_EVIDENCE',
+          source_obligation_links: [{
+            source_type: 'VERBALE_AUTO', relation_status: 'SOURCE_DOCUMENT_MISSING',
+            numero_verbale: '3773/V/2025', targa: 'GX037HJ', tax_lines: [{ codice_tributo: '5242', importo: '86.50' }],
+          }],
+        }], total: 1 }
+        : { items: [] } }));
+
+    render(<MemoryRouter initialEntries={['/situazione-fiscale/riscossione']}><SituazioneFiscale /></MemoryRouter>);
+
+    fireEvent.click(await screen.findByText('Apri dettagli cartella'));
+    expect(screen.getByText('Verbale 3773/V/2025')).toBeInTheDocument();
+    expect(screen.getByText(/Nessun altro verbale simile è stato agganciato/)).toBeInTheDocument();
+    expect(screen.getByText(/nessuna quietanza esatta prova il pagamento/)).toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
 });

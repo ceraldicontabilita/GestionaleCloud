@@ -30,6 +30,10 @@ from app.services.ravvedimento_engine import RavvedimentoEngine
 from app.services.tax_collection_service import build_snapshot
 from app.services.ader_snapshot_import import apply_ader_archive_plan, build_ader_archive_plan
 from app.services.ader_plan_presentation import enrich_rate_plans
+from app.services.fiscal_claim_source_reconciliation import (
+    apply_claim_source_plan,
+    build_claim_source_plan,
+)
 from app.utils.dependencies import get_current_admin_mfa_user, get_current_admin_user
 
 
@@ -559,6 +563,29 @@ async def collection_claims(limit: int = Query(200, ge=1, le=1000),
     db = Database.get_db()
     items = await db[COLL_TAX_COLLECTION_CLAIMS].find(query, {"_id": 0}).sort("updated_at", -1).to_list(limit)
     return {"items": items, "total": await db[COLL_TAX_COLLECTION_CLAIMS].count_documents(query)}
+
+
+@router.get("/collections/source-reconciliation-preview")
+async def collection_source_reconciliation_preview(
+    _admin: Dict[str, Any] = Depends(get_current_admin_user),
+):
+    """Anteprima: nessuna scrittura e nessun collegamento per sola somiglianza."""
+    items = await build_claim_source_plan(Database.get_db(), company_id=_company())
+    return {
+        "items": items,
+        "total": len(items),
+        "action_required": sum(bool(item.get("remediation_alert")) for item in items),
+    }
+
+
+@router.post("/collections/reconcile-sources")
+async def reconcile_collection_sources(
+    admin: Dict[str, Any] = Depends(get_current_admin_mfa_user),
+):
+    """Salva i legami documentali esatti e crea alert solo se esiste quietanza."""
+    return await apply_claim_source_plan(
+        Database.get_db(), company_id=_company(), actor=str(admin.get("user_id") or "admin"),
+    )
 
 
 @router.get("/ader-snapshots")

@@ -274,6 +274,9 @@ function ElenchiFiscali() {
   const openDocument = (documentId, titolo = 'Documento fiscale') => setOriginaleAperto({
     url: urlOriginale({ tipo: 'documento_fiscale', id: documentId }), titolo,
   });
+  const openDriveDocument = (driveId, titolo = 'Documento sorgente') => setOriginaleAperto({
+    url: urlOriginale({ driveId }), titolo,
+  });
   const openF24Pdf = pdfUrl => setOriginaleAperto({ url: pdfUrl, titolo: 'Modello F24' });
 
   const uploadDeclaration = async event => {
@@ -848,6 +851,39 @@ function ElenchiFiscali() {
                 {(item.original_tax_lines || []).map((row, rowIndex) => <div key={`${row.codice_tributo || 'tributo'}-${row.anno || ''}-${rowIndex}`}>
                   Codice <strong>{row.codice_tributo || 'non leggibile'}</strong>{row.anno ? ` · anno ${row.anno}` : ''}{row.descrizione ? ` · ${row.descrizione}` : ''}{row.importo ? ` · ${euro(row.importo)}` : ''}
                 </div>)}
+              </div>}
+              {(item.source_obligation_links || []).length > 0 && <div className="fiscal-collection-taxes">
+                <strong>Documenti e debiti originari collegati</strong>
+                {(item.source_obligation_links || []).map((link, linkIndex) => <div key={`${link.source_type || 'fonte'}-${link.document_number || link.numero_verbale || linkIndex}`} style={{ marginTop: 9, paddingTop: 9, borderTop: '1px solid #e6e3d9' }}>
+                  <div>
+                    <strong>{link.source_type === 'VERBALE_AUTO' ? `Verbale ${link.numero_verbale}` : `Avviso INPS ${link.document_number}`}</strong>
+                    {link.targa ? ` · targa ${link.targa}` : ''}
+                    {' · '}
+                    <Badge variant={link.relation_status === 'CONFIRMED' ? 'success' : 'warning'}>
+                      {link.relation_status === 'CONFIRMED' ? 'Collegamento esatto' : link.relation_status === 'SOURCE_DOCUMENT_MISSING' ? 'Originale non trovato' : 'Da verificare'}
+                    </Badge>
+                  </div>
+                  {link.source_type === 'VERBALE_AUTO' && link.relation_status === 'SOURCE_DOCUMENT_MISSING' && <div className="fiscal-muted" style={{ marginTop: 4 }}>
+                    Il numero e la targa sono stampati nella cartella, ma il verbale autonomo non è presente nell’archivio. Nessun altro verbale simile è stato agganciato.
+                  </div>}
+                  {(link.tax_lines || []).map((row, rowIndex) => <div key={`${row.codice_tributo || 'riga'}-${row.periodo_da || row.anno || rowIndex}`} style={{ marginTop: 5 }}>
+                    Codice <strong>{row.codice_tributo || 'non leggibile'}</strong>
+                    {row.periodo_da ? ` · periodo ${row.periodo_da}${row.periodo_a && row.periodo_a !== row.periodo_da ? `–${row.periodo_a}` : ''}` : row.anno ? ` · anno ${row.anno}` : ''}
+                    {row.importo_richiesto_cents != null ? ` · richiesto ${euroCents(row.importo_richiesto_cents)}` : row.importo ? ` · ${euro(row.importo)}` : ''}
+                    {' · '}{row.payment_evidence_status === 'PAID_DOCUMENTED' ? 'quietanza esatta trovata' : 'nessuna quietanza esatta trovata'}
+                    {(row.payment_matches || []).map(match => <div key={match.protocollo || match.quietanza_id} style={{ marginLeft: 12, color: '#166534' }}>
+                      Quietanza {match.protocollo || match.quietanza_id} · {match.data_pagamento || 'data non indicata'} · {match.bank_verified ? 'banca verificata' : 'banca da verificare'}
+                    </div>)}
+                  </div>)}
+                  {link.drive_file_id && <Button size="sm" variant="secondary" style={{ marginTop: 6 }} onClick={() => openDriveDocument(link.drive_file_id, link.filename || 'Documento originario')}>Apri documento originario</Button>}
+                </div>)}
+              </div>}
+              {item.remediation_alert && <div role="alert" style={{ marginTop: 10, padding: 10, borderRadius: 8, background: '#fff1f2', border: '1px solid #fda4af', color: '#881337' }}>
+                <strong>{item.remediation_alert.action === 'VERIFY_REFUND_REQUEST' ? 'Possibile doppio pagamento: verificare rimborso o compensazione' : 'Pagamento originario documentato: verificare richiesta di sgravio'}</strong>
+                <div style={{ marginTop: 4 }}>{item.remediation_alert.reason}</div>
+              </div>}
+              {item.source_reconciliation_status === 'LINKED_NO_ACTION_WITHOUT_PAYMENT_EVIDENCE' && <div style={{ marginTop: 8, color: '#92400e' }}>
+                Collegamento documentale registrato, ma nessuna quietanza esatta prova il pagamento: nessuna richiesta di sgravio o rimborso viene suggerita.
               </div>}
               <div className="fiscal-actions fiscal-collection-actions">
                 {riscossioneDocumentoId
