@@ -1097,6 +1097,22 @@ versamento; il riscontro bancario resta una prova distinta. Non attribuire
 automaticamente la differenza alla sanzione 8055 e non collegare per solo
 importo, data o nome file.
 
+La matricola INPS deve essere presente e coincidere; confrontare entrambi gli
+estremi del periodo. Il confronto della delega comprende anche INAIL, codici
+comunali/regionali e crediti compensati. I periodi annuali delle altre sezioni
+non diventano mesi INPS. Una riga di quietanza compatibile con piu' obbligazioni
+resta da verificare nell'intero archivio della societa', senza pagamento
+documentato o proposte automatiche di sgravio/rimborso. Modelli superati o
+eliminati e quietanze eliminate non sono prove utilizzabili.
+
+La ricevuta di una rata condivisa non attribuisce il totale a ogni cartella:
+servono quote documentali positive e univoche, la cui somma coincida al
+centesimo con la ricevuta. Senza riparto verificabile si conserva il riferimento
+per revisione, senza duplicare importi o proporre sgravio/rimborso sulla base
+di quella rata. Uno stato storico di pagamento non sostituisce la ricevuta e
+la sua attribuzione. Ogni proposta resta una verifica documentale, non uno
+sgravio concesso o un diritto al rimborso accertato.
+
 Quindi non deve confondere:
 
 - imposta principale;
