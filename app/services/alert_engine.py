@@ -196,6 +196,22 @@ ALERT_CATALOG: Dict[str, Dict[str, Any]] = {
         "titolo": "Dati F24 estratti incompleti",
         "condizione_chiusura": "Dati completati"
     },
+    "FISCAL_CLAIM_SOURCE_ALREADY_PAID": {
+        "modulo": "fiscale",
+        "severita": "critical",
+        "titolo": "Pretesa di riscossione con versamento originario documentato",
+        "condizione_chiusura": (
+            "Pretesa annullata/sgravata oppure collegamento della quietanza smentito con motivazione"
+        ),
+    },
+    "FISCAL_CLAIM_POSSIBLE_DOUBLE_PAYMENT": {
+        "modulo": "fiscale",
+        "severita": "critical",
+        "titolo": "Possibile doppio versamento su pretesa di riscossione",
+        "condizione_chiusura": (
+            "Duplicazione esclusa oppure richiesta di rimborso/compensazione registrata"
+        ),
+    },
 
     # --- Incroci fiscali del minisito (incroci_fiscali.py) ---
     "IVA_PAGAMENTO_MANCANTE_O_PARZIALE": {
