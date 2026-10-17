@@ -4,13 +4,14 @@ Il collegamento e' deliberatamente piu' stretto della normale ricerca:
 
 * un verbale e' confermato solo con numero completo e targa coerente;
 * un avviso INPS e' collegato solo col numero integrale dell'atto;
-* un versamento F24 prova una riga originaria solo con quietanza, identita'
-  contributiva, periodo e importo al centesimo. Il solo modello F24 non basta;
+* un versamento F24 prova una riga originaria solo con quietanza e identita'
+  contributiva/periodo coerenti. L'importo puo' essere maggiore quando RC01
+  documenta il ravvedimento del DM10 originario; il solo modello F24 non basta;
 * un residuo AdeR pari a zero non viene trasformato in pagamento.
 
 Il risultato viene salvato sulla pretesa per rendere visibili sia i collegamenti
-confermati sia i documenti mancanti. Solo una quietanza esatta puo' generare
-un invito a verificare sgravio/rimborso.
+confermati sia i documenti mancanti. Solo una quietanza esatta o un ravvedimento
+documentato puo' generare un invito a verificare sgravio/rimborso.
 """
 from __future__ import annotations
 
@@ -24,6 +25,7 @@ from app.db_collections import (
     COLL_F24,
     COLL_QUIETANZE_F24,
     COLL_TAX_COLLECTION_CLAIMS,
+    COLL_TAX_PAYMENTS,
 )
 
 
@@ -111,9 +113,16 @@ def _quietanza_rows(document: dict[str, Any]) -> Iterable[dict[str, Any]]:
             }
 
 
-def _payment_reference(document: dict[str, Any], row: dict[str, Any]) -> dict[str, Any]:
+def _payment_reference(
+    document: dict[str, Any], row: dict[str, Any], *, basis: str,
+    original_amount_cents: int, ravvedimento: bool,
+    supporting_f24: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     bank = document.get("riscontro_banca") or {}
     general = document.get("dati_generali") or {}
+    paid_amount_cents = row.get("importo_debito_cents") if isinstance(
+        row.get("importo_debito_cents"), int
+    ) else _money_cents(row.get("importo_debito"))
     return {
         "quietanza_id": document.get("id"),
         "protocollo": document.get("protocollo_telematico") or general.get("protocollo_telematico"),
@@ -123,14 +132,96 @@ def _payment_reference(document: dict[str, Any], row: dict[str, Any]) -> dict[st
         "bank_verified": bank.get("stato") == "RISCONTRATO_BANCA",
         "bank_movement_id": bank.get("movimento_id"),
         "matched_row": row,
-        "basis": "QUIETANZA_EXACT_IDENTITY_PERIOD_AMOUNT",
+        "basis": basis,
+        "match_type": "RAVVEDIMENTO" if ravvedimento else "EXACT",
+        "ravvedimento": ravvedimento,
+        "original_amount_cents": original_amount_cents,
+        "paid_amount_cents": paid_amount_cents,
+        "increase_cents": (
+            paid_amount_cents - original_amount_cents
+            if paid_amount_cents is not None else None
+        ),
+        "supporting_f24": supporting_f24,
     }
+
+
+def _rows_by_semantic_key(document: dict[str, Any]) -> dict[tuple[str, str, str, str], list[int]] | None:
+    """Raggruppa tutte le righe di una delega per identita' fiscale verificabile."""
+    grouped: dict[tuple[str, str, str, str], list[int]] = {}
+    rows = list(_quietanza_rows(document))
+    if not rows:
+        return None
+    for row in rows:
+        amount = row.get("debit_cents")
+        if not row.get("tax_code") or not row.get("period") or amount is None:
+            return None
+        key = (
+            str(row.get("section") or ""),
+            str(row.get("tax_code") or ""),
+            str(row.get("identity") or ""),
+            str(row.get("period") or ""),
+        )
+        grouped.setdefault(key, []).append(int(amount))
+    for amounts in grouped.values():
+        amounts.sort()
+    return grouped
+
+
+def _same_codes_only_higher_amounts(
+    model: dict[str, Any], quietanza: dict[str, Any],
+) -> bool:
+    """Vero solo se tutte le posizioni coincidono e la quietanza e' aumentata.
+
+    Serve per il ravvedimento compilato lasciando erroneamente DM10: non basta
+    che una singola riga abbia lo stesso importo o la stessa causale.
+    """
+    model_rows = _rows_by_semantic_key(model)
+    receipt_rows = _rows_by_semantic_key(quietanza)
+    if not model_rows or not receipt_rows or model_rows.keys() != receipt_rows.keys():
+        return False
+    increased = False
+    for key, model_amounts in model_rows.items():
+        receipt_amounts = receipt_rows[key]
+        if len(model_amounts) != len(receipt_amounts):
+            return False
+        for model_amount, receipt_amount in zip(model_amounts, receipt_amounts):
+            if receipt_amount < model_amount:
+                return False
+            increased = increased or receipt_amount > model_amount
+    return increased
+
+
+def _wrong_code_ravvedimento_support(
+    *, obligation_amount: int, period: str, identity: str,
+    quietanza: dict[str, Any], models: Iterable[dict[str, Any]],
+) -> dict[str, Any] | None:
+    """Trova il modello DM10 originario quando la quietanza aumentata resta DM10."""
+    for model in models:
+        if not _same_codes_only_higher_amounts(model, quietanza):
+            continue
+        exact_original = any(
+            row["tax_code"] == "DM10"
+            and row["period"] == period
+            and row["debit_cents"] == obligation_amount
+            and (not identity or row["identity"] == identity)
+            for row in _quietanza_rows(model)
+        )
+        if not exact_original:
+            continue
+        return {
+            "f24_id": model.get("id"),
+            "filename": model.get("filename") or model.get("file_name") or model.get("nome"),
+            "drive_file_id": model.get("drive_file_id"),
+            "basis": "F24_QUIETANZA_SAME_CODES_ONLY_HIGHER_AMOUNTS",
+        }
+    return None
 
 
 def match_quietanza_for_obligation(
     obligation: dict[str, Any], quietanze: Iterable[dict[str, Any]],
+    models: Iterable[dict[str, Any]] = (),
 ) -> list[dict[str, Any]]:
-    """Trova prove univoche; importo, data o causale da soli non bastano."""
+    """Trova quietanze esatte o ravvedimenti univoci e documentati."""
     matches: dict[str, dict[str, Any]] = {}
     period = _period(obligation.get("periodo_da") or obligation.get("periodo"))
     amount = obligation.get("importo_richiesto_cents")
@@ -147,18 +238,50 @@ def match_quietanza_for_obligation(
         return []
     if not period or amount is None:
         return []
+    model_list = list(models)
     for document in quietanze:
         for row in _quietanza_rows(document):
             if row["tax_code"] not in allowed_codes or row["period"] != period:
                 continue
-            if row["debit_cents"] != amount:
-                continue
             if identity and row["identity"] != identity:
+                continue
+            paid_amount = row.get("debit_cents")
+            basis = "QUIETANZA_EXACT_IDENTITY_PERIOD_AMOUNT"
+            ravvedimento = False
+            support = None
+            if paid_amount == amount:
+                pass
+            elif source_code == "8050" and paid_amount is not None and paid_amount > amount:
+                if row["tax_code"] == "RC01":
+                    basis = "QUIETANZA_RAVVEDIMENTO_RC01_IDENTITY_PERIOD_HIGHER_AMOUNT"
+                    ravvedimento = True
+                elif row["tax_code"] == "DM10":
+                    support = _wrong_code_ravvedimento_support(
+                        obligation_amount=amount,
+                        period=period,
+                        identity=identity,
+                        quietanza=document,
+                        models=model_list,
+                    )
+                    if not support:
+                        continue
+                    basis = "QUIETANZA_RAVVEDIMENTO_WRONG_DM10_SAME_CODES_HIGHER_AMOUNTS"
+                    ravvedimento = True
+                else:
+                    continue
+            else:
                 continue
             key = str(document.get("protocollo_telematico") or document.get("id") or "")
             if not key:
                 continue
-            matches.setdefault(key, _payment_reference(document, row["row"]))
+            matches.setdefault(key, _payment_reference(
+                document,
+                row["row"],
+                basis=basis,
+                original_amount_cents=amount,
+                ravvedimento=ravvedimento,
+                supporting_f24=support,
+            ))
     return list(matches.values())
 
 
@@ -167,9 +290,9 @@ def match_f24_models_for_obligation(
 ) -> list[dict[str, Any]]:
     """Collega il modello esatto, senza trasformarlo in prova di pagamento.
 
-    Si applicano gli stessi vincoli della quietanza (identita' contributiva,
-    periodo e importo al centesimo). La presenza del modello spiega quale F24
-    si riferisce alla riga dell'avviso, ma ``payment_evidence`` resta sempre
+    Oltre alla coincidenza esatta, un RC01 dello stesso contribuente e periodo
+    con importo maggiore identifica il ravvedimento del DM10 originario. Il
+    modello spiega la regolarizzazione, ma ``payment_evidence`` resta sempre
     falso: soltanto quietanza e banca possono dimostrare il versamento.
     """
     period = _period(obligation.get("periodo_da") or obligation.get("periodo"))
@@ -186,9 +309,16 @@ def match_f24_models_for_obligation(
         for row in _quietanza_rows(document):
             if row["tax_code"] not in allowed_codes or row["period"] != period:
                 continue
-            if row["debit_cents"] != amount:
-                continue
             if identity and row["identity"] != identity:
+                continue
+            model_amount = row.get("debit_cents")
+            ravvedimento = (
+                source_code == "8050"
+                and row["tax_code"] == "RC01"
+                and model_amount is not None
+                and model_amount > amount
+            )
+            if model_amount != amount and not ravvedimento:
                 continue
             key = str(document.get("id") or "")
             if not key:
@@ -198,7 +328,16 @@ def match_f24_models_for_obligation(
                 "filename": document.get("filename") or document.get("file_name") or document.get("nome"),
                 "drive_file_id": document.get("drive_file_id"),
                 "matched_row": row["row"],
-                "basis": "F24_MODEL_EXACT_IDENTITY_PERIOD_AMOUNT_NO_PAYMENT_PROOF",
+                "basis": (
+                    "F24_MODEL_RAVVEDIMENTO_RC01_IDENTITY_PERIOD_HIGHER_AMOUNT_NO_PAYMENT_PROOF"
+                    if ravvedimento else
+                    "F24_MODEL_EXACT_IDENTITY_PERIOD_AMOUNT_NO_PAYMENT_PROOF"
+                ),
+                "match_type": "RAVVEDIMENTO" if ravvedimento else "EXACT",
+                "ravvedimento": ravvedimento,
+                "original_amount_cents": amount,
+                "model_amount_cents": model_amount,
+                "increase_cents": model_amount - amount if ravvedimento else 0,
                 "payment_evidence": False,
             })
     return list(matches.values())
@@ -286,7 +425,7 @@ async def _notice_links(
         enriched: list[dict[str, Any]] = []
         for row in rows:
             obligation = {**row, "matricola_inps": matricola}
-            payment_matches = match_quietanza_for_obligation(obligation, quietanze)
+            payment_matches = match_quietanza_for_obligation(obligation, quietanze, f24_models)
             f24_model_matches = match_f24_models_for_obligation(obligation, f24_models)
             enriched.append({
                 **obligation,
@@ -320,28 +459,67 @@ async def _notice_links(
     return links
 
 
-def _remediation(claim: dict[str, Any], links: list[dict[str, Any]]) -> dict[str, Any] | None:
+def _direct_collection_payments(
+    claim: dict[str, Any], payments_by_id: dict[str, dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Restituisce solo prove documentali di pagamento gia' collegate alla pretesa.
+
+    Lo stato del portale e il residuo zero non sono prove di pagamento. Inoltre
+    una registrazione tecnica F24 non va ricontata come pagamento diretto della
+    riscossione: qui servono ricevute della cartella o delle sue rate.
+    """
+    result: list[dict[str, Any]] = []
+    for payment_id in claim.get("linked_payment_ids") or []:
+        payment = payments_by_id.get(str(payment_id))
+        if not payment or not payment.get("documentary_evidence"):
+            continue
+        if payment.get("source_kind") == "F24_DOCUMENT_EVIDENCE":
+            continue
+        result.append({
+            "payment_id": payment.get("id"),
+            "source_type": payment.get("source_type"),
+            "source_id": payment.get("source_id"),
+            "document_id": payment.get("document_id"),
+            "amount": payment.get("operation_amount") or payment.get("amount"),
+            "payment_date": payment.get("payment_date"),
+            "bank_verified": bool(payment.get("bank_verified")),
+        })
+    return result
+
+
+def _remediation(
+    claim: dict[str, Any], links: list[dict[str, Any]],
+    direct_collection_payments: Iterable[dict[str, Any]] = (),
+) -> dict[str, Any] | None:
     exact_paid_rows = [
         {"source_type": link.get("source_type"), "document_number": link.get("document_number"), **row}
         for link in links for row in (link.get("tax_lines") or [])
         if row.get("payment_evidence_status") == "PAID_DOCUMENTED"
     ]
-    if not exact_paid_rows or claim.get("business_status") not in ACTIONABLE_STATUSES:
+    if not exact_paid_rows:
         return None
-    direct_claim_paid = claim.get("documentary_payment_status") in {"PAID_DOCUMENTED", "PARTIAL_DOCUMENTED"}
+    direct_payments = list(direct_collection_payments)
+    direct_claim_paid = bool(direct_payments) or claim.get("documentary_payment_status") in {
+        "PAID_DOCUMENTED", "PARTIAL_DOCUMENTED",
+    }
+    if not direct_claim_paid and claim.get("business_status") not in ACTIONABLE_STATUSES:
+        return None
     action = "VERIFY_REFUND_REQUEST" if direct_claim_paid else "VERIFY_RELIEF_REQUEST"
-    return {
+    result = {
         "action": action,
         "status": "ACTION_REQUIRED",
         "reason": (
             "Versamento originario e pagamento della riscossione risultano entrambi documentati: "
             "verificare duplicazione e istanza di rimborso/compensazione."
             if direct_claim_paid else
-            "Una quietanza esatta documenta almeno una riga originaria, mentre la pretesa e' ancora "
+            "Una quietanza esatta o di ravvedimento documenta almeno una riga originaria, mentre la pretesa e' ancora "
             "esigibile: verificare con l'ente impositore e, se confermato, chiedere lo sgravio."
         ),
         "paid_source_rows": exact_paid_rows,
     }
+    if direct_payments:
+        result["direct_collection_payments"] = direct_payments
+    return result
 
 
 async def build_claim_source_plan(db, *, company_id: str) -> list[dict[str, Any]]:
@@ -360,6 +538,10 @@ async def build_claim_source_plan(db, *, company_id: str) -> list[dict[str, Any]
         ]},
         {"_id": 0, "pdf_data": 0, "contenuto_b64": 0},
     ).to_list(10000)
+    tax_payments = await db[COLL_TAX_PAYMENTS].find(
+        {"company_id": company_id}, {"_id": 0, "pdf_data": 0, "contenuto_b64": 0},
+    ).to_list(10000)
+    payments_by_id = {str(item.get("id")): item for item in tax_payments if item.get("id")}
     plan: list[dict[str, Any]] = []
     for claim in claims:
         links = [
@@ -368,11 +550,12 @@ async def build_claim_source_plan(db, *, company_id: str) -> list[dict[str, Any]
         ]
         if not links:
             continue
+        direct_payments = _direct_collection_payments(claim, payments_by_id)
         plan.append({
             "claim_id": claim["id"],
             "collection_number": claim.get("collection_number"),
             "source_obligation_links": links,
-            "remediation_alert": _remediation(claim, links),
+            "remediation_alert": _remediation(claim, links, direct_payments),
         })
     return plan
 
@@ -413,7 +596,10 @@ async def apply_claim_source_plan(db, *, company_id: str, actor: str) -> dict[st
                 code, item["claim_id"], COLL_TAX_COLLECTION_CLAIMS,
                 remediation["reason"], db,
                 extra={"collection_number": item.get("collection_number"),
-                       "paid_source_rows": remediation["paid_source_rows"]},
+                       "paid_source_rows": remediation["paid_source_rows"],
+                       "direct_collection_payments": remediation.get(
+                           "direct_collection_payments", []
+                       )},
             )
             alerts += int(created is not None)
         else:

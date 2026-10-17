@@ -5,9 +5,11 @@ from app.db_collections import (
     COLL_F24,
     COLL_QUIETANZE_F24,
     COLL_TAX_COLLECTION_CLAIMS,
+    COLL_TAX_PAYMENTS,
 )
 from app.services.archivio_documenti_memoria import ClientArchivioMemoria
 from app.services.fiscal_claim_source_reconciliation import (
+    ALERT_REFUND,
     ALERT_RELIEF,
     apply_claim_source_plan,
     build_claim_source_plan,
@@ -56,8 +58,10 @@ def test_quietanza_inps_richiede_matricola_periodo_e_importo_esatti():
         }],
     }
 
-    assert len(match_quietanza_for_obligation(obligation, [quietanza])) == 1
-    assert match_quietanza_for_obligation({**obligation, "importo_richiesto_cents": 248499}, [quietanza]) == []
+    exact = match_quietanza_for_obligation(obligation, [quietanza])
+    assert len(exact) == 1
+    assert exact[0]["match_type"] == "EXACT"
+    assert match_quietanza_for_obligation({**obligation, "importo_richiesto_cents": 248501}, [quietanza]) == []
     assert match_quietanza_for_obligation({**obligation, "matricola_inps": "ALTRA"}, [quietanza]) == []
     assert match_quietanza_for_obligation({**obligation, "periodo_da": "07/2024"}, [quietanza]) == []
     # Una quietanza DM10/RC01 aggregata non prova automaticamente le sanzioni 8055.
@@ -83,6 +87,223 @@ def test_modello_f24_esatto_si_collega_ma_non_diventa_prova_di_pagamento():
     assert matches[0]["f24_id"] == "f24-1"
     assert matches[0]["payment_evidence"] is False
     assert match_f24_models_for_obligation({**obligation, "importo_richiesto_cents": 248499}, [model]) == []
+
+
+def test_rc01_maggiore_collega_il_ravvedimento_senza_fingere_un_pagamento_del_modello():
+    obligation = {
+        "codice_tributo": "8050", "periodo_da": "11/2024",
+        "matricola_inps": "5124776507", "importo_richiesto_cents": 392100,
+    }
+    model = {
+        "id": "f24-rc01", "filename": "F24 ravvedimento novembre.pdf",
+        "sezione_inps": [{
+            "causale": "RC01", "matricola": "5124776507", "periodo_riferimento": "11/2024",
+            "importo_debito_cents": 408454,
+        }],
+    }
+
+    matches = match_f24_models_for_obligation(obligation, [model])
+
+    assert len(matches) == 1
+    assert matches[0]["match_type"] == "RAVVEDIMENTO"
+    assert matches[0]["increase_cents"] == 16354
+    assert matches[0]["payment_evidence"] is False
+
+
+def test_quietanza_rc01_maggiore_prova_il_ravvedimento_e_conserva_la_banca_separata():
+    obligation = {
+        "codice_tributo": "8050", "periodo_da": "11/2024",
+        "matricola_inps": "5124776507", "importo_richiesto_cents": 392100,
+    }
+    quietanza = {
+        "id": "q-rc01", "protocollo_telematico": "25062535540243459/000001",
+        "data_pagamento": "2025-06-25",
+        "riscontro_banca": {"stato": "RISCONTRATO_BANCA", "movimento_id": "bank-4090"},
+        "sezione_inps": [{
+            "causale": "RC01", "matricola": "5124776507", "periodo_riferimento": "11/2024",
+            "importo_debito_cents": 409000,
+        }],
+    }
+
+    matches = match_quietanza_for_obligation(obligation, [quietanza])
+
+    assert len(matches) == 1
+    assert matches[0]["basis"] == "QUIETANZA_RAVVEDIMENTO_RC01_IDENTITY_PERIOD_HIGHER_AMOUNT"
+    assert matches[0]["increase_cents"] == 16900
+    assert matches[0]["bank_verified"] is True
+    assert matches[0]["bank_movement_id"] == "bank-4090"
+
+
+def test_dm10_aumentato_e_ravvedimento_solo_se_f24_e_quietanza_hanno_tutte_le_righe_uguali():
+    obligation = {
+        "codice_tributo": "8050", "periodo_da": "11/2024",
+        "matricola_inps": "5124776507", "importo_richiesto_cents": 392100,
+    }
+    model = {
+        "id": "f24-dm10-originale", "filename": "F24 originario.pdf",
+        "sezione_inps": [{
+            "causale": "DM10", "matricola": "5124776507", "periodo_riferimento": "11/2024",
+            "importo_debito_cents": 392100,
+        }],
+    }
+    quietanza = {
+        "id": "q-dm10-aumentata", "protocollo_telematico": "PROTO-DM10",
+        "sezione_inps": [{
+            "causale": "DM10", "matricola": "5124776507", "periodo_riferimento": "11/2024",
+            "importo_debito_cents": 409000,
+        }],
+    }
+
+    matches = match_quietanza_for_obligation(obligation, [quietanza], [model])
+
+    assert len(matches) == 1
+    assert matches[0]["basis"] == "QUIETANZA_RAVVEDIMENTO_WRONG_DM10_SAME_CODES_HIGHER_AMOUNTS"
+    assert matches[0]["supporting_f24"]["f24_id"] == "f24-dm10-originale"
+    assert match_quietanza_for_obligation(obligation, [quietanza], []) == []
+    model_con_riga_diversa = {
+        **model,
+        "id": "f24-non-coerente",
+        "sezione_inps": [
+            *model["sezione_inps"],
+            {
+                "causale": "DM10", "matricola": "5124776507",
+                "periodo_riferimento": "10/2024", "importo_debito_cents": 10000,
+            },
+        ],
+    }
+    assert match_quietanza_for_obligation(
+        obligation, [quietanza], [model_con_riga_diversa],
+    ) == []
+
+
+def test_quietanza_ravveduta_su_pretesa_esigibile_genera_verifica_sgravio():
+    async def scenario():
+        db = ClientArchivioMemoria()["claim-source-ravvedimento"]
+        await db[COLL_TAX_COLLECTION_CLAIMS].insert_one({
+            "id": "claim-ravv", "company_id": "04523831214",
+            "collection_number": "37120250002792001000", "business_status": "PAYABLE",
+        })
+        await db[COLL_DOCUMENTS_INBOX].insert_one({
+            "id": "notice-ravv", "tax_collection_claim_id": "claim-ravv",
+            "parsed_metadata": {
+                "numero_atto": "37120250002792001000", "matricola_inps": "5124776507",
+                "testo_estratto": """
+001       8050-Modello DM 10
+CONTRIBUTI                           DA 11/2024 A 11/2024                3.921,00                   0,00               3.921,00
+""",
+            },
+        })
+        await db[COLL_QUIETANZE_F24].insert_one({
+            "id": "q-ravv", "codice_fiscale": "04523831214",
+            "protocollo_telematico": "25062535540243459/000001",
+            "data_pagamento": "2025-06-25",
+            "riscontro_banca": {"stato": "RISCONTRATO_BANCA", "movimento_id": "bank-4090"},
+            "sezione_inps": [{
+                "causale": "RC01", "matricola": "5124776507", "periodo_riferimento": "11/2024",
+                "importo_debito_cents": 409000,
+            }],
+        })
+
+        result = await apply_claim_source_plan(db, company_id="04523831214", actor="test")
+        claim = await db[COLL_TAX_COLLECTION_CLAIMS].find_one({"id": "claim-ravv"})
+
+        assert result["alerts_created"] == 1
+        assert claim["remediation_alert"]["action"] == "VERIFY_RELIEF_REQUEST"
+        row = claim["source_obligation_links"][0]["tax_lines"][0]
+        assert row["payment_evidence_status"] == "PAID_DOCUMENTED"
+        assert row["payment_matches"][0]["ravvedimento"] is True
+
+    _run(scenario())
+
+
+def test_ravvedimento_e_rate_cartella_documentate_generano_verifica_rimborso_anche_se_sgravata():
+    async def scenario():
+        db = ClientArchivioMemoria()["claim-source-ravvedimento-double-payment"]
+        await db[COLL_TAX_COLLECTION_CLAIMS].insert_one({
+            "id": "claim-ravv-paid", "company_id": "04523831214",
+            "collection_number": "37120250002792001000", "business_status": "RELIEVED",
+            "portal_status": "SALDATI", "residual_cents": 0,
+            "linked_payment_ids": ["taxpayment-rata-1"],
+        })
+        await db[COLL_TAX_PAYMENTS].insert_one({
+            "id": "taxpayment-rata-1", "company_id": "04523831214",
+            "source_type": "RICEVUTA_CBILL", "source_id": "ricevuta-rata-1",
+            "operation_amount": "1272.66", "payment_date": "2025-10-13",
+            "documentary_evidence": True, "bank_verified": False,
+        })
+        await db[COLL_DOCUMENTS_INBOX].insert_one({
+            "id": "notice-ravv-paid", "tax_collection_claim_id": "claim-ravv-paid",
+            "parsed_metadata": {
+                "numero_atto": "37120250002792001000", "matricola_inps": "5124776507",
+                "testo_estratto": """
+001       8050-Modello DM 10
+CONTRIBUTI                           DA 11/2024 A 11/2024                3.921,00                   0,00               3.921,00
+""",
+            },
+        })
+        await db[COLL_QUIETANZE_F24].insert_one({
+            "id": "q-ravv-paid", "codice_fiscale": "04523831214",
+            "protocollo_telematico": "25062535540243459/000001",
+            "data_pagamento": "2025-06-25",
+            "riscontro_banca": {"stato": "RISCONTRATO_BANCA", "movimento_id": "bank-4090"},
+            "sezione_inps": [{
+                "causale": "RC01", "matricola": "5124776507", "periodo_riferimento": "11/2024",
+                "importo_debito_cents": 409000,
+            }],
+        })
+
+        result = await apply_claim_source_plan(db, company_id="04523831214", actor="test")
+        claim = await db[COLL_TAX_COLLECTION_CLAIMS].find_one({"id": "claim-ravv-paid"})
+        alert = await db["alerts"].find_one({"entita_id": "claim-ravv-paid", "codice": ALERT_REFUND})
+
+        assert result["alerts_created"] == 1
+        assert claim["remediation_alert"]["action"] == "VERIFY_REFUND_REQUEST"
+        assert claim["remediation_alert"]["direct_collection_payments"] == [{
+            "payment_id": "taxpayment-rata-1",
+            "source_type": "RICEVUTA_CBILL",
+            "source_id": "ricevuta-rata-1",
+            "document_id": None,
+            "amount": "1272.66",
+            "payment_date": "2025-10-13",
+            "bank_verified": False,
+        }]
+        assert alert["stato"] == "aperto"
+
+    _run(scenario())
+
+
+def test_residuo_portale_zero_senza_prova_della_cartella_non_inventa_un_rimborso():
+    async def scenario():
+        db = ClientArchivioMemoria()["claim-source-portal-zero-not-payment"]
+        await db[COLL_TAX_COLLECTION_CLAIMS].insert_one({
+            "id": "claim-portal-zero", "company_id": "04523831214",
+            "collection_number": "37120250002792001000", "business_status": "RELIEVED",
+            "portal_status": "SALDATI", "residual_cents": 0,
+        })
+        await db[COLL_DOCUMENTS_INBOX].insert_one({
+            "id": "notice-portal-zero", "tax_collection_claim_id": "claim-portal-zero",
+            "parsed_metadata": {
+                "numero_atto": "37120250002792001000", "matricola_inps": "5124776507",
+                "testo_estratto": """
+001       8050-Modello DM 10
+CONTRIBUTI                           DA 11/2024 A 11/2024                3.921,00                   0,00               3.921,00
+""",
+            },
+        })
+        await db[COLL_QUIETANZE_F24].insert_one({
+            "id": "q-portal-zero", "codice_fiscale": "04523831214",
+            "protocollo_telematico": "25062535540243459/000001",
+            "sezione_inps": [{
+                "causale": "RC01", "matricola": "5124776507", "periodo_riferimento": "11/2024",
+                "importo_debito_cents": 409000,
+            }],
+        })
+
+        plan = await build_claim_source_plan(db, company_id="04523831214")
+
+        assert plan[0]["remediation_alert"] is None
+
+    _run(scenario())
 
 
 def test_modello_f24_senza_quietanza_resta_non_pagato_e_non_genera_sgravio():

@@ -546,7 +546,7 @@ describe('Situazione fiscale a pagine di 200 documenti', () => {
     expect(screen.queryByRole('button', { name: 'Apri cartella 37120240006692253000' })).not.toBeInTheDocument();
   });
 
-  it('mostra obbligazioni originarie e propone sgravio solo con quietanza esatta', async () => {
+  it('mostra obbligazioni originarie e propone sgravio con quietanza esatta', async () => {
     api.get.mockImplementation(path => Promise.resolve({ data: path === '/api/fiscal/summary'
       ? { counts: {} }
       : path === '/api/fiscal/collections'
@@ -580,6 +580,52 @@ describe('Situazione fiscale a pagine di 200 documenti', () => {
     expect(screen.getByRole('button', { name: 'Apri documento originario' })).toBeInTheDocument();
   });
 
+  it('spiega il ravvedimento RC01 con importo aumentato e banca verificata', async () => {
+    api.get.mockImplementation(path => Promise.resolve({ data: path === '/api/fiscal/summary'
+      ? { counts: {} }
+      : path === '/api/fiscal/collections'
+        ? { items: [{
+          id: 'claim-ravv', collection_number: '37120250002792001000', business_status: 'PAYABLE',
+          source_reconciliation_status: 'ACTION_REQUIRED',
+          source_obligation_links: [{
+            source_type: 'AVVISO_ADDEBITO_INPS', relation_status: 'CONFIRMED',
+            document_number: '37120250002792001000', tax_lines: [{
+              codice_tributo: '8050', periodo_da: '11/2024', importo_richiesto_cents: 392100,
+              payment_evidence_status: 'PAID_DOCUMENTED',
+              payment_matches: [{
+                protocollo: '25062535540243459/000001', data_pagamento: '2025-06-25',
+                bank_verified: true, ravvedimento: true,
+                original_amount_cents: 392100, paid_amount_cents: 409000,
+              }],
+              f24_model_matches: [{
+                f24_id: 'f24-ravv', filename: 'F24 CERALDI.PDF', ravvedimento: true,
+                original_amount_cents: 392100, model_amount_cents: 408454,
+                payment_evidence: false,
+              }],
+            }],
+          }],
+          remediation_alert: {
+            action: 'VERIFY_REFUND_REQUEST',
+            reason: 'Versamento originario e pagamento della riscossione risultano entrambi documentati.',
+            direct_collection_payments: [{
+              payment_id: 'taxpayment-rata-1', source_type: 'RICEVUTA_CBILL',
+              payment_date: '2025-10-13', amount: '1272.66', bank_verified: false,
+            }],
+          },
+        }], total: 1 }
+        : { items: [] } }));
+
+    render(<MemoryRouter initialEntries={['/situazione-fiscale/riscossione']}><SituazioneFiscale /></MemoryRouter>);
+
+    fireEvent.click(await screen.findByText('Apri dettagli cartella'));
+    expect(screen.getByText(/periodo 11\/2024/)).toHaveTextContent('quietanza di ravvedimento trovata');
+    expect(screen.getByText(/Quietanza 25062535540243459\/000001/)).toHaveTextContent('3921,00 € → 4090,00 €');
+    expect(screen.getByText(/Quietanza 25062535540243459\/000001/)).toHaveTextContent('banca verificata');
+    expect(screen.getByText(/Modello F24 F24 CERALDI.PDF/)).toHaveTextContent('RC01 di ravvedimento: 3921,00 € → 4084,54 €');
+    expect(screen.getByRole('alert')).toHaveTextContent('Possibile doppio pagamento');
+    expect(screen.getByRole('alert')).toHaveTextContent('Pagamento della cartella: RICEVUTA_CBILL · 2025-10-13 · 1272,66 € · banca da verificare');
+  });
+
   it('non suggerisce rimborso quando il collegamento esiste ma manca la prova di pagamento', async () => {
     api.get.mockImplementation(path => Promise.resolve({ data: path === '/api/fiscal/summary'
       ? { counts: {} }
@@ -599,7 +645,7 @@ describe('Situazione fiscale a pagine di 200 documenti', () => {
     fireEvent.click(await screen.findByText('Apri dettagli cartella'));
     expect(screen.getByText('Verbale 3773/V/2025')).toBeInTheDocument();
     expect(screen.getByText(/Nessun altro verbale simile è stato agganciato/)).toBeInTheDocument();
-    expect(screen.getByText(/nessuna quietanza esatta prova il pagamento/)).toBeInTheDocument();
+    expect(screen.getByText(/nessuna quietanza esatta o di ravvedimento prova il pagamento/)).toBeInTheDocument();
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 
