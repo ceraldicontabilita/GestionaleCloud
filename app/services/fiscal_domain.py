@@ -11,6 +11,7 @@ import hashlib
 import io
 import json
 import re
+import unicodedata
 import zipfile
 from datetime import date
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
@@ -27,6 +28,11 @@ class DocumentType(StrEnum):
     F24 = "F24"
     QUIETANZA_F24 = "QUIETANZA_F24"
     RICEVUTA_F24 = "RICEVUTA_F24"
+    ESITO_NEGATIVO_F24 = "ESITO_NEGATIVO_F24"
+    RICEVUTA_TRASMISSIONE = "RICEVUTA_TRASMISSIONE"
+    RICEVUTA_PEC = "RICEVUTA_PEC"
+    PROSPETTO_ADE_R = "PROSPETTO_ADE_R"
+    MODULO_PAGAMENTO = "MODULO_PAGAMENTO"
     DICHIARAZIONE_IVA = "DICHIARAZIONE_IVA"
     LIPE = "LIPE"
     MODELLO_770 = "MODELLO_770"
@@ -51,6 +57,19 @@ class DocumentType(StrEnum):
     DEFINIZIONE_AGEVOLATA = "DEFINIZIONE_AGEVOLATA"
     SGRAVIO = "SGRAVIO"
     SOSPENSIONE = "SOSPENSIONE"
+    ISTANZA_SGRAVIO = "ISTANZA_SGRAVIO"
+    RIGETTO_SGRAVIO = "RIGETTO_SGRAVIO"
+    ISTANZA_SOSPENSIONE = "ISTANZA_SOSPENSIONE"
+    RIGETTO_SOSPENSIONE = "RIGETTO_SOSPENSIONE"
+    ISTANZA_RATEIZZAZIONE = "ISTANZA_RATEIZZAZIONE"
+    RIGETTO_RATEIZZAZIONE = "RIGETTO_RATEIZZAZIONE"
+    PREAVVISO_RIGETTO = "PREAVVISO_RIGETTO"
+    CORRISPONDENZA_ADE_R = "CORRISPONDENZA_ADE_R"
+    RELATA_NOTIFICA = "RELATA_NOTIFICA"
+    SOLLECITO_PAGAMENTO = "SOLLECITO_PAGAMENTO"
+    NOTA_RETTIFICA_INPS = "NOTA_RETTIFICA_INPS"
+    DURC = "DURC"
+    COMUNICAZIONE_CIVIS = "COMUNICAZIONE_CIVIS"
     AUTOTUTELA = "AUTOTUTELA"
     SENTENZA = "SENTENZA"
     ATTO_GIUDIZIARIO = "ATTO_GIUDIZIARIO"
@@ -116,8 +135,7 @@ def normalize_cartella_number(value: str) -> str:
 _CLASSIFIERS: tuple[tuple[DocumentType, tuple[str, ...]], ...] = (
     (DocumentType.QUIETANZA_ADE_R, ("quietanza ader", "quietanza ade-r", "ricevuta pagamento riscossione")),
     (DocumentType.DEFINIZIONE_AGEVOLATA, ("definizione agevolata", "rottamazione")),
-    (DocumentType.SOSPENSIONE, ("sospensione legale della riscossione", "provvedimento di sospensione")),
-    (DocumentType.CARTELLA_ADE_R, ("cartella di pagamento", "cartella esattoriale", "agenzia entrate riscossione")),
+    (DocumentType.CARTELLA_ADE_R, ("cartella di pagamento", "cartella esattoriale")),
     # Le lettere dell'Agenzia citano «liquidazioni periodiche IVA» e «modello
     # IVA»: vanno riconosciute prima della LIPE e della dichiarazione. La
     # compliance prima della 54-bis, perche' cita anch'essa l'art. 54-bis.
@@ -127,8 +145,7 @@ _CLASSIFIERS: tuple[tuple[DocumentType, tuple[str, ...]], ...] = (
                                                "art. 36-bis del d.p.r.", "codice atto n")),
     (DocumentType.AVVISO_BONARIO, ("avviso bonario", "comunicazione di irregolarita")),
     (DocumentType.PIANO_RATEIZZAZIONE, ("piano di ammortamento", "piano rateizzazione")),
-    (DocumentType.SGRAVIO, ("provvedimento di sgravio", "sgravio")),
-    (DocumentType.QUIETANZA_F24, ("quietanza f24", "esito delega", "protocollo telematico")),
+    (DocumentType.QUIETANZA_F24, ("quietanza f24",)),
     (DocumentType.LIPE, ("liquidazioni periodiche iva", "comunicazione liquidazioni")),
     (DocumentType.MODELLO_770, ("modello 770", "770/", "770_")),
     (DocumentType.REDDITI_SC, ("redditi societa di capitali", "redditi sc", "modello redditi sc", "760_", "unico sc", "unico_sc", "unico 20")),
@@ -145,20 +162,151 @@ _CLASSIFIERS: tuple[tuple[DocumentType, tuple[str, ...]], ...] = (
 )
 
 
+def _classification_text(value: str) -> str:
+    return " ".join("".join(char for char in unicodedata.normalize("NFKD", value.casefold())
+                            if not unicodedata.combining(char)).split())
+
+
+def _collection_letter_type(body: str) -> tuple[DocumentType, str] | None:
+    """Recognise documentary nature, never the legal effect of a linked letter.
+
+    Requests and negative outcomes precede the acts they cite. Conflicting
+    request/provision wording stays correspondence pending original review.
+    Filenames are deliberately excluded from this decision.
+    """
+    if "ricevuta di avvenuta consegna" in body or "ricevuta di accettazione" in body:
+        return DocumentType.RICEVUTA_PEC, "ricevuta_trasporto_non_documento_allegato"
+    if re.search(r"dati[^.!?]{0,100}sistemi informatici[^.!?]{0,100}riscossione", body) or (
+        "legenda" in body and "residuo carico" in body and "carico affidato" in body
+    ):
+        return DocumentType.PROSPETTO_ADE_R, "fotografia_portale_non_provvedimento_o_pagamento"
+    if re.search(r"\b(?:mod\.? )?sl1\b", body) and "sospensione" in body:
+        return DocumentType.ISTANZA_SOSPENSIONE, "modulo_sl1_non_provvedimento"
+    if re.search(r"oggetto: modulo di pagamento|\bmodulo rav\b", body[:1500]):
+        return DocumentType.MODULO_PAGAMENTO, "modulo_da_pagare_non_ricevuta"
+    if re.search(r"cartella di pagamento n\.[^\n]{0,160}pagina 1 di", body[:1500]):
+        return DocumentType.CARTELLA_ADE_R, "intestazione_cartella_non_istruzioni_citate"
+    if "comunicazione di sgravio" in body[:1500] and "ha disposto lo sgravio" in body:
+        return DocumentType.SGRAVIO, "comunicazione_provvedimento_da_verificare_quote_e_residuo"
+    if "modello f24" in body and "quietanza f24" in body and re.search(
+        r"istruzioni|da esibire|da conservare|a richiesta", body,
+    ):
+        return DocumentType.F24, "modello_con_istruzioni_non_quietanza"
+    if "quietanza f24" in body[:500] and re.search(
+        r"richiesta[^.!?]{0,100}quietanza f24|si richiede[^.!?]{0,100}quietanza f24|"
+        r"quietanza f24[^.!?]{0,100}da acquisire|non risulta ancora pagato", body[:500],
+    ):
+        return DocumentType.ALTRO_FISCALE, "richiesta_di_quietanza_non_quietanza_positiva"
+    if "f24" in body and re.search(
+        r"scartat[ao]|delega scartata|versamento non eseguito|pagamento non eseguito|esito negativo", body,
+    ):
+        return DocumentType.ESITO_NEGATIVO_F24, "delega_scartata_non_pagamento"
+    if re.search(r"\bf24a0\b", body) and not re.search(r"\bi24\d{2}\b", body):
+        return DocumentType.RICEVUTA_TRASMISSIONE, "f24a0_controllo_formale_non_esito_addebito"
+    if "f24" in body and re.search(r"stato:? in attesa|delega in attesa|esito da acquisire", body):
+        return DocumentType.RICEVUTA_TRASMISSIONE, "delega_in_attesa_non_esito_versamento"
+    if "f24" in body and "esito delega" in body and "quietanza f24" not in body:
+        return DocumentType.RICEVUTA_TRASMISSIONE, "esito_delega_senza_quietanza_positiva_da_verificare"
+    if re.search(r"ricevuta (?:di )?(?:trasmissione|presentazione|invio)", body) and "uniemens" in body:
+        return DocumentType.RICEVUTA_TRASMISSIONE, "trasmissione_denuncia_non_versamento"
+    # Future/conditional instructions are not an outcome of the current act.
+    clauses = re.split(r"[.!?]", body)
+    assertions = [clause for clause in clauses if not re.search(
+        r"\bin caso\b|\bqualora\b|\bse\b|si procedera|potra|sara |"
+        r"si richiede|si richiedono|richiede di|richiedere|\bchiede\b|attende|in attesa|"
+        r"non e stato|non risulta|non emesso|da produrre|allegare|conservare", clause)]
+    asserted_body = ".".join(assertions)
+    if re.search(r"preavviso (?:di )?(?:rigetto|diniego)|motivi ostativi all.accoglimento", asserted_body):
+        return DocumentType.PREAVVISO_RIGETTO, "preavviso_non_esito_definitivo"
+    if "relata di notifica" in body or "relazione di notificazione" in body:
+        return DocumentType.RELATA_NOTIFICA, "relata_non_atto_citato"
+    subjects = (
+        ("sgravio", DocumentType.ISTANZA_SGRAVIO, DocumentType.RIGETTO_SGRAVIO,
+         DocumentType.SGRAVIO),
+        ("sospensione", DocumentType.ISTANZA_SOSPENSIONE, DocumentType.RIGETTO_SOSPENSIONE,
+         DocumentType.SOSPENSIONE),
+        ("rate(?:izzazione|azione|izzare)|dilazione", DocumentType.ISTANZA_RATEIZZAZIONE,
+         DocumentType.RIGETTO_RATEIZZAZIONE, None),
+    )
+    for subject, request_kind, rejection_kind, granted_kind in subjects:
+        # Bounded clauses avoid borrowing a negative outcome from another act
+        # in a long letter. Ambiguity never becomes an affirmative provision.
+        noun = rf"(?:{subject})"
+        rejected = re.search(
+            rf"(?:rigetto|diniego|revoca|non accoglibile)[^.!?]{{0,100}}{noun}"
+            rf"|{noun}[^.!?]{{0,100}}(?:rigettat[ao]|respint[ao]|non accolt[ao])", asserted_body)
+        if rejected:
+            return rejection_kind, "esito_negativo_non_provvedimento_favorevole"
+        requested = re.search(rf"(?:istanza|richiesta|domanda)(?: di)? {noun}", body)
+        if subject == "sospensione" and re.search(r"\bsl1\b", body):
+            requested = True
+        provision = granted_kind and re.search(rf"provvedimento di {noun}", asserted_body)
+        if granted_kind is None and re.search(
+            rf"accoglimento[^.!?]{{0,100}}{noun}|{noun}[^.!?]{{0,100}}(?:e accolt[ao]|accolt[ao])",
+            asserted_body,
+        ):
+            return DocumentType.PIANO_RATEIZZAZIONE, "accoglimento_da_distinguere_dall_attivazione"
+        if requested and provision:
+            return DocumentType.CORRISPONDENZA_ADE_R, "richiesta_e_provvedimento_citati_da_verificare"
+        if requested:
+            return request_kind, "richiesta_non_accoglimento"
+        if provision:
+            return granted_kind, "provvedimento_da_verificare_nell_originale"
+        if re.search(rf"provvedimento di {noun}", body):
+            return DocumentType.CORRISPONDENZA_ADE_R, "provvedimento_solo_citato_non_dimostrato"
+    for kind, markers in (
+        (DocumentType.SOLLECITO_PAGAMENTO, ("sollecito di pagamento", "intimazione di pagamento")),
+        (DocumentType.NOTA_RETTIFICA_INPS, ("nota di rettifica", "note di rettifica")),
+        (DocumentType.DURC, ("durc", "documento unico di regolarita contributiva")),
+        (DocumentType.COMUNICAZIONE_CIVIS, ("civis",)),
+        (DocumentType.MOVIMENTO_BANCARIO_DOCUMENTO, ("ricevuta bonifico", "bonifico eseguito")),
+    ):
+        if any(marker in body for marker in markers):
+            return kind, "natura_documentale_non_prova_di_estinzione"
+    return None
+
+
 def classify_document(filename: str, text: str = "") -> dict[str, Any]:
-    haystack = f"{filename} {text[:12000]}".casefold()
+    body = _classification_text(text[:12000])
+    filename_text = _classification_text(filename)
+    if letter := _collection_letter_type(body):
+        doc_type, reason = letter
+        return {"document_type": doc_type.value, "confidence": 0.8,
+                "reasons": [reason], "requires_review": True}
+    haystack = f"{filename_text} {body}"
     if 'comunicazione iva' in haystack and 'anno imposta' in haystack and re.search(r'\bmod\.\d+\s*-\s*vp1\b', haystack) and 'vp14' in haystack:
         return {'document_type': DocumentType.LIPE.value, 'confidence': 0.95,
                 'reasons': ['campi_nominati_cassetto_iva_vp'], 'requires_review': False}
-    for doc_type, markers in _CLASSIFIERS:
-        matched = [marker for marker in markers if marker in haystack]
-        if matched:
-            return {
-                "document_type": doc_type.value,
-                "confidence": 0.95 if text else 0.65,
-                "reasons": [f"marker:{marker}" for marker in matched],
-                "requires_review": not bool(text),
-            }
+    # Textual receipt/plan headings precede a cartella merely referenced in
+    # that document. The issuer's name alone never identifies a cartella.
+    before_cartella = {
+        DocumentType.QUIETANZA_ADE_R, DocumentType.DEFINIZIONE_AGEVOLATA,
+        DocumentType.PIANO_RATEIZZAZIONE, DocumentType.ESITO_NEGATIVO_PAGOPA,
+        DocumentType.RICEVUTA_PAGOPA, DocumentType.RICEVUTA_CBILL,
+    }
+    ordered = sorted(_CLASSIFIERS, key=lambda rule: (
+        0 if rule[0] in before_cartella else 1 if rule[0] == DocumentType.CARTELLA_ADE_R else 2))
+    for source, from_text in ((body, True), (filename_text, False)):
+        for doc_type, markers in ordered:
+            matched = [marker for marker in markers if marker in source]
+            if from_text and doc_type == DocumentType.RICEVUTA_PAGOPA:
+                # A notice can instruct the reader to keep a future receipt.
+                # Only an affirmative receipt heading/outcome is a candidate.
+                matched = [marker for marker in matched if any(
+                    marker in clause and not re.search(
+                        r"conservare|allegare|dopo (?:il )?versamento|in caso|qualora|non eseguito", clause)
+                    for clause in re.split(r"[.!?]", source))]
+            if matched:
+                return {
+                    "document_type": doc_type.value,
+                    "confidence": 0.95 if from_text else 0.65,
+                    "reasons": [f"marker:{marker}" for marker in matched],
+                    "requires_review": not from_text,
+                }
+    if "agenzia entrate riscossione" in body or "agenzia delle entrate-riscossione" in body:
+        return {"document_type": DocumentType.CORRISPONDENZA_ADE_R.value,
+                "confidence": 0.5, "reasons": ["emittente_senza_natura_documentale_certa"],
+                "requires_review": True}
     return {
         "document_type": DocumentType.ALTRO_FISCALE.value,
         "confidence": 0.0,

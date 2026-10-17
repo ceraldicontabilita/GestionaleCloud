@@ -98,7 +98,7 @@ export default function CollectionDossier({ claimId, onOpen, onOpenUrl }) {
     onToggle={event => setOpened(event.currentTarget.open)}>
     <summary>Cronologia del fascicolo</summary>
     {opened && <div style={{ marginTop: 10 }}>
-      <p className="fiscal-muted">La cronologia raccoglie i documenti già collegati. Un modello F24 non prova il pagamento; quietanza e riscontro bancario restano distinti. Il collegamento non invia richieste di sgravio.</p>
+      <p className="fiscal-muted">La cronologia raccoglie i documenti già collegati. La quietanza ufficiale con esito positivo prova il versamento attribuito anche senza riscontro bancario disponibile. Il modello F24 da pagare e la ricevuta di invio restano distinti. Il collegamento non invia richieste di sgravio.</p>
       {loading && <p role="status">Caricamento della cronologia…</p>}
       {error && <div role="alert">
         <p>Non è stato possibile caricare la cronologia del fascicolo.</p>

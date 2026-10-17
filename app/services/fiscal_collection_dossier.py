@@ -14,7 +14,11 @@ from app.db_collections import (
     COLL_ADER_POSITION_SNAPSHOTS, COLL_DOCUMENTS_INBOX, COLL_ESTRATTO_CONTO,
     COLL_F24, COLL_FISCAL_DOCUMENTS, COLL_FISCAL_EVIDENCE, COLL_FISCAL_LINKS,
     COLL_QUIETANZE_F24, COLL_TAX_ALLOCATIONS, COLL_TAX_COLLECTION_CLAIMS,
-    COLL_TAX_COLLECTION_EVENTS, COLL_TAX_PAYMENTS, COLL_TAX_RATE_PLANS,
+    COLL_TAX_COLLECTION_DOCUMENTS, COLL_TAX_COLLECTION_EVENTS, COLL_TAX_LEGAL_EVENTS,
+    COLL_TAX_NOTIFICATION_EVENTS, COLL_TAX_PAYMENTS, COLL_TAX_RATE_INSTALLMENTS,
+    COLL_TAX_RATE_PLAN_CLAIM_ALLOCATIONS, COLL_TAX_RATE_PLANS,
+    COLL_TAX_SETTLEMENT_APPLICATIONS, COLL_TAX_SETTLEMENT_CLAIMS,
+    COLL_TAX_SETTLEMENT_INSTALLMENTS,
 )
 from app.services.f24_controllo_incrociato import modello_attivo
 from app.services.fiscal_claim_source_reconciliation import (
@@ -47,6 +51,10 @@ _EVENT_LABELS = {
 
 def _day(value: Any) -> str | None:
     """An upload timestamp is never passed here as a substitute legal date."""
+    # Some INPS exports use year 0001 as a documented empty-date sentinel.
+    # Keep the document undated rather than fabricating an ancient legal event.
+    if isinstance(value, (date, datetime)) and value.year == 1:
+        return None
     if isinstance(value, datetime):
         return (value.astimezone(ZoneInfo("Europe/Rome")) if value.tzinfo else value).date().isoformat()
     if isinstance(value, date):
@@ -61,7 +69,7 @@ def _day(value: Any) -> str | None:
         pass
     for pattern in ("%d/%m/%Y", "%d-%m-%Y", "%Y%m%d"):
         try:
-            return datetime.strptime(raw, pattern).date().isoformat()
+            return _day(datetime.strptime(raw, pattern))
         except ValueError:
             continue
     return None
@@ -125,6 +133,44 @@ def _taxpayer_scope(company_id: str) -> dict[str, Any]:
     ]}]}
 
 
+def _active_relation(record: dict[str, Any]) -> bool:
+    """Do not traverse a revoked, deleted or explicitly unconfirmed edge."""
+    if record.get("deleted_at") or record.get("revoked_at") or record.get("entity_status") == "deleted":
+        return False
+    if str(record.get("status") or "").upper() in {"DELETED", "REVOKED", "INVALID"}:
+        return False
+    return all(str(record[field]).upper() == "CONFIRMED"
+               for field in ("link_status", "relation_status") if record.get(field))
+
+
+def _source_provenance(record: dict[str, Any]) -> list[dict[str, Any]]:
+    """Keep recorded origins, including copies; never derive them from a name."""
+    fields = ("source", "channel", "drive_file_id", "drive_document_id", "drive_parent_id",
+              "source_path", "drive_path", "sha256", "email_message_id", "gmail_message_id",
+              "email_from", "email_to", "email_subject", "email_date", "email_account")
+    sources = [record, record.get("source_metadata"), record.get("source_context"),
+               *(record.get("source_occurrences") or [])]
+    result = []
+    for source in sources:
+        if isinstance(source, dict):
+            origin = {field: source[field] for field in fields if source.get(field) not in (None, "")}
+            if origin and origin not in result:
+                result.append(origin)
+    return result
+
+
+def _provision_needs_review(record: dict[str, Any]) -> bool:
+    classification = record.get("classification") or {}
+    # Reimporting identical bytes does not reclassify legacy records. Known
+    # old broad markers cannot become a granted outcome merely because the
+    # historical automatic classification was saved as CLASSIFIED.
+    legacy_markers = {"marker:sgravio", "marker:sospensione legale della riscossione"}
+    legacy_automatic = bool(legacy_markers.intersection(classification.get("reasons") or []))
+    return legacy_automatic or bool(classification.get("requires_review")) or (
+        str(record.get("review_status") or "").upper() == "TO_VERIFY"
+    )
+
+
 def _path(claim: dict[str, Any], documents: list[dict[str, Any]]) -> tuple[str, str, list[tuple[str, str]]]:
     kind = _kind(claim)
     if not kind:
@@ -176,27 +222,89 @@ async def build_collection_dossier(db, *, company_id: str, claim_id: str) -> dic
     events = await db[COLL_TAX_COLLECTION_EVENTS].find(
         {"company_id": company_id, "claim_id": ident}, _PROJECTION,
     ).to_list(5000)
+    # The canonical graph contains correspondence attached to a plan rather
+    # than directly to each claim. Traverse exact IDs, never similar filenames,
+    # periods or amounts. A refusal is a document too, not a revoked relation.
+    graph_bound_reached = False
+
+    async def related(collection: str, clauses: list[dict[str, Any]], limit: int = 5000):
+        nonlocal graph_bound_reached
+        if not clauses:
+            return []
+        rows = await db[collection].find(
+            {"company_id": company_id, "$or": clauses}, _PROJECTION,
+        ).to_list(limit)
+        graph_bound_reached |= len(rows) >= limit
+        return [row for row in rows if _active_relation(row)]
+
+    claim_clauses = [{"claim_id": ident}, {"tax_collection_claim_id": ident}]
+    notification_events = await related(COLL_TAX_NOTIFICATION_EVENTS, claim_clauses)
+    legal_events = await related(COLL_TAX_LEGAL_EVENTS, claim_clauses)
+    events = [event for event in events if _active_relation(event)] + [
+        {**event, "_event_store": store}
+        for store, records in (("notification", notification_events), ("legal", legal_events))
+        for event in records
+    ]
+    plan_edges = [edge for edge in await related(COLL_TAX_RATE_PLAN_CLAIM_ALLOCATIONS, claim_clauses)
+                  if any(str(edge.get(field) or "").upper() == "CONFIRMED"
+                         for field in ("link_status", "relation_status"))]
+    explicit_plan_ids = sorted({str(edge["rate_plan_id"]) for edge in plan_edges if edge.get("rate_plan_id")})
+    plan_clauses = ([{"document_references.document_number": number}] if number else [])
+    if explicit_plan_ids:
+        plan_clauses.append({"id": {"$in": explicit_plan_ids}})
+    plans = await related(COLL_TAX_RATE_PLANS, plan_clauses, 1000)
+    plan_ids = sorted({str(plan["id"]) for plan in plans if plan.get("id")})
+    installments = await related(COLL_TAX_RATE_INSTALLMENTS,
+                                 [{"rate_plan_id": {"$in": plan_ids}}] if plan_ids else [])
+    settlement_edges = [edge for edge in await related(COLL_TAX_SETTLEMENT_CLAIMS, claim_clauses)
+                        if any(str(edge.get(field) or "").upper() == "CONFIRMED"
+                               for field in ("link_status", "relation_status"))]
+    settlement_ids = sorted({str(edge["settlement_application_id"]) for edge in settlement_edges
+                             if edge.get("settlement_application_id")})
+    settlement_clauses = [*claim_clauses]
+    if number:
+        settlement_clauses.append({"collection_document_number": number})
+    if settlement_ids:
+        settlement_clauses.append({"id": {"$in": settlement_ids}})
+    settlements = await related(COLL_TAX_SETTLEMENT_APPLICATIONS, settlement_clauses, 1000)
+    settlement_ids = sorted({str(item["id"]) for item in settlements if item.get("id")})
+    settlement_installments = await related(
+        COLL_TAX_SETTLEMENT_INSTALLMENTS,
+        [{"settlement_application_id": {"$in": settlement_ids}}] if settlement_ids else [],
+    )
+    correspondence_clauses = [*claim_clauses]
+    if plan_ids:
+        correspondence_clauses.append({"linked_rate_plan_id": {"$in": plan_ids}, "link_status": "CONFIRMED"})
+    if settlement_ids:
+        correspondence_clauses.append({"settlement_application_id": {"$in": settlement_ids}, "link_status": "CONFIRMED"})
+    correspondence = await related(COLL_TAX_COLLECTION_DOCUMENTS, correspondence_clauses)
+    graph_entities: dict[str, list[str]] = {"tax_collection_claim": [ident]}
+    for entity_type, records in (("tax_rate_plan", plans), ("tax_rate_installment", installments),
+                                 ("tax_collection_document", correspondence),
+                                 ("tax_settlement_application", settlements),
+                                 ("tax_settlement_installment", settlement_installments)):
+        graph_entities[entity_type] = [str(item["id"]) for item in records if item.get("id")]
     fiscal_links = await db[COLL_FISCAL_LINKS].find({
-        "company_id": company_id, "entity_type": "tax_collection_claim", "entity_id": ident,
-        "status": "confirmed",
-    }, _PROJECTION).to_list(2000)
-    evidence_ids = sorted({str(eid) for link in [*fiscal_links, *events]
-                           for eid in link.get("evidence_ids") or []})
+        "company_id": company_id, "status": "confirmed",
+        "$or": [{"entity_type": entity_type, "entity_id": {"$in": entity_ids}}
+                for entity_type, entity_ids in graph_entities.items() if entity_ids],
+    }, _PROJECTION).to_list(5000)
+    graph_records = [*events, *plans, *installments, *plan_edges, *settlements, *settlement_edges,
+                     *settlement_installments, *correspondence]
+    evidence_ids = sorted({str(eid) for item in [*fiscal_links, *graph_records]
+                           for eid in item.get("evidence_ids") or []})
     evidence = [] if not evidence_ids else await db[COLL_FISCAL_EVIDENCE].find(
         {"company_id": company_id, "id": {"$in": evidence_ids}}, _PROJECTION,
     ).to_list(5000)
     sources = [link for link in claim.get("source_obligation_links") or []
                if link.get("relation_status") == "CONFIRMED"]
     doc_ids = _ids(claim)
-    for item in [*events, *evidence, *sources, *(claim.get("original_notice_sources") or [])]:
+    for item in [*graph_records, *evidence, *sources, *(claim.get("original_notice_sources") or [])]:
         doc_ids.update(_ids(item))
     snapshots = [] if not number else await db[COLL_ADER_POSITION_SNAPSHOTS].find(
         {"company_id": company_id, "document_number": number}, _PROJECTION,
     ).to_list(5000)
-    plans = [] if not number else await db[COLL_TAX_RATE_PLANS].find(
-        {"company_id": company_id, "document_references.document_number": number}, _PROJECTION,
-    ).to_list(1000)
-    for item in [*snapshots, *plans]:
+    for item in [*snapshots, *plans, *settlements]:
         doc_ids.update(_ids(item))
         for module in item.get("payment_modules") or []:
             doc_ids.update(_ids(module))
@@ -204,7 +312,7 @@ async def build_collection_dossier(db, *, company_id: str, claim_id: str) -> dic
         "company_id": company_id, "entity_type": "tax_collection_claim", "entity_id": ident,
     }, _PROJECTION).to_list(5000)
     payment_ids = {str(pid) for pid in claim.get("linked_payment_ids") or [] if pid}
-    payment_ids.update(str(item["payment_id"]) for item in [*events, *allocations] if item.get("payment_id"))
+    payment_ids.update(str(item["payment_id"]) for item in [*graph_records, *allocations] if item.get("payment_id"))
     payments = [] if not payment_ids else await db[COLL_TAX_PAYMENTS].find(
         {"company_id": company_id, "id": {"$in": sorted(payment_ids)}}, _PROJECTION,
     ).to_list(5000)
@@ -303,8 +411,13 @@ async def build_collection_dossier(db, *, company_id: str, claim_id: str) -> dic
                                  "evidence_level": evidence_level}
         if doc and doc.get("id"):
             entry.update({"document_id": str(doc["id"]),
+                          "document_type": _kind(doc),
                           "filename": doc.get("filename") or doc.get("file_name") or doc.get("source_filename"),
                           "url": url_originale(doc.get("_original_type") or "documento_fiscale", doc["id"])})
+            entry["source_provenance"] = _source_provenance(doc)
+            # Registration proves that a reference exists; opening the original
+            # is a separate operation and may still fail or return a portal copy.
+            entry["original_verified"] = False
             doc_evidence = [item for item in evidence if str(item.get("document_id")) == str(doc["id"])]
             if doc_evidence:
                 entry["evidence"] = [{key: item[key] for key in (
@@ -316,8 +429,11 @@ async def build_collection_dossier(db, *, company_id: str, claim_id: str) -> dic
             entry["notes"] = notes
         entries[key] = entry
 
-    if (document_bound_reached or model_bound_reached or receipt_bound_reached
-            or len(events) >= 5000 or len(fiscal_links) >= 2000 or len(evidence) >= 5000
+    finding("DRIVE_COVERAGE_NOT_VERIFIED", "Il fascicolo legge i collegamenti registrati, inclusi piani e corrispondenza. La presenza di tutti i file Drive e l'accessibilità degli originali richiedono un inventario separato.", "info")
+    if doc_ids - set(docs_by_id):
+        finding("LINKED_DOCUMENT_UNAVAILABLE", "Alcuni riferimenti documentali del fascicolo non hanno un originale registrato e disponibile per questa società: verificare i documenti mancanti.")
+    if (graph_bound_reached or document_bound_reached or model_bound_reached or receipt_bound_reached
+            or len(events) >= 5000 or len(fiscal_links) >= 5000 or len(evidence) >= 5000
             or len(snapshots) >= 5000 or len(plans) >= 1000 or len(allocations) >= 5000
             or len(payments) >= 5000):
         finding("DOSSIER_READ_LIMIT_REACHED", "Una lettura ha raggiunto il limite del fascicolo: la cronologia può essere incompleta e richiede una verifica aggiuntiva.")
@@ -356,7 +472,7 @@ async def build_collection_dossier(db, *, company_id: str, claim_id: str) -> dic
             if unverified else "Quietanza F24: versamento documentale",
             paid_day, date_kind="PAYMENT_DATE", doc=doc,
             notes=["L'attribuzione alla singola obbligazione è da verificare: non certifica il pagamento della pretesa."
-                   if provisional or unverified else "La quietanza resta distinta dal movimento bancario e dal saldo della pretesa."])
+                   if provisional or unverified else "La quietanza ufficiale positiva prova il versamento delle righe attribuite anche senza movimento bancario disponibile. L’eventuale saldo residuo della pretesa resta distinto."])
         if unverified:
             finding("RECEIPT_ATTRIBUTION_UNVERIFIED", "Un riferimento a quietanza è presente, ma i documenti attuali non confermano l'attribuzione esatta alla pretesa.")
         if provisional:
@@ -407,6 +523,39 @@ async def build_collection_dossier(db, *, company_id: str, claim_id: str) -> dic
             stage, label = "SUSPENSION", "Provvedimento di sospensione"
         elif kind == "ISTANZA_SOSPENSIONE":
             stage, label = "SUSPENSION_REQUEST", "Istanza di sospensione: non è un provvedimento"
+        elif kind == "ISTANZA_RATEIZZAZIONE":
+            stage, label = "RATE_PLAN_REQUEST", "Domanda di rateizzazione: non è un accoglimento"
+        elif kind in {"RIGETTO_SGRAVIO", "RIGETTO_SOSPENSIONE", "RIGETTO_RATEIZZAZIONE"}:
+            stage, label = "REQUEST_REJECTED", "Rigetto della richiesta: verificare oggetto e motivazione"
+        elif kind == "PREAVVISO_RIGETTO":
+            stage, label = "REJECTION_NOTICE", "Preavviso di rigetto: distinto dall'esito definitivo"
+        elif kind == "RELATA_NOTIFICA":
+            stage, label = "NOTIFICATION_RECORD", "Relata di notifica: verificare destinatario, atto e data"
+        elif kind == "CORRISPONDENZA_ADE_R":
+            stage, label = "CORRESPONDENCE", "Corrispondenza AdeR: richiesta e risposta da distinguere"
+        elif kind == "NOTA_RETTIFICA_INPS":
+            stage, label = "CONTRIBUTION_ADJUSTMENT", "Nota di rettifica INPS"
+        elif kind == "LETTERA_COMPLIANCE":
+            stage, label = "COMPLIANCE_LETTER", "Lettera di compliance: non è una cartella"
+        elif kind == "DURC":
+            stage, label = "CONTRIBUTION_REGULARITY", "Regolarità contributiva: esito e periodo da verificare"
+        elif kind == "COMUNICAZIONE_CIVIS":
+            stage, label = "ASSISTANCE_COMMUNICATION", "Comunicazione CIVIS: richiesta ed esito da distinguere"
+        elif kind == "SOLLECITO_PAGAMENTO":
+            stage, label = "PAYMENT_REMINDER", "Sollecito/intimazione: distinto dalla cartella richiamata"
+        elif kind == "RICEVUTA_PEC":
+            stage, label = "PEC_TRANSPORT_RECEIPT", "Ricevuta PEC: trasporto del messaggio, non pagamento"
+        elif kind == "RICEVUTA_TRASMISSIONE":
+            stage, label = "TRANSMISSION_RECEIPT", "Ricevuta di trasmissione: distinta dalla quietanza"
+        elif kind == "ESITO_NEGATIVO_F24":
+            stage, label = "F24_NEGATIVE_OUTCOME", "Esito negativo F24: non prova un versamento"
+        elif kind == "PROSPETTO_ADE_R":
+            stage, label = "PORTAL_STATEMENT", "Prospetto informativo AdeR: distinto dagli atti e dalle quietanze"
+        elif kind in {"MODULO_PAGAMENTO_ADER", "MODULO_PAGAMENTO"}:
+            stage, label = "PAYMENT_MODULE", "Modulo di pagamento predisposto: non prova il versamento"
+        if stage in {"RELIEF", "SUSPENSION"} and _provision_needs_review(doc):
+            stage, label = "POTENTIAL_PROVISION", "Possibile provvedimento: contenuto ed esito da verificare"
+            finding("PROVISION_REVIEW_REQUIRED", "Un documento è classificato come possibile provvedimento, ma la classificazione richiede ancora verifica: nessuno sgravio o sospensione confermato.")
         add("document:" + str(doc["id"]), stage, label,
             _first_date(doc, "document_date", "data_documento", "data_atto", "issue_date"), doc=doc)
         notified = _first_date(doc, "notification_date", "data_notifica")
@@ -474,13 +623,14 @@ async def build_collection_dossier(db, *, company_id: str, claim_id: str) -> dic
 
     payments_by_id = {str(item["id"]): item for item in payments}
     for event in events:
-        kind = str(event.get("event_type") or "EVENT")
+        kind = str(event.get("event_type") or
+                   ("COLLECTION_NOTIFICATION" if event.get("_event_store") == "notification" else "EVENT"))
         if kind in _PAYMENT_EVENTS:
             # Imported effective_at can equal the import time when payment_date
             # is missing. A payment event therefore never dates a receipt.
             if str(event.get("payment_id") or event.get("source_reference") or "") in payments_by_id:
                 continue
-            add("event:" + str(event.get("id")), "PAYMENT_RECORDED_UNVERIFIED",
+            add("event:" + str(event.get("_event_store") or "collection") + ":" + str(event.get("id")), "PAYMENT_RECORDED_UNVERIFIED",
                 "Pagamento registrato: prova e data da verificare", None,
                 date_kind="PAYMENT_DATE", evidence_level="EVENT",
                 notes=["La data tecnica dell'evento non prova la data del pagamento."])
@@ -491,13 +641,44 @@ async def build_collection_dossier(db, *, company_id: str, claim_id: str) -> dic
                    and str(item.get("document_id")) in docs_by_id for item in evidence)
         )
         if not event_has_original:
-            add("event:" + str(event.get("id")), "UNVERIFIED_RECORDED_EVENT",
+            add("event:" + str(event.get("_event_store") or "collection") + ":" + str(event.get("id")), "UNVERIFIED_RECORDED_EVENT",
                 "Evento registrato: prova da verificare", None, date_kind="EVENT_EFFECTIVE_DATE", evidence_level="EVENT",
                 notes=["Il riferimento all'originale manca o non è disponibile per questa società: la fase non è documentata."])
             finding("EVENT_EVIDENCE_UNAVAILABLE", "Un evento registrato non dispone della relativa prova documentale nel fascicolo.")
             continue
-        add("event:" + str(event.get("id")), kind, _EVENT_LABELS.get(kind, "Evento del fascicolo da verificare"),
-            event.get("effective_at"), date_kind="EVENT_EFFECTIVE_DATE", evidence_level="EVENT",
+        event_document = next((docs_by_id[doc_id] for doc_id in sorted(_ids(event)) if doc_id in docs_by_id), None)
+        if event_document is None:
+            event_document = next((docs_by_id[str(item["document_id"])] for item in evidence
+                                   if item.get("id") in (event.get("evidence_ids") or [])
+                                   and str(item.get("document_id")) in docs_by_id), None)
+        required_kinds = {
+            "RELIEF": {"SGRAVIO", "PROVVEDIMENTO_SGRAVIO", "SGRAVIO_PARZIALE"},
+            "PARTIAL_RELIEF": {"SGRAVIO", "PROVVEDIMENTO_SGRAVIO", "SGRAVIO_PARZIALE"},
+            "SUSPENSION_START": {"SOSPENSIONE", "PROVVEDIMENTO_SOSPENSIONE"},
+            "RATE_PLAN_GRANTED": {"PIANO_RATEIZZAZIONE", "ACCOGLIMENTO_RATEIZZAZIONE"},
+        }
+        if kind in required_kinds:
+            proving_ids = set(_ids(event))
+            proving_ids.update(str(item["document_id"]) for item in evidence
+                               if item.get("id") in (event.get("evidence_ids") or []) and item.get("document_id"))
+            event_document = next((docs_by_id[doc_id] for doc_id in sorted(proving_ids)
+                                   if doc_id in docs_by_id and _kind(docs_by_id[doc_id]) in required_kinds[kind]
+                                   and not _provision_needs_review(docs_by_id[doc_id])),
+                                  event_document)
+        if kind in required_kinds and (_kind(event_document or {}) not in required_kinds[kind]
+                                      or _provision_needs_review(event_document or {})):
+            add("event:" + str(event.get("_event_store") or "collection") + ":" + str(event.get("id")),
+                "UNVERIFIED_RECORDED_EVENT", "Esito registrato: il provvedimento è da verificare", None,
+                date_kind="EVENT_EFFECTIVE_DATE", evidence_level="EVENT", doc=event_document,
+                notes=["Il documento disponibile non dimostra questo provvedimento; una richiesta, un rigetto e un preavviso sono distinti."])
+            finding("EVENT_OUTCOME_NOT_PROVEN", "Un esito registrato non è sostenuto da un documento classificato come relativo provvedimento: nessun accoglimento o sgravio dedotto.")
+            continue
+        event_day = (_first_date(event, "notification_date", "data_notifica", "effective_at")
+                     if event.get("_event_store") == "notification" else event.get("effective_at"))
+        add("event:" + str(event.get("_event_store") or "collection") + ":" + str(event.get("id")), kind,
+            _EVENT_LABELS.get(kind, "Evento del fascicolo da verificare"),
+            event_day, date_kind="NOTIFICATION_DATE" if event.get("_event_store") == "notification"
+            else "EVENT_EFFECTIVE_DATE", evidence_level="EVENT", doc=event_document,
             amount=_cents(event.get("amount")),
             notes=["Una richiesta e un provvedimento restano eventi distinti."] if "REQUEST" in kind else None)
         if kind == "ROLE_FORMATION" and event_has_original and (when := _day(event.get("effective_at"))):
@@ -515,10 +696,46 @@ async def build_collection_dossier(db, *, company_id: str, claim_id: str) -> dic
                 doc=docs_by_id.get(str(snapshot.get("source_document_id"))),
                 notes=["Data riportata dal portale: la relata di notifica resta una prova distinta."])
     for plan in plans:
+        if plan.get("terms_conflict"):
+            finding("RATE_PLAN_TERMS_CONFLICT", "Più documenti dello stesso piano riportano condizioni diverse: tutte le fonti restano nel fascicolo, ma nessuna è scelta come versione definitiva dal nome file o dalla data di caricamento.")
+        if plan.get("filename_reference_discrepancy"):
+            finding("RATE_PLAN_FILENAME_REFERENCE_DIFFERS", "Il riferimento nel nome del file differisce dall'identificativo stampato nel piano: vale il contenuto; nessun prefisso è ricostruito dal nome.")
+        if plan.get("taxpayer_identity_status") != "CONFIRMED" or plan.get("requires_review"):
+            finding("RATE_PLAN_REVIEW_REQUIRED", "Un piano collegato richiede verifica dell'identità del contribuente o delle condizioni documentali: il collegamento non conferma una concessione né il pagamento delle rate.")
         add("plan:" + str(plan["id"]), "RATE_PLAN", "Piano di rateizzazione collegato",
             plan.get("application_date"), date_kind="PLAN_APPLICATION_DATE",
             doc=docs_by_id.get(str(plan.get("source_document_id"))),
             notes=["Il piano e i moduli di pagamento non dimostrano il pagamento delle rate."])
+    for entity_type, records, parent_field in (
+        ("RATE_INSTALLMENT_DUE", installments, "rate_plan_id"),
+        ("SETTLEMENT_INSTALLMENT_DUE", settlement_installments, "settlement_application_id"),
+    ):
+        for installment in records:
+            parent = next((item for item in [*plans, *settlements]
+                           if str(item.get("id")) == str(installment.get(parent_field))), {})
+            doc = docs_by_id.get(str(installment.get("source_document_id") or parent.get("source_document_id")))
+            add("installment:" + entity_type + ":" + str(installment.get("id")), entity_type,
+                "Scadenza di rata da verificare: documenti del piano discordanti" if parent.get("terms_conflict")
+                else "Scadenza di rata registrata: non prova il pagamento", installment.get("due_date"),
+                date_kind="DUE_DATE", doc=doc,
+                notes=["La rata può coprire più pretese; il suo totale non è imputato a questa cartella."])
+    for settlement in settlements:
+        add("settlement:" + str(settlement.get("id")), "SETTLEMENT_DOCUMENT",
+            "Definizione agevolata collegata: verificare domanda ed esito",
+            _first_date(settlement, "document_date", "communication_date", "application_date"),
+            doc=docs_by_id.get(str(settlement.get("source_document_id"))),
+            notes=["La domanda, la comunicazione delle somme e le ricevute delle rate restano documenti distinti."])
+    seen_modules: set[str] = set()
+    for parent in [*plans, *settlements]:
+        for module in parent.get("payment_modules") or []:
+            doc_id = str(module.get("source_document_id") or "")
+            module_key = doc_id or str(module.get("id") or "")
+            if not module_key or module_key in seen_modules:
+                continue
+            seen_modules.add(module_key)
+            add("module:" + module_key, "PAYMENT_MODULE", "Modulo di pagamento: non prova il versamento",
+                _first_date(module, "document_date", "issue_date"), evidence_level="MODEL_ONLY",
+                doc=docs_by_id.get(doc_id))
 
     path_claim = claim
     if not _kind(claim) and snapshots:
@@ -567,6 +784,11 @@ async def build_collection_dossier(db, *, company_id: str, claim_id: str) -> dic
     return {"claim_id": ident, "collection_number": number,
             "path": {"code": code, "label": label, "steps": steps},
             "timeline": dated, "undated": undated, "findings": findings,
+            "coverage": {"scope": "REGISTERED_CLAIM_GRAPH", "drive_inventory_verified": False,
+                         "referenced_documents": len(doc_ids), "loaded_documents": len(docs_by_id),
+                         "unavailable_document_ids": sorted(doc_ids - set(docs_by_id)),
+                         "rate_plans": len(plans), "correspondence_records": len(correspondence),
+                         "settlement_applications": len(settlements)},
             "evidence_summary": {"f24_models": len(models), "documentary_receipts": documentary_receipt_count,
                                  "bank_movements": len(banks), "claim_allocated_cents": documentary_direct_cents},
             "safety": {"payment_inferred": False, "requests_submitted": False}}

@@ -1,5 +1,6 @@
 """Regressions for the read-only evidence chronology, including imported dates."""
 import asyncio
+from datetime import date, datetime
 
 import pytest
 from fastapi import FastAPI
@@ -10,6 +11,10 @@ from app.db_collections import (
     COLL_F24, COLL_FISCAL_DOCUMENTS, COLL_FISCAL_EVIDENCE, COLL_FISCAL_LINKS,
     COLL_QUIETANZE_F24, COLL_TAX_ALLOCATIONS, COLL_TAX_COLLECTION_CLAIMS,
     COLL_TAX_COLLECTION_EVENTS, COLL_TAX_PAYMENTS, COLL_TAX_RATE_PLANS,
+    COLL_TAX_COLLECTION_DOCUMENTS, COLL_TAX_LEGAL_EVENTS, COLL_TAX_NOTIFICATION_EVENTS,
+    COLL_TAX_RATE_INSTALLMENTS, COLL_TAX_RATE_PLAN_CLAIM_ALLOCATIONS,
+    COLL_TAX_SETTLEMENT_APPLICATIONS, COLL_TAX_SETTLEMENT_CLAIMS,
+    COLL_TAX_SETTLEMENT_INSTALLMENTS,
 )
 from app.services.archivio_documenti_memoria import ClientArchivioMemoria
 from app.services.fiscal_collection_dossier import build_collection_dossier
@@ -531,3 +536,264 @@ def test_multiple_exact_receipts_keep_canonical_attribution_ambiguous():
     assert "SOURCE_PAID_BEFORE_ROLE" not in codes(result)
     assert result["evidence_summary"]["documentary_receipts"] == 0
     assert sum(item["event_type"] == "LINKED_RECEIPT_UNVERIFIED" for item in all_entries(result)) == 2
+
+
+def test_canonical_plan_correspondence_and_copies_are_visible_without_claim_side_duplicate_links():
+    """Shapes written by parse_rate_plan/archivia_richiesta_informazioni."""
+    db = run(seed())
+    run(db[COLL_TAX_RATE_PLANS].insert_one({
+        "id": "plan-1", "company_id": COMPANY, "plan_reference": "AR071000001",
+        "document_references": [{"printed_reference": NUMBER[:17], "document_number": NUMBER}],
+        "application_date": "2009-06-26", "source_document_id": "plan-original",
+        "source_document_ids": ["plan-original", "plan-copy"],
+    }))
+    run(db[COLL_TAX_COLLECTION_DOCUMENTS].insert_one({
+        "id": "request-1", "company_id": COMPANY, "linked_rate_plan_id": "plan-1",
+        "link_status": "CONFIRMED", "status": "REQUEST_RECORDED_RESPONSE_NOT_FOUND",
+        "source_document_id": "request-original", "payment_evidence": False,
+        "acceptance_evidence": False, "response_evidence": False,
+    }))
+    for doc_id, kind in (("plan-original", "PIANO_RATEIZZAZIONE"),
+                         ("plan-copy", "PIANO_RATEIZZAZIONE"),
+                         ("request-original", "CORRISPONDENZA_ADE_R"),
+                         ("answer-original", "RIGETTO_RATEIZZAZIONE")):
+        run(db[COLL_FISCAL_DOCUMENTS].insert_one({
+            "id": doc_id, "company_id": COMPANY, "document_type": kind,
+            "document_date": "2012-08-03", "filename": doc_id + ".pdf",
+            "source_occurrences": [{"source": "drive", "drive_file_id": "drive-" + doc_id,
+                                    "sha256": "a" * 64}],
+        }))
+    # A response can be attached canonically to the plan with page provenance.
+    run(db[COLL_FISCAL_EVIDENCE].insert_one({
+        "id": "answer-proof", "company_id": COMPANY, "document_id": "answer-original",
+        "version_id": "answer-version", "page_number": 1, "field": "plan_reference",
+    }))
+    run(db[COLL_FISCAL_LINKS].insert_one({
+        "id": "answer-link", "company_id": COMPANY, "entity_type": "tax_rate_plan",
+        "entity_id": "plan-1", "status": "confirmed", "evidence_ids": ["answer-proof"],
+    }))
+    result = dossier(db)
+    docs = {item["document_id"]: item for item in all_entries(result) if item.get("document_id")}
+    assert set(docs) == {"plan-original", "plan-copy", "request-original", "answer-original"}
+    assert docs["request-original"]["event_type"] == "CORRESPONDENCE"
+    assert docs["answer-original"]["event_type"] == "REQUEST_REJECTED"
+    assert docs["answer-original"]["evidence"][0]["page_number"] == 1
+    assert docs["request-original"]["source_provenance"][0]["drive_file_id"] == "drive-request-original"
+    assert docs["request-original"]["original_verified"] is False
+    assert result["evidence_summary"]["documentary_receipts"] == 0
+    assert result["coverage"]["correspondence_records"] == 1
+    assert result["coverage"]["drive_inventory_verified"] is False
+    assert "DRIVE_COVERAGE_NOT_VERIFIED" in codes(result)
+
+
+@pytest.mark.parametrize("change", [
+    {"company_id": "other"}, {"link_status": "UNRESOLVED_REFERENCE"},
+    {"link_status": "REVOKED"}, {"linked_rate_plan_id": "plan-unrelated"},
+])
+def test_correspondence_needs_confirmed_same_company_plan_edge(change):
+    db = run(seed())
+    run(db[COLL_TAX_RATE_PLANS].insert_one({
+        "id": "plan-1", "company_id": COMPANY,
+        "document_references": [{"document_number": NUMBER}],
+    }))
+    run(db[COLL_TAX_COLLECTION_DOCUMENTS].insert_one({
+        "id": "request-1", "company_id": COMPANY, "linked_rate_plan_id": "plan-1",
+        "link_status": "CONFIRMED", "source_document_id": "request-doc", **change,
+    }))
+    run(db[COLL_FISCAL_DOCUMENTS].insert_one({"id": "request-doc", "company_id": COMPANY}))
+    assert not any(item.get("document_id") == "request-doc" for item in all_entries(dossier(db)))
+
+
+def test_expected_installments_and_payment_modules_never_become_receipts():
+    db = run(seed())
+    run(db[COLL_TAX_RATE_PLANS].insert_one({
+        "id": "plan-1", "company_id": COMPANY, "source_document_id": "plan-doc",
+        "document_references": [{"document_number": NUMBER}],
+        "payment_modules": [{"id": "module-1", "source_document_id": "module-doc",
+                             "payment_evidence": False, "installments": [{"due_date": "2010-01-31"}]}],
+    }))
+    run(db[COLL_TAX_RATE_INSTALLMENTS].insert_one({
+        "id": "installment-1", "company_id": COMPANY, "rate_plan_id": "plan-1",
+        "installment_number": 1, "due_date": "2010-01-31", "amount": "100.00",
+        "status": "EXPECTED", "payment_evidence": False, "source_document_id": "plan-doc",
+        "created_at": "2026-10-17",
+    }))
+    for doc_id in ("plan-doc", "module-doc"):
+        run(db[COLL_FISCAL_DOCUMENTS].insert_one({"id": doc_id, "company_id": COMPANY}))
+    result = dossier(db)
+    due = next(item for item in result["timeline"] if item["event_type"] == "RATE_INSTALLMENT_DUE")
+    assert due["date"] == "2010-01-31" and "amount_cents" not in due
+    module = next(item for item in result["undated"] if item["event_type"] == "PAYMENT_MODULE")
+    assert module["evidence_level"] == "MODEL_ONLY"
+    assert result["evidence_summary"]["documentary_receipts"] == 0
+    assert result["evidence_summary"]["claim_allocated_cents"] == 0
+    assert not any(item["date"] == "2026-10-17" for item in result["timeline"])
+
+
+def test_settlement_exact_claim_edge_loads_source_module_and_installment_but_not_candidates():
+    db = run(seed())
+    run(db[COLL_TAX_SETTLEMENT_CLAIMS].insert_one({
+        "id": "settlement-edge", "company_id": COMPANY, "claim_id": "claim-1",
+        "settlement_application_id": "settlement-1", "relation_status": "CONFIRMED",
+    }))
+    run(db[COLL_TAX_SETTLEMENT_APPLICATIONS].insert_one({
+        "id": "settlement-1", "company_id": COMPANY, "source_document_id": "offer-doc",
+        "payment_evidence": False, "status": "PENDING_PAYMENT_EVIDENCE",
+        "payment_modules": [{"id": "settlement-module", "source_document_id": "module-doc"}],
+    }))
+    run(db[COLL_TAX_SETTLEMENT_APPLICATIONS].insert_one({
+        "id": "candidate-only", "company_id": COMPANY, "source_document_id": "candidate-doc",
+        "related_document_candidates": [NUMBER],
+    }))
+    run(db[COLL_TAX_SETTLEMENT_INSTALLMENTS].insert_one({
+        "id": "settlement-rate", "company_id": COMPANY,
+        "settlement_application_id": "settlement-1", "due_date": "2023-10-31",
+    }))
+    for doc_id in ("offer-doc", "module-doc", "candidate-doc"):
+        run(db[COLL_FISCAL_DOCUMENTS].insert_one({"id": doc_id, "company_id": COMPANY}))
+    result = dossier(db)
+    docs = {item.get("document_id") for item in all_entries(result)}
+    assert {"offer-doc", "module-doc"}.issubset(docs) and "candidate-doc" not in docs
+    assert any(item["event_type"] == "SETTLEMENT_INSTALLMENT_DUE" for item in result["timeline"])
+    assert result["evidence_summary"]["documentary_receipts"] == 0
+    assert not any(item["event_type"] == "SETTLEMENT_ACCEPTED" for item in all_entries(result))
+
+
+def test_notification_and_legal_stores_retain_actual_dates_originals_and_namespace():
+    db = run(seed())
+    for collection, doc_id, fields in (
+        (COLL_TAX_NOTIFICATION_EVENTS, "relata-doc", {"notification_date": "2004-01-15"}),
+        (COLL_TAX_LEGAL_EVENTS, "request-doc", {"event_type": "RELIEF_REQUEST", "effective_at": "2004-02-03"}),
+    ):
+        run(db[collection].insert_one({
+            "id": "same-id", "company_id": COMPANY, "claim_id": "claim-1",
+            "source_document_id": doc_id, "created_at": "2026-10-17", **fields,
+        }))
+        run(db[COLL_FISCAL_DOCUMENTS].insert_one({"id": doc_id, "company_id": COMPANY}))
+    result = dossier(db)
+    event_entries = [item for item in result["timeline"] if item["evidence_level"] == "EVENT"]
+    assert len(event_entries) == 2
+    assert {item["date"] for item in event_entries} == {"2004-01-15", "2004-02-03"}
+    assert {item["document_id"] for item in event_entries} == {"relata-doc", "request-doc"}
+    assert not any(item["date"] == "2026-10-17" for item in result["timeline"])
+
+
+@pytest.mark.parametrize("relationship,expected", [("CONFIRMED", True), ("PENDING", False), ("REVOKED", False)])
+def test_plan_claim_allocation_only_traverses_confirmed_edge(relationship, expected):
+    db = run(seed())
+    run(db[COLL_TAX_RATE_PLAN_CLAIM_ALLOCATIONS].insert_one({
+        "id": "edge-1", "company_id": COMPANY, "claim_id": "claim-1",
+        "rate_plan_id": "plan-1", "relation_status": relationship,
+    }))
+    run(db[COLL_TAX_RATE_PLANS].insert_one({
+        "id": "plan-1", "company_id": COMPANY, "source_document_id": "plan-doc",
+    }))
+    run(db[COLL_FISCAL_DOCUMENTS].insert_one({"id": "plan-doc", "company_id": COMPANY}))
+    assert any(item.get("document_id") == "plan-doc" for item in all_entries(dossier(db))) is expected
+
+
+@pytest.mark.parametrize("kind,event_type", [
+    ("ISTANZA_SGRAVIO", "RELIEF"), ("RIGETTO_SGRAVIO", "PARTIAL_RELIEF"),
+    ("ISTANZA_SOSPENSIONE", "SUSPENSION_START"), ("PREAVVISO_RIGETTO", "RATE_PLAN_GRANTED"),
+])
+def test_request_refusal_or_pre_notice_cannot_prove_recorded_granted_event(kind, event_type):
+    db = run(seed())
+    run(db[COLL_TAX_LEGAL_EVENTS].insert_one({
+        "id": "incorrect-outcome", "company_id": COMPANY, "claim_id": "claim-1",
+        "event_type": event_type, "effective_at": "2004-02-03", "source_document_id": "request-doc",
+    }))
+    run(db[COLL_FISCAL_DOCUMENTS].insert_one({
+        "id": "request-doc", "company_id": COMPANY, "document_type": kind,
+    }))
+    result = dossier(db)
+    assert not any(item["event_type"] == event_type for item in all_entries(result))
+    assert "EVENT_OUTCOME_NOT_PROVEN" in codes(result)
+    assert result["safety"] == {"payment_inferred": False, "requests_submitted": False}
+
+
+def test_missing_plan_original_is_reported_as_missing_reference_and_not_drive_completion():
+    db = run(seed())
+    run(db[COLL_TAX_RATE_PLANS].insert_one({
+        "id": "plan-1", "company_id": COMPANY, "source_document_id": "not-imported",
+        "document_references": [{"document_number": NUMBER}],
+    }))
+    before = run(db[COLL_TAX_COLLECTION_CLAIMS].find_one({"id": "claim-1"}))
+    result = dossier(db)
+    assert result["coverage"]["unavailable_document_ids"] == ["not-imported"]
+    assert "LINKED_DOCUMENT_UNAVAILABLE" in codes(result)
+    assert result["coverage"]["drive_inventory_verified"] is False
+    assert run(db[COLL_TAX_COLLECTION_CLAIMS].find_one({"id": "claim-1"})) == before
+    assert run(db[COLL_TAX_COLLECTION_EVENTS].count_documents({})) == 0
+
+
+@pytest.mark.parametrize("sentinel", [
+    "03/01/0001", "0001-01-03", "0001-01-03T00:00:00Z", "00010103",
+    date(1, 1, 3), datetime(1, 1, 3),
+])
+def test_inps_empty_date_sentinel_is_undated_and_never_replaced_with_import_date(sentinel):
+    db = run(seed(source_document_id="inps-document"))
+    run(db[COLL_FISCAL_DOCUMENTS].insert_one({
+        "id": "inps-document", "company_id": COMPANY, "document_type": "NOTA_RETTIFICA_INPS",
+        "document_date": sentinel, "created_at": "2026-10-17",
+    }))
+    result = dossier(db)
+    assert result["timeline"] == []
+    assert result["undated"][0]["document_id"] == "inps-document"
+    assert result["undated"][0]["date"] is None
+
+
+@pytest.mark.parametrize("kind,event_type", [("SGRAVIO", "RELIEF"), ("SOSPENSIONE", "SUSPENSION_START")])
+@pytest.mark.parametrize("review_fields", [
+    {"classification": {"requires_review": True}, "review_status": "CLASSIFIED"},
+    {"classification": {"requires_review": False}, "review_status": "TO_VERIFY"},
+    {"classification": {"requires_review": False, "reasons": ["marker:sgravio"]},
+     "review_status": "CLASSIFIED"},
+    {"classification": {"requires_review": False,
+                        "reasons": ["marker:sospensione legale della riscossione"]},
+     "review_status": "CLASSIFIED"},
+])
+def test_unreviewed_provision_is_preserved_without_documenting_a_granted_outcome(kind, event_type, review_fields):
+    db = run(seed(source_document_id="possible-provision"))
+    run(db[COLL_FISCAL_DOCUMENTS].insert_one({
+        "id": "possible-provision", "company_id": COMPANY, "document_type": kind,
+        "document_date": "2004-02-03", **review_fields,
+    }))
+    run(db[COLL_TAX_LEGAL_EVENTS].insert_one({
+        "id": "unreviewed-event", "company_id": COMPANY, "claim_id": "claim-1",
+        "event_type": event_type, "effective_at": "2004-02-03", "source_document_id": "possible-provision",
+    }))
+    result = dossier(db)
+    assert any(item["event_type"] == "POTENTIAL_PROVISION" for item in result["timeline"])
+    assert not any(item["event_type"] in {"RELIEF", "SUSPENSION", "SUSPENSION_START"} for item in all_entries(result))
+    assert {"EVENT_OUTCOME_NOT_PROVEN", "PROVISION_REVIEW_REQUIRED"}.issubset(codes(result))
+
+
+def test_canonical_explicit_provision_without_pending_review_retains_documented_nature():
+    db = run(seed(source_document_id="reviewed-provision"))
+    run(db[COLL_FISCAL_DOCUMENTS].insert_one({
+        "id": "reviewed-provision", "company_id": COMPANY, "document_type": "SGRAVIO",
+        "classification": {"requires_review": False}, "review_status": "CLASSIFIED",
+        "document_date": "2004-02-03",
+    }))
+    run(db[COLL_TAX_LEGAL_EVENTS].insert_one({
+        "id": "reviewed-event", "company_id": COMPANY, "claim_id": "claim-1",
+        "event_type": "RELIEF", "effective_at": "2004-02-03", "source_document_id": "reviewed-provision",
+    }))
+    result = dossier(db)
+    assert sum(item["event_type"] == "RELIEF" for item in result["timeline"]) == 2
+    assert "EVENT_OUTCOME_NOT_PROVEN" not in codes(result)
+
+
+def test_official_positive_exact_quietanza_proves_fiscal_payment_without_bank_record():
+    from app.services.fiscal_claim_source_reconciliation import build_claim_source_plan
+
+    db = run(with_source(data_formazione_ruolo="2003-09-01"))
+    reconciliation = run(build_claim_source_plan(db, company_id=COMPANY))
+    assert reconciliation[0]["source_obligation_links"][0]["tax_lines"][0]["payment_evidence_status"] == "PAID_DOCUMENTED"
+    result = dossier(db)
+    receipt = next(item for item in result["timeline"] if item["event_type"] == "QUIETANZA_F24")
+    assert result["evidence_summary"]["documentary_receipts"] == 1
+    assert result["evidence_summary"]["bank_movements"] == 0
+    assert "SOURCE_PAID_BEFORE_ROLE" in codes(result)
+    assert "anche senza movimento bancario disponibile" in receipt["notes"][0]
+    assert result["evidence_summary"]["claim_allocated_cents"] == 0  # Source contribution, not a duplicate payment of the cartella.

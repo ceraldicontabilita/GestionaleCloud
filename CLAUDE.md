@@ -5133,6 +5133,47 @@ temporale: non introdurre un unico numero di giorni per tutti gli avvisi.
 | Riconciliazione fonti | Mantiene match esatti e proposte parziali separati; la proposta non paga il debito |
 | Richieste agli enti | La vista non invia istanze, non concede sgravi e non modifica dati o saldi |
 
+### Riscontro dei contenuti e completezza documentale
+
+Il nome file e la cartella di provenienza servono a ritrovare il documento,
+non ne provano natura, destinatario, data o pagamento. Leggere il contenuto
+con CF del debitore, ente/gestione, riferimento dell'atto, periodo completo,
+importi e riferimenti alla corrispondenza precedente. Il CF del rappresentante
+firmatario non sostituisce quello del contribuente. Richieste, preavvisi,
+rigetti, risposte interlocutorie, concessioni e attivazioni restano distinti.
+Una legenda o istruzione che cita uno sgravio non e' un provvedimento.
+
+La quietanza ufficiale F24 con esito positivo e attribuzione verificata prova
+il versamento delle righe e degli importi quietanzati anche senza estratto
+conto bancario disponibile. Il riscontro bancario e' una prova separata,
+non una condizione aggiuntiva per riconoscere il pagamento fiscale.
+Ricezione, controllo formale, invio, scarto e quietanza positiva non sono
+equivalenti; le ricevute PEC provano il trasporto del messaggio.
+
+Un PDF puo' contenere piu' atti o quietanze di partite diverse: mantenere
+versione, pagine e riferimenti di ciascuna componente, senza estendere
+pagamento o sgravio all'intero fascicolo. Confrontare gli importi dei fogli
+elettronici con il testo della fonte; una differenza di scala richiede
+verifica, non una divisione automatica di tutti i numeri. Gli identificativi
+lunghi restano stringhe. Causali non supportate non vengono scartate.
+
+Il fascicolo e' una proiezione dei collegamenti canonici registrati, inclusi
+corrispondenza, piani, notifiche, eventi legali e definizioni agevolate.
+Non certifica la copertura di Drive. Il riscontro separato per file distingue
+censito, contenuto letto, originale/ricostruzione, copia per hash, registrato,
+collegato, importo quietanzato e banca riscontrata. Una nota d'archivio puo'
+essere superata dai file attuali. Date segnaposto dell'anno 0001 non entrano
+nella cronologia fiscale.
+
+Per i piani AdeR il CF stampato del contribuente va verificato nei dati
+dell'istanza e del prospetto: il tenant scelto per l'importazione e il CF di
+un rappresentante non bastano. Un originale con identita' mancante, ambigua
+o diversa resta archiviato da verificare senza associazioni certe al piano.
+Stesso protocollo con rate o condizioni discordanti conserva tutte le varianti
+e sospende la riconciliazione automatica; nome file e data di caricamento non
+decidono quale concessione prevale. L'eventuale quietanza positiva resta prova
+del proprio versamento, anche quando la sua imputazione a un piano e' incerta.
+
 ### Fonti ufficiali consultate il 17/10/2026
 
 - [AdeR: formazione del ruolo e cartella](https://www.agenziaentrateriscossione.gov.it/it/Per-saperne-di-piu/documenti-della-riscossione/cartella/index.html).
@@ -5143,6 +5184,7 @@ temporale: non introdurre un unico numero di giorni per tutti gli avvisi.
 - [INPS, 10/09/2026: bonari Artigiani/Commercianti e invio quietanza di versamento](https://www.inps.it/it/it/inps-comunica/notizie/dettaglio-news-page.news.2026.09.gestioni-artigiani-e-commercianti-emissione-avvisi-bonari.html).
 - [Agenzia Entrate / FiscoOggi: guida aggiornata comunicazioni di irregolarita'](https://www.fiscooggi.it/print/pdf/node/104710). Le comunicazioni elaborate dal 2025 hanno regole diverse dalle precedenti; categoria e destinatario distinguono i termini. Non riusare indiscriminatamente le guide precedenti.
 - [Agenzia Entrate: esiti distinti F24 cumulativo](https://telematici.agenziaentrate.gov.it/Main/Adesione.jsp) e [F24 Web](https://telematici.agenziaentrate.gov.it/Main/F24web.jsp).
+- [Agenzia Entrate: ricevute dei versamenti, controllo formale F24A0 ed esito addebito/consolidamento I24A0](https://infoprecompilata.agenziaentrate.gov.it/portale/ricevute1).
 
 ---
 
