@@ -32,8 +32,23 @@ async function anon(sql, args = []) {
   try { return await scalar(sql, args); }
   finally { await db.exec('reset role'); }
 }
-const buy = (qta = 3, request = 'acquisto-test-0001', hotel = A) =>
+const purchase = (qta = 3, request = 'acquisto-test-0001', hotel = A) =>
   anon('select public.bb_alb_pacchetto_acquista($1,$2,$3,$4)', [hotel, `tk:${hotel}`, qta, request]);
+const detail = (pid, hotel = A, after = null) => anon(
+  'select public.bb_alb_pacchetto_dettaglio($1,$2,$3,$4,100)', [hotel, `tk:${hotel}`, pid, after]);
+// I test storici verificano anche i singoli buoni: li chiedono esplicitamente,
+// una pagina alla volta, anziché dipendere dal vecchio acquisto con tutti i QR.
+async function buy(qta = 3, request = 'acquisto-test-0001', hotel = A) {
+  const result = await purchase(qta, request, hotel);
+  const pacchetto = await detail(result.pacchetto.id, hotel);
+  let cursor = pacchetto.prossimo;
+  while (cursor) {
+    const page = await detail(result.pacchetto.id, hotel, cursor);
+    pacchetto.vouchers.push(...page.vouchers);
+    cursor = page.prossimo;
+  }
+  return { ...result, pacchetto };
+}
 const choose = (vid, formula = 'classica', prodotto = 152788, bevanda = 153756) =>
   anon('select public.bb_pacchetto_scelta($1,$2,$3,$4)', [vid, formula, prodotto, bevanda]);
 const redeem = vid => anon("select public.bb_tit_riscatta('tk:bar-test',$1)", [vid]);
@@ -208,7 +223,8 @@ test('la scomparsa dal catalogo blocca nuovi acquisti ma conserva offerta e cons
   assert.equal(state.offerta.acquistabile, false);
   assert.equal(state.pacchetti.length, 1);
   assert.equal(state.pacchetti[0].residue, 2);
-  assert.ok(state.pacchetti[0].offerta.formule.length);
+  assert.equal('offerta' in state.pacchetti[0], false);
+  assert.ok((await detail(state.pacchetti[0].id)).offerta.formule.length);
   const before = await scalar('select count(*)::int from public.bb_movimenti');
   await assert.rejects(buy(1, 'catalogo-invalido-001'), /Offerta colazione non disponibile/);
   assert.equal(await scalar('select count(*)::int from public.bb_movimenti'), before);

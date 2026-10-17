@@ -57,13 +57,20 @@ class PacchettiConcorrenzaTest(unittest.TestCase):
         with ThreadPoolExecutor(max_workers=2) as pool:
             return list(pool.map(lambda query: self.execute(query, anon=True, trattieni_lock=True), queries))
 
+    def dettaglio(self, pid):
+        return json.loads(self.sql(
+            "select public.bb_alb_pacchetto_dettaglio('%s','tk:%s','%s')" % (HOTEL, HOTEL, pid),
+            anon=True))
+
     def test_due_acquisti_con_stessa_richiesta_creano_un_solo_addebito_e_gli_stessi_qr(self):
         query = "select public.bb_alb_pacchetto_acquista('%s','tk:%s',3,'concorrenza-idem-001')" % (HOTEL, HOTEL)
         results = self.parallelo([query, query])
         self.assertTrue(all(r.returncode == 0 for r in results), [r.stderr for r in results])
         packages = [json.loads(r.stdout)["pacchetto"] for r in results]
         self.assertEqual(packages[0]["id"], packages[1]["id"])
-        self.assertEqual(packages[0]["vouchers"], packages[1]["vouchers"])
+        self.assertNotIn("vouchers", packages[0])
+        self.assertEqual(self.dettaglio(packages[0]["id"])["vouchers"],
+                         self.dettaglio(packages[1]["id"])["vouchers"])
         self.assertEqual(self.sql("select count(*) from public.bb_movimenti where tipo='prenotazione'"), "1")
         self.assertEqual(self.sql("select count(*) from public.bb_vouchers"), "3")
 
@@ -79,7 +86,7 @@ class PacchettiConcorrenzaTest(unittest.TestCase):
 
     def test_due_consegne_dello_stesso_qr_consumano_una_colazione_e_conservano_una_scelta(self):
         package = json.loads(self.sql("select public.bb_alb_pacchetto_acquista('%s','tk:%s',2,'consegna-concorrente-001')" % (HOTEL, HOTEL), anon=True))["pacchetto"]
-        vid = package["vouchers"][0]["id"]
+        vid = self.dettaglio(package["id"])["vouchers"][0]["id"]
         queries = ["select public.bb_tit_pacchetto_consegna('tk:bar-test','%s','classica',152788,%d)" % (vid, bevanda)
                    for bevanda in (153756, 153754)]
         results = self.parallelo(queries)

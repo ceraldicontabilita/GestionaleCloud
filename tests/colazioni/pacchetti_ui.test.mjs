@@ -29,6 +29,7 @@ const normale = value => JSON.parse(JSON.stringify(value));
 function pagina(storage = new Map()) {
   const elements = new Map();
   const events = [];
+  let requestSequence = 0;
   const element = selector => {
     if (!elements.has(selector)) elements.set(selector, {
       value: '', innerHTML: '', textContent: '', hidden: false, disabled: false,
@@ -42,7 +43,7 @@ function pagina(storage = new Map()) {
   const context = createContext({
     console, URL, URLSearchParams, Date, JSON, Math, Promise,
     setTimeout, clearTimeout, setInterval, clearInterval,
-    crypto: { randomUUID: () => `richiesta-${events.length + 1}` },
+    crypto: { randomUUID: () => `richiesta-${++requestSequence}` },
     location: { href: 'https://esempio.test/convenzioni/', hash: '' },
     navigator: { clipboard: { writeText: async () => {} } },
     sessionStorage: { getItem: key => storage.get(key) || null,
@@ -146,12 +147,12 @@ test('il banco conferma scelta e consegna con una sola chiamata atomica, anche c
   assert.match(p.element('#scr').innerHTML, /Da consumare/);
 });
 
-function acquistoPronto(p) {
-  p.imposta('sess', { p: 'tk:hotel', s: 'hotel-1', r: 'alb' });
-  p.imposta('ALB', { struttura: { id: 'hotel-1', nome: 'B&B Test', saldo: 100 } });
-  p.imposta('PCK', { contesto: 'alb', sid: 'hotel-1', dati: { offerta, strutture_abilitate: ['hotel-1'], pacchetti: [] }, richiesta: null, inviando: false });
+function acquistoPronto(p, sid = 'hotel-1', stubCaricamento = true) {
+  p.imposta('sess', { p: `tk:${sid}`, s: sid, r: 'alb' });
+  p.imposta('ALB', { struttura: { id: sid, nome: 'B&B Test', saldo: 100 } });
+  p.imposta('PCK', { contesto: 'alb', sid, dati: { offerta, strutture_abilitate: [sid], pacchetti: [] }, richiesta: null, inviando: false });
   p.element('#pk_qta').value = '10';
-  p.esegui('pacchettiCarica=async()=>{};pacchettoApri=()=>{}');
+  if (stubCaricamento) p.esegui('pacchettiCarica=async()=>{};pacchettoApri=()=>{}');
 }
 
 test('un acquisto con esito incerto conserva la stessa idempotenza al retry e non riparte durante l’invio', async () => {
@@ -209,8 +210,9 @@ test('il refresh riprende lo stesso acquisto incerto anche con saldo ormai speso
   assert.equal(request.id, attempts[0].pidempotenza);
 
   const refreshed = pagina(first.storage);
-  assert.equal(refreshed.esegui('PCK.richiesta.id'), request.id);
+  assert.equal(refreshed.esegui('PCK.richiesta'), null);
   acquistoPronto(refreshed);
+  assert.equal(refreshed.esegui('pacchettoRichiestaPendente().id'), request.id);
   refreshed.esegui('ALB.struttura.saldo=0;PCK.dati.offerta={...PCK.dati.offerta,acquistabile:false,abilitata:false}');
   refreshed.context.__rpc = async (name, args) => {
     attempts.push(normale(args));
@@ -231,7 +233,7 @@ test('un rifiuto SQL certo libera la richiesta; un errore di rete impedisce di c
   p.context.__rpc = async () => {
     calls++;
     const error = new Error('Saldo insufficiente');
-    if (calls === 1) error.esitoNoto = true;
+    if (calls === 1) { error.esitoNoto = true; error.code = 'PBB02'; }
     throw error;
   };
   p.esegui('rpc=__rpc');
@@ -307,3 +309,319 @@ test('un rifiuto business dopo il lookup idempotente risolve anche una richiesta
   }
 });
 
+
+// Tutti gli acquisti seguenti usano esclusivamente RPC simulate: nessun movimento reale.
+test('A incerto non blocca B; tornando ad A si recupera il riferimento originale', async () => {
+  const p = pagina();
+  acquistoPronto(p, 'hotel-A');
+  const calls = [];
+  p.context.__rpc = async (name, args) => {
+    calls.push(normale(args));
+    if (calls.length === 1) throw new Error('Risposta persa per A');
+    return { ok: true, ripetuta: args.sid === 'hotel-A', pacchetto: { id: `pack-${args.sid}` }, saldo: 60 };
+  };
+  p.esegui('rpc=__rpc');
+  await p.esegui('pacchettoAcquista()');
+  const idA = calls[0].pidempotenza;
+
+  acquistoPronto(p, 'hotel-B');
+  p.element('#pk_qta').value = '7';
+  p.esegui('pacchettoCosto()');
+  assert.equal(p.esegui('pacchettoRichiestaPendente()'), null);
+  assert.equal(p.element('#pk_qta').disabled, false);
+  assert.equal(p.element('#pk_buy').disabled, false);
+  assert.doesNotMatch(p.esegui('pacchettiHtml("alb",PCK.dati)'), /Un acquisto è ancora da verificare/);
+  await p.esegui('pacchettoAcquista()');
+  assert.equal(calls[1].sid, 'hotel-B');
+  assert.notEqual(calls[1].pidempotenza, idA);
+  assert.equal(p.esegui('pacchettoRichiestaPendente("hotel-A").id'), idA);
+
+  acquistoPronto(p, 'hotel-A');
+  p.esegui('pacchettoCosto()');
+  assert.equal(p.element('#pk_buy').textContent, 'Verifica l’acquisto in sospeso');
+  await p.esegui('pacchettoAcquista()');
+  assert.equal(calls[2].pidempotenza, idA);
+  assert.equal(p.esegui('pacchettoRichiestaPendente("hotel-A")'), null);
+});
+
+test('una richiesta legacy di A resta recuperabile mentre B conserva una propria richiesta interrotta', async () => {
+  const legacy = { sid: 'hotel-A', id: 'legacy-A', qta: 4 };
+  const storage = new Map([['bb_pacchetto_acquisto_pendente', JSON.stringify(legacy)]]);
+  const p = pagina(storage);
+  acquistoPronto(p, 'hotel-B');
+  p.context.__rpc = async () => { throw new Error('Interruzione B'); };
+  p.esegui('rpc=__rpc');
+  await p.esegui('pacchettoAcquista()');
+  const idB = p.esegui('pacchettoRichiestaPendente("hotel-B").id');
+  assert.equal(JSON.parse(storage.get('bb_pacchetto_acquisto_pendente')).id, 'legacy-A');
+
+  const reloaded = pagina(storage);
+  acquistoPronto(reloaded, 'hotel-A');
+  reloaded.element('#pk_qta').value = '4';
+  reloaded.context.__rpc = async (name, args) => {
+    assert.equal(args.pidempotenza, 'legacy-A');
+    assert.equal(storage.has('bb_pacchetto_acquisto_pendente'), false);
+    return { ok: true, ripetuta: true, pacchetto: { id: 'pack-A' }, saldo: 84 };
+  };
+  reloaded.esegui('rpc=__rpc');
+  await reloaded.esegui('pacchettoAcquista()');
+  assert.equal(reloaded.esegui('pacchettoRichiestaPendente("hotel-A")'), null);
+  assert.equal(reloaded.esegui('pacchettoRichiestaPendente("hotel-B").id'), idB);
+});
+
+test('le risposte tardive di A non alterano saldo, richiesta o invio di B', async () => {
+  for (const esitoA of ['successo', 'rifiuto', 'rete']) {
+    const p = pagina();
+    acquistoPronto(p, 'hotel-A');
+    const finish = new Map();
+    const reloads = [];
+    p.context.__rpc = (name, args) => new Promise((resolve, reject) => { finish.set(args.sid, { resolve, reject }); });
+    p.context.__reload = async (...args) => { reloads.push(normale(args)); };
+    p.esegui('rpc=__rpc;pacchettiCarica=__reload');
+    const invioA = p.esegui('pacchettoAcquista()');
+    const idA = p.esegui('pacchettoRichiestaPendente("hotel-A").id');
+    acquistoPronto(p, 'hotel-B');
+    p.esegui('pacchettiCarica=__reload');
+    const invioB = p.esegui('pacchettoAcquista()');
+    const idB = p.esegui('pacchettoRichiestaPendente("hotel-B").id');
+    if (esitoA === 'successo') finish.get('hotel-A').resolve({ ok: true, pacchetto: { id: 'pack-A' }, saldo: 60 });
+    else {
+      const error = new Error('Esito A arrivato dopo il cambio albergatore');
+      if (esitoA === 'rifiuto') { error.code = 'PBB02'; error.esitoNoto = true; }
+      finish.get('hotel-A').reject(error);
+    }
+    await invioA;
+    assert.equal(p.esegui('ALB.struttura.saldo'), 100, esitoA);
+    assert.equal(p.esegui('PCK.inviando'), true, esitoA);
+    assert.equal(p.esegui('PCK.richiesta.id'), idB, esitoA);
+    assert.equal(p.esegui('pacchettoRichiestaPendente("hotel-B").id'), idB, esitoA);
+    assert.equal(p.esegui('pacchettoRichiestaPendente("hotel-A")?.id||null'), esitoA === 'rete' ? idA : null, esitoA);
+    assert.deepEqual(reloads, []);
+    assert.deepEqual(p.events, []);
+    finish.get('hotel-B').resolve({ ok: true, pacchetto: { id: 'pack-B' }, saldo: 60 });
+    await invioB;
+    assert.equal(p.esegui('ALB.struttura.saldo'), 60);
+    assert.equal(p.esegui('PCK.inviando'), false);
+    assert.equal(p.esegui('pacchettoRichiestaPendente("hotel-B")'), null);
+    assert.deepEqual(reloads, [['alb', 'hotel-B']]);
+  }
+});
+
+test('anche la prima sessione scaduta conserva la richiesta per il successivo accesso', async () => {
+  const p = pagina();
+  acquistoPronto(p);
+  const calls = [];
+  p.context.__rpc = async (name, args) => {
+    calls.push(normale(args));
+    if (calls.length === 1) {
+      const error = new Error('Sessione albergatore scaduta');
+      error.esitoNoto = true; error.code = 'P0001'; throw error;
+    }
+    return { ok: true, pacchetto: { id: 'pack-1' }, saldo: 60 };
+  };
+  p.esegui('rpc=__rpc');
+  await p.esegui('pacchettoAcquista()');
+  assert.equal(p.esegui('pacchettoRichiestaPendente().id'), calls[0].pidempotenza);
+  p.imposta('sess', { p: 'tk:nuovo-accesso', s: 'hotel-1', r: 'alb' });
+  await p.esegui('pacchettoAcquista()');
+  assert.equal(calls[1].pidempotenza, calls[0].pidempotenza);
+  assert.equal(calls[1].p, 'tk:nuovo-accesso');
+});
+
+test('il titolare cambia B&B con richieste incerte distinte e senza selezioni forzate', async () => {
+  const p = pagina();
+  p.imposta('sess', { p: 'tk:bar', r: 'tit' });
+  p.imposta('TIT', { strutture: ['hotel-A', 'hotel-B'].map(id => ({ id, nome: id, saldo: 100 })) });
+  p.imposta('PCK', { contesto: 'tit', sid: 'hotel-A', dati: { offerta, strutture_abilitate: ['hotel-A', 'hotel-B'], pacchetti: [] }, richiesta: null });
+  p.element('#pk_sid').value = 'hotel-A';
+  p.element('#pk_qta').value = '4';
+  const calls = [];
+  p.context.__rpc = async (name, args) => {
+    calls.push({ name, args: normale(args) });
+    if (name === 'bb_tit_pacchetto_crea') throw new Error('Risposta persa');
+    return { offerta, strutture_abilitate: ['hotel-A', 'hotel-B'], pacchetti: [] };
+  };
+  p.esegui('rpc=__rpc');
+  await p.esegui('pacchettoAcquista()');
+  const idA = p.esegui('pacchettoRichiestaPendente("hotel-A").id');
+  p.element('#pk_sid').value = 'hotel-B';
+  await p.esegui('pacchettiCarica("tit","hotel-B")');
+  assert.equal(p.esegui('PCK.sid'), 'hotel-B');
+  assert.equal(p.element('#pk_sid').disabled, false);
+  p.element('#pk_qta').value = '8';
+  await p.esegui('pacchettoAcquista()');
+  assert.equal(calls.at(-1).args.sid, 'hotel-B');
+  assert.equal(p.esegui('pacchettoRichiestaPendente("hotel-A").id'), idA);
+  assert.equal(p.esegui('pacchettoRichiestaPendente("hotel-B").qta'), 8);
+  p.element('#pk_sid').value = 'hotel-A';
+  await p.esegui('pacchettiCarica("tit","hotel-A")');
+  assert.equal(p.esegui('PCK.richiesta.id'), idA);
+  assert.match(p.element('#package_area').innerHTML, /value="4"/);
+});
+
+test('letture tardive o fallite di A non sostituiscono il riepilogo della sessione B', async () => {
+  for (const esitoA of ['successo', 'sessione-scaduta']) {
+    const p = pagina();
+    acquistoPronto(p, 'hotel-A', false);
+    const finish = new Map();
+    p.context.__rpc = (name, args) => new Promise((resolve, reject) => { finish.set(args.sid, { resolve, reject }); });
+    p.esegui('rpc=__rpc');
+    const letturaA = p.esegui('pacchettiCarica("alb")');
+    acquistoPronto(p, 'hotel-B', false);
+    const letturaB = p.esegui('pacchettiCarica("alb")');
+    finish.get('hotel-B').resolve({ offerta, pacchetti: [] });
+    await letturaB;
+    const vistaB = p.element('#package_area').innerHTML;
+    if (esitoA === 'successo') finish.get('hotel-A').resolve({ offerta, pacchetti: [{ id: 'segreto-A', qta: 50, consumate: 0, residue: 50 }] });
+    else finish.get('hotel-A').reject(new Error('Sessione scaduta'));
+    await letturaA;
+    assert.equal(p.esegui('PCK.sid'), 'hotel-B');
+    assert.equal(p.esegui('sess.s'), 'hotel-B');
+    assert.equal(p.element('#package_area').innerHTML, vistaB);
+    assert.deepEqual(p.events, []);
+  }
+});
+
+test('le letture del titolare rispettano l’ultima struttura selezionata anche con risposte invertite', async () => {
+  const p = pagina();
+  p.imposta('sess', { p: 'tk:bar', r: 'tit' });
+  p.imposta('TIT', { strutture: [] });
+  const finish = new Map();
+  p.context.__rpc = (name, args) => new Promise(resolve => { finish.set(args.sid, resolve); });
+  p.esegui('rpc=__rpc');
+  const first = p.esegui('pacchettiCarica("tit","hotel-A")');
+  const second = p.esegui('pacchettiCarica("tit","hotel-B")');
+  finish.get('hotel-B')({ offerta, pacchetti: [], strutture_abilitate: [] });
+  await second;
+  finish.get('hotel-A')({ offerta, pacchetti: [], strutture_abilitate: [] });
+  await first;
+  assert.equal(p.esegui('PCK.sid'), 'hotel-B');
+});
+
+test('la memoria non disponibile impedisce l’invio prima che possa nascere un addebito', async () => {
+  const p = pagina();
+  acquistoPronto(p);
+  let requests = 0;
+  p.context.__rpc = async () => { requests++; };
+  p.esegui('rpc=__rpc;sessionStorage.setItem=()=>{throw Error("Quota superata")}');
+  await p.esegui('pacchettoAcquista()');
+  assert.equal(requests, 0);
+  assert.equal(p.esegui('PACCHETTI_INVII.size'), 0);
+  assert.match(p.events.at(-1), /Impossibile conservare il riferimento/);
+});
+
+test('una sessione corrente scaduta torna all’accesso e conserva l’acquisto pendente', async () => {
+  const p = pagina();
+  acquistoPronto(p, 'hotel-A', false);
+  p.esegui('sess.c="accesso-A";pacchettoSalvaRichiesta({sid:"hotel-A",id:"incerto-A",qta:10})');
+  p.context.__rpc = async () => { throw new Error('Sessione scaduta: rientra con il PIN'); };
+  p.esegui('rpc=__rpc');
+  await p.esegui('pacchettiCarica("alb")');
+  assert.equal(p.esegui('sess'), null);
+  assert.equal(p.context.location.hash, '#/hotel/accesso-A');
+  assert.equal(p.esegui('pacchettoRichiestaPendente("hotel-A").id'), 'incerto-A');
+});
+
+
+test('A in invio, nuovo accesso B e nuovo accesso A: il completamento libera la vista corrente senza applicare il saldo vecchio', async () => {
+  for (const esito of ['successo', 'rifiuto', 'rete']) {
+    const p = pagina();
+    acquistoPronto(p, 'hotel-A', false);
+    let finish;
+    const calls = [];
+    p.context.__rpc = (name, args) => {
+      calls.push({ name, args: normale(args) });
+      if (name === 'bb_alb_pacchetto_acquista') return new Promise((resolve, reject) => { finish = { resolve, reject }; });
+      if (name === 'bb_alb_portafoglio') return Promise.resolve({ disponibile: 44 });
+      return Promise.resolve({ offerta, pacchetti: [] });
+    };
+    p.esegui('rpc=__rpc');
+    const invio = p.esegui('pacchettoAcquista()');
+    const idA = p.esegui('pacchettoRichiestaPendente("hotel-A").id');
+    acquistoPronto(p, 'hotel-B', false);
+    await p.esegui('pacchettiCarica("alb")');
+    acquistoPronto(p, 'hotel-A', false);
+    p.esegui('sess.p="tk:secondo-accesso-A"');
+    await p.esegui('pacchettiCarica("alb")');
+    assert.equal(p.element('#pk_buy').disabled, true);
+    assert.equal(p.esegui('PCK.inviando'), true);
+    if (esito === 'successo') finish.resolve({ ok: true, pacchetto: { id: 'pack-vecchio-A' }, saldo: 60 });
+    else {
+      const error = new Error('Esito della prima sessione A');
+      if (esito === 'rifiuto') { error.code = 'PBB02'; error.esitoNoto = true; }
+      finish.reject(error);
+    }
+    await invio;
+    assert.equal(p.esegui('PCK.inviando'), false, esito);
+    assert.equal(p.element('#pk_buy').disabled, false, esito);
+    assert.equal(p.esegui('pacchettoRichiestaPendente("hotel-A")?.id||null'), esito === 'rete' ? idA : null, esito);
+    assert.equal(p.element('#pk_qta').disabled, esito === 'rete', esito);
+    assert.deepEqual(p.events, [], esito);
+    assert.equal(p.esegui('ALB.struttura.saldo'), esito === 'successo' ? 44 : 100, esito);
+    const nuoveLetture = calls.filter(c => c.name === 'bb_alb_portafoglio');
+    assert.equal(nuoveLetture.length, esito === 'successo' ? 1 : 0, esito);
+    if (nuoveLetture.length) assert.equal(nuoveLetture[0].args.p, 'tk:secondo-accesso-A');
+  }
+});
+
+test('il saldo riletto dopo un completamento tardivo viene scartato se nel frattempo accede B', async () => {
+  const p = pagina();
+  acquistoPronto(p, 'hotel-A', false);
+  let finishAcquisto, finishSaldo;
+  p.context.__rpc = (name, args) => {
+    if (name === 'bb_alb_pacchetto_acquista') return new Promise(resolve => { finishAcquisto = resolve; });
+    if (name === 'bb_alb_portafoglio') return new Promise(resolve => { finishSaldo = resolve; });
+    return Promise.resolve({ offerta, pacchetti: [] });
+  };
+  p.esegui('rpc=__rpc');
+  const invio = p.esegui('pacchettoAcquista()');
+  acquistoPronto(p, 'hotel-A', false);
+  p.esegui('sess.p="tk:secondo-accesso-A"');
+  await p.esegui('pacchettiCarica("alb")');
+  finishAcquisto({ ok: true, pacchetto: { id: 'pack-A' }, saldo: 60 });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(typeof finishSaldo, 'function');
+  acquistoPronto(p, 'hotel-B', false);
+  await p.esegui('pacchettiCarica("alb")');
+  const vistaB = p.element('#package_area').innerHTML;
+  finishSaldo({ disponibile: 44 });
+  await invio;
+  assert.equal(p.esegui('ALB.struttura.id'), 'hotel-B');
+  assert.equal(p.esegui('ALB.struttura.saldo'), 100);
+  assert.equal(p.element('#package_area').innerHTML, vistaB);
+  assert.deepEqual(p.events, []);
+});
+
+
+test('il successo di A non riporta il titolare su A mentre il B selezionato è ancora in caricamento', async () => {
+  const p = pagina();
+  p.imposta('sess', { p: 'tk:bar', r: 'tit' });
+  p.imposta('TIT', { strutture: ['hotel-A', 'hotel-B'].map(id => ({ id, nome: id, saldo: 100 })) });
+  p.imposta('PCK', { contesto: 'tit', sid: 'hotel-A', dati: { offerta, strutture_abilitate: ['hotel-A', 'hotel-B'], pacchetti: [] }, richiesta: null });
+  p.element('#pk_sid').value = 'hotel-A';
+  p.element('#pk_qta').value = '4';
+  let finishAcquisto, finishCaricamentoB;
+  const calls = [];
+  p.context.__rpc = (name, args) => {
+    calls.push({ name, args: normale(args) });
+    if (name === 'bb_tit_pacchetto_crea') return new Promise(resolve => { finishAcquisto = resolve; });
+    if (name === 'bb_tit_pacchetti' && args.sid === 'hotel-B') return new Promise(resolve => { finishCaricamentoB = resolve; });
+    throw new Error('Una risposta di A non deve avviare altre letture dopo la selezione di B');
+  };
+  p.esegui('rpc=__rpc');
+  const acquistoA = p.esegui('pacchettoAcquista()');
+  p.element('#pk_sid').value = 'hotel-B';
+  const caricamentoB = p.esegui('pacchettiCarica("tit","hotel-B")');
+  assert.equal(p.esegui('PCK.sid'), 'hotel-A');
+  assert.equal(p.esegui('pacchettoVistaStruttura("hotel-A")'), false);
+  finishAcquisto({ ok: true, pacchetto: { id: 'pack-A' }, saldo: 84 });
+  await acquistoA;
+  assert.equal(calls.length, 2);
+  assert.equal(p.element('#pk_sid').value, 'hotel-B');
+  assert.deepEqual(p.events, []);
+  finishCaricamentoB({ offerta, strutture_abilitate: ['hotel-A', 'hotel-B'], pacchetti: [] });
+  await caricamentoB;
+  assert.equal(p.esegui('PCK.sid'), 'hotel-B');
+  assert.equal(p.element('#pk_buy').disabled, false);
+  assert.equal(p.esegui('pacchettoRichiestaPendente("hotel-A")'), null);
+});

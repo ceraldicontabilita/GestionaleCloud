@@ -80,6 +80,22 @@ jobs:
       - name: Suite di test
         run: python -m pytest -q
 
+  colazioni:
+    name: Test colazioni B&B (SQL e interfaccia)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+          cache: npm
+          cache-dependency-path: tests/colazioni/package-lock.json
+      - name: Installa dipendenze isolate
+        run: npm ci --prefix tests/colazioni --ignore-scripts --no-audit --no-fund
+      - name: Acquisti, riepiloghi e QR senza servizi reali
+        run: npm test --prefix tests/colazioni
+
   frontend:
     name: Test e build frontend ERP
     runs-on: ubuntu-latest
