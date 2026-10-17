@@ -388,6 +388,50 @@ def match_f24_models_for_obligation(
     return list(matches.values())
 
 
+def partial_quietanza_candidates_for_obligation(
+    obligation: dict[str, Any], quietanze: Iterable[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Espone versamenti INPS inferiori come proposte di imputazione.
+
+    La quietanza esiste, ma senza un'allocazione confermata non prova quale
+    quota di questa specifica pretesa sia soddisfatta. Non entra nei match
+    esatti, nei totali pagati o nelle richieste di sgravio automatiche.
+    """
+    period = _period_range(obligation)
+    identity = _identifier(obligation.get("matricola_inps"))
+    amount = obligation.get("importo_richiesto_cents")
+    if amount is None:
+        amount = obligation.get("importo_cents")
+    if str(obligation.get("codice_tributo") or "").upper() != "8050" or (
+        not period or not identity or not isinstance(amount, int) or amount <= 0
+    ):
+        return []
+    candidates: dict[tuple[str, int, int], dict[str, Any]] = {}
+    for document in quietanze:
+        if document.get("entity_status") == "deleted":
+            continue
+        document_key = str(document.get("protocollo_telematico") or document.get("id") or "")
+        if not document_key:
+            continue
+        for index, row in enumerate(_quietanza_rows(document)):
+            paid = row.get("debit_cents")
+            if row["tax_code"] not in {"DM10", "RC01"} or row["period"] != period or (
+                row["identity"] != identity or paid is None or not 0 < paid < amount
+            ):
+                continue
+            reference = _payment_reference(
+                document, row["row"], basis="QUIETANZA_PARTIAL_IDENTITY_PERIOD_AMOUNT_REVIEW",
+                original_amount_cents=amount, ravvedimento=False,
+            )
+            reference.pop("increase_cents", None)
+            candidates.setdefault((document_key, index, paid), {
+                **reference, "match_type": "PARTIAL_CANDIDATE",
+                "relation_status": "REVIEW_REQUIRED", "payment_evidence": False,
+                "row_index": index,
+            })
+    return list(candidates.values())
+
+
 async def _find_exact_verbale(db, *, numero: str, targa: str) -> tuple[str, list[dict[str, Any]]]:
     found: list[dict[str, Any]] = []
     for collection in ("verbali_noleggio", "verbali_noleggio_completi"):
@@ -481,6 +525,9 @@ async def _notice_links(
                 ),
                 "payment_matches": payment_matches,
                 "f24_model_matches": f24_model_matches,
+                "partial_payment_candidates": partial_quietanza_candidates_for_obligation(
+                    obligation, quietanze,
+                ),
             })
         links.append({
             "source_type": "AVVISO_ADDEBITO_INPS",

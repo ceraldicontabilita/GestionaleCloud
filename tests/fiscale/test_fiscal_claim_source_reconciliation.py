@@ -18,6 +18,7 @@ from app.services.fiscal_claim_source_reconciliation import (
     build_claim_source_plan,
     match_quietanza_for_obligation,
     match_f24_models_for_obligation,
+    partial_quietanza_candidates_for_obligation,
     parse_inps_notice_lines,
 )
 
@@ -90,6 +91,83 @@ def test_modello_f24_esatto_si_collega_ma_non_diventa_prova_di_pagamento():
     assert matches[0]["f24_id"] == "f24-1"
     assert matches[0]["payment_evidence"] is False
     assert match_f24_models_for_obligation({**obligation, "importo_richiesto_cents": 248499}, [model]) == []
+
+
+@pytest.mark.parametrize("identity,end,amount,deleted,expected", [
+    ("5124776507", "07/2024", 100000, False, True),
+    ("5124776507", "07/2024", 0, False, False),
+    ("5124776507", "07/2024", 248500, False, False),
+    ("5124776507", "07/2024", 250000, False, False),
+    (None, "07/2024", 100000, False, False),
+    ("ALTRA", "07/2024", 100000, False, False),
+    ("5124776507", "06/2024", 100000, False, False),
+    ("5124776507", "07/2024", 100000, True, False),
+])
+def test_quietanza_parziale_e_solo_proposta_con_identita_e_periodo_completi(
+    identity, end, amount, deleted, expected,
+):
+    obligation = {
+        "codice_tributo": "8050", "periodo_da": "06/2024", "periodo_a": "07/2024",
+        "matricola_inps": identity, "importo_richiesto_cents": 248500,
+    }
+    receipt = {
+        "id": "q-parziale", "protocollo_telematico": "PROTO-PARTIAL",
+        "entity_status": "deleted" if deleted else "active",
+        "riscontro_banca": {"stato": "RISCONTRATO_BANCA", "movimento_id": "bank-parziale"},
+        "sezione_inps": [{
+            "causale": "DM10", "matricola": "5124776507",
+            "periodo_da": "06/2024", "periodo_a": end,
+            "importo_debito_cents": amount,
+        }],
+    }
+    before = deepcopy(receipt)
+    proposals = partial_quietanza_candidates_for_obligation(obligation, [receipt, receipt])
+    assert bool(proposals) is expected
+    assert receipt == before
+    if expected:
+        assert len(proposals) == 1
+        assert proposals[0]["payment_evidence"] is False
+        assert proposals[0]["relation_status"] == "REVIEW_REQUIRED"
+        assert proposals[0]["paid_amount_cents"] == 100000
+        assert proposals[0]["bank_verified"] is True
+        assert match_quietanza_for_obligation(obligation, [receipt]) == []
+
+
+def test_quietanza_parziale_non_paga_la_pretesa_ne_genero_sgravio():
+    async def scenario():
+        db = ClientArchivioMemoria()["partial-source-no-inferred-payment"]
+        await db[COLL_TAX_COLLECTION_CLAIMS].insert_one({
+            "id": "claim-partial", "company_id": "04523831214",
+            "collection_number": "37120240006692253000", "business_status": "PAYABLE",
+            "residual_cents": 248500,
+        })
+        await db[COLL_DOCUMENTS_INBOX].insert_one({
+            "id": "notice-partial", "tax_collection_claim_id": "claim-partial",
+            "parsed_metadata": {
+                "numero_atto": "37120240006692253000", "matricola_inps": "5124776507",
+                "testo_estratto": INPS_TEXT.split("002", 1)[0],
+            },
+        })
+        await db[COLL_QUIETANZE_F24].insert_one({
+            "id": "q-partial", "codice_fiscale": "04523831214",
+            "protocollo_telematico": "PROTO-PARTIAL", "data_pagamento": "2024-07-16",
+            "sezione_inps": [{
+                "causale": "DM10", "matricola": "5124776507",
+                "periodo_riferimento": "06/2024", "importo_debito_cents": 100000,
+            }],
+        })
+        result = await apply_claim_source_plan(db, company_id="04523831214", actor="test")
+        claim = await db[COLL_TAX_COLLECTION_CLAIMS].find_one({"id": "claim-partial"})
+        row = claim["source_obligation_links"][0]["tax_lines"][0]
+        assert row["partial_payment_candidates"][0]["quietanza_id"] == "q-partial"
+        assert row["payment_matches"] == []
+        assert row["payment_evidence_status"] == "NO_PAYMENT_EVIDENCE"
+        assert claim["residual_cents"] == 248500
+        assert claim["business_status"] == "PAYABLE"
+        assert claim["remediation_alert"] is None
+        assert result["alerts_created"] == 0
+        assert await db[COLL_TAX_PAYMENTS].find({}).to_list(10) == []
+    _run(scenario())
 
 
 @pytest.mark.parametrize("source_field", ["testo_sorgente", "raw_text"])

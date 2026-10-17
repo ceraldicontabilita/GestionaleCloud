@@ -34,6 +34,7 @@ from app.services.fiscal_claim_source_reconciliation import (
     apply_claim_source_plan,
     build_claim_source_plan,
 )
+from app.services.fiscal_collection_dossier import build_collection_dossier
 from app.utils.dependencies import get_current_admin_mfa_user, get_current_admin_user
 
 
@@ -679,6 +680,19 @@ async def ader_snapshot_import(
         db=Database.get_db(), plan=plan, actor=admin.get("user_id")
     )
     return {**result, "counts": plan["counts"], "requires_review": plan["requires_review"]}
+
+
+@router.get("/collections/{claim_id}/dossier")
+async def collection_dossier(
+    claim_id: str, _admin: Dict[str, Any] = Depends(get_current_admin_user),
+):
+    """Cronologia documentale in sola lettura, senza inferire pagamenti o istanze."""
+    dossier = await build_collection_dossier(
+        Database.get_db(), company_id=_company(), claim_id=claim_id,
+    )
+    if dossier is None:
+        raise HTTPException(404, "Posizione fiscale non trovata")
+    return dossier
 
 
 @router.get("/collections/{claim_id}")

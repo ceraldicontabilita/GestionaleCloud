@@ -8,6 +8,7 @@ import { urlOriginale } from '../lib/vista';
 import { Badge, Button, Card, HubTabs, PageLoader, StatCard } from '../components/ds';
 import './SituazioneFiscale.css';
 import DeclarationDossier from '../components/DeclarationDossier';
+import CollectionDossier from '../components/fiscal/CollectionDossier';
 
 // Le schede che erano pagine a se' (Piano tributi, Tributi per codice, Ritenute): qui si
 // mostrano con la loro stessa vista, senza una seconda copia. I vecchi indirizzi
@@ -902,6 +903,8 @@ function ElenchiFiscali() {
               {item.source_reconciliation_status === 'LINKED_NO_ACTION_WITHOUT_PAYMENT_EVIDENCE' && <div style={{ marginTop: 8, color: '#92400e' }}>
                 Collegamento documentale registrato, ma nessuna quietanza esatta o di ravvedimento prova il pagamento: nessuna richiesta di sgravio o rimborso viene suggerita.
               </div>}
+              <CollectionDossier claimId={item.id} onOpen={openDocument}
+                onOpenUrl={(url, titolo) => setOriginaleAperto({ url, titolo })} />
               <div className="fiscal-actions fiscal-collection-actions">
                 {riscossioneDocumentoId
                   ? <Button size="sm" variant="secondary" onClick={() => openDocument(riscossioneDocumentoId, `Cartella ${title}`)}>Apri cartella</Button>
