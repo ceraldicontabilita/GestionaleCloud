@@ -382,6 +382,8 @@ describe('Situazione fiscale a pagine di 200 documenti', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    window.URL.createObjectURL = vi.fn(() => 'blob:cartella-riscossione');
+    window.URL.revokeObjectURL = vi.fn();
     api.get.mockImplementation(path => {
       if (path === '/api/fiscal/summary') return Promise.resolve({ data: { counts: {} } });
       if (path.startsWith('/api/fiscal/obligations?raggruppa=true&limit=200&offset=200')) {
@@ -494,5 +496,52 @@ describe('Situazione fiscale a pagine di 200 documenti', () => {
     expect(screen.getByText(/Codice/)).toHaveTextContent('380A');
     expect(screen.getByRole('button', { name: 'Apri modulo del piano' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Apri dettaglio tributi' })).toBeInTheDocument();
+  });
+
+  it('apre la cartella di riscossione dal numero e mostra dettagli e tributi verificabili', async () => {
+    api.get.mockImplementation((path, options) => {
+      if (path === '/api/fiscal/summary') return Promise.resolve({ data: { counts: {} } });
+      if (path === '/api/fiscal/collections') return Promise.resolve({ data: { items: [{
+        id: 'claim-1', collection_number: '07120220159367366000',
+        business_status: 'PORTAL_CLOSED_PENDING_EVIDENCE',
+        original_document_id: 'doc-cartella-1', original_creditor: 'Camera di commercio',
+        original_total_cents: 4694, documentary_payment_status: 'PAID_DOCUMENTED',
+        bank_payment_verified: false, payment_evidence_ids: ['ev-1'],
+        original_tax_lines: [{ codice_tributo: '0961', anno: '2018', descrizione: 'Diritto annuale', importo: '31.12' }],
+      }], total: 1 } });
+      if (path === '/api/originale/documento_fiscale/doc-cartella-1' && options?.responseType === 'blob') {
+        return Promise.resolve({ data: new Blob(['pdf'], { type: 'application/pdf' }), headers: { 'content-type': 'application/pdf' } });
+      }
+      return Promise.resolve({ data: { items: [] } });
+    });
+
+    render(<MemoryRouter initialEntries={['/situazione-fiscale/riscossione']}><SituazioneFiscale /></MemoryRouter>);
+
+    const openByNumber = await screen.findByRole('button', { name: 'Apri cartella 07120220159367366000' });
+    fireEvent.click(screen.getByText('Apri dettagli cartella'));
+    expect(screen.getByText('Camera di commercio')).toBeInTheDocument();
+    expect(screen.getByText('0961')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Apri cartella originale' })).toBeInTheDocument();
+    fireEvent.click(openByNumber);
+    expect(await screen.findByRole('dialog', { name: 'Cartella 07120220159367366000' })).toBeInTheDocument();
+    await waitFor(() => expect(api.get).toHaveBeenCalledWith(
+      '/api/originale/documento_fiscale/doc-cartella-1',
+      { responseType: 'blob' },
+    ));
+  });
+
+  it('segnala chiaramente una cartella senza originale invece di mostrare un bottone guasto', async () => {
+    api.get.mockImplementation(path => Promise.resolve({ data: path === '/api/fiscal/summary'
+      ? { counts: {} }
+      : path === '/api/fiscal/collections'
+        ? { items: [{ id: 'claim-2', collection_number: '37120240006692253000', business_status: 'PORTAL_CLOSED_PENDING_EVIDENCE' }], total: 1 }
+        : { items: [] } }));
+
+    render(<MemoryRouter initialEntries={['/situazione-fiscale/riscossione']}><SituazioneFiscale /></MemoryRouter>);
+
+    expect(await screen.findByText('37120240006692253000')).toBeInTheDocument();
+    fireEvent.click(screen.getByText('Apri dettagli cartella'));
+    expect(screen.getByText('Originale della cartella non disponibile')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Apri cartella 37120240006692253000' })).not.toBeInTheDocument();
   });
 });

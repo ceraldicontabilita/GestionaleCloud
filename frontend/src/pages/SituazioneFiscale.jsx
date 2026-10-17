@@ -271,8 +271,8 @@ function ElenchiFiscali() {
 
   // Un solo modo di aprire un originale (DRV-04): il visualizzatore dell'endpoint unico.
   const [originaleAperto, setOriginaleAperto] = useState(null);
-  const openDocument = documentId => setOriginaleAperto({
-    url: urlOriginale({ tipo: 'documento_fiscale', id: documentId }), titolo: 'Documento fiscale',
+  const openDocument = (documentId, titolo = 'Documento fiscale') => setOriginaleAperto({
+    url: urlOriginale({ tipo: 'documento_fiscale', id: documentId }), titolo,
   });
   const openF24Pdf = pdfUrl => setOriginaleAperto({ url: pdfUrl, titolo: 'Modello F24' });
 
@@ -770,8 +770,18 @@ function ElenchiFiscali() {
             : tab === 'dichiarazioni' ? `${item.document_type} · ${item.filing_year || 'anno da verificare'}`
               : (tab === 'tributi' && item.source_kind === F24_ROW) ? `${item.tax_code || 'Codice non indicato'} · ${item.description || item.section || 'Tributo F24'}`
                 : (technicalLabel.startsWith('drive-f24-row:') ? (item.description || item.tax_code || 'Tributo F24') : (technicalLabel || item.code || item.version_id || 'Record fiscale'));
+          const riscossioneOriginaleId = tab === 'riscossione'
+            ? (item.original_document_id || item.source_document_id)
+            : null;
           return <article key={entityId} className="fiscal-record">
-            <div className="fiscal-record-header"><strong>{title}</strong>
+            <div className="fiscal-record-header"><strong>{tab === 'riscossione' && riscossioneOriginaleId
+              ? <button
+                type="button"
+                className="fiscal-record-title-button"
+                onClick={() => openDocument(riscossioneOriginaleId, `Cartella ${title}`)}
+                aria-label={`Apri cartella ${title}`}
+              >{title}</button>
+              : title}</strong>
             {(item.calculated_business_status || item.business_status || item.payment_status || item.status) && <Badge variant={item.requires_review ? 'warning' : 'info'}>{item.calculated_business_status || item.business_status || item.payment_status || item.status}</Badge>}
             </div>
             {item.official_description && <div className="fiscal-muted">{item.official_description}</div>}
@@ -822,6 +832,27 @@ function ElenchiFiscali() {
             {tab === 'riscossione' && (item.payment_evidence_ids || []).length > 0 && <div style={{ marginTop: 8, color: '#166534', fontWeight: 700 }}>
               Pagamento documentato collegato · prove: {item.payment_evidence_ids.length}
             </div>}
+            {tab === 'riscossione' && <details className="fiscal-collection-details">
+              <summary>Apri dettagli cartella</summary>
+              <div className="fiscal-data-grid" style={{ marginTop: 10 }}>
+                <span><small>Ente creditore</small><strong>{item.original_creditor || 'Non indicato'}</strong></span>
+                <span><small>Importo originario</small><strong>{euroCents(item.original_total_cents)}</strong></span>
+                <span><small>Stato documentale</small><strong>{String(item.documentary_payment_status || 'Da verificare').replaceAll('_', ' ')}</strong></span>
+                <span><small>Verifica bancaria</small><strong>{item.bank_payment_verified ? 'Verificata' : 'Da verificare'}</strong></span>
+              </div>
+              {(item.original_tax_lines || []).length > 0 && <div className="fiscal-collection-taxes">
+                <strong>Tributi della cartella</strong>
+                {(item.original_tax_lines || []).map((row, rowIndex) => <div key={`${row.codice_tributo || 'tributo'}-${row.anno || ''}-${rowIndex}`}>
+                  Codice <strong>{row.codice_tributo || 'non leggibile'}</strong>{row.anno ? ` · anno ${row.anno}` : ''}{row.descrizione ? ` · ${row.descrizione}` : ''}{row.importo ? ` · ${euro(row.importo)}` : ''}
+                </div>)}
+              </div>}
+              <div className="fiscal-actions fiscal-collection-actions">
+                {riscossioneOriginaleId
+                  ? <Button size="sm" variant="secondary" onClick={() => openDocument(riscossioneOriginaleId, `Cartella ${title}`)}>Apri cartella originale</Button>
+                  : <span className="fiscal-muted">Originale della cartella non disponibile</span>}
+                {item.source_document_id && item.source_document_id !== riscossioneOriginaleId && <Button size="sm" variant="secondary" onClick={() => openDocument(item.source_document_id, `Fonte della cartella ${title}`)}>Apri fonte importata</Button>}
+              </div>
+            </details>}
             {tab === 'f24' && item.pdf_url && <Button size="sm" variant="secondary" style={{ marginTop: 8 }} onClick={() => openF24Pdf(item.pdf_url)}>Apri PDF</Button>}
           </article>;
         })}

@@ -10,6 +10,9 @@
 .fiscal-record { padding:14px 16px; border:1px solid #e6e3d9; border-radius:12px; background:#fff; box-shadow:0 1px 2px rgba(20, 20, 19,.04); }
 .fiscal-record:hover { border-color:#a19d92; box-shadow:0 5px 16px rgba(20, 20, 19,.08); }
 .fiscal-record-header { display:flex; align-items:center; justify-content:space-between; gap:12px; font-size:1rem; }
+.fiscal-record-title-button { margin:0; padding:0; border:0; background:transparent; color:#141413; font:inherit; font-weight:inherit; text-align:left; text-decoration:underline; text-decoration-color:#c15f3c; text-decoration-thickness:2px; text-underline-offset:4px; cursor:pointer; }
+.fiscal-record-title-button:hover,.fiscal-record-title-button:focus-visible { color:#9f472b; }
+.fiscal-record-title-button:focus-visible { outline:3px solid rgba(193,95,60,.2); outline-offset:4px; border-radius:4px; }
 .fiscal-record-body { margin-top:10px; color:#5f5c55; }
 .fiscal-data-grid { display:grid; grid-template-columns:repeat(4,minmax(110px,1fr)); gap:8px; }
 .fiscal-data-grid span { padding:8px 10px; border-radius:8px; background:#f6f4ee; }
@@ -19,6 +22,10 @@
 .fiscal-evidence { display:flex; gap:8px 16px; flex-wrap:wrap; margin-top:9px; padding:8px 10px; border-left:4px solid #22c55e; border-radius:6px; background:#ecfdf5; color:#166534; font-size:.87rem; }
 .fiscal-evidence span { color:#92400e; }
 .fiscal-actions { display:flex; justify-content:flex-end; margin-top:10px; }
+.fiscal-collection-details { margin-top:10px; padding-top:10px; border-top:1px solid #e6e3d9; }
+.fiscal-collection-details > summary { width:max-content; max-width:100%; color:#9f472b; font-weight:700; cursor:pointer; }
+.fiscal-collection-taxes { display:grid; gap:5px; margin-top:10px; padding:10px; border-radius:8px; background:#fffaf3; color:#4c4a44; }
+.fiscal-collection-actions { flex-wrap:wrap; gap:8px; }
 .fiscal-muted { margin-top:6px; color:#7a776e; }
 .fiscal-pagination { display:flex; align-items:center; justify-content:center; gap:16px; margin-top:18px; padding-top:14px; border-top:1px solid #e6e3d9; }
 .fiscal-empty { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:18px; border:1px dashed #a19d92; border-radius:10px; background:#f6f4ee; }
