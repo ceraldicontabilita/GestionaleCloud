@@ -25,6 +25,11 @@ TOTP_WINDOW = 1
 RECOVERY_CODES_COUNT = 8
 
 
+def _now_iso() -> str:
+    """Return a JSON-safe UTC timestamp for the document store."""
+    return datetime.now(timezone.utc).isoformat()
+
+
 def canonical_identity(user_id: str = "", email: str = "", role: str = "") -> str:
     # L'amministratore configurato via password e quello via PIN devono usare
     # la stessa iscrizione MFA anche se i rispettivi sub JWT sono diversi.
@@ -155,7 +160,7 @@ async def start_enrollment(
 
     secret = generate_totp_secret()
     revision = secrets.token_hex(16)
-    now = datetime.now(timezone.utc)
+    now = _now_iso()
     await db[COLLECTION].update_one(
         {"identity_key": key},
         {
@@ -189,8 +194,8 @@ async def confirm_enrollment(db, identity: str, code: str) -> list[str]:
             "$set": {
                 "secret_encrypted": _encrypt(secret),
                 "enabled": True,
-                "enabled_at": datetime.now(timezone.utc),
-                "updated_at": datetime.now(timezone.utc),
+                "enabled_at": _now_iso(),
+                "updated_at": _now_iso(),
                 "last_used_counter": counter,
                 "recovery_code_hashes": [_recovery_hash(item) for item in recovery_codes],
             },
@@ -227,7 +232,7 @@ async def verify_code(db, identity: str, code: str) -> bool:
                     {"last_used_counter": {"$exists": False}},
                 ],
             },
-            {"$set": {"last_used_counter": counter, "last_verified_at": datetime.now(timezone.utc)}},
+            {"$set": {"last_used_counter": counter, "last_verified_at": _now_iso()}},
         )
         return getattr(result, "modified_count", 0) == 1
 
@@ -239,7 +244,7 @@ async def verify_code(db, identity: str, code: str) -> bool:
         {"identity_key": key, "enabled": True, "recovery_code_hashes": recovery_hash},
         {
             "$pull": {"recovery_code_hashes": recovery_hash},
-            "$set": {"last_verified_at": datetime.now(timezone.utc)},
+            "$set": {"last_verified_at": _now_iso()},
         },
     )
     return getattr(result, "modified_count", 0) == 1
@@ -249,7 +254,7 @@ async def disable(db, identity: str) -> None:
     await db[COLLECTION].update_one(
         {"identity_key": _identity_key(identity)},
         {
-            "$set": {"enabled": False, "updated_at": datetime.now(timezone.utc)},
+            "$set": {"enabled": False, "updated_at": _now_iso()},
             "$unset": {
                 "secret_encrypted": "",
                 "last_used_counter": "",

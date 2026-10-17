@@ -1,5 +1,6 @@
 import asyncio
 import hashlib
+import json
 import pytest
 from fastapi import HTTPException, Response
 from app.services.archivio_documenti_memoria import ClientArchivioMemoria
@@ -38,6 +39,7 @@ def test_iscrizione_cifra_segreto_e_non_salva_plaintext(db, monkeypatch):
     setup = asyncio.run(mfa_service.start_enrollment(db, "admin"))
     secret = setup["secret"]
     doc_pending = asyncio.run(db[mfa_service.COLLECTION].find_one({}))
+    json.dumps(doc_pending)
     assert secret not in str(doc_pending)
     assert setup["otpauth_uri"].startswith("otpauth://totp/")
 
@@ -45,6 +47,7 @@ def test_iscrizione_cifra_segreto_e_non_salva_plaintext(db, monkeypatch):
         db, "admin", mfa_service.current_totp(secret)
     ))
     doc = asyncio.run(db[mfa_service.COLLECTION].find_one({}))
+    json.dumps(doc)
     assert doc["enabled"] is True
     assert secret not in str(doc)
     assert all(code not in str(doc) for code in recovery)
